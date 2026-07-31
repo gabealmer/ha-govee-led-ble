@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v4.2.1 (2026-07-31)
+
+### Bug Fixes
+
+- **deps**: Clear the open security advisories
+  ([`8039e01`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8039e0141f8e6ee30fba9951063b8cc5ed50d331))
+
+### Documentation
+
+- **protocol**: Settle whether segment brightness duplicates opcode 0x04
+  ([`c498ce9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c498ce96c383cf0a1d9139547f609bfc279237ca))
+
+
 ## v4.2.0 (2026-07-31)
 
 ### Bug Fixes
