@@ -1185,6 +1185,12 @@ def test_expectations_from_packet_covers_every_command_family():
     assert ct["color_temp_kelvin"] == 4000
     assert "rgb_color" not in ct
 
+    # A deliberate black paint is also all-zero, but it is a colour, not a 0 K temperature.
+    # Splitting the two on "any RGB byte set" put this frame in the kelvin branch.
+    black = _expectations_from_packet(proto.build_color_rgb(0, 0, 0))
+    assert black["rgb_color"] == (0, 0, 0)
+    assert "color_temp_kelvin" not in black
+
     assert _expectations_from_packet(proto.build_white_brightness(80))["white_brightness"] == 80
 
     assert _expectations_from_packet(proto.build_scene(scene_code))["effect"] == proto.SCENE_EFFECT_BY_ID[scene_code]

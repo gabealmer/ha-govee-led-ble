@@ -11,14 +11,13 @@ from bleak.backends.device import BLEDevice
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.protocol import (
     COLOR_MODE_QUERY,
-    COLOR_MODE_STATIC,
-    COLOR_PACKET_TYPE,
-    COMMAND_HEADER,
+    SEGMENT_COUNT,
     ParsedColorModeResponse,
-    build_packet,
+    build_segment_brightness,
+    build_segment_color,
     parse_color_mode_response,
 )
-from tools.ble.mock_ble.mock_device import RGB, STATIC_SUB, WHITE_SUB, FakeGoveeClient, GoveeDeviceSim
+from tools.ble.mock_ble.mock_device import RGB, FakeGoveeClient, GoveeDeviceSim
 
 _COORDINATOR = "custom_components.ha_govee_led_ble.coordinator"
 TEST_ADDRESS = "AA:BB:CC:DD:EE:FF"
@@ -39,17 +38,18 @@ def patch_transport(sim: GoveeDeviceSim, address: str = TEST_ADDRESS) -> Iterato
         yield client
 
 
+def _segments_from_mask(mask: int) -> list[int]:
+    return [index + 1 for index in range(SEGMENT_COUNT) if mask & (1 << index)]
+
+
 def segment_color_packet(rgb: RGB, mask: int) -> bytes:
-    """Build a per-segment RGB write (protocol has no builder for this yet)."""
-    r, g, b = rgb
-    params = [COLOR_MODE_STATIC, STATIC_SUB, r, g, b, 0, 0, 0, 0, 0, mask & 0xFF, (mask >> 8) & 0xFF]
-    return build_packet(COMMAND_HEADER, COLOR_PACKET_TYPE, params)
+    """Build a per-segment RGB write, addressed by raw mask rather than segment indices."""
+    return build_segment_color(_segments_from_mask(mask), *rgb)
 
 
 def segment_brightness_packet(brightness: int, mask: int) -> bytes:
     """Build a per-segment brightness write with an arbitrary segment mask."""
-    params = [COLOR_MODE_STATIC, WHITE_SUB, brightness, mask & 0xFF, (mask >> 8) & 0xFF]
-    return build_packet(COMMAND_HEADER, COLOR_PACKET_TYPE, params)
+    return build_segment_brightness(_segments_from_mask(mask), brightness)
 
 
 def parse_color_reply(sim: GoveeDeviceSim) -> ParsedColorModeResponse:

@@ -115,6 +115,38 @@ def test_color():
     assert proto.build_color_temp(12000)[7:9] == bytes([0x23, 0x28])  # clamped to 9000K
 
 
+def test_parse_static_write_round_trips_every_33_05_15_builder():
+    """The 33 05 15 offsets live here and nowhere else.
+
+    The coordinator and the simulator each kept a private copy, and the copies had already
+    drifted: a deliberate black paint read as an rgb write in one and as a 0 K colour
+    temperature in the other.
+    """
+    rgb = proto.parse_static_write(proto.build_segment_color([3], 10, 20, 30))
+    assert rgb is not None and rgb.rgb == (10, 20, 30) and rgb.segment_mask == 0x0004
+    assert rgb.kelvin is None and not rgb.whole_strip
+
+    whole = proto.parse_static_write(proto.build_color_rgb(255, 0, 0))
+    assert whole is not None and whole.rgb == (255, 0, 0) and whole.whole_strip
+
+    # Black is a colour, not a 0 K temperature.
+    black = proto.parse_static_write(proto.build_color_rgb(0, 0, 0))
+    assert black is not None and black.rgb == (0, 0, 0) and black.kelvin is None
+
+    ct = proto.parse_static_write(proto.build_color_temp(3600))
+    assert ct is not None and ct.kelvin == 3600 and ct.rgb is None
+    assert ct.kelvin_preview == proto.kelvin_to_rgb(3600) and ct.whole_strip
+
+    level = proto.parse_static_write(proto.build_segment_brightness(range(1, 8), 17))
+    assert level is not None and level.brightness_pct == 17 and level.segment_mask == 0x007F
+    assert proto.parse_static_write(proto.build_white_brightness(80)).brightness_pct == 80
+
+    assert proto.parse_static_write(bytes.fromhex("330515030000")) is None  # sub 0x03 is unbuilt
+    assert proto.parse_static_write(proto.build_power(True)) is None
+    assert proto.parse_static_write(proto.build_scene(2163)) is None
+    assert proto.parse_static_write(b"\x33\x05") is None
+
+
 def test_segments_to_mask():
     assert proto.segments_to_mask([1]) == 0x0001  # segment k -> bit k-1
     assert proto.segments_to_mask([3]) == 0x0004

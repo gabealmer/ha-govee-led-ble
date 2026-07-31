@@ -29,7 +29,6 @@ from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_timers import _TimerWriteMixin
 from .custom_effects import CustomEffect, SegmentContent, uses_diy_slot
 from .protocol import (
-    ALL_SEGMENTS_MASK,
     AUTHORED_DIY_SLOT,
     BRIGHTNESS_PACKET_TYPE,
     BRIGHTNESS_QUERY,
@@ -60,6 +59,7 @@ from .protocol import (
     parse_fw_version,
     parse_hw_version,
     parse_poweroff_memory,
+    parse_static_write,
     parse_timer_schedule_table,
     parse_timer_sleep,
     parse_timer_wakeup,
@@ -136,18 +136,13 @@ def _expectations_from_packet(packet: bytes, *, static_echoes_color: bool = Fals
     if packet[2] == COLOR_MODE_SCENE and len(packet) >= 5:
         expectations["effect"] = SCENE_EFFECT_BY_ID.get(int.from_bytes(packet[3:5], "little"))
         return expectations
-    if packet[2] == COLOR_MODE_STATIC and packet[3] == 0x01 and len(packet) >= 14:
-        mask = packet[12] | (packet[13] << 8)
-        if mask == ALL_SEGMENTS_MASK:
-            if packet[4] or packet[5] or packet[6]:
-                expectations["rgb_color"] = (packet[4], packet[5], packet[6])
-            else:
-                expectations["color_temp_kelvin"] = (packet[7] << 8) | packet[8]
-        return expectations
-    if packet[2] == COLOR_MODE_STATIC and packet[3] == 0x02 and len(packet) >= 7:
-        mask = packet[5] | (packet[6] << 8)
-        if mask == ALL_SEGMENTS_MASK:
-            expectations["white_brightness"] = packet[4]
+    if (static := parse_static_write(packet)) and static.whole_strip:
+        if static.rgb is not None:
+            expectations["rgb_color"] = static.rgb
+        elif static.kelvin is not None:
+            expectations["color_temp_kelvin"] = static.kelvin
+        elif static.brightness_pct is not None:
+            expectations["white_brightness"] = static.brightness_pct
     return expectations
 
 

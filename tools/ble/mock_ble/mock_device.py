@@ -16,6 +16,7 @@ from typing import Literal
 
 from custom_components.ha_govee_led_ble.const import MUSIC_MODES, get_profile
 from custom_components.ha_govee_led_ble.protocol import (
+    ALL_SEGMENTS_MASK,
     BRIGHTNESS_PACKET_TYPE,
     COLOR_MODE_MUSIC,
     COLOR_MODE_SCENE,
@@ -27,17 +28,17 @@ from custom_components.ha_govee_led_ble.protocol import (
     HARDWARE_PACKET_TYPE,
     POWER_PACKET_TYPE,
     SCENE_EFFECT_BY_ID,
+    STATIC_SUB_BRIGHTNESS,
+    STATIC_SUB_COLOR,
     STATUS_HEADER,
     build_packet,
+    parse_static_write,
 )
 
 RGB = tuple[int, int, int]
 NotifyCallback = Callable[[object, bytearray], None]
 ColorMode = Literal["rgb", "ct", "white", "scene", "video", "music"]
 
-ALL_SEGMENTS_MASK = 0x7FFF
-STATIC_SUB = 0x01
-WHITE_SUB = 0x02
 _COLOR_FLAG = 0x01
 # Human-readable label for the sim's current music mode (inspection only; the integration
 # tracks music as a slug in ``music_mode``, not as an effect string).
@@ -151,10 +152,10 @@ class GoveeDeviceSim:
             # colour, kelvin and brightness are write-only and are never read back.
             return [COLOR_MODE_STATIC, self.multi_effect_flag]
         if self.color_mode == "white":
-            return [COLOR_MODE_STATIC, WHITE_SUB, self.white_brightness]
+            return [COLOR_MODE_STATIC, STATIC_SUB_BRIGHTNESS, self.white_brightness]
         # A colour-temp state reads back as its white-point RGB with no kelvin field (live-confirmed
         # 2026-07-10); the coordinator recognises that and keeps CT. rgb and ct both report the rgb.
-        return [COLOR_MODE_STATIC, STATIC_SUB, *self.rgb_color]
+        return [COLOR_MODE_STATIC, STATIC_SUB_COLOR, *self.rgb_color]
 
     def _apply_command(self, frame: bytes) -> None:
         action = frame[1]
@@ -197,18 +198,17 @@ class GoveeDeviceSim:
             self._apply_static(frame)
 
     def _apply_static(self, frame: bytes) -> None:
-        if frame[3] == WHITE_SUB:
-            self._apply_white(frame[4], frame[5] | (frame[6] << 8))
+        static = parse_static_write(frame)
+        if static is None:
             return
-        rgb = (frame[4], frame[5], frame[6])
-        kelvin = (frame[7] << 8) | frame[8]
-        mask = frame[12] | (frame[13] << 8)
-        if rgb == (0, 0, 0) and kelvin:
-            self._set_color_temp(kelvin, (frame[9], frame[10], frame[11]))
-        elif mask != ALL_SEGMENTS_MASK:
-            self._fill_segments(rgb, mask)
-        else:
-            self._set_rgb(rgb)
+        if static.brightness_pct is not None:
+            self._apply_white(static.brightness_pct, static.segment_mask)
+        elif static.kelvin is not None:
+            self._set_color_temp(static.kelvin, static.kelvin_preview or (0, 0, 0))
+        elif static.rgb is not None and not static.whole_strip:
+            self._fill_segments(static.rgb, static.segment_mask)
+        elif static.rgb is not None:
+            self._set_rgb(static.rgb)
 
     def _set_rgb(self, rgb: RGB) -> None:
         self.color_mode = "rgb"

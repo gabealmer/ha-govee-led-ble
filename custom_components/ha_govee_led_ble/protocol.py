@@ -36,6 +36,10 @@ COLOR_MODE_VIDEO = 0x00
 COLOR_MODE_MUSIC = 0x13
 COLOR_MODE_STATIC = 0x15
 COLOR_MODE_DIY = 0x0A
+# Sub-selectors inside a 33 05 15 write (command_write::static_color / static_brightness). They
+# exist on the write side only: the aa 05 15 read-back does not echo them (status_reply::cm_static).
+STATIC_SUB_COLOR = 0x01
+STATIC_SUB_BRIGHTNESS = 0x02
 # The DIY slot is an app-assigned per-entry id echoed back by aa 05 0a, not an addressing scheme we
 # own; see govee_common::diy_selector. Only two values are genuinely reserved, and both are fixed by
 # the editor SURFACE rather than by any entry: Finger Sketch always 0x20, Colour > Vibrant always
@@ -128,14 +132,29 @@ def build_segment_color(segments: Iterable[int], r: int, g: int, b: int) -> byte
     mask = segments_to_mask(segments)
     lo, hi = mask & 0xFF, (mask >> 8) & 0xFF
     return build_packet(
-        0x33, 0x05, [0x15, 0x01, _clamp(r, 0, 255), _clamp(g, 0, 255), _clamp(b, 0, 255), 0, 0, 0, 0, 0, lo, hi]
+        0x33,
+        0x05,
+        [
+            COLOR_MODE_STATIC,
+            STATIC_SUB_COLOR,
+            _clamp(r, 0, 255),
+            _clamp(g, 0, 255),
+            _clamp(b, 0, 255),
+            0,
+            0,
+            0,
+            0,
+            0,
+            lo,
+            hi,
+        ],
     )
 
 
 def build_segment_brightness(segments: Iterable[int], pct: int) -> bytes:
     mask = segments_to_mask(segments)
     lo, hi = mask & 0xFF, (mask >> 8) & 0xFF
-    return build_packet(0x33, 0x05, [0x15, 0x02, _clamp(pct, 0, 100), lo, hi])
+    return build_packet(0x33, 0x05, [COLOR_MODE_STATIC, STATIC_SUB_BRIGHTNESS, _clamp(pct, 0, 100), lo, hi])
 
 
 def build_segment_paint(groups: Iterable[SegmentColorGroup]) -> list[bytes]:
@@ -163,12 +182,62 @@ def build_color_temp(kelvin: int) -> bytes:
     k = _clamp(kelvin, 2000, 9000)
     r, g, b = kelvin_to_rgb(k)
     # App form: 33 05 15 01 00 00 00 <Khi Klo> <R G B> ... FF 7F (kelvin true-white; RGB is a preview)
-    return build_packet(0x33, 0x05, [0x15, 0x01, 0, 0, 0, (k >> 8) & 0xFF, k & 0xFF, r, g, b, 0xFF, 0x7F])
+    return build_packet(
+        0x33, 0x05, [COLOR_MODE_STATIC, STATIC_SUB_COLOR, 0, 0, 0, (k >> 8) & 0xFF, k & 0xFF, r, g, b, 0xFF, 0x7F]
+    )
 
 
 def build_white_brightness(percent: int) -> bytes:
     # Whole-strip brightness: per-segment brightness command with the all-segments mask (0x7fff)
     return build_segment_brightness(ALL_SEGMENTS, percent)
+
+
+@dataclass(frozen=True)
+class ParsedStaticWrite:
+    """A decoded ``33 05 15`` body (command_write::static_color / static_brightness).
+
+    Exactly one of ``rgb``, ``kelvin`` and ``brightness_pct`` is set.
+    """
+
+    sub: int
+    segment_mask: int
+    rgb: tuple[int, int, int] | None = None
+    kelvin: int | None = None
+    kelvin_preview: tuple[int, int, int] | None = None
+    brightness_pct: int | None = None
+
+    @property
+    def whole_strip(self) -> bool:
+        return self.segment_mask == ALL_SEGMENTS_MASK
+
+
+def parse_static_write(packet: bytes) -> ParsedStaticWrite | None:
+    """Read back a ``33 05 15`` frame this module built, or None if it is not one.
+
+    The inverse of build_segment_color / build_color_temp / build_segment_brightness. Callers
+    that need these fields must come through here rather than index the frame themselves: the
+    offsets belong to command_write::static_color, and every private copy of them is free to
+    drift. One already had. Sub 0x03 is documented but unbuilt, so it reads as None.
+    """
+    if len(packet) < 4 or packet[0] != COMMAND_HEADER or packet[1] != COLOR_PACKET_TYPE:
+        return None
+    if packet[2] != COLOR_MODE_STATIC:
+        return None
+    sub = packet[3]
+    if sub == STATIC_SUB_COLOR and len(packet) >= 14:
+        rgb = (packet[4], packet[5], packet[6])
+        kelvin = (packet[7] << 8) | packet[8]
+        mask = packet[12] | (packet[13] << 8)
+        # A colour-temperature set zeroes the direct RGB and carries a preview instead; a direct
+        # paint zeroes the kelvin. A deliberate black paint is rgb, not a 0 K temperature.
+        if rgb == (0, 0, 0) and kelvin:
+            return ParsedStaticWrite(
+                sub=sub, segment_mask=mask, kelvin=kelvin, kelvin_preview=(packet[9], packet[10], packet[11])
+            )
+        return ParsedStaticWrite(sub=sub, segment_mask=mask, rgb=rgb)
+    if sub == STATIC_SUB_BRIGHTNESS and len(packet) >= 7:
+        return ParsedStaticWrite(sub=sub, segment_mask=packet[5] | (packet[6] << 8), brightness_pct=packet[4])
+    return None
 
 
 def build_scene(scene_id: int) -> bytes:
@@ -934,6 +1003,12 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
         "EXPERIMENTAL", "power-off memory 33 41; H617A does not ACK it, controls acked either side 2026-07-29"
     ),
     "split_status_frame": Evidence("VALIDATED", "H617A §4 status aa <type>; 20-byte XOR split; live"),
+    "parse_static_write": Evidence(
+        "VALIDATED",
+        "inverse of build_segment_color / build_color_temp / build_segment_brightness; "
+        "offsets per command_write::static_color and static_brightness; byte-pinned against "
+        "the command_write_* fixtures",
+    ),
     "parse_color_mode_response": Evidence(
         "VALIDATED",
         "H617A §4 colour-mode aa 05 (15/04/0a/00/13); DIY slot F0 read back live 2026-07-15; "
