@@ -88,6 +88,14 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_timers=True,
         segment_count=15,
         supports_segment_writes=True,
+        # supports_white_brightness stays false, and NOT because the command does nothing. Driven
+        # directly on 2026-07-31 it dims the strip and compounds with the whole-strip opcode 0x04
+        # rather than duplicating it (command_write::static_brightness). Two things block exposing
+        # it through this service. It has no read-back, and async_set_white_brightness verifies
+        # through _refresh_with_retry, which raises when the field is never observed. And the
+        # service means "the level of the white mode" and forces ColorMode.COLOR_TEMP, which is not
+        # what the frame does here: on this model it is a relative brightness that multiplies the
+        # master. Exposing that axis needs its own control, which is a feature, not a correction.
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",

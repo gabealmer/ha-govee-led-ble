@@ -476,16 +476,34 @@ types:
     doc: |
       static sub 0x02. Per-segment (or whole-strip) brightness as a raw 0..100
       percentage, then the shared segment_mask. Emitted live by the H617A app's
-      segment editor (a per-segment brightness slider), distinct from the whole-strip
-      opcode 0x04: captured at 17% over segments 1..7 and 1% over segment 15
-      (seg-brightness). build_segment_brightness / build_white_brightness produce the
-      same frame.
+      segment editor (a per-segment brightness slider). build_segment_brightness /
+      build_white_brightness produce the same frame.
+
+      IT IS A SECOND BRIGHTNESS AXIS THAT MULTIPLIES WITH OPCODE 0x04, NOT A
+      DUPLICATE OF IT. [CONFIRMED_LIVE 2026-07-31] "Distinct from the whole-strip
+      opcode 0x04" was asserted here from the app surface alone. Settled directly,
+      with a human watching the strip, in three observations.
+
+      (1) Writing this frame at the all-segments mask does NOT move opcode 0x04's
+      register: aa 04 read 100 before and after, so they are separate state.
+      (2) A flicker test against a master-brightness control of the same shape showed
+      this frame dimming the strip just as visibly, so it is a live render control
+      and not an accepted-then-ignored write.
+      (3) The decisive one. Master was PINNED at 20 (verified on 20 consecutive aa 04
+      reads during the run) while this frame alternated 100 and 20. The strip pulsed
+      clearly darker than the already-dim baseline, so the two compound rather than
+      one clamping or overriding the other. 20 of 20 against 20 of 100 is the whole
+      finding: an override would have sat still.
+
+      There is NO read-back. aa 05 15 answers with the 33 a3 register and an all-zero
+      payload whatever this is set to (status_reply::cm_static), so a write here can
+      be verified only by looking at the strip.
     seq:
       - id: percent
         type: u1
         valid:
           max: 100
-        doc: '[CONFIRMED_LIVE] brightness 0..100 raw at offset 4; 0x11=17% and 0x01=1% captured (seg-brightness), and 0x1f=31% captured 2026-07-26 from the Color > Subsection relative-brightness slider'
+        doc: '[CONFIRMED_LIVE] brightness 0..100 raw at offset 4; 0x11=17% over segments 1..7 and 0x01=1% over segment 15 captured (seg-brightness), 0x1f=31% captured 2026-07-26 from the Color > Subsection relative-brightness slider, and 0x14=20% against 0x64=100% driven directly 2026-07-31 for the compounding proof in this type''s doc'
       - id: mask
         type: segment_mask
         doc: '[CONFIRMED_LIVE] segment selection at offsets 5..6 (see segment_mask); 0x007f = segments 1..7 and 0x4000 = segment 15 captured (seg-brightness)'
