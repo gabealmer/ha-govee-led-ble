@@ -26,7 +26,10 @@ spread across a corpus, and pairwise differentials.
 The runner refuses anything it cannot evaluate. A misspelt attribute path or an assert
 syntax it does not implement is a hard error, never a silent pass, because a test suite
 that quietly skips is worse than one that is absent. For the same reason it refuses a
-fixture in src/ that no case reads, and an aggregate whose pattern matches nothing.
+fixture in src/ that no case reads, a SPEC that no fixture reaches (see
+check_every_spec_is_exercised, which is what stops a new model's grammar being written
+from the encoder before any of its bytes have been captured), and an aggregate whose
+pattern matches nothing.
 """
 
 from __future__ import annotations
@@ -67,6 +70,7 @@ class Case:
     asserts: list[dict[str, Any]]
     exception: str | None
     invariants: list[str] = field(default_factory=list)
+    imports: list[str] = field(default_factory=list)
 
 
 def class_name(module: str) -> str:
@@ -82,16 +86,18 @@ def load_case(path: Path) -> Case:
     if not source.exists():
         raise AssertUnevaluatableError(f"{path.name}: no such fixture {source}")
     imports = doc["imports"]
+    modules = imports if isinstance(imports, list) else [imports]
     return Case(
         path=path,
         id=doc["id"],
         source=source,
         data=source.read_bytes(),
-        module=imports[0] if isinstance(imports, list) else imports,
+        module=modules[0],
         root=doc.get("type"),
         asserts=doc.get("asserts") or [],
         exception=doc.get("exception"),
         invariants=doc.get("skip_invariants") or [],
+        imports=modules,
     )
 
 
@@ -270,6 +276,42 @@ def run_differential(entry: dict[str, Any], requirement: str, data_by_id: dict[s
     return None
 
 
+def check_every_spec_is_exercised(cases: list[Case]) -> None:
+    """Refuse a .ksy that no fixture reaches, directly or through an import.
+
+    A spec nothing parses still compiles, still passes evidence_lint, and still reads as
+    documentation of the wire, so it is the field-level version of an orphan fixture: a
+    layout that has never met a byte, indistinguishable from one proven against 164 of
+    them. That matters most for a model whose discovery run has not happened yet. The
+    H6199 has beliefs in protocol.py and no captured bytes at all, and the tempting move
+    is to write its spec from the encoder first and check captures against it later. This
+    check makes that impossible rather than discouraged: an h6199 spec cannot be committed
+    until an h6199 fixture reads it, so its first field is written from bytes.
+
+    The closure is transitive on purpose. govee_common is named by no .kst, only by other
+    specs' meta.imports, so a direct "some fixture names it" test would fail the one spec
+    every other spec depends on.
+    """
+    named = {module for case in cases for module in case.imports}
+    closure = set(named)
+    frontier = set(named)
+    while frontier:
+        following = set()
+        for module in frontier:
+            spec = HERE / f"{module}.ksy"
+            if spec.exists():
+                meta = (yaml.safe_load(spec.read_text(encoding="utf-8")) or {}).get("meta") or {}
+                following |= set(meta.get("imports") or [])
+        frontier = following - closure
+        closure |= frontier
+    unexercised = sorted(p.name for p in HERE.glob("*.ksy") if p.stem not in closure)
+    if unexercised:
+        raise AssertUnevaluatableError(
+            f"{len(unexercised)} spec(s) that no fixture exercises: {', '.join(unexercised)}. "
+            "Add a .kst case reading real captured bytes, or delete the spec."
+        )
+
+
 def check_every_fixture_is_claimed(cases: list[Case]) -> None:
     """Refuse a fixture in src/ that no case reads.
 
@@ -340,6 +382,7 @@ def main() -> int:
     parsed_by_id: dict[str, Any] = {}
     cases = [load_case(path) for path in specs]
     check_every_fixture_is_claimed(cases)
+    check_every_spec_is_exercised(cases)
     check_schemes_are_separated(cases)
     for case in cases:
         problems, parsed = run_case(case)
