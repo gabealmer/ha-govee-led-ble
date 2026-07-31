@@ -1,6 +1,45 @@
 # CHANGELOG
 
 
+## v4.1.0 (2026-07-31)
+
+### Chores
+
+- Remove three dead developer scripts
+  ([`d151e3d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d151e3d170995981beb85337ea9f6d1240b662e4))
+
+- **deps**: Update actions/checkout digest to 3d3c42e
+  ([`f7fb9f6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f7fb9f65e6dc073dfeeefdc3b8dd84fed6f50305))
+
+- **deps**: Update astral-sh/setup-uv action to v9
+  ([`4377bdc`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4377bdc2aadb5c03080540ef236c131014d188d3))
+
+- **deps**: Update mcr.microsoft.com/devcontainers/python:3.14 docker digest to f04a1e9
+  ([`1c20480`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1c20480f97ad1b551b2619b49e7aba6e63c94cff))
+
+- **release**: Retire the beta channel
+  ([`348debe`](https://github.com/teh-hippo/ha-govee-led-ble/commit/348debe16dbe3dc14cbc599a52886fd28f3a5ace))
+
+### Documentation
+
+- Record the method the protocol work actually follows
+  ([`b5d42aa`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b5d42aa11a7ffde902d7c903fbc85c673d757634))
+
+- **protocol**: Make Kaitai specs the source of truth and retire the prose
+  ([`375b587`](https://github.com/teh-hippo/ha-govee-led-ble/commit/375b5878751edcdd17eac84db5d96c43f71b828b))
+
+### Features
+
+- **harness**: Drive the vendor app by element name to source captures
+  ([`022b622`](https://github.com/teh-hippo/ha-govee-led-ble/commit/022b6225c23516deeca45176a9c2b8559f76f0b5))
+
+- **protocol**: Correct the H617A encodings and widen the effect surface
+  ([`a4cec97`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a4cec9725086527c7180e31bbf90335688476dae))
+
+- **tools**: Capture, replay and decode the wire directly
+  ([`4bddcc6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4bddcc65d3a78fa577b26fb52f2275bb756354ef))
+
+
 ## v4.0.2 (2026-07-20)
 
 ### Bug Fixes
