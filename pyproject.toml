@@ -67,6 +67,12 @@ disable_error_code = ["arg-type", "attr-defined", "no-untyped-call", "typeddict-
 override-dependencies = [
     "PyJWT>=2.12.0",
     "pytest>=9.0.3",
+    # Home Assistant pins Pillow to an exact version, and 2026.7.4 still pins 12.2.0, which
+    # carries a batch of advisories fixed in 12.3.0. Pillow reaches us only through
+    # pytest-homeassistant-custom-component, so it is test-only and never ships with the
+    # integration, but the test suite does exercise it through the diagnostic preview image.
+    # Drop this once an upstream release pins 12.3.0 or later.
+    "Pillow>=12.3.0",
 ]
 
 [tool.semantic_release]
