@@ -748,9 +748,11 @@ def test_build_music_params_a3_palette_guard_and_overlay():
 def test_parse():
     scene = proto.parse_color_mode_response(bytes([0x04, 0x9D, 0x08]))
     assert scene.mode is proto.ParsedMode.SCENE and scene.effect == "candy"
-    p = proto.parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42, 0x01, 55]))
+    p = proto.parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42, 0x01, 55]), video_supported=True)
     assert p.mode is proto.ParsedMode.VIDEO and p.video_mode == "game" and p.effect is None and not p.video_full_screen
     assert (p.video_saturation, p.video_sound_effects, p.video_sound_effects_softness) == (42, True, 55)
+    # A model with no video mode must not read game mode and a saturation out of the same bytes.
+    assert proto.parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42])).mode is proto.ParsedMode.UNKNOWN
     p = proto.parse_color_mode_response(bytes([0x13, 0x04, 77, 0x00, 0x01, 1, 2, 3]))
     assert (
         p.mode is proto.ParsedMode.MUSIC

@@ -1226,6 +1226,25 @@ def test_expectations_from_packet_covers_every_command_family():
     assert _expectations_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) == {}
 
 
+def test_video_readback_is_gated_on_the_model(coord, h6199):
+    """0x00 is the video selector, so noise and truncation land in the video branch.
+
+    split_status_frame passes loose frames through without verifying the checksum, so a
+    short aa 05 frame reaches the decoder. On a model with no video mode that used to read
+    out as a confident game mode with a saturation.
+    """
+    payload = bytes([proto.COLOR_MODE_VIDEO, 0x00, 0x01, 42, 0x01, 55])
+
+    coord._apply_color_mode_payload(payload)
+    assert coord.color_mode is proto.ParsedMode.UNKNOWN
+    assert coord.video_mode == "off"
+
+    h6199._apply_color_mode_payload(payload)
+    assert h6199.color_mode is proto.ParsedMode.VIDEO
+    assert h6199.video_mode == "game"
+    assert h6199.video_saturation == 42
+
+
 def test_expected_color_mode_from_packet_rejects_non_colour_packets():
     assert _expected_color_mode_from_packet(proto.build_power(True)) is None
     assert _expected_color_mode_from_packet(b"\x33\x05") is None

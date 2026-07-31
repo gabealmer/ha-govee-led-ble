@@ -198,13 +198,17 @@ def test_the_colour_mode_query_decodes_as_a_video_reply():
     payload begins 0x00, and 0x00 is the video selector, so the two are indistinguishable
     without knowing which way the frame travelled. This has been hit live twice, on 0xa3
     and on 0x01, which is why decode_govee refuses to label a frame without a direction.
+
+    Knowing the model narrows it but does not close it: a model with video still cannot
+    tell its own query from a reply, which is why the direction, not the profile, is the fix.
     """
     split = proto.split_status_frame(proto.COLOR_MODE_QUERY)
     assert split is not None
     domain, payload = split
     assert domain == 0x05
     assert payload[0] == 0x00
-    assert proto.parse_color_mode_response(payload).mode is proto.ParsedMode.VIDEO
+    assert proto.parse_color_mode_response(payload, video_supported=True).mode is proto.ParsedMode.VIDEO
+    assert proto.parse_color_mode_response(payload).mode is proto.ParsedMode.UNKNOWN
 
 
 @pytest.mark.parametrize(

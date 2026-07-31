@@ -629,7 +629,14 @@ class ParsedColorModeResponse:
     multi_effect_flag: int | None = None
 
 
-def parse_color_mode_response(payload: bytes, *, static_echoes_color: bool = False) -> ParsedColorModeResponse:
+def parse_color_mode_response(
+    payload: bytes, *, static_echoes_color: bool = False, video_supported: bool = False
+) -> ParsedColorModeResponse:
+    """Decode an ``aa 05`` colour-mode reply.
+
+    Both flags default to the H617A, the only model with a spec. Callers with a
+    :class:`~.const.ModelProfile` should pass its values.
+    """
     if not payload:
         raise ValueError("Color mode payload is empty")
     mode = payload[0]
@@ -643,6 +650,11 @@ def parse_color_mode_response(payload: bytes, *, static_echoes_color: bool = Fal
     if mode == COLOR_MODE_DIY:
         return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_slot=_get(payload, 1))
     if mode == COLOR_MODE_VIDEO:
+        # The video selector is 0x00, so any short or zero-led aa 05 frame lands here, and
+        # split_status_frame passes loose frames through without verifying their checksum. On a
+        # model with no video mode that reads out as a confident "game, saturation N" from noise.
+        if not video_supported:
+            return ParsedColorModeResponse(mode=ParsedMode.UNKNOWN)
         return ParsedColorModeResponse(
             mode=ParsedMode.VIDEO,
             video_mode="game" if bool(_get(payload, 2)) else "movie",

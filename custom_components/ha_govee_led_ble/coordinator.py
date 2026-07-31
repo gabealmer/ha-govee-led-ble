@@ -426,7 +426,9 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
 
     def _apply_color_mode_payload(self, payload: bytes) -> tuple[str, ...]:
         static_echoes_color = self.profile.static_readback_echoes_color
-        parsed = parse_color_mode_response(payload, static_echoes_color=static_echoes_color)
+        parsed = parse_color_mode_response(
+            payload, static_echoes_color=static_echoes_color, video_supported=self.profile.supports_video_mode
+        )
         if parsed.mode is ParsedMode.DIY:
             mode_detail = parsed.diy_slot
         elif parsed.mode is ParsedMode.COLOUR and static_echoes_color:
