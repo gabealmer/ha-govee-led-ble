@@ -25,7 +25,7 @@ Name a module here only when something else in this file depends on knowing it e
 
 ## Key repository conventions
 
-- Model capabilities are declared in `const.py` via `ModelProfile` flags (`supports_video_mode`, `supports_music_mode`, etc.); new model behavior should be wired through profile flags first, then entity setup.
+- Model capabilities are declared in `const.py` via `ModelProfile` fields (`supports_video_mode`, `supports_diy`, `static_readback_echoes_color`, etc.); new model behavior should be wired through a profile field first, then entity setup. Some capabilities are derived rather than declared (`supports_segments`, `supports_music_mode`, `custom_effect_kinds` are properties), so check before trying to set one.
 - Prefer root-cause refactoring over band-aid fixes; when behavior crosses layers, update shared paths instead of patching a single call site.
 - Treat changes holistically across capabilities, protocol encode/decode, coordinator state handling, entity/service wiring, diagnostics, and tests so behavior stays consistent.
 - Advanced entities are capability-gated at setup time (see `h6199_controls.py`), so unsupported controls are not created for a model.
@@ -50,7 +50,8 @@ There is no prose tier. `docs/` holds no protocol content at all: the retired re
 Rules that follow from this:
 
 - NEVER restate field layouts, byte offsets or enum values outside a `.ksy`. Reference the owning type or field instead (e.g. "see `govee_common::diy_selector`").
-- Every `.ksy` field carries exactly one evidence tag in its doc: `[CONFIRMED_LIVE]`, `[INFERRED]` or `[INHERITED]`. `evidence_lint.py` runs inside `scripts/check.sh` and fails if any field is untagged. Promote a tag only with a capture that isolates the field.
+- Every `.ksy` field carries exactly one evidence tag in its doc: `[CONFIRMED_LIVE]` or `[INFERRED]`. `evidence_lint.py` runs inside `scripts/check.sh` and fails if any field is untagged. Promote a tag only with a capture that isolates the field.
+- A field you cannot evidence is deleted, not weakly labelled. There used to be a third tag, `[INHERITED]`, for bytes modelled from the write side with no read-direction capture; it emptied out because this rule kept winning, and the gate now rejects it by name. Removing a field loses nothing, since the bytes stay in an unnamed window.
 - A tag may never outlive its support. If the evidence a tag rests on is removed, downgrade the tag in the same change. `evidence_lint.py` checks that a tag exists, not that it is honest.
 - Only the H617A is modelled. The H6199 has no specs and no prose; its behaviour lives in the integration alone, and nothing about it may be used to infer H617A behaviour.
 - The verification backlog is not a file in this repo. Open questions belong in the `doc:` of the field they concern.

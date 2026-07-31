@@ -8,14 +8,25 @@ exactly one re-verification evidence tag in its `doc`:
                     round-trips byte-exact (a differential / cross-check isolates it).
   [INFERRED]        position confirmed by round-trip, meaning reasoned from
                     protocol.py / analysis, not isolated by a capture.
-  [INHERITED]       modelled from the write-side / docs with no confirming
-                    capture in this direction (opaque regions, unexercised
-                    branches). This is the pessimistic default: a field with no
-                    tag FAILS the gate, it is never silently promoted.
 
-The gate enforces completeness (every field is labelled) and a closed
-vocabulary; it does not and cannot judge whether a chosen tag is accurate, that
-stays a human/panel call. Run:
+A field with no tag FAILS the gate; it is never silently promoted.
+
+THERE WAS A THIRD TAG. [INHERITED] meant "modelled from the write side with no
+confirming capture in this direction", and it was used, and it is now empty: every
+field that carried it was either promoted by a capture or deleted outright. Deleted
+is the important half. The practice that emptied this category is that an unevidenced
+field gets removed rather than weakly labelled, because naming bytes nobody has
+observed the meaning of asserts knowledge we do not have (see status_reply::cm_video,
+where five named fields went back to one opaque window on exactly that ground). That
+practice leaves the tag nothing to describe, and an empty category is somewhere to put
+a field instead of deleting it.
+
+Reopen the question if H617A stops being the only model with a spec: modelling a new
+device's read-backs from its write side is the situation the tag was for.
+
+The gate enforces completeness (every field is labelled) and a closed vocabulary; it
+does not and cannot judge whether a chosen tag is accurate, that stays a human/panel
+call. Run:
 
     uv run --no-sync --with pyyaml python evidence_lint.py
 """
@@ -29,7 +40,10 @@ from pathlib import Path
 import yaml
 
 HERE = Path(__file__).resolve().parent
-TAGS = ("CONFIRMED_LIVE", "INFERRED", "INHERITED")
+TAGS = ("CONFIRMED_LIVE", "INFERRED")
+# Tags that were once valid. Naming them keeps the failure specific: a stale [INHERITED]
+# reports what happened to it rather than reading as a typo.
+RETIRED_TAGS = {"INHERITED": "retired 2026-07-31 once empty; delete the field or evidence it"}
 TAG_RE = re.compile(r"\[([A-Z_]+)\]")
 
 
@@ -40,13 +54,17 @@ def _field_doc_tags(doc: str) -> list[str]:
 def _check_entry(where: str, doc: str, problems: list[str], counts: dict[str, int]) -> None:
     doc = doc or ""
     found = _field_doc_tags(doc)
-    stray = [t for t in TAG_RE.findall(doc) if t not in TAGS and t.isupper() and "_" in t]
-    if len(found) == 0:
+    bracketed = TAG_RE.findall(doc)
+    retired = [t for t in bracketed if t in RETIRED_TAGS]
+    stray = [t for t in bracketed if t not in TAGS and t not in RETIRED_TAGS and t.isupper() and "_" in t]
+    if len(found) == 0 and not retired:
         problems.append(f"{where}: no evidence tag (need one of {TAGS})")
     elif len(found) > 1:
         problems.append(f"{where}: {len(found)} evidence tags {found}, expected exactly one")
-    else:
+    elif found:
         counts[found[0]] = counts.get(found[0], 0) + 1
+    for tag in retired:
+        problems.append(f"{where}: [{tag}] is retired ({RETIRED_TAGS[tag]})")
     if stray:
         problems.append(f"{where}: unknown bracketed tag(s) {stray} (typo?)")
 
