@@ -63,3 +63,12 @@ Rules that follow from this:
 - After editing any `.ksy`, recompile before trusting the fixtures: the generated `*.py` parsers are gitignored build products and go stale silently.
   `node tools/ble/kaitai/compile.js tools/ble/kaitai/<spec>.ksy`
   then `uv run --no-sync python tools/ble/kaitai/kst_runner.py`.
+
+## Captures: one capture, one light
+
+A phone stays paired with every Govee device in the house, so an HCI capture is not evidence about a model until it is attributed. Two mechanisms enforce that, and both exist because the failure they catch reads as absence rather than as an error.
+
+- `decode_govee.py` refuses to print a capture holding more than one Govee source. Narrow it with `--peer <address or unique address tail>`; `--all-peers` dumps it mixed on purpose. Frames on a connection opened before recording started have no address at all, are counted under `?`, and `--peer` refuses to filter past them unless you pass `--allow-unattributed`. Start the capture FIRST, then force a fresh connect, so the HCI connect event carrying the address lands inside the window.
+- `up.sh app` binds the session to the address it is supposed to be of, and `govee-capture.sh stop` fails when the capture holds none of that peer's frames. A session where the vendor app never reached the light otherwise decodes clean and empty, which reads as a quiet device.
+
+Identity lives only in the untracked `devices.local.env`. A device the harness may drive directly has a `DEVICE_BLE_ADDRESS`; an app-sniff-only device must NOT, because `up.sh direct` refuses on the absence of that value. Its address goes in `DEVICE_SNIFF_ADDRESS` instead, which is used for attribution alone: `devices.env` asserts no value there can reach `DEVICE_ADDRESS`, so listing a device there does not make it drivable. Fake addresses in tracked files keep the real Govee OUI (`D0:35:34` for the H617A family, `D5:36:36` for the H6199 family) and an obviously invented tail, so they stay recognisable without being anyone's device.

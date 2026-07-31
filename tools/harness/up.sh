@@ -50,7 +50,14 @@ if [ "$mode" = app ]; then
   # the decoder reads frames out of it, which is the check that catches a missing Bluetooth
   # logging profile or a dead HCI stream; do not add a second, weaker copy here.
   session_capture="session-$DEVICE_NAME-$(date +%Y%m%d-%H%M%S)"
-  capture start "$session_capture" "${HARNESS_PREDICTION_SHA:--}" >/dev/null
+  # Bind the capture to the device it is a capture OF. Without this a session in which the
+  # app never reached the light decodes cleanly and empty, which reads as a quiet device.
+  [ -n "$DEVICE_EXPECTED_PEER" ] || {
+    echo "$DEVICE_NAME has neither a connect nor a sniff address" >&2
+    echo "add it to DEVICE_SNIFF_ADDRESS in the identity file so its capture can be attributed" >&2
+    exit 1
+  }
+  GOVEE_EXPECTED_PEER="$DEVICE_EXPECTED_PEER" capture start "$session_capture" "${HARNESS_PREDICTION_SHA:--}" >/dev/null
   restart_govee_app
   [ -n "$(govee_app_pid)" ] || { echo "Govee app did not start" >&2; exit 1; }
   echo "== up: capture '$session_capture', app running, gestures at $(serve_web_url)"

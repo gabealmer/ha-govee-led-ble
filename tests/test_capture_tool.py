@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 from datetime import datetime
@@ -199,3 +200,66 @@ def test_start_accepts_a_capture_that_is_carrying_frames(tmp_path: Path):
         assert (tmp_path / "captures" / ".current").read_text().split()[1] == "live-run"
     finally:
         _stop(tmp_path, stub)
+
+
+# The peer the committed pcapng fixture was built around, and one that is not in it.
+_FIXTURE_PEER = "D0:35:34:AA:BB:CC"
+_ABSENT_PEER = "D5:36:36:DD:EE:FF"
+
+
+def _record_session(tmp_path: Path, name: str, *, expected_peer: str | None) -> subprocess.CompletedProcess[str]:
+    """Start a capture over the committed fixture and stop it, returning stop's result."""
+    stub = _stub_logger(tmp_path, writes=_PCAPNG_FIXTURE.read_bytes())
+    env = _capture_env(tmp_path, stub)
+    if expected_peer is not None:
+        env["GOVEE_EXPECTED_PEER"] = expected_peer
+    started = subprocess.run(  # noqa: S603
+        ["/bin/bash", str(_SCRIPT), "start", name],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert started.returncode == 0, started.stderr
+    return subprocess.run(  # noqa: S603
+        ["/bin/bash", str(_SCRIPT), "stop"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def test_a_session_for_a_light_that_never_appeared_is_a_failed_run(tmp_path: Path):
+    """The quiet failure app-sniff sessions are prone to, made loud.
+
+    The phone can be recording perfectly while the vendor app never reaches the light, or
+    reaches it on a connection opened before recording started. Either way the decode comes
+    out clean and holds nothing from the device the session was for, which reads as "it sent
+    nothing" rather than "we did not capture it". Binding the capture to the address it is
+    supposed to be of turns that into an error while the rig is still up to redo it.
+    """
+    result = _record_session(tmp_path, "wrong-light", expected_peer=_ABSENT_PEER)
+
+    assert result.returncode == 1
+    assert "not usable as evidence" in result.stderr
+    assert "no captured peer" in result.stderr
+
+
+def test_a_session_that_did_capture_its_light_passes_and_records_the_binding(tmp_path: Path):
+    """Positive control: the check above can pass, and says which peer it was checked against."""
+    result = _record_session(tmp_path, "right-light", expected_peer=_FIXTURE_PEER)
+
+    assert result.returncode == 0, result.stderr
+    meta = json.loads((tmp_path / "captures" / "right-light.meta.json").read_text())
+    assert meta["expected_peer"] == _FIXTURE_PEER
+    assert f"filtered to peer {_FIXTURE_PEER}" in result.stdout
+
+
+def test_a_capture_with_no_expected_peer_still_decodes(tmp_path: Path):
+    """Direct-mode and ad-hoc captures never set one, and must not start failing."""
+    result = _record_session(tmp_path, "unbound", expected_peer=None)
+
+    assert result.returncode == 0, result.stderr
+    meta = json.loads((tmp_path / "captures" / "unbound.meta.json").read_text())
+    assert meta["expected_peer"] is None

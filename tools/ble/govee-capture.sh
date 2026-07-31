@@ -11,6 +11,12 @@
 # works over plain usbmux; only the app-driving half of the rig is behind RemoteXPC.
 #
 # Env: GOVEE_CAPTURE_DIR (default ~/govee-captures), PYMOBILEDEVICE3, PREFLIGHT_SECONDS.
+#
+# GOVEE_EXPECTED_PEER is the BLE address the capture is SUPPOSED to be of. Set it and stop
+# decodes only that peer and fails when the capture holds none of its frames. Without it a
+# session where the app never reached the light produces a clean, empty-looking decode that
+# reads as "the device said nothing", which is a conclusion rather than the error it is.
+# up.sh sets it from the resolved device, so app-mode sessions get it for free.
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,7 +69,7 @@ case "${1:-}" in
     # shellcheck disable=SC2046
     nohup "$PMD3" $(btlogger_argv) --format pcapng "$out" >"$CAP/$name.log" 2>&1 &
     pid=$!
-    printf '%s %s %s %s\n' "$pid" "$name" "$(date --iso-8601=ns)" "$sha" > "$STATE"
+    printf '%s %s %s %s %s\n' "$pid" "$name" "$(date --iso-8601=ns)" "$sha" "${GOVEE_EXPECTED_PEER:--}" > "$STATE"
     : > "$CAP/$name.actions.tsv"
     for _ in $(seq 1 "$PREFLIGHT_SECONDS"); do
       sleep 1; [ "$(frames_seen "$out")" -gt 0 ] && break
@@ -89,16 +95,28 @@ case "${1:-}" in
     ;;
   stop)
     [ -f "$STATE" ] || { echo "no capture running"; exit 1; }
-    read -r pid name started sha < "$STATE"
+    read -r pid name started sha peer < "$STATE"
     kill -INT "$pid" 2>/dev/null || true
     for _ in $(seq 1 10); do kill -0 "$pid" 2>/dev/null || break; sleep 0.3; done
     kill "$pid" 2>/dev/null || true
     rm -f "$STATE"
-    printf '{"capture":"%s","started_at":"%s","stopped_at":"%s","actions":"%s.actions.tsv","prediction_sha256":%s}\n' \
+    printf '{"capture":"%s","started_at":"%s","stopped_at":"%s","actions":"%s.actions.tsv","prediction_sha256":%s,"expected_peer":%s}\n' \
       "$name" "$started" "$(date --iso-8601=ns)" "$name" \
-      "$([ "${sha:--}" = - ] && echo null || echo "\"$sha\"")" > "$CAP/$name.meta.json"
+      "$([ "${sha:--}" = - ] && echo null || echo "\"$sha\"")" \
+      "$([ "${peer:--}" = - ] && echo null || echo "\"$peer\"")" > "$CAP/$name.meta.json"
     echo "stopped '$name'"
-    uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$CAP/$name.pcapng"
+    if [ "${peer:--}" = - ]; then
+      uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$CAP/$name.pcapng"
+    elif ! uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$CAP/$name.pcapng" --peer "$peer"; then
+      # The decoder already said which peers it did see. This adds the one thing it cannot
+      # know: that the session was FOR this device, so a capture without it is a failed run
+      # to repeat, not a result to interpret.
+      echo "capture '$name' is not usable as evidence about $peer" >&2
+      echo "  the app may never have connected, or connected before recording started." >&2
+      echo "  Start the capture FIRST, then force a fresh connect, so the HCI connect" >&2
+      echo "  event carrying the address lands inside the window." >&2
+      exit 1
+    fi
     ;;
   decode)
     name="${2:-}"; [ -n "$name" ] || usage 1; shift 2
