@@ -199,6 +199,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.active_custom_id: str | None = None
         self.diy_slot: int | None = None
         self.color_mode: ParsedMode | None = None
+        self._scene_code: int | None = None
         self._owned_diy_effect_id: str | None = None
         self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
         self.custom_effects: dict[str, CustomEffect] = {}
@@ -268,6 +269,18 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         device = registry.async_get_device(identifiers={(DOMAIN, self.address)})
         if device is not None:
             registry.async_update_device(device.id, sw_version=self.fw_version, hw_version=self.hw_version)
+
+    @property
+    def unknown_scene_code(self) -> int | None:
+        """The raw scene id when the device is running a scene this build cannot name.
+
+        ``effect`` stays None for these, because Home Assistant rejects a value outside
+        ``effect_list`` and we could not re-activate the scene anyway. Reporting the id keeps
+        the state honest about the light running something.
+        """
+        if self.color_mode is ParsedMode.SCENE and self.effect is None:
+            return self._scene_code
+        return None
 
     @property
     def available(self) -> bool:
@@ -439,6 +452,11 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         if not self._accept_expected("color_mode", observed_color_mode):
             return ()
         self.color_mode = parsed.mode
+        # A scene we cannot name still leaves the light running something, and effect has to stay
+        # None because HA rejects one outside effect_list. Keep the raw id so the state is honest
+        # rather than silently claiming nothing is on. None for every other mode, so this one
+        # assignment cannot leave a stale code behind.
+        self._scene_code = parsed.scene_code if parsed.effect is None else None
         observed: list[str] = []
         accept_parameters = True
         active_custom = self.custom_effects.get(self.active_custom_id) if self.active_custom_id is not None else None

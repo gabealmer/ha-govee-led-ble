@@ -75,6 +75,7 @@ def _make_coord(**ov) -> MagicMock:
     c.custom_effect_display_names = MagicMock(return_value=[])
     c.custom_effect_index = MagicMock(return_value={})
     c.quarantined_custom_effect_index = MagicMock(return_value={})
+    c.unknown_scene_code = None
 
     def _enter_static_mode() -> None:
         c.effect = c.active_custom_id = None

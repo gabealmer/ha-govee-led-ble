@@ -614,6 +614,7 @@ class ParsedMode(Enum):
 class ParsedColorModeResponse:
     mode: ParsedMode = ParsedMode.UNKNOWN
     effect: str | None = None
+    scene_code: int | None = None
     diy_slot: int | None = None
     music_mode: str | None = None
     video_mode: str | None = None
@@ -644,8 +645,9 @@ def parse_color_mode_response(
         scene_bytes = payload[1:] or b"\x00"
         while len(scene_bytes) > 1 and scene_bytes[-1] == 0:
             scene_bytes = scene_bytes[:-1]
+        scene_code = int.from_bytes(scene_bytes, "little")
         return ParsedColorModeResponse(
-            mode=ParsedMode.SCENE, effect=SCENE_EFFECT_BY_ID.get(int.from_bytes(scene_bytes, "little"))
+            mode=ParsedMode.SCENE, effect=SCENE_EFFECT_BY_ID.get(scene_code), scene_code=scene_code
         )
     if mode == COLOR_MODE_DIY:
         return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_slot=_get(payload, 1))

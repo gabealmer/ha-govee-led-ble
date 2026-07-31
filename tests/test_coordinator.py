@@ -1226,6 +1226,31 @@ def test_expectations_from_packet_covers_every_command_family():
     assert _expectations_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) == {}
 
 
+def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):
+    """A scene we cannot name still means the light is running something.
+
+    effect has to stay None, because Home Assistant rejects a value outside effect_list and
+    we could not re-activate the scene anyway, so the raw id is the only honest signal left.
+    """
+    unknown = 401
+    assert unknown not in proto.SCENE_EFFECT_BY_ID
+    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *unknown.to_bytes(2, "little")]))
+    assert coord.effect is None
+    assert coord.unknown_scene_code == unknown
+
+    # A scene we can name is reported by name, and leaves no stale code behind.
+    known = next(iter(proto.SCENE_EFFECT_BY_ID))
+    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *known.to_bytes(2, "little")]))
+    assert coord.effect == proto.SCENE_EFFECT_BY_ID[known]
+    assert coord.unknown_scene_code is None
+
+    # Leaving scene mode drops it too, so it can never describe a light that is not in a scene.
+    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *unknown.to_bytes(2, "little")]))
+    assert coord.unknown_scene_code == unknown
+    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_STATIC, 0x00]))
+    assert coord.unknown_scene_code is None
+
+
 def test_video_readback_is_gated_on_the_model(coord, h6199):
     """0x00 is the video selector, so noise and truncation land in the video branch.
 

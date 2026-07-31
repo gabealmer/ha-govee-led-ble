@@ -232,6 +232,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         }
         if quarantined := self.coordinator.quarantined_custom_effect_index():
             attrs["quarantined_custom_effects"] = quarantined
+        if (scene_code := self.coordinator.unknown_scene_code) is not None:
+            attrs["unknown_scene_code"] = scene_code
         if self.coordinator.profile.supports_segments:
             attrs["segment_colors"] = [list(color) for color in self.coordinator.segment_colors]
         return attrs
