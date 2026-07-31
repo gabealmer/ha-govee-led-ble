@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v4.2.0 (2026-07-31)
+
+### Bug Fixes
+
+- **protocol**: Gate the video read-back on the model
+  ([`ae445fb`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ae445fba8e2f67352271dcdd1cf3b546d6b22daf))
+
+- **protocol**: Stop reading a static colour the device never sends
+  ([`3658da4`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3658da43a788a36692086e0b7a13514739e969aa))
+
+### Features
+
+- **light**: Report a scene the build cannot name
+  ([`b999c43`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b999c4328f396e3038800553a857b1772eac385d))
+
+### Refactoring
+
+- **protocol**: Give the 33 05 15 layout one owner
+  ([`170ab62`](https://github.com/teh-hippo/ha-govee-led-ble/commit/170ab62d9ffdaecde81c554f1768a02138216520))
+
+
 ## v4.1.0 (2026-07-31)
 
 ### Chores
