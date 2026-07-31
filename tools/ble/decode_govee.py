@@ -14,10 +14,19 @@ Govee packets are 20 bytes: header 0x33 (command), 0xAA (status) or 0xA3
 (multi-packet fragment), with byte 19 = XOR of bytes 0..18. That signature is
 used to filter Govee traffic out of the phone's other BLE activity.
 
-Usage: uv run python tools/ble/decode_govee.py <capture.pcapng|capture.pcap> [--all]
-  --all   also print packets that are not Govee (raw ATT values)
+Usage: uv run python tools/ble/decode_govee.py <capture.pcapng|capture.pcap> [options]
+  --all                   also print packets that are not Govee (raw ATT values)
+  --peer ADDR             keep only one BLE peer; full address or a unique address tail
+  --allow-unattributed    proceed past frames whose connection predates the capture
+  --all-peers             dump a multi-source capture mixed, on purpose
+
+A phone talks to every light it is paired with, so one capture can hold more than one
+model. Reading a second model's frames as this one's is not a rendering mistake, it is a
+false protocol finding, so a capture holding more than one Govee source is REFUSED until
+it is narrowed with --peer. The peer summary is printed either way.
 """
 
+import argparse
 import struct
 import sys
 from collections.abc import Iterable, Iterator
@@ -483,39 +492,158 @@ def _iter_att(data: bytes) -> Iterator[tuple[str, int, int, bytes]]:
         yield record.direction, record.opcode, record.attribute_handle, record.value
 
 
+UNATTRIBUTED = "?"
+
+
+def govee_peers(trace: CaptureTrace) -> dict[str, int]:
+    """Count Govee-shaped frames per BLE peer, newest-first insertion order.
+
+    A phone talks to every light it is paired with, so a capture is only evidence about
+    ONE model if it holds one Govee peer or is filtered to one. Frames on a connection
+    whose HCI connect event was not captured have no address and are counted under
+    ``UNATTRIBUTED``: they are not silently discarded, because "we never saw who sent
+    this" and "this device sent nothing" have to stay distinguishable.
+    """
+    counts: dict[str, int] = {}
+    for record in trace.att:
+        if _is_govee(record.value):
+            key = record.address or UNATTRIBUTED
+            counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+class PeerSelectionError(Exception):
+    """A --peer argument that cannot be resolved to exactly one captured peer."""
+
+
+def resolve_peer(peers: Iterable[str], wanted: str) -> str:
+    """Resolve ``wanted`` to one captured peer address, by full match or unique suffix.
+
+    Suffix matching exists because a Govee light advertises its address tail in its BLE
+    local name (``Govee_H6199_3B73``), so the tail is the identifier actually to hand at
+    the rig. Every unresolvable case raises rather than returning nothing: an address
+    that matches no peer is a typo, and a typo that filtered everything out would read
+    as a device that stayed silent, which is the failure this whole filter exists to stop.
+    """
+    known = [p for p in peers if p != UNATTRIBUTED]
+    normal = wanted.upper().replace(":", "")
+    exact = [p for p in known if p.replace(":", "") == normal]
+    if exact:
+        return exact[0]
+    suffix = [p for p in known if p.replace(":", "").endswith(normal)]
+    if len(suffix) == 1:
+        return suffix[0]
+    if not suffix:
+        raise PeerSelectionError(f"no captured peer matches {wanted!r}; captured: {', '.join(known) or 'none'}")
+    raise PeerSelectionError(f"{wanted!r} matches {len(suffix)} peers: {', '.join(suffix)}")
+
+
 def main() -> int:
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    show_all = "--all" in sys.argv
-    if not args:
-        print(__doc__)
+    parser = argparse.ArgumentParser(description=(__doc__ or "").strip().splitlines()[0])
+    parser.add_argument("capture", help="pcapng or pcap file from govee-capture.sh")
+    parser.add_argument("--all", action="store_true", help="also print ATT values that are not Govee")
+    parser.add_argument(
+        "--peer",
+        help="keep only frames to/from this BLE peer; full address or a unique address tail",
+    )
+    parser.add_argument(
+        "--allow-unattributed",
+        action="store_true",
+        help="proceed even though some Govee frames belong to a connection this capture never saw open",
+    )
+    parser.add_argument(
+        "--all-peers",
+        action="store_true",
+        help="print a capture holding more than one Govee source without narrowing it first",
+    )
+    opts = parser.parse_args()
+
+    data = open(opts.capture, "rb").read()
+    trace = parse_capture(data)
+    peers = govee_peers(trace)
+
+    wanted: str | None = None
+    if opts.peer is not None:
+        try:
+            wanted = resolve_peer(peers, opts.peer)
+        except PeerSelectionError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        # An unattributed frame MIGHT belong to the requested peer, so filtering past one
+        # silently understates that peer's traffic. Refuse by default: the whole point of
+        # --peer is that a capture is evidence about one model, and a filter that drops
+        # frames it could not classify would make a partial capture look like a whole one.
+        if peers.get(UNATTRIBUTED) and not opts.allow_unattributed:
+            print(
+                f"error: {peers[UNATTRIBUTED]} Govee frame(s) belong to a connection opened before the "
+                "capture started, so they cannot be attributed to a peer. Recapture with the app "
+                "restarted inside the capture window, or pass --allow-unattributed to ignore them.",
+                file=sys.stderr,
+            )
+            return 2
+
+    # A dump the operator forgot to narrow is the trap, not the one they narrowed wrongly.
+    # More than one Govee source means every row below could belong to either, and a
+    # mixed dump reads exactly like a single device's session. An opt-in filter you can
+    # forget protects nothing, so this refuses rather than warns.
+    if wanted is None and len(peers) > 1 and not opts.all_peers:
+        print(f"# {opts.capture}")
+        print(f"# Govee peers: {_render_peers(peers)}")
+        print(
+            f"error: this capture holds {len(peers)} Govee sources, so nothing read off it is "
+            "evidence about one model. Narrow it with --peer <address or address tail>, or pass "
+            "--all-peers to dump it mixed on purpose.",
+            file=sys.stderr,
+        )
         return 2
-    data = open(args[0], "rb").read()
+
     rows = []
     seen: set[bytes] = set()
     total = govee = 0
-    for record in parse_capture(data).att:
-        direction = record.direction
-        opcode = record.opcode
-        handle = record.attribute_handle
+    for record in trace.att:
+        peer = record.address or UNATTRIBUTED
+        if wanted is not None and peer != wanted:
+            continue
         value = record.value
         total += 1
         if _is_govee(value):
             govee += 1
             first = value not in seen
             seen.add(value)
-            rows.append((direction, WRITE_OPCODES[opcode], handle, value, label(value, direction), first))
-        elif show_all and value:
-            rows.append((direction, WRITE_OPCODES[opcode], handle, value, "(non-govee)", True))
+            rows.append(
+                (
+                    peer,
+                    record.direction,
+                    record.opcode,
+                    record.attribute_handle,
+                    value,
+                    label(value, record.direction),
+                    first,
+                )
+            )
+        elif opts.all and value:
+            rows.append((peer, record.direction, record.opcode, record.attribute_handle, value, "(non-govee)", True))
 
-    print(f"# {args[0]}")
+    print(f"# {opts.capture}")
     print(f"# ATT writes/notifications: {total}   Govee packets: {govee}   unique Govee: {len(seen)}")
-    print(f"# {'dir':<3} {'op':<12} {'hdl':<6} {'payload (hex)':<41} label")
-    for direction, op, handle, value, lab, first in rows:
+    # Always printed, and always before the rows, because "this capture holds two lights"
+    # is a fact that invalidates every reading below it and must not have to be noticed.
+    print(f"# Govee peers: {_render_peers(peers) or 'none'}")
+    if wanted is not None:
+        print(f"# filtered to peer {wanted}")
+    elif len(peers) > 1:
+        print("# WARNING: more than one Govee source here; this capture is not evidence about one model")
+    print(f"# {'peer':<17} {'dir':<3} {'op':<12} {'hdl':<6} {'payload (hex)':<41} label")
+    for peer, direction, opcode, handle, value, lab, first in rows:
         mark = " " if first else "."
-        print(f"{mark} {direction:<3} {op:<12} {handle:#06x} {value.hex():<41} {lab}")
-    if not show_all:
+        print(f"{mark} {peer:<17} {direction:<3} {WRITE_OPCODES[opcode]:<12} {handle:#06x} {value.hex():<41} {lab}")
+    if not opts.all:
         print("# ('.' = repeat of an earlier packet; pass --all to include non-Govee ATT values)")
     return 0
+
+
+def _render_peers(peers: dict[str, int]) -> str:
+    return "  ".join(f"{peer}={count}" for peer, count in sorted(peers.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
 if __name__ == "__main__":
