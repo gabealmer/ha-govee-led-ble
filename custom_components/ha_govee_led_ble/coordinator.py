@@ -101,7 +101,7 @@ _COLOR_EXPECTATION_FIELDS = frozenset(
 )
 
 
-def _expectations_from_packet(packet: bytes) -> dict[str, Any]:
+def _expectations_from_packet(packet: bytes, *, static_echoes_color: bool = False) -> dict[str, Any]:
     """Map an outgoing command to the optimistic fields its replies should confirm."""
     if len(packet) < 3 or packet[0] != COMMAND_HEADER:
         return {}
@@ -112,7 +112,7 @@ def _expectations_from_packet(packet: bytes) -> dict[str, Any]:
     if packet[1] != COLOR_PACKET_TYPE or len(packet) < 4:
         return {}
     expectations: dict[str, Any] = {}
-    if color_mode := _expected_color_mode_from_packet(packet):
+    if color_mode := _expected_color_mode_from_packet(packet, static_echoes_color=static_echoes_color):
         expectations["color_mode"] = color_mode
     if packet[2] == COLOR_MODE_MUSIC:
         music_mode = MUSIC_SLUG_BY_ID.get(packet[3])
@@ -151,7 +151,9 @@ def _expectations_from_packet(packet: bytes) -> dict[str, Any]:
     return expectations
 
 
-def _expected_color_mode_from_packet(packet: bytes) -> tuple[ParsedMode, int | None] | None:
+def _expected_color_mode_from_packet(
+    packet: bytes, *, static_echoes_color: bool = False
+) -> tuple[ParsedMode, int | None] | None:
     if len(packet) < 4 or packet[0] != COMMAND_HEADER or packet[1] != COLOR_PACKET_TYPE:
         return None
     match packet[2]:
@@ -162,7 +164,9 @@ def _expected_color_mode_from_packet(packet: bytes) -> tuple[ParsedMode, int | N
         case value if value == COLOR_MODE_VIDEO:
             return ParsedMode.VIDEO, None
         case value if value == COLOR_MODE_STATIC:
-            return ParsedMode.COLOUR, packet[3]
+            # The write-side sub only survives into the reply on models that echo it; elsewhere
+            # the same byte carries the 33 a3 register, so expecting it here never matches.
+            return ParsedMode.COLOUR, (packet[3] if static_echoes_color else None)
         case value if value == COLOR_MODE_SCENE:
             return ParsedMode.SCENE, None
         case _:
@@ -398,7 +402,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
 
     def _arm_expected(self, packet: bytes) -> None:
-        expectations = _expectations_from_packet(packet)
+        expectations = _expectations_from_packet(packet, static_echoes_color=self.profile.static_readback_echoes_color)
         if "color_mode" in expectations:
             for field in _COLOR_EXPECTATION_FIELDS:
                 self._expected_state.pop(field, None)
@@ -426,10 +430,11 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         return False
 
     def _apply_color_mode_payload(self, payload: bytes) -> tuple[str, ...]:
-        parsed = parse_color_mode_response(payload)
+        static_echoes_color = self.profile.static_readback_echoes_color
+        parsed = parse_color_mode_response(payload, static_echoes_color=static_echoes_color)
         if parsed.mode is ParsedMode.DIY:
             mode_detail = parsed.diy_slot
-        elif parsed.mode is ParsedMode.COLOUR:
+        elif parsed.mode is ParsedMode.COLOUR and static_echoes_color:
             mode_detail = payload[1]
         else:
             mode_detail = None

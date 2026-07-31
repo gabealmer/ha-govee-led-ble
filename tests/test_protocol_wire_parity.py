@@ -22,6 +22,7 @@ import pytest
 from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.custom_effects import ComboContent, FlatContent
 from custom_components.ha_govee_led_ble.protocol import Weekday
+from tools.ble.mock_ble.mock_device import GoveeDeviceSim
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tools" / "ble" / "kaitai" / "src"
 
@@ -204,6 +205,29 @@ def test_the_colour_mode_query_decodes_as_a_video_reply():
     assert domain == 0x05
     assert payload[0] == 0x00
     assert proto.parse_color_mode_response(payload).mode is proto.ParsedMode.VIDEO
+
+
+@pytest.mark.parametrize(
+    ("name", "setup"),
+    [
+        ("status_reply_cm_static", lambda sim: sim.handle_write(proto.build_color_rgb(10, 20, 30))),
+        ("status_reply_multi_effect", lambda sim: None),
+    ],
+)
+def test_the_simulator_answers_with_the_bytes_the_device_sent(name, setup):
+    """Hold the sim to the corpus, because everything else in the suite trusts it.
+
+    The sim answered a static query with a fabricated ``15 01 <rgb>`` echo for a long time.
+    Every test agreed with it, so the decoder reading a colour the H617A never sends stayed
+    invisible until the capture was read. Asserting the decoded fields is not enough to catch
+    that: once the decoder stops reading those bytes, a fabricated payload decodes identically
+    to an honest one. Only the bytes themselves close it.
+    """
+    frame = fixture(name)
+    sim = GoveeDeviceSim("H617A")
+    setup(sim)
+    (reply,) = sim.handle_write(proto.build_packet(proto.STATUS_HEADER, frame[1], []))
+    assert bytes(reply) == frame
 
 
 @pytest.mark.parametrize(

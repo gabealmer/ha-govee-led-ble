@@ -43,6 +43,10 @@ _COLOR_FLAG = 0x01
 # tracks music as a slug in ``music_mode``, not as an effect string).
 _MUSIC_LABEL_BY_ID = {code: f"music: {name}" for name, code in MUSIC_MODES.items()}
 _WHITE_BALANCE_ACTION = 0xA9
+# op 0xa3 on a write is the multi-effect register (command_write::multi_effect_cmd); the same
+# byte as a query domain reads it back. Distinct from protocol.MULTI_PACKET_PREFIX, which is the
+# 0xa3 *fragment* header and arrives as frame[0] rather than as a command action.
+MULTI_EFFECT_ACTION = 0xA3
 # Experimental timer command/reply actions (mirror protocol's 0x11/0x12/0x23).
 SLEEP_TIMER_ACTION = 0x11
 WAKEUP_TIMER_ACTION = 0x12
@@ -77,6 +81,7 @@ class GoveeDeviceSim:
         self.music_calm = False
         self.music_color: RGB | None = None
         self.white_brightness = 100
+        self.multi_effect_flag = 0
         count = self.profile.segment_count
         self.segments: list[RGB] = [self.rgb_color] * count
         self.segment_brightness: list[int] = [100] * count
@@ -108,6 +113,8 @@ class GoveeDeviceSim:
             return [build_packet(STATUS_HEADER, FIRMWARE_PACKET_TYPE, list(self.firmware.encode("ascii")))]
         if domain == HARDWARE_PACKET_TYPE:
             return [build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [0x03, *self.hardware.encode("ascii")])]
+        if domain == MULTI_EFFECT_ACTION:
+            return [build_packet(STATUS_HEADER, MULTI_EFFECT_ACTION, [self.multi_effect_flag])]
         if domain == SLEEP_TIMER_ACTION and self.sleep_timer is not None:
             return [build_packet(STATUS_HEADER, SLEEP_TIMER_ACTION, list(self.sleep_timer))]
         if domain == WAKEUP_TIMER_ACTION and self.wakeup_timer is not None:
@@ -139,6 +146,10 @@ class GoveeDeviceSim:
             if self.music_color is not None:
                 payload += [_COLOR_FLAG, *self.music_color]
             return payload
+        if not self.profile.static_readback_echoes_color:
+            # status_reply::cm_static. The device echoes only the mode and the 33 a3 register;
+            # colour, kelvin and brightness are write-only and are never read back.
+            return [COLOR_MODE_STATIC, self.multi_effect_flag]
         if self.color_mode == "white":
             return [COLOR_MODE_STATIC, WHITE_SUB, self.white_brightness]
         # A colour-temp state reads back as its white-point RGB with no kelvin field (live-confirmed
@@ -155,6 +166,8 @@ class GoveeDeviceSim:
             self._apply_color_command(frame)
         elif action == _WHITE_BALANCE_ACTION and self.profile.supports_video_mode:
             self.video_white_balance = (frame[5], frame[6])
+        elif action == MULTI_EFFECT_ACTION:
+            self.multi_effect_flag = frame[2]
         elif action == SLEEP_TIMER_ACTION:
             self.sleep_timer = (frame[2], frame[3], frame[4], frame[5])
         elif action == WAKEUP_TIMER_ACTION:

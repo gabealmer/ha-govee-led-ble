@@ -557,9 +557,10 @@ class ParsedColorModeResponse:
     music_color: tuple[int, int, int] | None = None
     rgb_color: tuple[int, int, int] | None = None
     white_brightness: int | None = None
+    multi_effect_flag: int | None = None
 
 
-def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
+def parse_color_mode_response(payload: bytes, *, static_echoes_color: bool = False) -> ParsedColorModeResponse:
     if not payload:
         raise ValueError("Color mode payload is empty")
     mode = payload[0]
@@ -599,6 +600,11 @@ def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
         )
     if mode != COLOR_MODE_STATIC:
         return ParsedColorModeResponse(mode=ParsedMode.UNKNOWN)
+    if not static_echoes_color:
+        # status_reply::cm_static. The byte after the mode is NOT a static sub-selector: it mirrors
+        # the 33 a3 register, and the rest of the window is always zero. Reading a colour out of it
+        # invents (0, 0, 0) whenever that register is set.
+        return ParsedColorModeResponse(mode=ParsedMode.COLOUR, multi_effect_flag=_get(payload, 1))
     rgb_parts = (_get(payload, 2), _get(payload, 3), _get(payload, 4))
     rgb_color = cast(tuple[int, int, int], rgb_parts) if _get(payload, 1) == 0x01 and None not in rgb_parts else None
     return ParsedColorModeResponse(
@@ -929,7 +935,10 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     ),
     "split_status_frame": Evidence("VALIDATED", "H617A §4 status aa <type>; 20-byte XOR split; live"),
     "parse_color_mode_response": Evidence(
-        "VALIDATED", "H617A §4 colour-mode aa 05 (15/04/0a/00/13); DIY slot F0 read back live 2026-07-15"
+        "VALIDATED",
+        "H617A §4 colour-mode aa 05 (15/04/0a/00/13); DIY slot F0 read back live 2026-07-15; "
+        "static echoes no colour and byte 1 is the 33 a3 register (status_reply::cm_static), "
+        "so the mirror is opt-in per model",
     ),
     "parse_fw_version": Evidence("VALIDATED", "H617A §4 firmware aa 06 -> ASCII '3.02.24'; VAL live capture"),
     "parse_hw_version": Evidence(

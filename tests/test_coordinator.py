@@ -484,7 +484,7 @@ async def test_send_command_arms_expected_state(coord):
         assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.DIY, proto.AUTHORED_DIY_SLOT)
 
         await coord.send_command(proto.build_color_rgb(10, 20, 30))
-        assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.COLOUR, 0x01)
+        assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.COLOUR, None)
         assert coord._expected_state["rgb_color"][0] == (10, 20, 30)
 
         await coord.send_command(proto.build_scene(9))
@@ -1173,7 +1173,11 @@ def test_expectations_from_packet_covers_every_command_family():
 
     rgb = _expectations_from_packet(proto.build_color_rgb(255, 0, 0))
     assert rgb["rgb_color"] == (255, 0, 0)
-    assert rgb["color_mode"] == (proto.ParsedMode.COLOUR, 0x01)
+    # The write-side sub is not echoed back, so expecting it would reject every reply. Models
+    # that do echo it keep the discriminator.
+    assert rgb["color_mode"] == (proto.ParsedMode.COLOUR, None)
+    echoed = _expectations_from_packet(proto.build_color_rgb(255, 0, 0), static_echoes_color=True)
+    assert echoed["color_mode"] == (proto.ParsedMode.COLOUR, 0x01)
 
     # Colour temperature writes carry an all-zero preview RGB, so the frame maps to a kelvin
     # expectation, never an rgb_color one.

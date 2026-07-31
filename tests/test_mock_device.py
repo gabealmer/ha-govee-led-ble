@@ -57,7 +57,8 @@ def test_rgb_command_fills_segments_and_roundtrips(model):
     assert sim.color_mode == "rgb"
     assert sim.rgb_color == (10, 20, 30)
     assert all(seg == (10, 20, 30) for seg in sim.segments)
-    assert parse_color_reply(sim).rgb_color == (10, 20, 30)
+    expected = (10, 20, 30) if sim.profile.static_readback_echoes_color else None
+    assert parse_color_reply(sim).rgb_color == expected
 
 
 @pytest.mark.parametrize("model", MODELS)
@@ -67,6 +68,10 @@ def test_color_temp_default_readback_is_static_rgb(model):
     assert sim.color_mode == "ct"
     assert sim.color_temp_kelvin == 4000
     parsed = parse_color_reply(sim)
+    if not sim.profile.static_readback_echoes_color:
+        # Nothing is echoed, so the coordinator's kelvin is never challenged in the first place.
+        assert parsed.rgb_color is None
+        return
     # A colour-temp state reads back as its white-point RGB (no kelvin field); the coordinator
     # recognises the white point and keeps CT (see test_ct_readback_keeps_coordinator_kelvin).
     assert parsed.rgb_color == sim.rgb_color == proto.kelvin_to_rgb(4000)
@@ -81,8 +86,12 @@ async def test_ct_readback_keeps_coordinator_kelvin(mock_ble):
     (frame,) = sim.handle_write(proto.COLOR_MODE_QUERY)
     coord._apply_color_mode_payload(frame[2:-1])
     assert coord.color_temp_kelvin == 4000
-    # A genuinely different RGB read still drops CT and switches to RGB.
     coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_STATIC, 0x01, 10, 20, 30]))
+    if not coord.profile.static_readback_echoes_color:
+        # The device sends no colour at all, so a read-back can never drop CT or repaint.
+        assert coord.color_temp_kelvin == 4000 and coord.rgb_color == proto.kelvin_to_rgb(4000)
+        return
+    # A genuinely different RGB read still drops CT and switches to RGB.
     assert coord.color_temp_kelvin is None and coord.rgb_color == (10, 20, 30)
 
 
@@ -93,7 +102,60 @@ def test_white_brightness_command_roundtrips(model):
     assert sim.color_mode == "white"
     assert sim.white_brightness == 45
     assert all(level == 45 for level in sim.segment_brightness)
-    assert parse_color_reply(sim).white_brightness == 45
+    expected = 45 if sim.profile.static_readback_echoes_color else None
+    assert parse_color_reply(sim).white_brightness == expected
+
+
+@pytest.mark.parametrize("model", MODELS)
+def test_static_readback_reports_the_multi_effect_register(model):
+    """The byte after the static mode is the 33 a3 register, not a colour sub-selector."""
+    sim = GoveeDeviceSim(model)
+    sim.handle_write(proto.build_color_rgb(10, 20, 30))
+    sim.handle_write(proto.build_packet(proto.COMMAND_HEADER, 0xA3, [0x01]))
+    assert sim.multi_effect_flag == 1
+    (reply,) = sim.handle_write(proto.build_packet(proto.STATUS_HEADER, 0xA3, []))
+    assert proto.split_status_frame(reply)[1][0] == 1
+    if sim.profile.static_readback_echoes_color:
+        return
+    parsed = parse_color_reply(sim)
+    assert parsed.multi_effect_flag == 1
+    # Decoding the zero payload as a colour here would report the strip as black.
+    assert parsed.rgb_color is None
+
+
+async def test_colour_readback_is_accepted_and_never_blacks_out(mock_ble: MockBle):
+    """The static reply must satisfy the expectation it arms, and must not repaint the strip.
+
+    Two failures ride on the same byte. Expecting the write-side sub back rejects every reply
+    for the whole optimistic window, and reading a colour out of the zero payload sets the
+    strip to (0, 0, 0) as soon as anything has written the 33 a3 register.
+    """
+    sim, coord = mock_ble.sim, mock_ble.coordinator
+    await coord._ensure_connected()
+    # Let the stale effect arrive from the device rather than poking it in, so the state under
+    # test is one the coordinator actually reaches.
+    sim.handle_write(proto.build_scene(2205))
+    (reply,) = sim.handle_write(proto.COLOR_MODE_QUERY)
+    coord._apply_color_mode_payload(reply[2:-1])
+    learned_effect = coord.effect
+    assert learned_effect == "candy"
+
+    # The register sits at 0 until something writes it, which is the state every colour write
+    # lands in. The reply must still confirm the mode rather than be discarded as stale.
+    await coord.send_command(proto.build_color_rgb(10, 20, 30))
+    coord.rgb_color = (10, 20, 30)
+    (reply,) = sim.handle_write(proto.COLOR_MODE_QUERY)
+    assert coord._apply_color_mode_payload(reply[2:-1]), "reply dropped as stale; the mode never confirms"
+    assert coord.effect is None
+    assert coord.rgb_color == (10, 20, 30)
+
+    # Writing the register moves the same byte to 1, where a colour read invents black. Clear the
+    # optimistic window first: it happens to mask this, so a later background poll is the real case.
+    sim.handle_write(proto.build_packet(proto.COMMAND_HEADER, 0xA3, [0x01]))
+    coord._expected_state.clear()
+    (reply,) = sim.handle_write(proto.COLOR_MODE_QUERY)
+    coord._apply_color_mode_payload(reply[2:-1])
+    assert coord.rgb_color == (10, 20, 30)
 
 
 @pytest.mark.parametrize("model", MODELS)
@@ -179,10 +241,14 @@ async def test_ensure_connected_converges_core_state(mock_ble: MockBle):
     sim.is_on = True
     sim.brightness_pct = 42
     sim.handle_write(proto.build_color_rgb(10, 20, 30))
+    coord.rgb_color = (1, 2, 3)
     await coord._ensure_connected()
     assert coord.is_on is True
     assert coord.brightness_pct == 42
-    assert coord.rgb_color == (10, 20, 30)
+    # Colour is write-only unless the model echoes it, so a connect cannot discover an
+    # externally set colour; it stays at whatever the integration last wrote.
+    expected_rgb = (10, 20, 30) if coord.profile.static_readback_echoes_color else (1, 2, 3)
+    assert coord.rgb_color == expected_rgb
     assert coord.color_temp_kelvin is None
     assert coord.effect is None
 

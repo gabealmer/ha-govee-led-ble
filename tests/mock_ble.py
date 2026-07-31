@@ -55,7 +55,7 @@ def segment_brightness_packet(brightness: int, mask: int) -> bytes:
 def parse_color_reply(sim: GoveeDeviceSim) -> ParsedColorModeResponse:
     """Round-trip the sim's aa 05 reply back through the production decoder."""
     (frame,) = sim.handle_write(COLOR_MODE_QUERY)
-    return parse_color_mode_response(frame[2:-1])
+    return parse_color_mode_response(frame[2:-1], static_echoes_color=sim.profile.static_readback_echoes_color)
 
 
 @dataclass

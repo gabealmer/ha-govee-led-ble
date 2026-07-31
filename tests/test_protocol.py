@@ -731,10 +731,25 @@ def test_parse():
     p = proto.parse_color_mode_response(bytes([0x13, 0x03, 88, 0x01, 0x00]))
     assert p.music_mode == "rhythm" and p.effect is None and p.music_sensitivity == 88 and p.music_calm is True
     static = proto.parse_color_mode_response(bytes([0x15, 0x01, 10, 20, 30]))
-    assert static.mode is proto.ParsedMode.COLOUR and static.rgb_color == (10, 20, 30)
-    assert proto.parse_color_mode_response(bytes([0x15, 0x02, 50])).white_brightness == 50
+    assert static.mode is proto.ParsedMode.COLOUR and static.rgb_color is None and static.multi_effect_flag == 1
+    echoed = proto.parse_color_mode_response(bytes([0x15, 0x01, 10, 20, 30]), static_echoes_color=True)
+    assert echoed.rgb_color == (10, 20, 30)
+    assert proto.parse_color_mode_response(bytes([0x15, 0x02, 50]), static_echoes_color=True).white_brightness == 50
     with pytest.raises(ValueError):
         proto.parse_color_mode_response(b"")
+
+
+def test_static_readback_carries_no_colour():
+    """``aa 05 15`` echoes the mode and the ``33 a3`` register, nothing else.
+
+    Reading RGB out of the zero payload invents ``(0, 0, 0)`` and shows the light as black,
+    and expecting the write-side sub back rejects every colour reply the device sends.
+    """
+    for flag in (0x00, 0x01, 0x02):
+        parsed = proto.parse_color_mode_response(bytes([0x15, flag, *([0] * 16)]))
+        assert parsed.mode is proto.ParsedMode.COLOUR
+        assert parsed.multi_effect_flag == flag
+        assert parsed.rgb_color is None and parsed.white_brightness is None
 
 
 def test_parse_direct_diy_slot_readback():

@@ -300,9 +300,13 @@ types:
   colormode_body:
     doc: |
       domain 0x05 colour-mode read-back. The first body byte selects the mode; the
-      following bytes mirror the matching write body. Cross-checked against
-      protocol.parse_color_mode_response. All five mode selectors are seen live;
-      only the static sub 0x01/0x02 read-back branches lack a capture.
+      following bytes mirror the matching write body for every mode EXCEPT static,
+      where nothing is echoed and the byte that looks like the write-side sub is the
+      33 a3 register instead (see cm_static). All five mode selectors are seen live.
+
+      protocol.parse_color_mode_response read static as a mirror until 2026-07-31,
+      which invented an rgb of (0, 0, 0) whenever that register was set. It now takes
+      the mirror as a per-model flag, defaulting to the behaviour proven here.
     seq:
       - id: mode
         type: u1

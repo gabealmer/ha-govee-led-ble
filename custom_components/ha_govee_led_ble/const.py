@@ -18,6 +18,7 @@ class ModelProfile:
     supports_music_style: bool = False
     supports_music_params: bool = False
     supports_white_brightness: bool = False
+    static_readback_echoes_color: bool = False
     supports_diy: bool = False
     supports_timers: bool = False
     supports_poweroff_memory: bool = False
@@ -95,6 +96,14 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_video_sound_effects=True,
         music_modes=_H6199_MUSIC_MODES,
         supports_white_brightness=True,
+        # UNVERIFIED, and deliberately named so it can be falsified. The parser assumed this of
+        # every model until the H617A disproved it (status_reply::cm_static: the byte after the
+        # mode mirrors the 33 a3 register, and no colour is ever echoed). That evidence is H617A
+        # only and says nothing about this model, so the old assumption is kept here rather than
+        # silently extended or silently dropped. supports_white_brightness depends on it: the
+        # write is verified against a read-back, so if the H6199 also echoes nothing, that service
+        # raises. Settle it in the H6199 discovery run.
+        static_readback_echoes_color=True,
         # Carries no protocol claim. supports_segment_writes is unset, so supports_segments is False
         # and nothing addresses H6199 segments on the wire; this value only sizes the diagnostic
         # preview image, which is created for every model. It is NOT 38 on purpose. The device does
