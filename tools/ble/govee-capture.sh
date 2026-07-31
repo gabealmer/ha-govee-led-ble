@@ -115,7 +115,9 @@ case "${1:-}" in
       echo "  the app may never have connected, or connected before recording started." >&2
       echo "  Start the capture FIRST, then force a fresh connect, so the HCI connect" >&2
       echo "  event carrying the address lands inside the window." >&2
-      exit 1
+      # 3, not 1, so down.sh can tell "this capture proves nothing" apart from "there was no
+      # capture running", which it has always tolerated and must go on tolerating.
+      exit 3
     fi
     ;;
   decode)

@@ -241,7 +241,9 @@ def test_a_session_for_a_light_that_never_appeared_is_a_failed_run(tmp_path: Pat
     """
     result = _record_session(tmp_path, "wrong-light", expected_peer=_ABSENT_PEER)
 
-    assert result.returncode == 1
+    # 3 rather than 1, so down.sh can separate this from "no capture running", which it
+    # has always tolerated on the path that hands the BLE link back.
+    assert result.returncode == 3
     assert "not usable as evidence" in result.stderr
     assert "no captured peer" in result.stderr
 
