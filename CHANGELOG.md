@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v4.3.0 (2026-07-31)
+
+### Bug Fixes
+
+- **harness**: Stop the teardown swallowing the capture verdict
+  ([`833b1f8`](https://github.com/teh-hippo/ha-govee-led-ble/commit/833b1f8e90d5f47ebb8b2fecf35db1b453cf1ab1))
+
+### Documentation
+
+- Retire the empty third evidence tag
+  ([`fdba053`](https://github.com/teh-hippo/ha-govee-led-ble/commit/fdba053f571c37c7f833959c2fa11a550b11e210))
+
+### Features
+
+- **harness**: Bind a capture to the light it is meant to be of
+  ([`623060f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/623060f3fcc03c6982ecee30c52258009e515f24))
+
+- **kaitai**: Refuse a spec no fixture exercises
+  ([`1ef362e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1ef362e6d2858e0841a9c3f4043dd417688e12fa))
+
+- **tools**: Refuse a capture that could be two lights
+  ([`70684dc`](https://github.com/teh-hippo/ha-govee-led-ble/commit/70684dc0a634147576ccb5dcdba6c81856d95739))
+
+
 ## v4.2.1 (2026-07-31)
 
 ### Bug Fixes
