@@ -1,0 +1,28 @@
+# Brightness Unified, captured live 2026-07-27 (drive3-layer-editor) on the custom scene "CopyChristmas", code 402.
+id: scene_body_brightness_unified
+data: scene_body_brightness_unified.bin
+imports:
+  - scene_body
+asserts:
+  - actual: scene_type
+    expected: 2
+  - actual: record_count
+    expected: 1
+  - actual: records.size
+    expected: 1
+  - actual: padding.size
+    expected: 0
+  - actual: records[0].rec_len
+    expected: 29
+  - actual: records[0].body.select_type
+    expected: 1
+  - actual: records[0].body.colour_count
+    expected: 2
+  - actual: records[0].body.excess.size
+    expected: 0
+  - actual: records[0].body.layer_flags
+    expected: 16
+  - actual: records[0].body.brightness_is_gradient
+    expected: false
+  - actual: records[0].body.applied_from_changed_editor
+    expected: true

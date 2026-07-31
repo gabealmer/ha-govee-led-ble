@@ -1,0 +1,13 @@
+# The QUERY frame, not a reply. Kept deliberately beside the reply below, because an
+# all-zero body makes the two byte-identical in shape: read direction-blind, this frame
+# decodes as "brightness 0%". That trap has been hit live on 0xa3 and 0x01, so the pair is
+# the evidence for it rather than a caveat in prose. See decode_govee._require_direction.
+id: status_reply_brightness_query
+data: status_reply_brightness_query.bin
+imports:
+  - status_reply
+asserts:
+  - actual: domain
+    expected: 4
+  - actual: body.brightness_pct
+    expected: 0

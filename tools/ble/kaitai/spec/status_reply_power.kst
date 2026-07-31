@@ -1,0 +1,10 @@
+# Power read-back, off.
+id: status_reply_power
+data: status_reply_power.bin
+imports:
+  - status_reply
+asserts:
+  - actual: domain
+    expected: 1
+  - actual: body.is_on
+    expected: 0

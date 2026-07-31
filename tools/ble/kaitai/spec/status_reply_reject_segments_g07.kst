@@ -1,0 +1,10 @@
+# aa a5 group 0x07, read live 2026-07-27 by asking past the five groups the app uses. The
+# device answers, but not with colour: parsed as three <brightness><R><G><B> records these
+# report brightnesses well past 100 on a 0..100 field. Before the group range-check they
+# parsed silently and produced exactly that nonsense, which is the silent-wrong-answer
+# failure mode that has twice nearly become a finding. The grammar must refuse them.
+id: status_reply_reject_segments_g07
+data: status_reply_reject_segments_g07.bin
+imports:
+  - status_reply
+exception: ValidationGreaterThanError

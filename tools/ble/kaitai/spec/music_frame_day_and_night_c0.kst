@@ -1,0 +1,16 @@
+id: music_frame_day_and_night_c0
+data: music_frame_day_and_night_c0.bin
+imports:
+  - music_body
+type: mode_set_frame
+asserts:
+  - actual: mode
+    expected: 55
+  - actual: sensitivity
+    expected: 99
+  - actual: style
+    expected: 0
+  - actual: count
+    expected: 0
+  - actual: colors.size
+    expected: 0

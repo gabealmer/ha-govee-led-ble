@@ -1,0 +1,8 @@
+# Power on, the 0x01 first witnessed live on 2026-07-28.
+id: command_write_power_on
+data: command_write_power_on.bin
+imports:
+  - command_write
+asserts:
+  - actual: body.is_on
+    expected: 1

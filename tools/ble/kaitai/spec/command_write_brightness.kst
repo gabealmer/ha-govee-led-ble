@@ -1,0 +1,8 @@
+# Brightness 0x33 = 51 per cent, raw 0..100 with no scaling.
+id: command_write_brightness
+data: command_write_brightness.bin
+imports:
+  - command_write
+asserts:
+  - actual: body.percent
+    expected: 51

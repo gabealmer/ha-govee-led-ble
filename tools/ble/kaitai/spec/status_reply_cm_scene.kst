@@ -1,0 +1,13 @@
+# Colour-mode read-back, scene. The code is little-endian, which the single-byte value
+# here cannot show on its own; command_write_scene carries a two-byte code that does.
+id: status_reply_cm_scene
+data: status_reply_cm_scene.bin
+imports:
+  - status_reply
+asserts:
+  - actual: domain
+    expected: 5
+  - actual: body.mode
+    expected: 4
+  - actual: body.mode_body.scene_id
+    expected: 9

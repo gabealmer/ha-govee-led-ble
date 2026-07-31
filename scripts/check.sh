@@ -9,6 +9,9 @@ echo "=== Lint ==="
 uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
 
+echo "=== Kaitai ==="
+bash scripts/check-kaitai.sh
+
 echo "=== Mypy ==="
 uv run --no-sync mypy custom_components/ha_govee_led_ble tests
 

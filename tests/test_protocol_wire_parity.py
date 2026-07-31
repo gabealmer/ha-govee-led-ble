@@ -1,0 +1,372 @@
+"""Parity gate: the shipped builders must reproduce the exact bytes the grammars parse.
+
+The Kaitai gate proves a spec reads captured wire bytes correctly. It says nothing about
+whether `protocol.py` can still PRODUCE those bytes, and that half was living inside the
+roundtrip harnesses, where it ran outside pytest and outside the coverage gate.
+
+It runs here against `tools/ble/kaitai/src/*.bin`, the same committed fixtures the `.kst`
+cases read, so the encoder corpus and the decoder corpus are provably one corpus. Pinning
+builders against private inline hex is what lets the two drift apart while both stay
+green.
+
+Nothing here imports a generated Kaitai parser. Those are gitignored build products
+compiled by the Kaitai job, so a test depending on them would fail in the test job.
+"""
+
+import base64
+import json
+from pathlib import Path
+
+import pytest
+
+from custom_components.ha_govee_led_ble import protocol as proto
+from custom_components.ha_govee_led_ble.custom_effects import ComboContent, FlatContent
+from custom_components.ha_govee_led_ble.protocol import Weekday
+
+FIXTURES = Path(__file__).resolve().parents[1] / "tools" / "ble" / "kaitai" / "src"
+
+
+def fixture(name: str) -> bytes:
+    path = FIXTURES / f"{name}.bin"
+    assert path.exists(), f"missing fixture {path}; the Kaitai corpus and this module have diverged"
+    return path.read_bytes()
+
+
+def test_fixture_directory_is_the_kaitai_corpus():
+    """Guard the shared-corpus premise itself, which is the point of this module."""
+    assert FIXTURES.is_dir()
+    assert (FIXTURES.parent / "spec").is_dir()
+    assert list(FIXTURES.glob("*.bin")), "no fixtures found, so every parity test below is vacuous"
+
+
+@pytest.mark.parametrize(
+    ("name", "built"),
+    [
+        ("command_write_power_off", lambda: proto.build_power(False)),
+        ("command_write_power_on", lambda: proto.build_power(True)),
+        ("command_write_brightness", lambda: proto.build_brightness(51)),
+        ("command_write_color_rgb", lambda: proto.build_segment_color(proto.ALL_SEGMENTS, 255, 0, 0)),
+        ("command_write_seg_color", lambda: proto.build_segment_color(range(8, 16), 0, 255, 0)),
+        ("command_write_seg_brightness", lambda: proto.build_segment_brightness(range(1, 8), 17)),
+        ("command_write_scene", lambda: proto.build_scene(2163)),
+        ("command_write_diy", lambda: proto.build_diy_activate(0xF0, 0x00)),
+        ("command_write_diy_saved", lambda: proto.build_diy_activate(0x20, 0x03)),
+        ("command_write_music", lambda: proto.build_music_mode_with_color(0x03, 99, (0, 230, 210), calm=False)),
+        ("command_write_timer_sleep", lambda: proto.build_timer_sleep(True, 50, 16, 16)),
+        (
+            "command_write_timer_wake",
+            lambda: proto.build_timer_wakeup(True, 100, 17, 1, proto.parse_timer_repeat(0x00), 29),
+        ),
+        (
+            "command_write_timer_schedule",
+            lambda: proto.build_timer_schedule(0, True, True, 7, 30, proto.parse_timer_repeat(0xC0)),
+        ),
+        (
+            "command_write_timer_schedule_off_action",
+            lambda: proto.build_timer_schedule(2, True, False, 0, 0, proto.parse_timer_repeat(0x80)),
+        ),
+        (
+            "command_write_timer_schedule_weekdays",
+            lambda: proto.build_timer_schedule(2, True, True, 0, 0, proto.parse_timer_repeat(0x95)),
+        ),
+    ],
+)
+def test_builder_reproduces_the_captured_frame(name, built):
+    assert built() == fixture(name)
+
+
+def test_timer_repeat_survives_a_round_trip_through_the_weekday_set():
+    """0x95 is the reading that killed "bit 0x80 means fire once": it also names three days."""
+    days = proto.parse_timer_repeat(0x95)
+    assert days == frozenset({Weekday.MON, Weekday.WED, Weekday.FRI})
+    assert proto.build_timer_schedule(2, True, True, 0, 0, days) == fixture("command_write_timer_schedule_weekdays")
+
+
+def test_colour_temperature_matches_the_capture_everywhere_except_the_preview():
+    """The one deliberate divergence, pinned rather than printed.
+
+    The device keys off the kelvin value, and the preview triple is cosmetic, so the app's
+    curve and ours disagree without either being wrong on the wire. Stating that as an
+    assertion means a change in either direction shows up, which a printed note never did.
+    """
+    captured = fixture("command_write_color_temp")
+    built = proto.build_color_temp(3600)
+    assert built[:7] == captured[:7]
+    assert built[12:14] == captured[12:14]
+    assert tuple(captured[9:12]) == (255, 203, 141)
+    assert proto.kelvin_to_rgb(3600) != tuple(captured[9:12])
+
+
+def test_workshop_activation_has_no_builder():
+    """scene_type 0x02 is decode-only, so there is deliberately nothing to reproduce it.
+
+    build_scene emits scene_type 0x00. If it ever starts emitting the Workshop form this
+    test fails, which is the point: the gap is a decision, not an oversight.
+    """
+    captured = fixture("command_write_scene_workshop")
+    assert captured[5] == 0x02
+    assert proto.build_scene(401)[5] == 0x00
+
+
+def test_per_segment_brightness_has_no_builder():
+    """static_sub 0x03 is decode-only. Same reasoning as the Workshop case above."""
+    captured = fixture("command_write_seg_brightness_all")
+    assert captured[3] == 0x03
+    assert len(captured[4:19]) == 15
+    assert proto.build_segment_brightness(range(1, 16), 100)[3] == 0x02
+
+
+def payload_of(name: str) -> bytes:
+    """The decoder-side payload, split by the shipped splitter rather than by hand."""
+    split = proto.split_status_frame(fixture(name))
+    assert split is not None, f"{name} was not recognised as a status frame at all"
+    return split[1]
+
+
+@pytest.mark.parametrize(
+    ("name", "domain"),
+    [
+        ("status_reply_power", 0x01),
+        ("status_reply_brightness", 0x04),
+        ("status_reply_unit_count", 0x40),
+        ("status_reply_fw", 0x06),
+        ("status_reply_hw", 0x07),
+        ("status_reply_cm_music", 0x05),
+    ],
+)
+def test_status_frames_split_on_the_domain_the_grammar_reads(name, domain):
+    assert proto.split_status_frame(fixture(name))[0] == domain
+
+
+def test_version_strings_decode_the_same_as_the_grammar():
+    assert proto.parse_fw_version(payload_of("status_reply_fw")) == "3.02.24"
+    assert proto.parse_hw_version(payload_of("status_reply_hw")) == "3.01.01"
+
+
+def test_hardware_version_rejects_a_payload_without_its_prefix():
+    """The 0x03 prefix is what separates the two version replies, so dropping it must fail."""
+    assert proto.parse_hw_version(payload_of("status_reply_fw")) is None
+
+
+def test_schedule_table_decodes_all_four_slots():
+    slots = proto.parse_timer_schedule_table(payload_of("status_reply_timer"))
+    assert len(slots) == 4
+    assert (slots[0].enabled, slots[0].on_action) == (True, True)
+    assert (slots[0].hour, slots[0].minute) == (7, 30)
+    assert slots[0].repeat_days == proto.parse_timer_repeat(0xC0)
+
+
+def test_the_device_stores_the_repeat_byte_rather_than_the_app_remembering_it():
+    """Slot 2 read back 0x95 moments after it was written, against 0x80 in the earlier table.
+
+    This is the whole point of holding both tables: one table alone cannot tell a stored
+    value from an app-side default echoed back.
+    """
+    before = proto.parse_timer_schedule_table(payload_of("status_reply_timer"))
+    after = proto.parse_timer_schedule_table(payload_of("status_reply_timer_stored_repeat"))
+    assert before[2].repeat_days == frozenset()
+    assert after[2].repeat_days == frozenset({Weekday.MON, Weekday.WED, Weekday.FRI})
+
+
+def test_colour_mode_replies_decode_the_same_as_the_grammar():
+    music = proto.parse_color_mode_response(payload_of("status_reply_cm_music"))
+    assert music.music_sensitivity == 99
+    assert music.music_color == (255, 0, 0)
+    diy = proto.parse_color_mode_response(payload_of("status_reply_cm_diy_saved"))
+    assert diy.diy_slot == 0x84
+
+
+def test_the_style_byte_is_only_read_as_calm_for_rhythm():
+    """A deliberate asymmetry between the grammar and the decoder, pinned so it stays one.
+
+    govee_common::music_selector names byte 3 `style` for every mode, because structurally
+    that is what it is. Only Rhythm interprets it as Dynamic/Calm; the other modes
+    repurpose it, so the decoder leaves music_calm unset rather than reporting a value it
+    cannot justify. This fixture is Rolling, so a bare False here would be a claim the
+    capture does not support.
+    """
+    rolling = proto.parse_color_mode_response(payload_of("status_reply_cm_music"))
+    assert rolling.music_mode == "rolling"
+    assert rolling.music_calm is None
+
+
+def test_the_colour_mode_query_decodes_as_a_video_reply():
+    """The direction trap, stated as a test rather than left as a warning in a doc.
+
+    A parser handed the aa 05 query with no direction reports video mode. The query's
+    payload begins 0x00, and 0x00 is the video selector, so the two are indistinguishable
+    without knowing which way the frame travelled. This has been hit live twice, on 0xa3
+    and on 0x01, which is why decode_govee refuses to label a frame without a direction.
+    """
+    split = proto.split_status_frame(proto.COLOR_MODE_QUERY)
+    assert split is not None
+    domain, payload = split
+    assert domain == 0x05
+    assert payload[0] == 0x00
+    assert proto.parse_color_mode_response(payload).mode is proto.ParsedMode.VIDEO
+
+
+@pytest.mark.parametrize(
+    ("name", "built"),
+    [
+        ("music_frame_rhythm_c1_ff0000", lambda: proto.build_music_mode_with_color(0x03, 99, (255, 0, 0))),
+        ("music_frame_rhythm_c0_dynamic", lambda: proto.build_music_mode_with_color(0x03, 99, None, calm=False)),
+        ("music_frame_rhythm_c0_calm", lambda: proto.build_music_mode_with_color(0x03, 99, None, calm=True)),
+        ("music_frame_rhythm_sens0", lambda: proto.build_music_mode_with_color(0x03, 0, (0, 230, 210))),
+        ("music_frame_rhythm_sens47", lambda: proto.build_music_mode_with_color(0x03, 47, (0, 230, 210))),
+        ("music_frame_rhythm_sens99", lambda: proto.build_music_mode_with_color(0x03, 99, (0, 230, 210))),
+        ("music_frame_rolling_c1_sens50", lambda: proto.build_music_mode_with_color(0x06, 50, (255, 0, 0))),
+        ("music_frame_separation_c0_sens50", lambda: proto.build_music_mode_with_color(0x32, 50, None)),
+        ("music_frame_bloom_c0_calm", lambda: proto.build_music_mode_with_color(0x30, 99, None, calm=True)),
+    ],
+)
+def test_music_builder_reproduces_the_captured_frame(name, built):
+    assert built() == fixture(name)
+
+
+def test_sensitivity_is_clamped_at_the_captured_ceiling():
+    """99 is the highest value any capture carries, and the builder must not exceed it."""
+    assert proto.build_music_mode_with_color(0x03, 255, None)[4] == 99
+    assert fixture("music_frame_rhythm_sens99")[4] == 99
+
+
+def a3_body(frames: list[bytes]) -> bytes:
+    """Reassemble the single A3 transaction a builder emits, using the shared implementation.
+
+    reassemble_a3 requires exactly one transaction and says so; handing it a builder's whole
+    output concatenates the upload with whatever follows. Segmenting first is not a detail,
+    it is the contract, and getting it wrong is the defect that corrupted 21 of 31 A3
+    captures before it was found.
+    """
+    from tools.ble.decode_govee import reassemble_a3, segment_a3
+
+    uploads = segment_a3([f for f in frames if len(f) == 20 and f[0] == 0xA3])
+    assert len(uploads) == 1, f"expected one A3 transaction from the builder, got {len(uploads)}"
+    return reassemble_a3(uploads[0])
+
+
+def slice_palette(body: bytes, offset: int, plen: int) -> tuple[tuple[int, int, int], ...]:
+    return tuple((body[i], body[i + 1], body[i + 2]) for i in range(offset, offset + plen, 3))
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "diy_type04_flat_plen_0x03_1_colour_fam_0x01",
+        "diy_type04_flat_plen_0x09_3_colours_fam_0x08",
+        "diy_type04_flat_plen_0x0c_4_colours_fam_0x00",
+        "diy_type04_flat_plen_0x15_7_colours_fam_0x03",
+    ],
+)
+def test_flat_diy_encoder_reproduces_the_captured_body(name):
+    """Feed the captured fields straight back through the builder, as the harness did.
+
+    Transcribing a palette by hand only tests the transcription, so the arguments are
+    sliced out of the fixture using the layout the grammar declares.
+    """
+    captured = fixture(name)
+    plen = captured[6]
+    content = FlatContent(
+        family=captured[3],
+        variant=captured[4],
+        speed=captured[5],
+        palette=slice_palette(captured, 7, plen),
+    )
+    assert a3_body(proto.build_flat_diy(content)) == captured
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "diy_type04_combo_seqlen_0x02_1_effect",
+        "diy_type04_combo_seqlen_0x04_2_effects",
+        "diy_type04_combo_seqlen_0x06_3_effects",
+        "diy_type04_combo_seqlen_0x08_4_effects",
+        "diy_type04_combo_seqlen_0x04_pairs_0_0_3_3",
+    ],
+)
+def test_combo_encoder_reproduces_the_captured_body(name):
+    captured = fixture(name)
+    plen = captured[6]
+    seq_offset = 7 + plen
+    seqlen = captured[seq_offset]
+    pairs = captured[seq_offset + 1 : seq_offset + 1 + seqlen]
+    content = ComboContent(
+        variant=captured[4],
+        speed=captured[5],
+        palette=slice_palette(captured, 7, plen),
+        effects=tuple((pairs[i], pairs[i + 1]) for i in range(0, seqlen, 2)),
+    )
+    assert a3_body(proto.build_combo(content)) == captured
+
+
+def body_after_type(captured: bytes) -> bytes:
+    """Strip the 01 <linecount> 03 A3 header, leaving what build_a3_multi is handed."""
+    assert captured[0] == 0x01 and captured[2] == 0x03
+    return captured[3:].rstrip(b"\x00")
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["diy_type03_anchor_vibrant_15g", "diy_type03_eff09_gc15", "diy_type03_eff19_gc07"],
+)
+def test_type03_plain_framing_reproduces_the_captured_body(name):
+    """The plain multi-frame form, which is what the app actually sends."""
+    captured = fixture(name)
+    frames = proto.build_a3_multi(0x03, body_after_type(captured))
+    assert a3_body(frames) == captured
+
+
+def test_build_sketch_reproduces_a_single_chunk_body():
+    """The common case works: a body fitting one 17-byte chunk plus the terminator frame."""
+    captured = fixture("diy_type03_anchor_sketch_seg3")
+    after = body_after_type(captured)
+    assert len(after) + 3 <= 17
+    assert a3_body(proto.build_a3_multi(0x03, after, terminator=True)) == captured
+
+
+def test_build_sketch_cannot_reproduce_a_multi_chunk_body():
+    """A live divergence, pinned rather than printed.
+
+    build_sketch hardcodes terminator=True. That is right for a body fitting one chunk,
+    and wrong the moment the body needs two: the app switches to the plain multi-frame
+    form, where the last DATA chunk carries the 0xff index, while the builder appends a
+    further all-zero frame. The merged-group body is exactly one byte over the boundary.
+
+    The old harness printed this and exited 0, so nothing enforced it in either direction.
+    If build_sketch is fixed, this test fails and must be inverted.
+    """
+    captured = fixture("diy_type03_anchor_sketch_merged")
+    after = body_after_type(captured)
+    assert len(after) + 3 == 18, "this fixture is meant to sit just over the one-chunk boundary"
+    assert a3_body(proto.build_a3_multi(0x03, after, terminator=False)) == captured
+    diverged = a3_body(proto.build_a3_multi(0x03, after, terminator=True))
+    assert len(diverged) == len(captured) + 17
+    assert diverged != captured
+
+
+CATALOGUE = Path(__file__).resolve().parents[1] / "tools" / "ble" / "catalogues" / "effect-library-H617A.json"
+
+
+def test_the_h617a_catalogue_holds_exactly_two_type_one_scenes():
+    """A claim about the frozen catalogue, not about wire structure, so it lives here.
+
+    If a refresh adds a third, the scene_type1 fixtures no longer cover the population and
+    the corpus must be extended rather than quietly left behind.
+    """
+    scenes = [s for s in json.loads(CATALOGUE.read_text())["scenes"] if s.get("scene_type") == 1]
+    assert {s["code"] for s in scenes} == {1170, 1173}
+
+
+@pytest.mark.parametrize(("code", "name"), [(1173, "halloween"), (1170, "sweet")])
+def test_type_one_scene_bodies_are_the_catalogue_param_framed(code, name):
+    """The round trip here is internal: catalogue param in, A3 body out, param back.
+
+    A captured Halloween application confirmed the catalogue param IS the A3 payload, which
+    is what makes this more than a self-consistency check.
+    """
+    param = base64.b64decode(next(s["param"] for s in json.loads(CATALOGUE.read_text())["scenes"] if s["code"] == code))
+    captured = fixture(f"scene_type1_h617a_{name}")
+    assert a3_body(proto.build_a3_multi(1, param)) == captured
+    assert captured[3 : 3 + len(param)] == param
+    assert captured[0] == 0x01 and captured[2] == 0x01

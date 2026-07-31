@@ -67,3 +67,19 @@ jobs:
       - run: uv sync --locked
       - run: uv run --no-sync coverage run -m pytest tests/ -v --tb=short
       - run: uv run --no-sync coverage report --include="custom_components/ha_govee_led_ble/*" --fail-under=90
+
+  kaitai:
+    name: Kaitai
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: tools/ble/kaitai/package-lock.json
+      - run: uv sync --locked
+      - run: bash scripts/check-kaitai.sh

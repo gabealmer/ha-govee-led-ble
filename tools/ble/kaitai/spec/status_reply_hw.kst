@@ -1,0 +1,13 @@
+# Hardware version. Carries a leading 0x03 the firmware reply does not, which is why the
+# two have separate body types rather than one shared version string. The prefix is not
+# asserted here because the grammar enforces it with contents:, so a frame lacking it does
+# not parse at all.
+id: status_reply_hw
+data: status_reply_hw.bin
+imports:
+  - status_reply
+asserts:
+  - actual: domain
+    expected: 7
+  - actual: body.text
+    expected: "3.01.01"

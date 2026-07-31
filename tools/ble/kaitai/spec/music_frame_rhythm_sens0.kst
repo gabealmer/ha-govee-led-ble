@@ -1,0 +1,24 @@
+# Low end of the three-point Rhythm sensitivity series (0x00 / 0x2f / 0x63), with style,
+# count and the manual RGB all held constant.
+id: music_frame_rhythm_sens0
+data: music_frame_rhythm_sens0.bin
+imports:
+  - music_body
+type: mode_set_frame
+asserts:
+  - actual: mode
+    expected: 3
+  - actual: sensitivity
+    expected: 0
+  - actual: style
+    expected: 0
+  - actual: count
+    expected: 1
+  - actual: colors.size
+    expected: 1
+  - actual: colors[0].r
+    expected: 0
+  - actual: colors[0].g
+    expected: 230
+  - actual: colors[0].b
+    expected: 210

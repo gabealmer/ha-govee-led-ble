@@ -1,0 +1,312 @@
+# Claims that span fixtures. A per-fixture assert cannot express "this field takes N
+# different values across the corpus", which is exactly the shape that kills a rival
+# reading: a constant cannot take many values. Migrating such a claim to per-fixture
+# asserts leaves every row green while the falsification quietly disappears.
+
+- id: command_write_timer_slots_vary
+  doc: >
+    The schedule slot index is a real per-entry field, not a fixed byte. Three captured
+    writes carry two distinct indices, so a grammar pinning it to one value is dead.
+  cases: command_write_timer_schedule*
+  collect: body.index
+  distinct_at_least: 2
+
+# Pairwise differentials. "Exactly one byte moved, and it is <field>" is one claim in two
+# halves: the value half is an ordinary assert, and the "nothing else moved" half is what
+# pins the field to that byte. Only the second half needs to be here.
+
+- id: command_write_power_one_byte
+  doc: >
+    The power write differs from its off/on counterpart at exactly the payload byte and
+    the checksum, so is_on is that byte and the opcode carries no on/off information.
+  between: [command_write_power_off, command_write_power_on]
+  differs_at: [2, 19]
+
+- id: command_write_timer_slot2_controlled_pair
+  doc: >
+    Both slot-2 writes were captured 2026-07-27 against the same slot with only the
+    enable/action bits and the repeat mask changed. They differ at exactly those two
+    payload bytes and the checksum, which is what makes the pair a controlled comparison
+    rather than two unrelated observations, and what lets enable_and_type 0x80 versus
+    0x81 be read as one bit rather than a different frame shape.
+  between: [command_write_timer_schedule_off_action, command_write_timer_schedule_weekdays]
+  differs_at: [3, 6, 19]
+
+- id: status_reply_timer_table_stored_repeat
+  doc: >
+    The two aa 23 tables were read minutes apart around a single write to slot 2. They
+    differ at the slot-0 enable byte, at slot 2's repeat byte, and at the checksum, and
+    nowhere else. That confinement is what makes the read-back evidence of storage rather
+    than of the app echoing its own state back: an app-side default would not move one
+    slot's repeat byte while leaving the other three tables identical.
+  between: [status_reply_timer, status_reply_timer_stored_repeat]
+  differs_at: [3, 14, 19]
+
+# workshop_body isolation proofs. Each Apply in these captures moved one control and the
+# capture shows which bytes followed. The decoded value of each field is asserted in its
+# own case; what lives here is the other half, that NOTHING ELSE MOVED, which is what
+# actually pins a field to its offset. Ten of them stand behind the confirmed fields in
+# govee_common::effect_layer.
+
+- id: workshop_select_type_segment_isolated
+  doc: Select Type and its two params occupy body offsets 6..8 and nothing else.
+  between: [workshop_body_matrix_segment, workshop_body_two_colour_continuously]
+  differs_within: [6, 7, 8]
+
+- id: workshop_select_type_randomly_isolated
+  between: [workshop_body_matrix_randomly, workshop_body_two_colour_continuously]
+  differs_within: [6, 7, 8]
+
+- id: workshop_select_type_customize_isolated
+  between: [workshop_body_matrix_customize, workshop_body_two_colour_continuously]
+  differs_within: [6, 7, 8]
+
+- id: workshop_brightness_band_isolated
+  doc: >
+    The five brightness values sit in the shared brightness block at offsets 11, 12, 14,
+    15, 16 and 18. One Apply moved the whole band and touched nothing outside it.
+  between: [workshop_body_brightness_scope, workshop_body_two_colour_continuously]
+  differs_within: [11, 12, 14, 15, 16, 18]
+
+- id: workshop_r13_one_byte_differential
+  doc: >
+    Direction and distribution moved from 0x01 to 0x80 across a single Apply and exactly
+    one byte followed. A five-layer body differing in one byte is a strong statement: the
+    other four records are byte-identical, so the change is per-layer and at r13.
+  between: [workshop_body_r13_direction, workshop_body_christmas_5layer]
+  differs_at: [17]
+
+- id: workshop_movement_tail_isolated_selected
+  doc: >
+    Selected-area movement, overall movement and priority live in the record tail at
+    offsets 27, 30 and 33. Two independent Applies each stayed inside it.
+  between: [workshop_body_selected_movement_dir, workshop_body_priority_2layer]
+  differs_within: [27, 30, 33]
+
+- id: workshop_movement_tail_isolated_overall
+  between: [workshop_body_overall_movement_dir, workshop_body_priority_2layer]
+  differs_within: [27, 30, 33]
+
+- id: workshop_selected_interval_isolated
+  doc: Selected-area interval 1 -> 2 moved exactly r24, body offset 28.
+  between: [workshop_body_mv_sel_interval2, workshop_body_mv_baseline]
+  differs_at: [28]
+
+- id: workshop_selected_speed_isolated
+  doc: Selected-area speed 0xef -> 0x82 moved exactly r25, body offset 29.
+  between: [workshop_body_mv_sel_speed51, workshop_body_mv_sel_interval2]
+  differs_at: [29]
+
+- id: workshop_overall_speed_isolated
+  doc: Overall speed 0xb7 -> 0x56 moved exactly r28, body offset 32.
+  between: [workshop_body_mv_overall_speed34, workshop_body_mv_sel_speed51]
+  differs_at: [32]
+
+- id: workshop_overall_interval_isolated
+  doc: Overall interval 1 -> 2 moved exactly r27, body offset 31.
+  between: [workshop_body_mv_overall_interval2, workshop_body_mv_overall_speed34]
+  differs_at: [31]
+
+- id: workshop_record_len_law
+  doc: >
+    record_len == 23 + 3 * colour_count is a law rather than a coincidence of one body,
+    because the corpus holds M = 1, 2 and 3 at record_len 26, 29 and 32. The arithmetic
+    itself is enforced by the grammar: effect_layer::excess is sized from record_len, so
+    a wrong layout leaves bytes there, and every case asserts it empty.
+  cases: workshop_body_*
+  collect: layers[0].record_len
+  distinct_at_least: 3
+
+# music_body. The mode spans below were PRINTED by the old harness and never asserted, so
+# a corpus quietly shrinking to one mode would not have shown up.
+
+- id: music_body_modes_span_the_param_family
+  doc: >
+    Seven param modes upload a 0x41 A3 body with a mode-specific tail. A tail layout that
+    was really one shape would not need seven.
+  cases: music_body_*
+  collect: mode
+  distinct_at_least: 7
+
+- id: music_frame_modes_span_the_family
+  doc: Eleven modes are reachable from the mode-set frame.
+  cases: music_frame_*
+  collect: mode
+  distinct_at_least: 11
+
+- id: music_frame_sensitivity_values_vary
+  doc: >
+    Sensitivity is a real per-frame field, not a fixed byte: the corpus carries 0x00,
+    0x2f, 0x32 and 0x63.
+  cases: music_frame_*
+  collect: sensitivity
+  distinct_at_least: 4
+
+# Sensitivity isolation. The old harness stated these in a COMMENT, having diffed them by
+# hand before naming the fixtures, and asserted none of them. Each pair is one Apply with
+# only the Sensitivity slider moved, so exactly the sensitivity byte and the checksum
+# follow. Five param modes plus Rolling and a three-point series on Rhythm.
+
+- id: music_sensitivity_isolated_separation
+  between: [music_frame_separation_c0, music_frame_separation_c0_sens50]
+  differs_at: [4, 19]
+
+- id: music_sensitivity_isolated_hopping
+  between: [music_frame_hopping_c0, music_frame_hopping_c0_sens50]
+  differs_at: [4, 19]
+
+- id: music_sensitivity_isolated_piano_keys
+  between: [music_frame_piano_keys_c0, music_frame_piano_keys_c0_sens50]
+  differs_at: [4, 19]
+
+- id: music_sensitivity_isolated_fountain
+  between: [music_frame_fountain_c0, music_frame_fountain_c0_sens50]
+  differs_at: [4, 19]
+
+- id: music_sensitivity_isolated_day_and_night
+  between: [music_frame_day_and_night_c0, music_frame_day_and_night_c0_sens50]
+  differs_at: [4, 19]
+
+- id: music_sensitivity_isolated_rolling
+  doc: The cleanest of them, from a stray slider drag mid-walkthrough on 2026-07-27.
+  between: [music_frame_rolling_c1_sens99, music_frame_rolling_c1_sens50]
+  differs_at: [4, 19]
+
+- id: music_sensitivity_isolated_rhythm_low
+  doc: >
+    Rhythm at 0x00 / 0x2f / 0x63 with style, count and the manual RGB held constant, so
+    offset 4 varies alone across three points rather than two.
+  between: [music_frame_rhythm_sens0, music_frame_rhythm_sens47]
+  differs_at: [4, 19]
+
+- id: music_sensitivity_isolated_rhythm_high
+  between: [music_frame_rhythm_sens47, music_frame_rhythm_sens99]
+  differs_at: [4, 19]
+
+- id: music_bloom_moves_two_bytes_not_one
+  doc: >
+    Recorded as a counter-example. This Apply moved sensitivity AND style, so it pins the
+    pair and cannot be cited as isolating either. Claiming differs_at [4, 19] here would
+    fail, which is the point of writing it down.
+  between: [music_frame_bloom_c0_calm, music_frame_bloom_c0_sens50_dynamic]
+  differs_at: [4, 5, 19]
+
+- id: music_stream_anchors_span_the_hue_set
+  doc: >
+    The anchors are only useful if they cover the colour space rather than sixteen shades
+    of one hue: a checksum that happened to work on red alone would look proven. Red,
+    green, blue, yellow, cyan, violet and white are all present, at full, mid and floor
+    amplitude. Collected on the red channel because the seven hues take five distinct
+    values there once the floor and full cases are included.
+  cases: music_stream_*
+  collect: colour.r
+  distinct_at_least: 7
+
+# diy_type04. Both length prefixes have to be shown varying, or a grammar could pin either
+# to a constant and pass every case.
+
+- id: diy_type04_plen_varies
+  doc: >
+    plen == 3 * colours is a law only if the corpus carries several palette sizes. Four are
+    present: 1, 3, 4 and 7 colours at plen 0x03, 0x09, 0x0c and 0x15.
+  cases: diy_type04_flat_*
+  collect: body.plen
+  distinct_at_least: 4
+
+- id: diy_type04_seqlen_varies
+  doc: >
+    seqlen == 2 * pairs, shown across 1, 2, 3 and 4 effects at seqlen 0x02, 0x04, 0x06 and
+    0x08.
+  cases: diy_type04_combo_*
+  collect: body.seqlen
+  distinct_at_least: 4
+
+- id: diy_type04_families_vary
+  doc: >
+    family is a real selector, not a constant: 0x00, 0x01, 0x03 and 0x08 for flat bodies,
+    against 0xff which is what marks a combo.
+  cases: diy_type04_*
+  collect: family
+  distinct_at_least: 5
+
+# diy_type03. The old coverage flags checked that Sketch, a 15-group Vibrant and a merged
+# group were all present. Stated as spreads instead, which is the same guarantee expressed
+# against the corpus rather than against three hand-named labels.
+
+- id: diy_type03_effects_vary
+  doc: >
+    effect is a real selector across the Finger Sketch motion set, not a constant: six
+    distinct values are present in the corpus.
+  cases: diy_type03_*
+  collect: effect
+  distinct_at_least: 6
+
+- id: diy_type03_group_counts_vary
+  doc: >
+    group_count spans the empty body (0), a single group, a 7-group Share Space body and a
+    fully populated 15-group Vibrant. A grammar pinning it could not parse all four.
+  cases: diy_type03_*
+  collect: group_count
+  distinct_at_least: 4
+
+- id: diy_type03_linecounts_vary
+  doc: Bodies span 2, 4 and 5 chunks, so the A3 framing is exercised past a single chunk.
+  cases: diy_type03_*
+  collect: header.linecount
+  distinct_at_least: 3
+
+- id: scene_type1_palette_count_varies
+  doc: >
+    THE FALSIFICATION. The H617A's own two type-1 scenes both carry palette_count 4, so a
+    grammar hardcoding a fixed 0x04 selector followed by exactly four RGB triples passes
+    every H617A check and is still wrong. Eight vendor catalogue params carry eight
+    different palette counts (1, 2, 3, 4, 5, 6, 7, 10), and a constant cannot take eight
+    values. No type-1 scene on any SKU is adjustable, so no device can move these fields
+    and the vendor's own encoder is the only witness available. This is evidence about the
+    catalogue FORMAT and about nothing else.
+  cases: scene_type1_*
+  collect: palette_count
+  distinct_at_least: 8
+
+- id: scene_type1_step_count_varies
+  doc: >
+    step_count is likewise a real repeat driver, not a constant: the corpus carries 1, 2
+    and 6 steps.
+  cases: scene_type1_*
+  collect: step_count
+  distinct_at_least: 3
+
+# scene_body cruxes. Each pair is one Apply with a single control moved, so the decoded
+# value belongs in the case and the confinement belongs here. Without the confinement,
+# "brightness_order is at this byte" is an assertion about a value, not about a position.
+
+- id: scene_aurora_framing_untouched
+  doc: >
+    The two Aurora speed steps must agree on the marker, linecount, scene_type and
+    record_count. Every difference falls inside record data, which is what shows the speed
+    control writes into a record rather than reshaping the body.
+  between: [scene_body_aurora_slow, scene_body_aurora_fast]
+  equal_at: [0, 1, 2, 3]
+
+- id: scene_brightness_order_one_byte
+  doc: >
+    Brightest-Darkest to Darkest-Brightest-Darkest moved exactly one on-wire byte, and the
+    case pins that byte's decoded value to 0 and 3. Together they say the field IS that
+    byte.
+  between: [scene_body_brightness_order_a, scene_body_brightness_order_b]
+  differs_at: [13]
+
+- id: scene_brightness_gradient_one_byte
+  doc: >
+    Unified to Gradient moved exactly one byte, layer_flags, and only bit 0x02 within it
+    (0x10 -> 0x12). This is what attributed a bit the spec had carried as unattributed.
+  between: [scene_body_brightness_unified, scene_body_brightness_gradient]
+  differs_at: [9]
+
+- id: scene_record_counts_vary
+  doc: >
+    The framing generalises past one shape: bodies carry 1, 2 and 3 records, and the
+    3-record Forest body varies record_type across its records as well.
+  cases: scene_body_*
+  collect: record_count
+  distinct_at_least: 3

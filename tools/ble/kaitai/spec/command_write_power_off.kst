@@ -1,0 +1,8 @@
+# Power off. Byte 2 is the only payload; the rest is padding.
+id: command_write_power_off
+data: command_write_power_off.bin
+imports:
+  - command_write
+asserts:
+  - actual: body.is_on
+    expected: 0

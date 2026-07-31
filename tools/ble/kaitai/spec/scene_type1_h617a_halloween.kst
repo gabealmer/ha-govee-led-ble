@@ -1,0 +1,42 @@
+# H617A wire anchor: Halloween, catalogue code 1173. The device receives exactly this body; a captured Halloween application confirmed catalogue param == A3 payload.
+id: scene_type1_h617a_halloween
+data: scene_type1_h617a_halloween.bin
+imports:
+  - scene_type1_body
+asserts:
+  - actual: scene_type
+    expected: 1
+  - actual: step_count
+    expected: 6
+  - actual: steps.size
+    expected: 6
+  - actual: palette_count
+    expected: 4
+  - actual: palette.size
+    expected: 4
+  - actual: padding.size
+    expected: 3
+  - actual: palette[0].r
+    expected: 255
+  - actual: palette[0].g
+    expected: 30
+  - actual: palette[0].b
+    expected: 0
+  - actual: palette[1].r
+    expected: 255
+  - actual: palette[1].g
+    expected: 90
+  - actual: palette[1].b
+    expected: 0
+  - actual: palette[2].r
+    expected: 255
+  - actual: palette[2].g
+    expected: 50
+  - actual: palette[2].b
+    expected: 0
+  - actual: palette[3].r
+    expected: 255
+  - actual: palette[3].g
+    expected: 120
+  - actual: palette[3].b
+    expected: 0

@@ -1,0 +1,22 @@
+# flat plen=0x03 (1 colour) fam=0x01. Capture: h617a-diy-jumping1-a.pcap.
+id: diy_type04_flat_plen_0x03_1_colour_fam_0x01
+data: diy_type04_flat_plen_0x03_1_colour_fam_0x01.bin
+imports:
+  - diy_type04
+asserts:
+  - actual: family
+    expected: 1
+  - actual: body.variant
+    expected: 0
+  - actual: body.speed
+    expected: 100
+  - actual: body.plen
+    expected: 3
+  - actual: body.palette.colours.size
+    expected: 1
+  - actual: body.palette.colours[0].r
+    expected: 139
+  - actual: body.palette.colours[0].g
+    expected: 0
+  - actual: body.palette.colours[0].b
+    expected: 255

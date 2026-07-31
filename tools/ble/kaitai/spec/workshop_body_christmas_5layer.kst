@@ -1,0 +1,66 @@
+# Five-layer Christmas draft. The applied_area values tile 0x20 0x22 0x24 0x26 0x28, which
+# is what shows r1 is a per-layer area selector rather than a constant, and colour_count 1
+# on every layer gives record_len 26 = 23 + 3.
+id: workshop_body_christmas_5layer
+data: workshop_body_christmas_5layer.bin
+imports:
+  - workshop_body
+asserts:
+  - actual: header.linecount
+    expected: 9
+  - actual: layer_count
+    expected: 5
+  - actual: layers.size
+    expected: 5
+  - actual: layers[0].record_len
+    expected: 26
+  - actual: layers[0].body.colour_count
+    expected: 1
+  - actual: layers[0].body.palette.size
+    expected: 1
+  - actual: layers[0].body.excess.size
+    expected: 0
+  - actual: layers[1].record_len
+    expected: 26
+  - actual: layers[1].body.colour_count
+    expected: 1
+  - actual: layers[1].body.palette.size
+    expected: 1
+  - actual: layers[1].body.excess.size
+    expected: 0
+  - actual: layers[2].record_len
+    expected: 26
+  - actual: layers[2].body.colour_count
+    expected: 1
+  - actual: layers[2].body.palette.size
+    expected: 1
+  - actual: layers[2].body.excess.size
+    expected: 0
+  - actual: layers[3].record_len
+    expected: 26
+  - actual: layers[3].body.colour_count
+    expected: 1
+  - actual: layers[3].body.palette.size
+    expected: 1
+  - actual: layers[3].body.excess.size
+    expected: 0
+  - actual: layers[4].record_len
+    expected: 26
+  - actual: layers[4].body.colour_count
+    expected: 1
+  - actual: layers[4].body.palette.size
+    expected: 1
+  - actual: layers[4].body.excess.size
+    expected: 0
+  - actual: layers[0].body.applied_area
+    expected: 32
+  - actual: layers[1].body.applied_area
+    expected: 34
+  - actual: layers[2].body.applied_area
+    expected: 36
+  - actual: layers[3].body.applied_area
+    expected: 38
+  - actual: layers[4].body.applied_area
+    expected: 40
+  - actual: layers[0].body.direction_distribution
+    expected: 1

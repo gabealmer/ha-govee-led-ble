@@ -1,0 +1,17 @@
+id: music_body_bloom
+data: music_body_bloom.bin
+imports:
+  - music_body
+asserts:
+  - actual: mode
+    expected: 48
+  - actual: count
+    expected: 7
+  - actual: palette.size
+    expected: 7
+  - actual: tail_len
+    expected: 2
+  - actual: tail.fixed0
+    expected: 10
+  - actual: tail.style_companion
+    expected: 20

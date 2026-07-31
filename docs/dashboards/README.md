@@ -27,11 +27,11 @@ swatches.
 | View | H617A | H6199 | Covers |
 | --- | --- | --- | --- |
 | Comfort | yes | yes | on/off, brightness, RGB colour, colour temperature, colour favourites, active-mode readout, effect preview |
-| Scenes | yes | no | built-in scene effects (the H6199 has no built-in scenes) |
-| Music | yes | yes | music mode selector, music style (H617A), per-mode tuning |
-| Video | no | yes | movie/game, colour mapping, video white balance, static white |
-| Timers | yes | yes | sleep and wake-up timers (disabled by default) |
-| Advanced | yes | yes | power-off memory switch, custom-effect services |
+| Scenes | yes | no | built-in scene effects; H6199 scene transport exists but its model catalogue is not yet surfaced |
+| Music | yes | yes | all mapped H617A modes; the four validated classic modes on H6199 |
+| Video | no | yes | movie/game, colour mapping, sound/softness and static white; white-balance UI mapping remains gated |
+| Timers | yes | no | H617A sleep and wake-up timers (disabled by default) |
+| Advanced | yes | limited | custom-effect services; H6199 authoring remains gated until its write paths are attributable |
 
 A card that references an entity your model does not expose simply shows as
 unavailable, so delete the views or rows that do not apply to your device.
@@ -47,7 +47,6 @@ Entities (example ids, substitute your own):
 - `select.govee_strip_music_mode`
 - `select.govee_strip_music_style`
 - `number.govee_strip_music_sensitivity`
-- `number.govee_strip_video_white_balance`
 - `select.govee_strip_video_color_mapping`
 - `switch.govee_strip_power_off_memory`
 - `switch.govee_strip_sleep_timer`, `number.govee_strip_sleep_timer_duration`
@@ -59,7 +58,7 @@ Services:
 - `ha_govee_led_ble.set_music_mode`
 - `ha_govee_led_ble.set_video_mode`
 - `ha_govee_led_ble.set_white_brightness`
-- `ha_govee_led_ble.save_effect`, `rename_effect`, `delete_effect`
+- `ha_govee_led_ble.save_effect`, `rename_effect`, `update_effect`, `delete_effect`, `export_effect`
 
 ## Behaviour notes
 
@@ -73,12 +72,14 @@ Services:
   talks to the device. Turn on `switch.govee_strip_reduce_preview_motion` to
   render it as a still instead of an animation.
 - Saved custom effects appear in the light's effect list under their given
-  names; save, rename, or remove them with the `save_effect`, `rename_effect`,
-  and `delete_effect` services (or the bundled segment card's Save button).
+  names; save, rename, update, or remove them with the `save_effect`,
+  `rename_effect`, `update_effect`, and `delete_effect` services (or the bundled
+  segment card's Save button). `export_effect` returns a portable snapshot of a
+  saved effect by its stable id.
 - Colour mapping reapplies the active video mode as you change it, so switching
-  it moves the strip into video mode. Saturation and sound effects are set only
-  through the `set_video_mode` service.
-- Power-off memory, the timer entities, and video white balance are all
-  disabled by default; enable each in its entity settings before use. Static
-  white (the `set_white_brightness` service) is a separate warm/cool white mode,
-  distinct from video white balance.
+  it moves the strip into video mode. Saturation is supported through
+  `set_video_mode`; the same service exposes the validated sound and softness
+  controls.
+- H617A timer entities are disabled by default. H6199 white-balance, segment, timer and power-off
+  memory controls remain hidden until their model-specific mappings are validated. Static white
+  (`set_white_brightness`) is separate from DreamView white balance.
