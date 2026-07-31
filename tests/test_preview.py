@@ -13,7 +13,7 @@ from custom_components.ha_govee_led_ble.custom_effects import (
     UnknownContent,
     VibrantContent,
 )
-from custom_components.ha_govee_led_ble.protocol import _interpolate
+from custom_components.ha_govee_led_ble.protocol import _VIBRANT_GAMMA, _interpolate
 from custom_components.ha_govee_led_ble.scenes import SceneEntry
 
 _RED = (255, 0, 0)
@@ -30,7 +30,7 @@ def test_render_segments_static_pads_missing_with_off():
 
 def test_render_vibrant_matches_interpolate_parity():
     stops = ((0, 0, 0), (255, 255, 255))
-    assert p.render(VibrantContent(stops=stops), 5, 0) == list(_interpolate(stops, 5))
+    assert p.render(VibrantContent(stops=stops), 5, 0) == list(_interpolate(stops, 5, gamma=_VIBRANT_GAMMA))
 
 
 def test_render_vibrant_empty_stops_is_off():
@@ -170,3 +170,13 @@ def test_look_hash_is_stable_and_sensitive():
 def test_look_hash_scene_uses_code_and_param():
     assert p.look_hash(SceneEntry(code=1, param="a"), 3) != p.look_hash(SceneEntry(code=2, param="a"), 3)
     assert p.look_hash(SceneEntry(code=1, param="a"), 3) == p.look_hash(SceneEntry(code=1, param="a"), 3)
+
+
+def test_encode_zero_segments_renders_off_instead_of_raising():
+    """UNSUPPORTED_PROFILE defaults to segment_count=0 and the image entity is created for every
+    model, so a zero-width look must render rather than index an empty frame."""
+    image = p.render_preview_image(SegmentContent(colors=()), 0, True)
+    assert image.content_type == "image/png"
+    with Image.open(io.BytesIO(image.data)) as decoded:
+        assert decoded.size == (1, p._HEIGHT_PX)
+        assert decoded.convert("RGB").getpixel((0, 0)) == p._OFF

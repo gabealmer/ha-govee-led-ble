@@ -2,7 +2,7 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from bleak import BleakError
+from bleak.exc import BleakError
 from homeassistant.const import EntityCategory
 
 from custom_components.ha_govee_led_ble.coordinator_modes import MUSIC_PARAM_SPECS
@@ -31,7 +31,10 @@ async def test_music_sensitivity(mock_h6199_coordinator):
     c.async_select_music_slug.assert_awaited_once_with("rolling")
 
 
-async def test_rollback(mock_h6199_coordinator):
+async def test_rollback_restores_the_previous_value_when_the_write_fails(mock_h6199_coordinator):
+    """Carried over from master, which is where this case was written. The no-op test below
+    covers the path where nothing is sent; this one covers the write FAILING, which is the
+    only path where the optimistic value has to be put back."""
     c = mock_h6199_coordinator
     c.music_sensitivity = 55
     c.is_on, c.music_mode = True, "rolling"
@@ -71,14 +74,12 @@ async def test_setup_number_entry_h6199(mock_h6199_coordinator):
     add = MagicMock()
     await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=mock_h6199_coordinator), add)
     keys = [entity._key for entity in add.call_args.args[0]]
-    assert keys == [
-        "music_sensitivity",
-    ]
+    assert keys == ["music_sensitivity"]
 
 
 async def test_setup_number_entry_without_supported_params(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.profile = replace(c.profile, supports_video_mode=False, supports_music_mode=False)
+    c.profile = replace(c.profile, music_modes=())
     add = MagicMock()
     await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=c), add)
     add.assert_not_called()

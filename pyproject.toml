@@ -17,6 +17,9 @@ dev = [
     "pyserial>=3.5",
     "ruff>=0.9",
     "serialx[esphome]>=1.8.2",
+    "kaitaistruct>=0.11",
+    "pyyaml>=6.0.3",
+    "defusedxml>=0.7.1",
 ]
 
 [tool.pytest.ini_options]
@@ -41,6 +44,13 @@ module = [
     "bleak_retry_connector.*",
     "homeassistant.*",
     "pytest_homeassistant_custom_component.*",
+    # pymobiledevice3 is a uv TOOL, deliberately not a project dependency: only the harness
+    # needs it, it never ships with the integration, and adding it here would drag a large
+    # iOS stack into every install. tools/harness/ax.py imports it lazily for that reason.
+    "pymobiledevice3.*",
+    # defusedxml ships no stubs. The harness parses WDA's element tree, which is untrusted
+    # input from a third-party app, so the hardened parser is the right one to use.
+    "defusedxml.*",
 ]
 ignore_missing_imports = true
 disable_error_code = ["attr-defined"]

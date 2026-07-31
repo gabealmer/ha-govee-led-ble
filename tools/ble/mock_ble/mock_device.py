@@ -59,9 +59,8 @@ class GoveeDeviceSim:
         self.profile = get_profile(model)
         self.is_on = False
         self.brightness_pct = 100
-        # Identity replies for the aa 06/aa 07 handshake (H617A live values; VAL).
-        self.firmware = "3.02.24"
-        self.hardware = "3.01.01"
+        self.firmware = "1.10.04" if model == "H6199" else "3.02.24"
+        self.hardware = "3.02.01" if model == "H6199" else "3.01.01"
         self.color_mode: ColorMode = "rgb"
         self.rgb_color: RGB = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
@@ -71,7 +70,7 @@ class GoveeDeviceSim:
         self.video_game = False
         self.video_saturation = 100
         self.video_sound_effects = False
-        self.video_sound_effects_softness = 0
+        self.video_sound_effects_softness = 100
         self.video_white_balance: tuple[int, int] | None = None
         self.music_mode_id: int | None = None
         self.music_sensitivity = 100
@@ -108,7 +107,7 @@ class GoveeDeviceSim:
         if domain == FIRMWARE_PACKET_TYPE:
             return [build_packet(STATUS_HEADER, FIRMWARE_PACKET_TYPE, list(self.firmware.encode("ascii")))]
         if domain == HARDWARE_PACKET_TYPE:
-            return [build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, list(self.hardware.encode("ascii")))]
+            return [build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [0x03, *self.hardware.encode("ascii")])]
         if domain == SLEEP_TIMER_ACTION and self.sleep_timer is not None:
             return [build_packet(STATUS_HEADER, SLEEP_TIMER_ACTION, list(self.sleep_timer))]
         if domain == WAKEUP_TIMER_ACTION and self.wakeup_timer is not None:

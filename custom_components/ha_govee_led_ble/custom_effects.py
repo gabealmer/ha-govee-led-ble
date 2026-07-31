@@ -44,7 +44,7 @@ class FlatContent:
 class ComboContent:
     kind: Literal["combo"] = "combo"
     variant: int = 0x00
-    speed: int = 0x32
+    speed: int = 0x33
     palette: tuple[RGB, ...] = ()
     effects: tuple[tuple[int, int], ...] = ()
 
@@ -57,6 +57,11 @@ class UnknownContent:
 
 type AuthorableContent = SegmentContent | SketchContent | VibrantContent | FlatContent | ComboContent
 type EffectContent = AuthorableContent | UnknownContent
+
+
+def uses_diy_slot(content: EffectContent) -> bool:
+    """Return whether content is activated through the H617A DIY slot."""
+    return isinstance(content, SketchContent | VibrantContent | FlatContent | ComboContent)
 
 
 @dataclass(frozen=True)
@@ -80,6 +85,7 @@ _SKETCH_MOTION_CODES: frozenset[int] = frozenset({0x02, 0x09, 0x0A, 0x0F, 0x13, 
 # CAT 2.4/2.7: sketch speed and brightness are 0..100 percentage bytes (observed max 0x64).
 _SKETCH_SPEED_RANGE: range = range(0, 101)
 _SKETCH_BRIGHT_RANGE: range = range(0, 101)
+_DIY_SPEED_RANGE: range = range(0, 101)
 
 # CAT 2.6: confirmed flat (FAMILY, VARIANT) pairs, keyed by family (variants have catalogue gaps).
 _FLAT_VARIANTS_BY_FAMILY: dict[int, tuple[int, ...]] = {
@@ -94,6 +100,10 @@ _FLAT_VARIANTS_BY_FAMILY: dict[int, tuple[int, ...]] = {
 }
 _FLAT_FAMILY_VARIANTS: frozenset[tuple[int, int]] = frozenset(
     (family, variant) for family, variants in _FLAT_VARIANTS_BY_FAMILY.items() for variant in variants
+)
+_COMBO_FAMILIES = frozenset({0x00, 0x01, 0x02, 0x03, 0x08, 0x09})
+_COMBO_FAMILY_VARIANTS: frozenset[tuple[int, int]] = frozenset(
+    pair for pair in _FLAT_FAMILY_VARIANTS if pair[0] in _COMBO_FAMILIES
 )
 
 _CROSSING_FAMILY = 0x0A
@@ -122,6 +132,15 @@ def validate_content(content: AuthorableContent, *, segment_count: int) -> None:
         case SegmentContent():
             _require(len(content.colors) <= segment_count, "too_many_segments")
             _require(all(_is_rgb(c) for c in content.colors if c is not None), "bad_rgb")
+            _require(
+                content.brightness is None or len(content.brightness) <= segment_count,
+                "too_many_segment_brightness",
+            )
+            _require(
+                content.brightness is None
+                or all(level is None or isinstance(level, int) and 0 <= level <= 100 for level in content.brightness),
+                "segment_brightness_range",
+            )
         case VibrantContent():
             _require(2 <= len(content.stops) <= 5, "vibrant_stops_range")
             _require(all(_is_rgb(s) for s in content.stops), "vibrant_bad_rgb")
@@ -134,11 +153,16 @@ def validate_content(content: AuthorableContent, *, segment_count: int) -> None:
             _require(content.brightness in _SKETCH_BRIGHT_RANGE, "sketch_brightness_range")
         case FlatContent():
             _require((content.family, content.variant) in _FLAT_FAMILY_VARIANTS, "flat_family_variant_invalid")
+            _require(content.speed in _DIY_SPEED_RANGE, "flat_speed_range")
             _require(len(content.palette) <= _flat_palette_max(content.family), "palette_too_large")
             _require(all(_is_rgb(s) for s in content.palette), "flat_bad_rgb")
         case ComboContent():
+            _require(content.variant == 0x00, "combo_variant_invalid")
+            _require(content.speed in _DIY_SPEED_RANGE, "combo_speed_range")
+            _require(bool(content.effects), "combo_empty")
             _require(len(content.effects) <= 4, "combo_too_many")
-            _require(all(fv in _FLAT_FAMILY_VARIANTS for fv in content.effects), "combo_family_variant_invalid")
+            _require(all(fv in _COMBO_FAMILY_VARIANTS for fv in content.effects), "combo_family_variant_invalid")
+            _require(bool(content.palette), "combo_palette_empty")
             _require(len(content.palette) <= 8, "palette_too_large")
             _require(all(_is_rgb(s) for s in content.palette), "combo_bad_rgb")
 

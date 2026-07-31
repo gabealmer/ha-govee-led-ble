@@ -227,10 +227,25 @@ def test_scene_multi():
     assert (pkts[-1][3], pkts[-1][4]) == (0x73, 0x08)
 
 
+def test_build_h6199_scene_matches_current_ios_captures():
+    aurora_a = "AiAAAAABAgH/MgEAAAAA+jIDAP8AAP//qv8AAwCAAAAAACMAAAADAgH/GQD6AAAC+gAEf/8A//8AoP//AP//FAH6AAD/AA=="
+    assert proto.build_h6199_scene("", 0, 0) == [H("3305040000010000000000000000000000000033")]
+    assert proto.build_h6199_scene(aurora_a, 215, 2) == [
+        H("a3000105020220000000010201ff320100000049"),
+        H("a30100fa320300ff0000ffffaaff000300800040"),
+        H("a30200000023000000030201ff1900fa0000029c"),
+        H("a303fa00047fff00ffff00a0ffff00ffff14016b"),
+        H("a3fffa0000ff0000000000000000000000000059"),
+        H("330504d7000200000000000000000000000000e7"),
+    ]
+
+
 def test_build_a3_multi():
     frames = proto.build_a3_multi(0x02, bytes(20))
     assert frames == [
         H("a3000102020000000000000000000000000000a2"),
+        # Plain form: this 0xFF frame is the last DATA chunk, not a terminator. It only
+        # looks empty because this body is all zeros. See test_a3_reassembly_rule.
         H("a3ff00000000000000000000000000000000005c"),
     ]
     for f in frames:
@@ -247,6 +262,33 @@ def test_build_a3_multi():
     # build_scene_multi stays byte-identical: shared fragmenter + the 33 05 04 activate frame.
     b64 = base64.b64encode(bytes(range(40))).decode()
     assert proto.build_scene_multi(b64, 2205) == [*proto.build_a3_multi(2, bytes(range(40))), proto.build_scene(2205)]
+
+
+def test_a3_reassembly_rule():
+    """The 0xFF index does not mean "terminator"; see govee_common::a3_header.
+
+    Decoders must concatenate bytes[2:19] of every frame in arrival order and trust
+    linecount * 17 for the length. Dropping the 0xFF frame silently truncates bodies
+    sent in the plain form, where the last DATA chunk carries that index.
+    """
+    # Plain form: the 0xFF frame holds real payload. A non-zero tail makes it visible.
+    plain = proto.build_a3_multi(0x02, bytes(range(1, 81)))
+    assert [f[1] for f in plain] == [0x00, 0x01, 0x02, 0x03, 0xFF]
+    assert any(plain[-1][2:19]), "last data chunk is 0xFF-indexed and must carry payload"
+
+    # Terminator form: the appended 0xFF frame is genuinely empty and is the padding.
+    term = proto.build_a3_multi(0x02, bytes(range(1, 11)), terminator=True)
+    assert [f[1] for f in term] == [0x00, 0xFF]
+    assert not any(term[-1][2:19])
+
+    # The one rule that is correct for both forms, over every body length.
+    for terminator in (False, True):
+        for length in range(0, 120):
+            frames = proto.build_a3_multi(0x02, bytes(length), terminator=terminator)
+            body = b"".join(f[2:19] for f in frames)
+            assert body[0] == 0x01
+            assert len(body) == body[1] * 17, (terminator, length)
+            assert body[1] >= 2, "the app never emits a lone frame"
 
 
 def test_build_diy_activate():
@@ -306,6 +348,35 @@ def test_build_sketch_matches_live_capture():
         _valid(frame)
 
 
+def test_build_sketch_spanning_two_chunks_matches_live_capture():
+    """Finger Sketch live, app 7.2.10, captured 2026-07-31: Clockwise, bg white, 8 red segments.
+
+    This is the case the single-chunk vector above CANNOT test. `build_a3_multi` forces a
+    terminator whenever the body fits one chunk, so on that vector the `terminator` flag makes
+    no difference and rode along wrong: the encoder declared three frames and appended an empty
+    0xFF, where the app sends two and puts real data in the 0xFF frame. Any sketch with more
+    than about four painted segments took the wrong form.
+    """
+    colors: list[tuple[int, int, int] | None] = [None] * 16
+    for index in (0, 1, 2, 8, 9, 10, 11, 12):
+        colors[index] = (255, 0, 0)
+    content = SketchContent(
+        motion=0x09,
+        speed=0x28,
+        brightness=0x32,
+        background=(255, 255, 255),
+        colors=tuple(colors),
+    )
+    frames = proto.build_sketch(content, segment_count=15)
+    assert frames == [
+        H("a300010203092832ffffff0108ff0000000102ba"),  # 01 <count 2> 03 ... first 17 payload bytes
+        H("a3ff08090a0b0c00000000000000000000000050"),  # 0xFF frame carrying REAL data, not empty
+        H("33050a200300000000000000000000000000001f"),  # activation is unchanged by body length
+    ]
+    for frame in frames:
+        _valid(frame)
+
+
 def test_build_sketch_matches_catalogue():
     # CAT §2.4: Clockwise, background blue, one green group over segments 0,1,2,4 (0-based).
     content = SketchContent(
@@ -317,8 +388,11 @@ def test_build_sketch_matches_catalogue():
     )
     body = H("0933640000ff010400ff0000010204")  # EFFECT SPEED BRIGHT <bg> <groups> <segcount fill segidx...>
     frames = proto.build_sketch(content, segment_count=15)
-    # Composition through the shared fragmenter: terminated A3 stream then slot/type activation.
-    assert frames == [*proto.build_a3_multi(0x03, body, terminator=True), proto.build_diy_activate(0x20, 0x03)]
+    # Composition through the shared fragmenter, in the form the app actually sends. This body
+    # spans two chunks, so the framing is not free here: asserting the terminated form was an
+    # assumption rather than evidence, and it stood until a two-chunk sketch was captured on
+    # 2026-07-31. A composition test cannot pin wire behaviour; the live vectors above do that.
+    assert frames == [*proto.build_a3_multi(0x03, body), proto.build_diy_activate(0x20, 0x03)]
     assert frames[-1] == H("33050a200300000000000000000000000000001f")  # activation 33 05 0a 20 03
     for frame in frames:
         _valid(frame)
@@ -437,7 +511,7 @@ def test_constants():
     assert proto.BRIGHTNESS_QUERY == H("AA040000000000000000000000000000000000AE")
     assert proto.COLOR_MODE_QUERY == H("AA050000000000000000000000000000000000AF")
     assert proto.FW_QUERY == H("AA060000000000000000000000000000000000AC")
-    assert proto.HW_QUERY == H("AA070000000000000000000000000000000000AD")
+    assert proto.HW_QUERY == H("AA070300000000000000000000000000000000AE")
     assert proto.KEEP_ALIVE == proto.STATE_QUERY
     assert (proto.COMMAND_HEADER, proto.STATUS_HEADER) == (0x33, 0xAA)
     assert (proto.POWER_PACKET_TYPE, proto.BRIGHTNESS_PACKET_TYPE, proto.COLOR_PACKET_TYPE) == (0x01, 0x04, 0x05)
@@ -451,17 +525,20 @@ def test_constants():
 
 
 def test_firmware_hardware_version_decode():
-    # H617A §4 + VAL live capture: aa 06 fw reply "3.02.24", aa 07 hw reply "3.01.01" (ASCII, NUL-padded).
+    # H617A/H6199 current-app handshakes return ASCII, NUL-padded versions.
     fw_reply = H("aa06332e30322e3234000000000000000000009b")
-    hw_reply = H("aa07332e30312e3031000000000000000000009e")
+    hw_reply = H("aa0703332e30312e30310000000000000000009d")
+    h6199_hw_reply = H("aa0703332e30322e30310000000000000000009e")
     fw_domain, fw_payload = proto.split_status_frame(fw_reply)
     hw_domain, hw_payload = proto.split_status_frame(hw_reply)
     assert (fw_domain, hw_domain) == (0x06, 0x07)
     assert proto.parse_fw_version(fw_payload) == "3.02.24"
     assert proto.parse_hw_version(hw_payload) == "3.01.01"
+    assert proto.parse_hw_version(proto.split_status_frame(h6199_hw_reply)[1]) == "3.02.01"
     # NUL padding is trimmed; an empty payload decodes to None.
     assert proto.parse_fw_version(b"3.02.24\x00\x00") == "3.02.24"
     assert proto.parse_hw_version(b"") is None
+    assert proto.parse_hw_version(b"\x02" + b"3.01.01") is None
 
 
 def test_video_mode():
@@ -520,11 +597,11 @@ def test_music_mode():
     chk(0x03, dict(sensitivity=50, calm=True, color=(128, 64, 32)), slice(5, 10), (0x01, 0x01, 128, 64, 32))
 
 
-def test_music_mode_byte5_per_mode():
-    # byte5 is per-mode: Rhythm carries Dynamic/Calm, Spectrum/Rolling carry auto-colour.
-    # Rhythm frames are the captured references from docs/ble-protocol-h617a.md ("Music mode layout",
-    # verified sub-command 0x13): `13 03 63 00 00` (Dynamic) and `13 03 63 01 01 0000ff` (Calm, blue).
-    # Spectrum/Rolling byte5 = auto-colour (1 = device auto-colours, 0 = use supplied colour) per the
+def test_music_mode_style_count_per_mode():
+    # byte5 = STYLE (Dynamic 0 / Calm 1); byte6 = COUNT (0 = auto-colour on, 1 + RGB = manual colour).
+    # Rhythm frames are the captured references (music mode-set 33 05 13, see
+    # tools/ble/kaitai/music_body.ksy): `13 03 63 00 00` (Dynamic) and `13 03 63 01 01 0000ff` (Calm, blue).
+    # Spectrum/Rolling send STYLE 0 and choose colour via COUNT (auto-colour = COUNT 0), per the
     # 2026-07-08 live music-mode notes.
     bm = proto.build_music_mode_with_color
     # Rhythm 0x03 — byte5 = Dynamic(0) / Calm(1)
@@ -545,6 +622,18 @@ def test_music_mode_byte5_per_mode():
 # the a3 fragments (dropping each frame's `a3 <idx>` prefix and trailing XOR) must reproduce it. Each
 # (mode, overrides) pins a captured A/B/A transition — the same transitions that pinned the offsets.
 _MUSIC_PARAM_FRAMES: dict[tuple[int, tuple[tuple[int, int], ...]], str] = {
+    # Bloom 0x30: current iOS Dynamic / Calm A/B/A.
+    (0x30, ()): "0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000",
+    (
+        0x30,
+        ((27, 0x14),),
+    ): "0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a14000000000000",
+    # Shiny 0x31: current iOS Dynamic / Calm A/B/A.
+    (0x31, ()): "0102413105ff0000ff7f00ffff0000ff000000ff05640a0000000000000000000000",
+    (
+        0x31,
+        ((20, 0x14), (21, 0x46)),
+    ): "0102413105ff0000ff7f00ffff0000ff000000ff14460a0000000000000000000000",
     # Separation 0x32: report music-p-gradient (build{}) / music-p-seppoint ([20]=5).
     (0x32, ()): "0102413205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000",
     (0x32, ((20, 0x05),)): "0102413205ff7f00ff0000ffff000000ff00ff0005015e0000000000000000000000",
@@ -557,8 +646,16 @@ _MUSIC_PARAM_FRAMES: dict[tuple[int, tuple[tuple[int, int], ...]], str] = {
     ),
     # Piano 0x34: report music-p-keys (key count 15).
     (0x34, ()): "0102413407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000",
-    # Fountain 0x35: report music-p-direction (clockwise).
-    (0x35, ()): "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0201055000000000",
+    # Fountain 0x35: current Clockwise, Two-way and retained Counterclockwise captures.
+    (0x35, ()): "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0001055000000000",
+    (
+        0x35,
+        ((26, 0x01), (28, 0x03)),
+    ): "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0101035000000000",
+    (
+        0x35,
+        ((26, 0x02), (28, 0x05)),
+    ): "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0201055000000000",
     # Day & Night 0x37: pcap baseline (build{}), report music-p-segments ([26]=7) / music-p-speed ([27]=0x32).
     (0x37, ()): "0102413707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010a000000000000",
     (0x37, ((26, 0x07),)): "0102413707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff070a000000000000",
@@ -579,7 +676,19 @@ def test_build_music_params_a3_reproduces_captured_bodies():
 
 def test_build_music_params_a3_flips_only_its_offset():
     # Overwriting one decoded offset changes exactly that byte; the rest of the captured body is verbatim.
-    cases = ((0x32, 20, 5), (0x32, 21, 0), (0x33, 29, 0), (0x34, 27, 8), (0x35, 28, 3), (0x37, 26, 7), (0x37, 27, 50))
+    cases = (
+        (0x30, 27, 0x14),
+        (0x31, 20, 0x14),
+        (0x31, 21, 0x46),
+        (0x32, 20, 5),
+        (0x32, 21, 0),
+        (0x33, 29, 0),
+        (0x34, 27, 8),
+        (0x35, 26, 1),
+        (0x35, 28, 3),
+        (0x37, 26, 7),
+        (0x37, 27, 50),
+    )
     for mode, offset, value in cases:
         base = _assemble_a3(proto.build_music_params_a3(mode, {}))
         changed = _assemble_a3(proto.build_music_params_a3(mode, {offset: value}))
@@ -587,10 +696,11 @@ def test_build_music_params_a3_flips_only_its_offset():
         assert changed[offset] == value
 
 
-def test_build_music_params_a3_never_writes_volatile_bytes():
-    for mode, offset in ((0x32, 22), (0x34, 30), (0x35, 26)):
-        with pytest.raises(ValueError, match="volatile"):
-            proto.build_music_params_a3(mode, {offset: 0x01})
+def test_build_music_params_a3_writes_derived_offsets():
+    # Separation [22] and Piano [30] are derived bytes the coordinator synthesises; the builder
+    # overlays them like any other offset (they are no longer replayed verbatim).
+    assert _assemble_a3(proto.build_music_params_a3(0x32, {22: 0x61}))[22] == 0x61
+    assert _assemble_a3(proto.build_music_params_a3(0x34, {30: 0x04}))[30] == 0x04
 
 
 def test_build_music_params_a3_palette_guard_and_overlay():
@@ -625,6 +735,14 @@ def test_parse():
     assert proto.parse_color_mode_response(bytes([0x15, 0x02, 50])).white_brightness == 50
     with pytest.raises(ValueError):
         proto.parse_color_mode_response(b"")
+
+
+def test_parse_direct_diy_slot_readback():
+    domain, payload = proto.split_status_frame(H("aa050af000000000000000000000000000000055"))
+    parsed = proto.parse_color_mode_response(payload)
+    assert domain == 0x05
+    assert parsed.mode is proto.ParsedMode.DIY
+    assert parsed.diy_slot == proto.AUTHORED_DIY_SLOT
 
 
 def test_parse_music_calm_only_for_rhythm():

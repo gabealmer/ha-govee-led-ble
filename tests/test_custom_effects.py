@@ -1,11 +1,14 @@
 """Unit tests for the pure custom-effect content model, validators and JSON codec."""
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 import custom_components.ha_govee_led_ble.custom_effects as ce
 from custom_components.ha_govee_led_ble.custom_effects import (
+    _COMBO_FAMILY_VARIANTS,
     _CONTENT_TYPES,
     _FLAT_FAMILY_VARIANTS,
     ComboContent,
@@ -62,7 +65,6 @@ _VALID = [
     FlatContent(family=0x00, variant=0x00, palette=((255, 0, 0),) * 8),
     FlatContent(family=0x0A, variant=0x00, palette=((1, 2, 3),) * 3),
     ComboContent(effects=((0x00, 0x00), (0x03, 0x03), (0x08, 0x09), (0x09, 0x0A)), palette=((9, 9, 9),) * 8),
-    ComboContent(),
 ]
 
 
@@ -77,6 +79,8 @@ def test_validate_accepts_valid(content):
 _INVALID = [
     (SegmentContent(colors=((1, 1, 1),) * (SEG + 1)), "too_many_segments"),
     (SegmentContent(colors=((300, 0, 0),)), "bad_rgb"),
+    (SegmentContent(brightness=(50,) * (SEG + 1)), "too_many_segment_brightness"),
+    (SegmentContent(brightness=(101,)), "segment_brightness_range"),
     (VibrantContent(stops=((0, 0, 0),)), "vibrant_stops_range"),
     (VibrantContent(stops=((0, 0, 0),) * 6), "vibrant_stops_range"),
     (VibrantContent(stops=((0, 0, 0), (256, 0, 0))), "vibrant_bad_rgb"),
@@ -87,13 +91,21 @@ _INVALID = [
     (SketchContent(speed=101), "sketch_speed_range"),
     (SketchContent(brightness=101), "sketch_brightness_range"),
     (FlatContent(family=0x00, variant=0x05), "flat_family_variant_invalid"),
+    (FlatContent(family=0x00, variant=0x00, speed=101), "flat_speed_range"),
     (FlatContent(family=0x00, variant=0x00, palette=((1, 1, 1),) * 9), "palette_too_large"),
     (FlatContent(family=0x0A, variant=0x00, palette=((1, 1, 1),) * 4), "palette_too_large"),
     (FlatContent(family=0x00, variant=0x00, palette=((300, 0, 0),)), "flat_bad_rgb"),
+    (ComboContent(palette=((1, 1, 1),)), "combo_empty"),
+    (ComboContent(effects=((0x00, 0x00),)), "combo_palette_empty"),
     (ComboContent(effects=((0x00, 0x00),) * 5), "combo_too_many"),
-    (ComboContent(effects=((0x00, 0x00), (0x00, 0x05))), "combo_family_variant_invalid"),
-    (ComboContent(palette=((1, 1, 1),) * 9), "palette_too_large"),
-    (ComboContent(palette=((300, 0, 0),)), "combo_bad_rgb"),
+    (ComboContent(variant=1, effects=((0x00, 0x00),), palette=((1, 1, 1),)), "combo_variant_invalid"),
+    (ComboContent(speed=101, effects=((0x00, 0x00),), palette=((1, 1, 1),)), "combo_speed_range"),
+    (
+        ComboContent(effects=((0x00, 0x00), (0x04, 0x06)), palette=((1, 1, 1),)),
+        "combo_family_variant_invalid",
+    ),
+    (ComboContent(effects=((0x00, 0x00),), palette=((1, 1, 1),) * 9), "palette_too_large"),
+    (ComboContent(effects=((0x00, 0x00),), palette=((300, 0, 0),)), "combo_bad_rgb"),
 ]
 
 
@@ -117,6 +129,21 @@ def test_flat_family_variants_cover_catalogue():
     assert (0x01, 0x01) not in _FLAT_FAMILY_VARIANTS  # Jumping variant gap
 
 
+def test_combo_family_variants_match_current_ios_picker():
+    assert len(_COMBO_FAMILY_VARIANTS) == 15
+    assert (0x09, 0x0A) in _COMBO_FAMILY_VARIANTS
+    assert (0x04, 0x06) not in _COMBO_FAMILY_VARIANTS
+    assert (0x0A, 0x00) not in _COMBO_FAMILY_VARIANTS
+
+
+def test_frontend_flat_catalogue_matches_backend():
+    path = Path(__file__).parents[1] / "frontend" / "src" / "flat-catalogue.json"
+    catalogue = json.loads(path.read_text())
+    frontend_pairs = {(family["family"], variant["variant"]) for family in catalogue for variant in family["variants"]}
+    assert frontend_pairs == _FLAT_FAMILY_VARIANTS
+    assert {family["family"]: family["palette_max"] for family in catalogue}[0x0A] == 3
+
+
 # --------------------------------------------------------------------------- #
 # JSON codec - round-trips every kind
 # --------------------------------------------------------------------------- #
@@ -126,7 +153,7 @@ _ROUNDTRIP = [
     SketchContent(motion=0x09, speed=0x33, brightness=0x64, background=(0, 0, 255), colors=((0, 255, 0), None)),
     VibrantContent(stops=((10, 20, 30), (40, 50, 60), (70, 80, 90))),
     FlatContent(family=0x03, variant=0x04, speed=0x2A, palette=((1, 2, 3), (4, 5, 6))),
-    ComboContent(variant=0x01, speed=0x20, palette=((7, 8, 9),), effects=((0x00, 0x00), (0x03, 0x03))),
+    ComboContent(variant=0x00, speed=0x20, palette=((7, 8, 9),), effects=((0x00, 0x00), (0x03, 0x03))),
 ]
 
 

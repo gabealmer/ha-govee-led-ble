@@ -18,7 +18,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
     LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
@@ -27,6 +27,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN, MUSIC_MODES
 from .coordinator import GoveeBLECoordinator
+from .custom_effects import SegmentContent
 from .entity import GoveeBLEEntity
 from .light_services import (
     MUSIC_MODE_ALIASES,
@@ -36,6 +37,8 @@ from .light_services import MUSIC_MODE_IDS as MUSIC_MODE_IDS
 from .light_services import apply_active_music_mode as apply_active_music_mode
 from .light_services import apply_active_video_mode as apply_active_video_mode
 from .protocol import (
+    AUTHORED_DIY_SLOT,
+    ParsedMode,
     build_brightness,
     build_color_rgb,
     build_color_temp,
@@ -87,9 +90,10 @@ def _coerce_segment_colors(raw: Any, count: int) -> list[tuple[int, int, int]] |
 
 
 _STATE_FIELDS = (
-    "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation segment_colors "
-    "video_full_screen video_sound_effects video_sound_effects_softness white_brightness music_sensitivity "
-    "music_calm music_color active_custom_id music_mode video_mode"
+    "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation "
+    "segment_colors video_full_screen video_sound_effects video_sound_effects_softness "
+    "white_brightness music_sensitivity "
+    "music_calm music_color active_custom_id diy_slot music_mode video_mode"
 ).split()
 
 
@@ -101,6 +105,7 @@ async def async_setup_entry(
     async_add_entities([GoveeBLELight(config_entry.runtime_data)])
     p = entity_platform.async_get_current_platform()
     _pct = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
+    _sound_softness = vol.All(vol.Coerce(int), vol.Range(min=1, max=100))
     _segment = vol.All(vol.Coerce(int), vol.Range(min=1, max=15))
     _rgb = vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple))
     # fmt: off
@@ -110,7 +115,7 @@ async def async_setup_entry(
         vol.Optional("capture_region"): vol.In(["full", "part"]),
         vol.Optional("full_screen", default=True): cv.boolean,
         vol.Optional("sound_effects", default=False): cv.boolean,
-        vol.Optional("sound_effects_softness", default=0): _pct,
+        vol.Optional("sound_effects_softness"): _sound_softness,
     }, "async_set_video_mode")
     p.async_register_entity_service("set_music_mode", {
         vol.Required("mode"): vol.In([*MUSIC_MODE_IDS, *MUSIC_MODE_ALIASES]),
@@ -149,6 +154,14 @@ async def async_setup_entry(
         vol.Optional("from_name"): cv.string,
         vol.Required("to"): cv.string,
     }, "async_rename_effect")
+    p.async_register_entity_service("update_effect", {
+        vol.Required("id"): cv.string,
+        vol.Optional("name"): cv.string,
+        vol.Optional("content"): dict,
+    }, "async_update_effect")
+    p.async_register_entity_service("export_effect", {
+        vol.Required("id"): cv.string,
+    }, "async_export_effect", supports_response=SupportsResponse.ONLY)
     # fmt: on
 
 
@@ -207,13 +220,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     def effect_list(self) -> list[str]:
         p = self.coordinator.profile
         scenes = get_scene_names() if p.scene_source == "api" else []
-        music = list(_MUSIC_EFFECTS) if p.supports_music_mode else []
+        music = [label for label, slug in _MUSIC_EFFECTS.items() if slug in p.music_modes]
         video = list(_VIDEO_EFFECTS) if p.supports_video_mode else []
         return [*scenes, *self.coordinator.custom_effect_display_names(), *music, *video]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        attrs: dict[str, Any] = {"custom_effects": self.coordinator.custom_effect_index()}
+        attrs: dict[str, Any] = {
+            "custom_effects": self.coordinator.custom_effect_index(),
+            "custom_effect_kinds": sorted(self.coordinator.profile.custom_effect_kinds),
+        }
+        if quarantined := self.coordinator.quarantined_custom_effect_index():
+            attrs["quarantined_custom_effects"] = quarantined
         if self.coordinator.profile.supports_segments:
             attrs["segment_colors"] = [list(color) for color in self.coordinator.segment_colors]
         return attrs
@@ -232,14 +250,23 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             or coordinator.video_mode != "off"
         ):
             return
+        if coordinator.diy_slot is not None and coordinator.diy_slot != AUTHORED_DIY_SLOT:
+            return
+        if coordinator.color_mode in (ParsedMode.SCENE, ParsedMode.MUSIC, ParsedMode.VIDEO, ParsedMode.UNKNOWN):
+            return
         if (last_state := await self.async_get_last_state()) is None:
             return
         if not (restored := last_state.attributes.get(ATTR_EFFECT)):
             return
         key = _normalize_effect_name(str(restored))
-        if (effect := coordinator.resolve_custom(key)) is not None:
-            coordinator.active_custom_id, coordinator.effect = effect.id, effect.display_name
-        elif key in SCENES:
+        if (effect := coordinator.resolve_custom(key)) is not None and coordinator.is_custom_effect_supported(effect):
+            if (
+                coordinator.color_mode is None
+                or coordinator.color_mode is ParsedMode.COLOUR
+                and isinstance(effect.content, SegmentContent)
+            ):
+                coordinator.active_custom_id, coordinator.effect = effect.id, effect.display_name
+        elif coordinator.color_mode is None and key in SCENES:
             coordinator.effect = key
 
     async def _async_restore_segments(self) -> None:
@@ -322,18 +349,35 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         scene = SCENES.get(key)
         if scene is not None:
-            for packet in build_scene_multi(scene.param, scene.code, scene.scene_type):
+            for packet in build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed):
                 await coordinator.send_command(packet)
             coordinator.effect, coordinator.active_custom_id = key, None
+            coordinator.diy_slot = None
+            coordinator._owned_diy_effect_id = None
             coordinator.music_mode = coordinator.video_mode = "off"
             return
         if coordinator.profile.supports_video_mode:
             mode = next((m for label, m in _VIDEO_EFFECTS.items() if _normalize_effect_name(label) == key), None)
             if mode is not None:
-                await self.async_set_video_mode(mode=mode)
+                await self.async_set_video_mode(
+                    mode=mode,
+                    saturation=coordinator.video_saturation,
+                    full_screen=coordinator.video_full_screen,
+                    sound_effects=(
+                        coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects
+                    ),
+                    sound_effects_softness=coordinator.video_sound_effects_softness,
+                )
                 return
         if coordinator.profile.supports_music_mode:
-            slug = next((s for label, s in _MUSIC_EFFECTS.items() if _normalize_effect_name(label) == key), None)
+            slug = next(
+                (
+                    candidate
+                    for label, candidate in _MUSIC_EFFECTS.items()
+                    if _normalize_effect_name(label) == key and candidate in coordinator.profile.music_modes
+                ),
+                None,
+            )
             if slug is not None:
                 await coordinator.async_select_music_slug(slug)
                 return

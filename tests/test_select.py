@@ -26,8 +26,15 @@ async def test_reapplies(mock_h6199_coordinator):
     c.video_mode = "movie"
     await E(c).async_select_option("part")
     assert c.video_full_screen is False
+    assert c.video_sound_effects is True
     c.send_command.assert_any_call(
-        bv(full_screen=False, game_mode=False, saturation=70, sound_effects=True, sound_effects_softness=40)
+        bv(
+            full_screen=False,
+            game_mode=False,
+            saturation=70,
+            sound_effects=True,
+            sound_effects_softness=40,
+        )
     )
 
 

@@ -18,7 +18,7 @@ from .custom_effects import (
     SketchContent,
     VibrantContent,
 )
-from .scenes import SCENES
+from .scenes import SCENES, SceneSpeed
 
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
@@ -36,7 +36,15 @@ COLOR_MODE_VIDEO = 0x00
 COLOR_MODE_MUSIC = 0x13
 COLOR_MODE_STATIC = 0x15
 COLOR_MODE_DIY = 0x0A
-DEFAULT_DIY_SLOT = 0xF0
+# The DIY slot is an app-assigned per-entry id echoed back by aa 05 0a, not an addressing scheme we
+# own; see govee_common::diy_selector. Only two values are genuinely reserved, and both are fixed by
+# the editor SURFACE rather than by any entry: Finger Sketch always 0x20, Colour > Vibrant always
+# 0x84. 0xF0 is NOT reserved - the spec records it as the id of one saved user DIY on the capture
+# account, alongside 0x17, 0x32, 0x98 and 0xBE. We must still name a slot when activating content we
+# author ourselves, so we reuse that observed id and accept that the vendor app may label our effect
+# with whatever entry holds it. Named for what it is rather than "default", which invited the reading
+# that it was a safe scratch value.
+AUTHORED_DIY_SLOT = 0xF0
 SKETCH_DIY_SLOT = 0x20
 VIBRANT_DIY_SLOT = 0x84
 
@@ -45,6 +53,10 @@ MUSIC_SLUG_BY_ID: dict[int, str] = {code: slug for slug, code in MUSIC_MODE_SLUG
 RHYTHM_MODE_ID = MUSIC_MODE_SLUGS["rhythm"]
 SCENE_EFFECT_BY_ID: dict[int, str] = {scene.code: name for name, scene in SCENES.items()}
 MULTI_PACKET_PREFIX = 0xA3
+# Movement speed bytes sit 5 and 2 from the end of a scene body record (scene_body.ksy):
+# selected_area_movement.speed (catalogue "moveIn") and overall_movement.speed ("moveAll").
+MOVE_IN_OFFSET = -5
+MOVE_ALL_OFFSET = -2
 
 
 def _clamp(value: int, minimum: int, maximum: int) -> int:
@@ -177,13 +189,18 @@ def build_a3_multi(type_byte: int, body: bytes, *, terminator: bool = False) -> 
     Frames ``[0x01, linecount, type_byte, *body]`` into 17-byte chunks, each emitted as a
     20-byte ``0xA3 <index|0xFF>`` frame with an XOR checksum. Shared by scenes, music params and
     custom effects so there is a single fragmenter and a single XOR path. With ``terminator`` the
-    data chunks keep sequential indices and an extra empty ``0xFF`` frame closes the sequence, the
-    form the Govee app uses for Finger Sketch (``TYPE 0x03``).
+    data chunks keep sequential indices and an extra empty ``0xFF`` frame closes the sequence.
 
     The app never emits a lone frame: a body that fits in a single chunk is still sent as a
     numbered data frame followed by an empty ``0xFF`` terminator, so every sequence carries at
     least two frames. This is the form flat DIY (``TYPE 0x04``) uses for one- to three-colour
     palettes.
+
+    That single-chunk rule makes ``terminator`` UNFALSIFIABLE on a one-chunk body, because
+    ``chunk_count == 1`` forces the terminator either way. Finger Sketch was pinned that way and
+    the flag was wrong: a two-chunk sketch captured on 2026-07-31 showed the app using the
+    non-terminator form, with real data in the ``0xFF`` frame. Validate this flag only against a
+    body that spans at least two chunks.
     """
     data = bytes([type_byte]) + body
     chunk_count = math.ceil((len(data) + 2) / 17)
@@ -199,10 +216,73 @@ def build_a3_multi(type_byte: int, body: bytes, *, terminator: bool = False) -> 
     return packets
 
 
-def build_scene_multi(scene_param_b64: str, scene_code: int, scene_type: int = 2) -> list[bytes]:
+def scene_record_spans(payload: bytes) -> list[tuple[int, int]]:
+    """Return the ``(start, stop)`` slice of every record in a type-2 scene body payload.
+
+    The payload is ``<record_count> [<record_len> <record_data>]...`` (scene_body.ksy). A record
+    is addressed by the catalogue config entry's explicit ``page`` number, never by that entry's
+    position in the config array.
+    """
+    spans: list[tuple[int, int]] = []
+    cursor = 1
+    while cursor < len(payload):
+        start = cursor + 1
+        stop = start + payload[cursor]
+        if stop > len(payload):
+            break
+        spans.append((start, stop))
+        cursor = stop
+    return spans
+
+
+def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int) -> bytes:
+    """Write Speed position ``index`` into a scene payload's two movement speed bytes per page.
+
+    Only type-2 bodies are record containers, so only they carry a ``SceneSpeed`` at all; the
+    generator refuses to emit one for any other body.
+
+    The catalogue option list is authoritative over the stored param byte: Glacier 2175 ships
+    0xff at both of its ``move_in`` offsets where its own list says 250, and the app rewrites
+    them from the list on apply, so uploading the param verbatim runs the scene at the wrong
+    speed (scene_body.ksy, confirmed live 2026-07-26). For every other page the default position
+    reproduces the stored byte exactly, so this is a no-op there.
+    """
+    spans = scene_record_spans(payload)
+    patched = bytearray(payload)
+    for page in speed.pages:
+        if not 0 <= page.page < len(spans):
+            continue
+        start, stop = spans[page.page]
+        for options, offset in ((page.move_in, MOVE_IN_OFFSET), (page.move_all, MOVE_ALL_OFFSET)):
+            position = stop + offset
+            if not options or position < start:
+                continue
+            patched[position] = options[_clamp(index, 0, len(options) - 1)]
+    return bytes(patched)
+
+
+def build_scene_multi(
+    scene_param_b64: str,
+    scene_code: int,
+    scene_type: int = 2,
+    speed: SceneSpeed | None = None,
+    speed_index: int | None = None,
+) -> list[bytes]:
     if not scene_param_b64:
         return [build_scene(scene_code)]
-    return [*build_a3_multi(scene_type, base64.b64decode(scene_param_b64)), build_scene(scene_code)]
+    payload = base64.b64decode(scene_param_b64)
+    if speed is not None:
+        payload = apply_scene_speed(payload, speed, speed.default_index if speed_index is None else speed_index)
+    return [*build_a3_multi(scene_type, payload), build_scene(scene_code)]
+
+
+def build_h6199_scene(scene_param_b64: str, scene_code: int, scene_type: int = 2) -> list[bytes]:
+    """Build the H6199 scene body and its model-specific three-byte activation."""
+    activation_type = scene_type if scene_param_b64 else 0x01
+    activation = build_packet(0x33, 0x05, [0x04, *scene_code.to_bytes(2, "little"), activation_type])
+    if not scene_param_b64:
+        return [activation]
+    return [*build_a3_multi(scene_type, base64.b64decode(scene_param_b64)), activation]
 
 
 # --- Custom-effect content encoders (§3.3) -----------------------------------------------------
@@ -257,13 +337,17 @@ def build_segment_content(content: SegmentContent, *, segment_count: int) -> lis
 
 
 def build_sketch(content: SketchContent, *, segment_count: int) -> list[bytes]:
-    # VALIDATED: Finger Sketch live H617A 3.02.24 (2026-07-16); body + 2-frame A3 + 33 05 0a 20 03.
+    # VALIDATED: Finger Sketch live H617A 3.02.24 (2026-07-16) and app 7.2.10 (2026-07-31).
+    # The 2026-07-31 capture is the one that pins the framing: its body needs TWO chunks, and
+    # only a two-chunk body can tell the two A3 forms apart. The 2026-07-16 body fitted in one,
+    # where build_a3_multi forces a terminator whatever the flag says, so `terminator=True`
+    # rode along unfalsifiable and wrong for every larger sketch.
     body = bytes([content.motion, content.speed, content.brightness, *content.background])
     groups = _group_by_colour_0based(content.colors)
     body += bytes([len(groups)])
     for rgb, indices in groups:
         body += bytes([len(indices), *rgb, *indices])
-    return [*build_a3_multi(0x03, body, terminator=True), build_diy_activate(SKETCH_DIY_SLOT, 0x03)]
+    return [*build_a3_multi(0x03, body), build_diy_activate(SKETCH_DIY_SLOT, 0x03)]
 
 
 _VIBRANT_GAMMA = 2.2  # Vibrant interpolates each channel in gamma-2.2 linear light (measured 2026-07-20)
@@ -312,10 +396,10 @@ def build_flat_diy(content: FlatContent) -> list[bytes]:
     # VALIDATED: flat DIY live H617A 3.02.24; TYPE 0x04 body + 33 05 0a <slot>, two-frame envelope.
     palette = b"".join(bytes(colour) for colour in content.palette)
     body = bytes([content.family, content.variant, content.speed, len(palette)]) + palette
-    return [*build_a3_multi(0x04, body), build_diy_activate(DEFAULT_DIY_SLOT)]
+    return [*build_a3_multi(0x04, body), build_diy_activate(AUTHORED_DIY_SLOT)]
 
 
-def build_combo(content: ComboContent, *, slot: int = DEFAULT_DIY_SLOT) -> list[bytes]:
+def build_combo(content: ComboContent, *, slot: int = AUTHORED_DIY_SLOT) -> list[bytes]:
     palette = b"".join(bytes(colour) for colour in content.palette)
     sequence = b"".join(bytes([family, variant]) for family, variant in content.effects)
     body = bytes([0xFF, content.variant, content.speed, len(palette)]) + palette + bytes([len(sequence)]) + sequence
@@ -343,7 +427,7 @@ STATE_QUERY = build_packet(STATUS_HEADER, POWER_PACKET_TYPE, [])
 BRIGHTNESS_QUERY = build_packet(STATUS_HEADER, BRIGHTNESS_PACKET_TYPE, [])
 COLOR_MODE_QUERY = build_packet(STATUS_HEADER, COLOR_PACKET_TYPE, [])
 FW_QUERY = build_packet(STATUS_HEADER, FIRMWARE_PACKET_TYPE, [])
-HW_QUERY = build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [])
+HW_QUERY = build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [0x03])
 KEEP_ALIVE = STATE_QUERY
 
 
@@ -370,7 +454,8 @@ def build_video_mode(
 def build_video_white_balance(red: int, blue: int) -> bytes:
     """Build the H6199 raw two-axis DreamView white-balance frame ``33 a9 00 03 01 <red> <blue>``.
 
-    Red and blue are independent axes (live H6199 2026-07-20), not a single coupled slider.
+    Red and blue are independent axes, not a single coupled slider: app-sniffed 2026-07-12 and
+    confirmed live on an H6199 2026-07-20. The mapping onto the app's UI control is unproven.
     """
     return build_packet(0x33, 0xA9, [0x00, 0x03, 0x01, _clamp(red, 0, 255), _clamp(blue, 0, 255)])
 
@@ -390,35 +475,34 @@ def build_music_mode_with_color(
 
 # --- Music per-mode movement parameters (§2.3, EXPERIMENTAL, capture-pinned) -------------------
 # H617A movement params ride the MultipleController4Music command 0x41 body, fragmented over a3
-# (H617A §6, docs/ble-protocol-h617a.md lines 217-234). Assembled body =
+# (H617A §6, see tools/ble/kaitai/music_body.ksy). Assembled body =
 # `01 <fragCount> 41 <MODE> <count> <RGB x count> <mode-specific tail>`; a3 offsets are absolute
 # from the assembled byte 0, so the body-local index is `offset - 3`. Every template byte below is
-# replayed byte-exact from validate-20260709-122350.pcap + validation-report-20260709-123428.json;
-# volatile animation bytes (Separation[22], Piano[30], Fountain[26]) are never synthesised. Locked
-# by the byte-exact A/B/A decode test in tests/test_protocol.py.
+# replayed byte-exact from the 2026-07-09 validation run and current iOS 7.5.21 captures. Separation[22]
+# and Piano[30] are derived bytes synthesised by the coordinator from their controlling param
+# (gradient / key count), overlaid like any other override. Locked by byte-exact A/B/A decode
+# tests in tests/test_protocol.py.
 _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
+    # Bloom 0x30: current iOS Dynamic baseline; [27]=style companion (Dynamic 0x50 / Calm 0x14).
+    0x30: bytes.fromhex("3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000"),
+    # Shiny 0x31: current iOS Dynamic baseline; [20:22]=style companion (05 64 / 14 46).
+    0x31: bytes.fromhex("3105ff0000ff7f00ffff0000ff000000ff05640a0000000000000000000000"),
     # Separation 0x32: report step music-p-gradient (= pcap idx5); [20]=seppoint 1, [21]=gradient on.
     0x32: bytes.fromhex("3205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000"),
     # Hopping 0x33 (3-frag): report step music-p-relbright (= pcap idx16); [29]=relative brightness 50.
     0x33: bytes.fromhex(
         "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ffff000032620103020600000000000000000000000000000000"
     ),
-    # Piano Keys 0x34: report step music-p-keys (= pcap idx20); [27]=key count 15, [30]=volatile.
+    # Piano Keys 0x34: report step music-p-keys (= pcap idx20); [27]=key count 15, [30]=derived floor(count/2).
     0x34: bytes.fromhex("3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000"),
-    # Fountain 0x35: report step music-p-direction (= pcap idx24); [28]=direction clockwise, [26]=volatile.
-    0x35: bytes.fromhex("3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0201055000000000"),
+    # Fountain 0x35: current iOS Clockwise baseline; direction is the pair [26,28].
+    0x35: bytes.fromhex("3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0001055000000000"),
     # Day & Night 0x37: pcap baseline idx27/29; [26]=segments 1, [27]=speed 10 (reproduces both A/B frames).
     0x37: bytes.fromhex("3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010a000000000000"),
 }
 # mode -> captured palette colour count (body-local byte 1); guards palette overrides so the
 # `<RGB x count>` region can never shift the downstream param offsets.
 _MUSIC_PARAM_COUNT: dict[int, int] = {mode: body[1] for mode, body in _MUSIC_PARAM_TEMPLATE.items()}
-# Absolute a3 offsets that carry volatile animation state: replayed verbatim, never written (VAL "CAVEAT").
-_VOLATILE_OFFSETS: dict[int, frozenset[int]] = {
-    0x32: frozenset({22}),
-    0x34: frozenset({30}),
-    0x35: frozenset({26}),
-}
 _MUSIC_PARAM_BASE = 3  # assembled-body base: template byte 0 is the MODE byte at assembled index 3.
 
 
@@ -430,31 +514,29 @@ def build_music_params_a3(
     """Build the H617A per-mode music movement frame (command 0x41, fragmented over a3).
 
     Replays the capture-pinned template for ``mode`` verbatim, overlaying only the decoded param
-    offsets in ``overrides`` (a3-absolute). Volatile animation bytes are never written, and a
-    palette whose length differs from the captured count is rejected so the ``<RGB x count>`` region
-    cannot shift the downstream offsets.
+    offsets in ``overrides`` (a3-absolute; the coordinator supplies both the user-facing params and
+    the derived companion/half bytes). A palette whose length differs from the captured count is
+    rejected so the ``<RGB x count>`` region cannot shift the downstream offsets.
     """
     # EXPERIMENTAL: harness=music-params encoding=capture-pinned
-    # source: validate-20260709-122350.pcap + validation-report-20260709-123428.json (§2.3).
+    # source: validate-20260709-122350.pcap + validation-report-20260709-123428.json; layout H617A §3.
     body = bytearray(_MUSIC_PARAM_TEMPLATE[mode])
     if palette is not None:
         if len(palette) != _MUSIC_PARAM_COUNT[mode]:
             raise EffectValidationError("palette_count_mismatch")
         body[2 : 2 + 3 * len(palette)] = bytes(channel for rgb in palette for channel in rgb)
-    volatile = _VOLATILE_OFFSETS.get(mode, frozenset())
     for offset, value in overrides.items():
-        if offset in volatile:
-            raise ValueError("volatile byte; never write")
         body[offset - _MUSIC_PARAM_BASE] = _clamp(value, 0, 255)
     return build_a3_multi(0x41, bytes(body))
 
 
 class ParsedMode(Enum):
-    """Operating mode a colour-mode reply decodes to; music and video live outside ``effect``."""
+    """Operating mode from a colour-mode reply; DIY carries a slot, music and video their own state."""
 
     UNKNOWN = auto()
     COLOUR = auto()
     SCENE = auto()
+    DIY = auto()
     MUSIC = auto()
     VIDEO = auto()
 
@@ -463,6 +545,7 @@ class ParsedMode(Enum):
 class ParsedColorModeResponse:
     mode: ParsedMode = ParsedMode.UNKNOWN
     effect: str | None = None
+    diy_slot: int | None = None
     music_mode: str | None = None
     video_mode: str | None = None
     video_full_screen: bool | None = None
@@ -487,6 +570,8 @@ def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
         return ParsedColorModeResponse(
             mode=ParsedMode.SCENE, effect=SCENE_EFFECT_BY_ID.get(int.from_bytes(scene_bytes, "little"))
         )
+    if mode == COLOR_MODE_DIY:
+        return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_slot=_get(payload, 1))
     if mode == COLOR_MODE_VIDEO:
         return ParsedColorModeResponse(
             mode=ParsedMode.VIDEO,
@@ -537,10 +622,10 @@ def parse_fw_version(payload: bytes) -> str | None:
 
 
 def parse_hw_version(payload: bytes) -> str | None:
-    """Decode a hardware version from an ``aa 07`` reply. Best-effort: the H617A/H6199 have not
-    been observed to answer ``aa 07`` (see #97), so this decoder is unverified against a live reply."""
-    # EXPERIMENTAL: harness=none encoding=reply-unobserved
-    return _decode_version(payload)
+    """Decode the hardware version from an ``aa 07 03`` reply payload."""
+    if not payload or payload[0] != 0x03:
+        return None
+    return _decode_version(payload[1:])
 
 
 # Experimental timer & power-off encoders (decode-only; see plan-research-encodings.md §2-3).
@@ -635,7 +720,29 @@ def build_timer_wakeup(
 
 
 def build_poweroff_memory(enabled: bool) -> bytes:
-    """Build a power-off memory toggle (0x41): restore last state after power loss."""
+    """Build a power-off memory toggle (0x41): restore last state after power loss.
+
+    PROVEN ABSENT ON THE H617A. 2026-07-29: this opcode is not acknowledged. In a single
+    connection, 33 04 and 33 01 both acked either side of two 33 41 writes that did not,
+    and every other command opcode used that session acked as well. The device does not
+    recognise 0x41 in either direction; aa 41 answers nothing before or after a write.
+
+    Unreachable anyway, since no ModelProfile sets supports_poweroff_memory. Kept for a
+    model that does have it, not for this one. An external fuzz reports 0x41 as power-off
+    memory on a different SKU, which is a lead for that SKU only.
+
+    AND THE H617A DOES NOT NEED IT: IT RESTORES ITS PRIOR STATE UNCONDITIONALLY. Observed
+    2026-07-29 with mains power cut for about fifteen seconds and a person watching. The
+    strip was staged on, solid blue, brightness 1%, and came back on, solid blue, at 1%,
+    with aa 01, aa 04, aa 05 and aa a3 all reading their pre-cut values. So the absence of
+    a configurable toggle is not the absence of the behaviour, and nothing about this
+    device's restore behaviour should be read as evidence about opcode 0x41 either way.
+
+    ONE THING ONLY EYES COULD SEE: before applying the saved state the firmware runs a
+    power-on self-test, sweeping red then green then blue at near-full brightness for a
+    moment. It is transient, so any read taken after settling shows only the restored
+    state and misses it entirely.
+    """
     # EXPERIMENTAL: harness=TBD encoding=decode-only
     return build_packet(0x33, 0x41, [int(enabled)])
 
@@ -723,7 +830,13 @@ def parse_timer_wakeup(payload: bytes) -> ParsedWakeUpTimer:
 
 
 def parse_poweroff_memory(payload: bytes) -> ParsedPowerOffMemory:
-    """Decode a power-off memory aa 41 reply [enabled, mode]."""
+    """Decode a power-off memory aa 41 reply [enabled, mode].
+
+    NO SUCH REPLY EXISTS ON THE H617A, and the unset-versus-unsupported confound is now
+    closed. 2026-07-29: aa 41 was queried before and after a 33 41 01 write and answered
+    nothing either time, and the write itself was never acknowledged while controls in the
+    same connection were. So the register cannot be read AND cannot be written here.
+    """
     # EXPERIMENTAL: harness=TBD encoding=decode-only
     if not payload:
         raise ValueError("power-off memory payload is empty")
@@ -735,7 +848,12 @@ def parse_poweroff_memory(payload: bytes) -> ParsedPowerOffMemory:
 #   VALIDATED    - byte layout confirmed by a live/on-wire capture; ships on the normal surface.
 #   EXPERIMENTAL - unvalidated (no live capture), capture-pending, or a deliberately gated Tier-2 feature; the
 #                  builder also carries a "# EXPERIMENTAL: harness=<id> encoding=<..>" source marker.
-# Shorthand: H617A/H6199 = docs/ble-protocol-*.md; MEM = docs/device-memory-and-sharing.md.
+# Legacy section numbers: the "H617A §N" and "H6199 §N" tags below are notation inherited from
+# prose protocol references that have been retired. Wire structure is owned by the Kaitai specs
+# in tools/ble/kaitai/, which are authoritative on any disagreement. Roughly, §2 is frame
+# framing (govee_common), §3/§5/§7 are command writes (command_write.ksy) and §6 is the 0xA3
+# body family (scene_body.ksy, scene_type1_body.ksy, workshop_body.ksy, govee_common.ksy).
+# Re-citing each entry against its owning spec type is outstanding integration work.
 # tests/test_protocol_traceability.py keeps this registry in lockstep with the builder surface,
 # the source markers, and the byte-exact tests, so nothing ships un-traced.
 @dataclass(frozen=True)
@@ -754,11 +872,22 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_segment_brightness": Evidence("VALIDATED", "H617A §3/§7 seg brightness 33 05 15 02, mask[5:7]; live"),
     "build_segment_paint": Evidence("VALIDATED", "H617A §5 one 33 05 15 01 frame per colour group; live"),
     "build_color_rgb": Evidence("VALIDATED", "H617A §3/§5 whole-strip colour, mask 0x7FFF; live"),
-    "build_color_temp": Evidence("VALIDATED", "H617A §3 colour-temp 33 05 15 01 00 00 00 <K>; live 2-9kK"),
-    "build_white_brightness": Evidence("VALIDATED", "H617A §7 white brightness 33 05 15 02, mask 0x7FFF; live"),
-    "build_scene": Evidence("VALIDATED", "H617A §3/§6 scene 33 05 04 <code_LE>; live"),
+    "build_color_temp": Evidence(
+        "VALIDATED", "H617A §3 colour-temp 33 05 15 01 00 00 00 <K>; live 2-9kK on H617A; H6199 parity unattributed"
+    ),
+    "build_white_brightness": Evidence(
+        "VALIDATED", "H617A §7 white brightness 33 05 15 02, mask 0x7FFF; live on H617A; H6199 reuse unattributed"
+    ),
+    "build_scene": Evidence("VALIDATED", "H617A §3/§6 scene 33 05 04 <code_LE>; Sunrise/Rainbow live 2026-07-16"),
     "build_a3_multi": Evidence("VALIDATED", "H617A §6 0xA3 multi-frame fragmenter; XOR at byte[19]; live"),
-    "build_scene_multi": Evidence("VALIDATED", "H617A §6 0xA3 body + 33 05 04 activate; live"),
+    "build_scene_multi": Evidence(
+        "VALIDATED",
+        "H617A §6 0xA3 body TYPE 0x01/0x02 + 33 05 04 activate; Aurora/Halloween byte-exact 2026-07-16; "
+        "option-list Speed normalisation live 2026-07-26 (Glacier 2175)",
+    ),
+    "build_h6199_scene": Evidence(
+        "VALIDATED", "H6199 simple type-01 and A3 type-02 scene activations; iOS app-sniff 2026-07-12"
+    ),
     "build_diy_activate": Evidence(
         "VALIDATED", "H617A §3 DIY select 33 05 0a <slot>; slot F0 accepted and read back live 2026-07-15"
     ),
@@ -775,9 +904,13 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
         "H617A §6 Combo TYPE 04 FAMILY FF; current iOS body plus slot F0 direct write/read-back 2026-07-15",
     ),
     "build_custom_effect": Evidence("VALIDATED", "dispatcher over per-kind encoders (own evidence); Unknown rejected"),
-    "build_music_mode_with_color": Evidence("VALIDATED", "H617A §3/§7 music 33 05 13; 11 modes live-confirmed"),
+    "build_music_mode_with_color": Evidence(
+        "VALIDATED",
+        "H617A music 33 05 13 <mode><sens><style><count>; STYLE byte5 Dynamic(0)/Calm(1), COUNT byte6 "
+        "= manual colour count (0=auto-colour on)+RGB; 11 modes live-confirmed",
+    ),
     "build_music_params_a3": Evidence(
-        "EXPERIMENTAL", "VAL a3 music body §2.3 (H617A 217-234); capture-pinned, volatile bytes replayed"
+        "EXPERIMENTAL", "VAL a3 music body H617A §3; capture-pinned template + coordinator-derived companion/half bytes"
     ),
     "build_video_mode": Evidence(
         "VALIDATED",
@@ -791,21 +924,31 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_timer_schedule": Evidence("EXPERIMENTAL", "H617A §4 timer 33 23; write live, ships gated Tier-2"),
     "build_timer_sleep": Evidence("EXPERIMENTAL", "H617A §4 sleep 33 11; reply captured (OBSERVE)"),
     "build_timer_wakeup": Evidence("EXPERIMENTAL", "H617A §4 wake-up 33 12; reply captured (OBSERVE)"),
-    "build_poweroff_memory": Evidence("EXPERIMENTAL", "MEM §1 power-off memory 33 41; no live capture"),
+    "build_poweroff_memory": Evidence(
+        "EXPERIMENTAL", "power-off memory 33 41; H617A does not ACK it, controls acked either side 2026-07-29"
+    ),
     "split_status_frame": Evidence("VALIDATED", "H617A §4 status aa <type>; 20-byte XOR split; live"),
-    "parse_color_mode_response": Evidence("VALIDATED", "H617A §4 colour-mode aa 05 (15 01/04/00/13); live"),
+    "parse_color_mode_response": Evidence(
+        "VALIDATED", "H617A §4 colour-mode aa 05 (15/04/0a/00/13); DIY slot F0 read back live 2026-07-15"
+    ),
     "parse_fw_version": Evidence("VALIDATED", "H617A §4 firmware aa 06 -> ASCII '3.02.24'; VAL live capture"),
-    "parse_hw_version": Evidence("EXPERIMENTAL", "aa 07 reply unobserved live (#97); shares fw ASCII decode"),
+    "parse_hw_version": Evidence(
+        "VALIDATED", "H617A/H6199 aa 07 03 -> ASCII hardware version; iOS app-sniff 2026-07-12"
+    ),
     "parse_timer_repeat": Evidence("VALIDATED", "H617A §4 repeat byte Mon=bit0..Sun=bit6; live"),
     "parse_timer_schedule": Evidence("VALIDATED", "H617A §4 slot [enableAndType,hh,mm,repeat]; live"),
     "parse_timer_schedule_table": Evidence("VALIDATED", "H617A §4/§7 aa 23 ff + four 4-byte slots; live"),
     "parse_timer_sleep": Evidence("EXPERIMENTAL", "H617A §4 aa 11 sleep reply; OBSERVE"),
     "parse_timer_wakeup": Evidence("EXPERIMENTAL", "H617A §4 aa 12 wake reply; OBSERVE"),
-    "parse_poweroff_memory": Evidence("EXPERIMENTAL", "MEM §1 aa 41 reply [enabled,mode]; no live capture"),
+    "parse_poweroff_memory": Evidence(
+        "EXPERIMENTAL", "aa 41 reply [enabled,mode]; H617A answers nothing, nor ACKs 33 41; 2026-07-29"
+    ),
     "STATE_QUERY": Evidence("VALIDATED", "H617A §4 power query aa 01; live keep-alive"),
     "BRIGHTNESS_QUERY": Evidence("VALIDATED", "H617A §4 brightness query aa 04; mirrors 33 04"),
     "COLOR_MODE_QUERY": Evidence("VALIDATED", "H617A §4 colour-mode query aa 05; live"),
     "FW_QUERY": Evidence("VALIDATED", "H617A §4 firmware query aa 06; VAL connect handshake"),
-    "HW_QUERY": Evidence("VALIDATED", "H617A §4 hardware query aa 07 bytes; sent at connect, reply unobserved (#97)"),
+    "HW_QUERY": Evidence(
+        "VALIDATED", "H617A/H6199 hardware query aa 07 03; replies 3.01.01/3.02.01 app-sniffed 2026-07-12"
+    ),
     "KEEP_ALIVE": Evidence("VALIDATED", "H617A §4 aa 01 ~2s keep-alive (= STATE_QUERY)"),
 }

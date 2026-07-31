@@ -30,9 +30,11 @@ async def test_surfaces_segment_fields(mock_h6199_coordinator):
     colors = [(10, 20, 30)] * 15
     diag = await _run(_prep(mock_h6199_coordinator, segment_colors=colors))
     coord = diag["coordinator"]
-    assert coord["supports_segments"] is True
+    assert coord["supports_segments"] is False
     assert coord["segment_count"] == 15
     assert coord["segment_colors"] == colors
+    assert coord["diy_slot"] is None
+    assert coord["color_mode"] is None
 
 
 async def test_stale_experimental_option_ignored(mock_h6199_coordinator):

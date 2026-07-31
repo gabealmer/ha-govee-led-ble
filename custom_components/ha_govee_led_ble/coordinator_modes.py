@@ -32,7 +32,24 @@ class PreModeSnapshot:
     level: int = 100
 
 
-FOUNTAIN_DIRECTIONS: dict[str, int] = {"clockwise": 0x05, "counterclockwise": 0x03, "two_way": 0x03}
+FOUNTAIN_DIRECTION_BYTES: dict[str, tuple[int, int]] = {
+    "clockwise": (0x00, 0x05),
+    "counterclockwise": (0x02, 0x05),
+    "two_way": (0x01, 0x03),
+}
+
+BLOOM_MODE_ID = MUSIC_MODE_SLUGS["bloom"]
+SHINY_MODE_ID = MUSIC_MODE_SLUGS["shiny"]
+# Modes whose base-frame STYLE byte (byte 5) carries Dynamic/Calm (H617A §2.1, live 2026-07-16).
+MUSIC_STYLE_MODE_IDS = frozenset({RHYTHM_MODE_ID, BLOOM_MODE_ID, SHINY_MODE_ID})
+# Slugs for the style-carrying modes, derived so the set never drifts from the id set above.
+MUSIC_STYLE_SLUGS = frozenset(slug for slug, mode_id in MUSIC_MODE_SLUGS.items() if mode_id in MUSIC_STYLE_MODE_IDS)
+# Bloom and Shiny also carry Dynamic/Calm in their a3 movement companion; Rhythm rides byte 5 alone.
+# Absolute a3 offsets keyed by ``calm``; the Dynamic (False) values equal the capture-pinned templates.
+_MUSIC_STYLE_COMPANION: dict[int, dict[bool, dict[int, int]]] = {
+    BLOOM_MODE_ID: {False: {27: 0x50}, True: {27: 0x14}},
+    SHINY_MODE_ID: {False: {20: 0x05, 21: 0x64}, True: {20: 0x14, 21: 0x46}},
+}
 
 
 def _encode_byte(value: Any) -> int:
@@ -44,8 +61,7 @@ def _encode_bool(value: Any) -> int:
 
 
 def _encode_fountain_direction(value: Any) -> int:
-    # Two-way is indistinguishable from Counterclockwise on the wire (both a3[28]=0x03); VAL 45-49.
-    return FOUNTAIN_DIRECTIONS[value]
+    return FOUNTAIN_DIRECTION_BYTES[value][1]
 
 
 @dataclass(frozen=True)
@@ -63,7 +79,9 @@ class MusicParamSpec:
     options: tuple[str, ...] = ()
 
 
-# Absolute a3 offsets per §2.3; volatile bytes stay out of this table so they are never written.
+# Absolute a3 offsets per §2.3, one entry per user-facing control; derived/coupled bytes
+# (Separation companion, Piano half, Fountain direction pair, style companion) are not listed here
+# because _send_music_params synthesises them from their controlling param at send time.
 MUSIC_PARAM_SPECS: tuple[MusicParamSpec, ...] = (
     MusicParamSpec("music_separation_point", 0x32, 20, "number", _encode_byte, min_value=1, max_value=5),
     MusicParamSpec("music_separation_gradient", 0x32, 21, "switch", _encode_bool),
@@ -99,7 +117,7 @@ class _ActiveModeMixin(_CoordinatorBase):
     def active_mode(self) -> str:
         if not self.is_on:
             return "off"
-        if self.active_custom_id is not None:
+        if self.active_custom_id is not None or self.diy_slot is not None:
             return "custom"
         if self.effect in self.scene_name_set:
             return "scene"
@@ -117,6 +135,8 @@ class _ActiveModeMixin(_CoordinatorBase):
     def _enter_static_mode(self) -> None:
         """Clear every non-static mode so exactly one operating mode is ever active (spec §1.4)."""
         self.effect = self.active_custom_id = None
+        self.diy_slot = None
+        self._owned_diy_effect_id = None
         self.music_mode = self.video_mode = "off"
 
     @property
@@ -132,17 +152,24 @@ class _ActiveModeMixin(_CoordinatorBase):
         if slug == "off":
             await self.async_restore_pre_mode()
             return
+        if slug not in self.profile.music_modes:
+            raise ValueError(f"{self.model} does not support music mode {slug}")
         if self.active_mode == "colour":
             self._pre_mode_snapshot = self._capture_static_state()
         mode_id = MUSIC_MODE_SLUGS[slug]
-        calm = self.music_calm if mode_id == RHYTHM_MODE_ID else False
+        calm = self.music_calm if mode_id in MUSIC_STYLE_MODE_IDS else False
+        color = self.music_color if self.profile.supports_music_color else None
         await self.send_command(build_power(True))
         self.is_on = True
         await self.send_command(
-            build_music_mode_with_color(mode_id, sensitivity=self.music_sensitivity, color=self.music_color, calm=calm)
+            build_music_mode_with_color(mode_id, sensitivity=self.music_sensitivity, color=color, calm=calm)
         )
+        if mode_id in _MUSIC_STYLE_COMPANION:
+            await self._send_music_params(mode_id)
         self.music_mode, self.video_mode = slug, "off"
         self.effect, self.active_custom_id = None, None
+        self.diy_slot = None
+        self._owned_diy_effect_id = None
 
     async def async_restore_pre_mode(self) -> None:
         snap = self._pre_mode_snapshot
@@ -158,6 +185,21 @@ class _ActiveModeMixin(_CoordinatorBase):
     async def async_apply_music_params(self, mode_code: int) -> None:
         """Re-send the active mode's a3 movement frame, merging every stored param for that mode so
         multi-param modes (Separation, Day & Night) never clobber a sibling param (§2.3)."""
+        await self._send_music_params(mode_code)
+
+    async def _send_music_params(self, mode_code: int) -> None:
         overrides = {spec.offset: spec.encode(getattr(self, spec.key)) for spec in music_params_for_mode(mode_code)}
+        if mode_code == 0x35:
+            phase, selector = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
+            overrides.update({26: phase, 28: selector})
+        if mode_code == 0x32:
+            # Separation's companion byte is gradient-coupled (0x5e on / 0x61 off, live 2026-07-21).
+            overrides[22] = 0x5E if self.music_separation_gradient else 0x61
+        if mode_code == 0x34:
+            # Piano Keys [30] is a derived byte: floor(key_count / 2) (9->4, 15->7 live 2026-07-21).
+            overrides[30] = self.music_piano_key_count // 2
+        companion = _MUSIC_STYLE_COMPANION.get(mode_code)
+        if companion is not None:
+            overrides.update(companion[self.music_calm])
         for packet in build_music_params_a3(mode_code, overrides):
             await self.send_command(packet)

@@ -6,11 +6,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bleak import BleakError
 from homeassistant.components.light import ColorMode
+from homeassistant.core import SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
-from custom_components.ha_govee_led_ble.custom_effects import EffectValidationError, content_from_dict
+from custom_components.ha_govee_led_ble.custom_effects import (
+    EffectValidationError,
+    SegmentContent,
+    VibrantContent,
+    content_from_dict,
+)
 from custom_components.ha_govee_led_ble.light import (
     MUSIC_MODE_IDS,
     GoveeBLELight,
@@ -126,6 +132,7 @@ def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinat
     mock_h6199_coordinator.custom_effect_display_names.return_value = ["Solo"]
     h = h6199_light.effect_list
     assert h[0] == "Solo" and "Music: Rhythm" in h and h[-2:] == ["Video: Movie", "Video: Game"]
+    assert "Music: Bloom" not in h and "Music: Shiny" not in h
 
 
 async def test_turn_on_custom_effect_applies(light, mock_coordinator):
@@ -141,11 +148,13 @@ async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
     co = mock_coordinator
     co.is_on = True
     co.active_custom_id, co.music_mode, co.video_mode = "diy-9", "rhythm", "off"
+    co.diy_slot = proto.AUTHORED_DIY_SLOT
     await light.async_turn_on(effect="rainbow")
     sent = [call.args[0] for call in co.send_command.call_args_list]
     scene = SCENES["rainbow"]
     assert sent == proto.build_scene_multi(scene.param, scene.code, scene.scene_type)
     assert co.effect == "rainbow" and co.active_custom_id is None
+    assert co.diy_slot is None
     assert co.music_mode == "off" and co.video_mode == "off"
 
 
@@ -169,9 +178,31 @@ async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effe
 async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coordinator, effect, mode):
     co = mock_h6199_coordinator
     co.is_on = True
+    co.video_full_screen = False
+    co.video_saturation = 63
+    co.video_sound_effects = True
+    co.video_sound_effects_softness = 27
+    co.refresh_state = AsyncMock(side_effect=[False, True])
     await h6199_light.async_turn_on(effect=effect)
-    sent = [call.args[0] for call in co.send_command.call_args_list]
-    assert proto.build_video_mode(full_screen=True, game_mode=mode == "game") in sent
+    packet = proto.build_video_mode(
+        full_screen=False,
+        game_mode=mode == "game",
+        saturation=63,
+        sound_effects=True,
+        sound_effects_softness=27,
+    )
+    assert [call.args[0] for call in co.send_command.call_args_list] == [
+        proto.build_power(True),
+        packet,
+        proto.build_power(True),
+        packet,
+    ]
+    for call in co.refresh_state.await_args_list:
+        assert call.kwargs["expected_video_mode"] == mode
+        assert call.kwargs["expected_video_full_screen"] is False
+        assert call.kwargs["expected_video_saturation"] == 63
+        assert call.kwargs["expected_video_sound_effects"] is True
+        assert call.kwargs["expected_video_sound_effects_softness"] == 27
     assert co.video_mode == mode and co.effect is None
 
 
@@ -187,23 +218,49 @@ async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordin
 
 
 @pytest.mark.parametrize("mode,slug", [(m, m.replace(" ", "_")) for m in MUSIC_MODE_IDS])
-async def test_set_music_mode_all_modes(h6199_light, mock_h6199_coordinator, mode, slug):
+async def test_set_music_mode_all_modes(light, mock_coordinator, mode, slug):
     """Every mode routes through the coordinator's single music-apply path with its slug."""
-    await h6199_light.async_set_music_mode(mode=mode, sensitivity=70)
-    mock_h6199_coordinator.async_select_music_slug.assert_awaited_once_with(slug)
-    assert mock_h6199_coordinator.music_sensitivity == 70
+    await light.async_set_music_mode(mode=mode, sensitivity=70)
+    mock_coordinator.async_select_music_slug.assert_awaited_once_with(slug)
+    assert mock_coordinator.music_sensitivity == 70
 
 
-async def test_set_music_mode_stores_calm_only_for_rhythm(h6199_light, mock_h6199_coordinator):
-    co = mock_h6199_coordinator
+async def test_h6199_rejects_unvalidated_music_modes(h6199_light, mock_h6199_coordinator):
+    with pytest.raises(ServiceValidationError) as exc:
+        await h6199_light.async_set_music_mode(mode="bloom", sensitivity=70)
+    assert exc.value.translation_key == "unsupported_model"
+    mock_h6199_coordinator.async_select_music_slug.assert_not_awaited()
+
+
+async def test_set_music_mode_stores_calm_for_rhythm(light, mock_coordinator):
+    co = mock_coordinator
     co.music_calm = False
-    await h6199_light.async_set_music_mode(mode="rhythm", sensitivity=60, calm=True)
+    await light.async_set_music_mode(mode="rhythm", sensitivity=60, calm=True)
     co.async_select_music_slug.assert_awaited_once_with("rhythm")
     assert co.music_calm is True
+
+
+async def test_set_music_mode_stores_calm_for_shiny(light, mock_coordinator):
+    co = mock_coordinator
     co.music_calm = False
-    await h6199_light.async_set_music_mode(mode="spectrum", sensitivity=60, calm=True)
-    co.async_select_music_slug.assert_awaited_with("spectrum")
-    assert co.music_calm is False
+    await light.async_set_music_mode(mode="shiny", sensitivity=60, calm=True)
+    co.async_select_music_slug.assert_awaited_once_with("shiny")
+    assert co.music_calm is True
+
+
+@pytest.mark.parametrize("kwargs", [{"color": (1, 2, 3)}, {"calm": True}])
+async def test_h6199_rejects_unvalidated_music_parameters(h6199_light, mock_h6199_coordinator, kwargs):
+    with pytest.raises(ServiceValidationError) as exc:
+        await h6199_light.async_set_music_mode(mode="rhythm", sensitivity=60, **kwargs)
+    assert exc.value.translation_key == "unsupported_model"
+    mock_h6199_coordinator.async_select_music_slug.assert_not_awaited()
+
+
+async def test_rejects_calm_for_unstyled_mode(light, mock_coordinator):
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_set_music_mode(mode="spectrum", sensitivity=60, calm=True)
+    assert exc.value.translation_key == "unsupported_model"
+    mock_coordinator.async_select_music_slug.assert_not_awaited()
 
 
 async def test_set_music_mode_energic_alias(h6199_light, mock_h6199_coordinator, caplog):
@@ -268,10 +325,10 @@ async def test_set_video_retry_replays_power_and_full_mode(h6199_light, mock_h61
     assert co.video_mode == "game"
 
 
-async def test_set_music_confirms_requested_parameters(h6199_light, mock_h6199_coordinator):
-    co = mock_h6199_coordinator
+async def test_set_music_confirms_requested_parameters(light, mock_coordinator):
+    co = mock_coordinator
 
-    await h6199_light.async_set_music_mode(
+    await light.async_set_music_mode(
         mode="rhythm",
         sensitivity=55,
         color=(1, 2, 3),
@@ -300,8 +357,8 @@ async def test_set_music_normalises_sensitivity_and_confirms_auto_color(h6199_li
     assert kwargs["expected_music_auto_color"] is True
 
 
-async def test_set_music_retry_restores_requested_parameters(h6199_light, mock_h6199_coordinator):
-    co = mock_h6199_coordinator
+async def test_set_music_retry_restores_requested_parameters(light, mock_coordinator):
+    co = mock_coordinator
     sent: list[tuple[int, tuple[int, int, int] | None, bool]] = []
 
     async def _select(slug: str) -> None:
@@ -318,7 +375,7 @@ async def test_set_music_retry_restores_requested_parameters(h6199_light, mock_h
     co.async_select_music_slug = AsyncMock(side_effect=_select)
     co.refresh_state = AsyncMock(side_effect=_confirm)
 
-    await h6199_light.async_set_music_mode(
+    await light.async_set_music_mode(
         mode="rhythm",
         sensitivity=55,
         color=(1, 2, 3),
@@ -357,15 +414,25 @@ async def test_disabling_video_sound_preserves_softness(h6199_light, mock_h6199_
 
     assert co.video_sound_effects is False
     assert co.video_sound_effects_softness == 50
+    assert co.send_command.await_args_list[1].args[0] == proto.build_video_mode(
+        sound_effects=False,
+        sound_effects_softness=50,
+    )
     assert co.refresh_state.await_args.kwargs["expected_video_sound_effects_softness"] is None
 
 
-async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
+async def test_set_video_and_basic_music(h6199_light, mock_h6199_coordinator):
     lt, co = h6199_light, mock_h6199_coordinator
     await lt.async_set_video_mode(mode="movie", saturation=80)
     c = co.send_command.call_args_list
     assert c[0].args[0] == proto.build_power(True)
-    assert c[1].args[0] == proto.build_video_mode(full_screen=True, game_mode=False, saturation=80)
+    assert c[1].args[0] == proto.build_video_mode(
+        full_screen=True,
+        game_mode=False,
+        saturation=80,
+        sound_effects=False,
+        sound_effects_softness=100,
+    )
     assert co.video_mode == "movie" and co.effect is None and co.video_saturation == 80
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
@@ -381,9 +448,12 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     co.is_on, co.effect = False, None
     await lt.async_set_video_mode(mode="movie", saturation=50, full_screen=True, capture_region="part")
     c = co.send_command.call_args_list
-    # sound_effects_softness persists from the prior call (50) when the service omits it.
     assert c[1].args[0] == proto.build_video_mode(
-        full_screen=False, game_mode=False, saturation=50, sound_effects_softness=50
+        full_screen=False,
+        game_mode=False,
+        saturation=50,
+        sound_effects=False,
+        sound_effects_softness=50,
     )
     assert co.video_full_screen is False
     co.async_select_music_slug.reset_mock()
@@ -391,13 +461,6 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     co.async_select_music_slug.assert_awaited_once_with("energetic")
     assert co.music_sensitivity == 75
     co.async_select_music_slug.reset_mock()
-    await lt.async_set_music_mode(mode="spectrum", sensitivity=90, color=(255, 0, 128))
-    co.async_select_music_slug.assert_awaited_once_with("spectrum")
-    assert co.music_color == (255, 0, 128)
-    co.async_select_music_slug.reset_mock()
-    await lt.async_set_music_mode(mode="rhythm", sensitivity=55, color=(1, 2, 3), calm=True)
-    co.async_select_music_slug.assert_awaited_once_with("rhythm")
-    assert co.music_calm is True
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
     await lt.async_set_white_brightness(brightness=47)
@@ -405,6 +468,17 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     assert c[0].args[0] == proto.build_power(True)
     assert c[1].args[0] == proto.build_white_brightness(47)
     assert co.white_brightness == 47 and co.brightness_pct == 100 and co.effect is None
+
+
+async def test_video_sound_requires_capability(h6199_light, mock_h6199_coordinator):
+    mock_h6199_coordinator.profile = replace(
+        mock_h6199_coordinator.profile,
+        supports_video_sound_effects=False,
+    )
+    with pytest.raises(ServiceValidationError) as exc:
+        await h6199_light.async_set_video_mode(mode="movie", sound_effects=True)
+    assert exc.value.translation_key == "unsupported_model"
+    mock_h6199_coordinator.send_command.assert_not_called()
 
 
 async def test_set_white_brightness_clears_active_custom(h6199_light, mock_h6199_coordinator):
@@ -497,7 +571,17 @@ def test_segment_colors_attribute_present(light, mock_coordinator):
     mock_coordinator.custom_effect_index.return_value = {"a1b2c3d4": "Sunset"}
     assert light.extra_state_attributes == {
         "custom_effects": {"a1b2c3d4": "Sunset"},
+        "custom_effect_kinds": ["combo", "flat", "segments", "sketch", "vibrant"],
         "segment_colors": [[10, 20, 30]] * 15,
+    }
+
+
+def test_h6199_segment_surface_is_gated(h6199_light, mock_h6199_coordinator):
+    mock_h6199_coordinator.custom_effect_index.return_value = {}
+
+    assert h6199_light.extra_state_attributes == {
+        "custom_effects": {},
+        "custom_effect_kinds": [],
     }
 
 
@@ -515,7 +599,10 @@ def test_segment_colors_attribute_absent_for_zero_count(mock_coordinator):
     mock_coordinator.custom_effect_index.return_value = {"a1b2c3d4": "Sunset"}
     attrs = GoveeBLELight(mock_coordinator).extra_state_attributes
     assert "segment_colors" not in attrs
-    assert attrs == {"custom_effects": {"a1b2c3d4": "Sunset"}}
+    assert attrs == {
+        "custom_effects": {"a1b2c3d4": "Sunset"},
+        "custom_effect_kinds": ["combo", "flat", "sketch", "vibrant"],
+    }
 
 
 async def test_segment_restore_rehydrates(light, mock_coordinator):
@@ -590,6 +677,77 @@ async def test_restore_custom_sets_active_custom_id(light, mock_coordinator):
     assert mock_coordinator.effect == "Sunset"
 
 
+async def test_restore_diy_slot_does_not_infer_ownership(light, mock_coordinator):
+    mock_coordinator.diy_slot = proto.AUTHORED_DIY_SLOT
+    mock_coordinator.color_mode = proto.ParsedMode.DIY
+    mock_coordinator.resolve_custom = MagicMock(
+        return_value=MagicMock(
+            id="diy-3",
+            display_name="Sunset",
+            content=VibrantContent(stops=((0, 0, 0), (255, 0, 0))),
+        )
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Sunset"}))
+    await light._async_restore_effect()
+    assert mock_coordinator.active_custom_id is None and mock_coordinator.effect is None
+
+    mock_coordinator.resolve_custom.return_value = MagicMock(
+        id="segments",
+        display_name="Segments",
+        content=SegmentContent(colors=((255, 0, 0),)),
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Segments"}))
+    await light._async_restore_effect()
+    assert mock_coordinator.active_custom_id is None and mock_coordinator.effect is None
+
+
+async def test_restore_effect_skipped_for_foreign_live_diy_slot(light, mock_coordinator):
+    mock_coordinator.diy_slot = 0xEF
+    mock_coordinator.color_mode = proto.ParsedMode.DIY
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "rainbow"}))
+    await light._async_restore_effect()
+    light.async_get_last_state.assert_not_called()
+    assert mock_coordinator.effect is None
+
+
+async def test_restore_confirmed_static_accepts_segment_custom_only(light, mock_coordinator):
+    mock_coordinator.color_mode = proto.ParsedMode.COLOUR
+    mock_coordinator.resolve_custom = MagicMock(
+        return_value=MagicMock(
+            id="diy-3",
+            display_name="Sunset",
+            content=VibrantContent(stops=((0, 0, 0), (255, 0, 0))),
+        )
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Sunset"}))
+    await light._async_restore_effect()
+    assert mock_coordinator.active_custom_id is None and mock_coordinator.effect is None
+
+    mock_coordinator.resolve_custom.return_value = MagicMock(
+        id="segments",
+        display_name="Segments",
+        content=SegmentContent(colors=((255, 0, 0),)),
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Segments"}))
+    await light._async_restore_effect()
+    assert (mock_coordinator.active_custom_id, mock_coordinator.effect) == ("segments", "Segments")
+
+
+async def test_restore_unknown_scene_does_not_resurrect_custom(light, mock_coordinator):
+    mock_coordinator.color_mode = proto.ParsedMode.SCENE
+    mock_coordinator.resolve_custom = MagicMock(
+        return_value=MagicMock(
+            id="segments",
+            display_name="Segments",
+            content=SegmentContent(colors=((255, 0, 0),)),
+        )
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Segments"}))
+    await light._async_restore_effect()
+    light.async_get_last_state.assert_not_called()
+    assert mock_coordinator.active_custom_id is None and mock_coordinator.effect is None
+
+
 async def test_restore_scene_keeps_effect(light, mock_coordinator):
     light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "rainbow"}))
     await light._async_restore_effect()
@@ -647,6 +805,12 @@ async def test_setup_entry_registers_effect_services(mock_coordinator):
     assert handlers["save_effect"] == "async_save_effect"
     assert handlers["delete_effect"] == "async_delete_effect"
     assert handlers["rename_effect"] == "async_rename_effect"
+    assert handlers["update_effect"] == "async_update_effect"
+    assert handlers["export_effect"] == "async_export_effect"
+    export_call = next(
+        call for call in platform.async_register_entity_service.call_args_list if call.args[0] == "export_effect"
+    )
+    assert export_call.kwargs["supports_response"] is SupportsResponse.ONLY
 
 
 async def test_save_effect_with_content_parses_and_delegates(light, mock_coordinator):
@@ -738,6 +902,79 @@ async def test_rename_effect_maps_effect_errors(light, mock_coordinator, key):
     assert exc.value.translation_key == key
 
 
+async def test_update_effect_delegates_name_and_content(light, mock_coordinator):
+    content = {"kind": "vibrant", "stops": [[255, 120, 0], [0, 0, 255]]}
+    await light.async_update_effect(id="a1b2c3d4", name="Dawn", content=content)
+    mock_coordinator.async_update_effect.assert_awaited_once_with(
+        "a1b2c3d4", display_name="Dawn", content=content_from_dict(content)
+    )
+
+
+async def test_update_effect_name_only_passes_content_none(light, mock_coordinator):
+    await light.async_update_effect(id="a1b2c3d4", name="Dawn")
+    mock_coordinator.async_update_effect.assert_awaited_once_with("a1b2c3d4", display_name="Dawn", content=None)
+
+
+async def test_update_effect_content_only_passes_name_none(light, mock_coordinator):
+    content = {"kind": "vibrant", "stops": [[1, 2, 3], [4, 5, 6]]}
+    await light.async_update_effect(id="a1b2c3d4", content=content)
+    mock_coordinator.async_update_effect.assert_awaited_once_with(
+        "a1b2c3d4", display_name=None, content=content_from_dict(content)
+    )
+
+
+async def test_update_effect_requires_a_change(light, mock_coordinator):
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_update_effect(id="a1b2c3d4")
+    assert exc.value.translation_key == "update_needs_name_or_content"
+    mock_coordinator.async_update_effect.assert_not_awaited()
+
+
+async def test_update_effect_maps_malformed_content(light, mock_coordinator):
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_update_effect(
+            id="a1b2c3d4",
+            content={"kind": "vibrant", "stops": [[1, 2]]},
+        )
+    assert exc.value.translation_key == "invalid_effect_content"
+    mock_coordinator.async_update_effect.assert_not_awaited()
+
+
+@pytest.mark.parametrize("key", ["duplicate_name", "unknown_effect", "too_many_segments", "diy_unsupported"])
+async def test_update_effect_maps_effect_errors(light, mock_coordinator, key):
+    mock_coordinator.async_update_effect = AsyncMock(side_effect=EffectValidationError(key))
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_update_effect(id="a1b2c3d4", name="Dawn")
+    assert exc.value.translation_key == key
+
+
+async def test_export_effect_returns_coordinator_payload(light, mock_coordinator):
+    payload = {
+        "id": "a1b2c3d4",
+        "name": "Sunset",
+        "model": "H617A",
+        "segment_count": 15,
+        "content": {"kind": "vibrant", "stops": [[255, 120, 0], [0, 0, 255]]},
+    }
+    mock_coordinator.async_export_effect = AsyncMock(return_value=payload)
+    result = await light.async_export_effect(id="a1b2c3d4")
+    assert result == payload
+    mock_coordinator.async_export_effect.assert_awaited_once_with("a1b2c3d4")
+
+
+async def test_export_effect_unknown_maps_error(light, mock_coordinator):
+    mock_coordinator.async_export_effect = AsyncMock(side_effect=EffectValidationError("unknown_effect"))
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_export_effect(id="missing")
+    assert exc.value.translation_key == "unknown_effect"
+    assert exc.value.translation_placeholders == {"effect": "missing"}
+
+
 def test_custom_effects_attribute_maps_id_to_name(light, mock_coordinator):
     mock_coordinator.custom_effect_index.return_value = {"a1b2c3d4": "Sunset", "e5f6a7b8": "Dawn"}
     assert light.extra_state_attributes["custom_effects"] == {"a1b2c3d4": "Sunset", "e5f6a7b8": "Dawn"}
+
+
+def test_quarantined_effects_attribute(light, mock_coordinator):
+    mock_coordinator.quarantined_custom_effect_index.return_value = {"e5f6a7b8": "Vibe"}
+    assert light.extra_state_attributes["quarantined_custom_effects"] == {"e5f6a7b8": "Vibe"}

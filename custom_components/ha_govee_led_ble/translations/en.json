@@ -66,7 +66,11 @@
         }
       },
       "video_capture_region": {
-        "name": "Video color mapping"
+        "name": "Video color mapping",
+        "state": {
+          "full": "All",
+          "part": "Part"
+        }
       }
     },
     "sensor": {
@@ -141,6 +145,75 @@
     },
     "duplicate_name": {
       "message": "An effect with that name already exists."
+    },
+    "update_needs_name_or_content": {
+      "message": "Provide a new name or content to update."
+    },
+    "invalid_effect_content": {
+      "message": "The effect content is malformed."
+    },
+    "too_many_segment_brightness": {
+      "message": "Too many segment brightness values were provided."
+    },
+    "segment_brightness_range": {
+      "message": "Segment brightness must be from 0 to 100."
+    },
+    "too_many_segments": {
+      "message": "The effect contains more segments than this device supports."
+    },
+    "bad_rgb": {
+      "message": "A segment colour is not a valid RGB colour."
+    },
+    "vibrant_stops_range": {
+      "message": "A gradient needs 2 to 5 colour stops."
+    },
+    "vibrant_bad_rgb": {
+      "message": "A gradient stop is not a valid RGB colour."
+    },
+    "sketch_bad_background": {
+      "message": "The Sketch background is not a valid RGB colour."
+    },
+    "sketch_motion_invalid": {
+      "message": "The Sketch motion is not supported."
+    },
+    "sketch_speed_range": {
+      "message": "Sketch speed must be from 0 to 100."
+    },
+    "sketch_brightness_range": {
+      "message": "Sketch brightness must be from 0 to 100."
+    },
+    "flat_family_variant_invalid": {
+      "message": "The Flat family and variant combination is not supported."
+    },
+    "flat_speed_range": {
+      "message": "Flat speed must be from 0 to 100."
+    },
+    "palette_too_large": {
+      "message": "The effect palette contains too many colours."
+    },
+    "flat_bad_rgb": {
+      "message": "A Flat palette entry is not a valid RGB colour."
+    },
+    "combo_variant_invalid": {
+      "message": "Combo variant must be 0."
+    },
+    "combo_speed_range": {
+      "message": "Combo speed must be from 0 to 100."
+    },
+    "combo_empty": {
+      "message": "Combo requires at least one effect step."
+    },
+    "combo_too_many": {
+      "message": "Combo accepts up to four effect steps."
+    },
+    "combo_family_variant_invalid": {
+      "message": "A Combo step uses an unsupported Flat family and variant."
+    },
+    "combo_palette_empty": {
+      "message": "Combo requires at least one palette colour."
+    },
+    "combo_bad_rgb": {
+      "message": "A Combo palette entry is not a valid RGB colour."
     }
   },
   "issues": {
@@ -159,6 +232,14 @@
     "custom_effect_unknown_kind": {
       "title": "Unsupported custom effect stored",
       "description": "A saved custom effect uses a format this version cannot apply. It has been kept as-is but cannot be used until it is saved again."
+    },
+    "custom_effect_unsupported_model": {
+      "title": "Custom effect unavailable on this device",
+      "description": "The saved custom effect \"{effect}\" is not validated for {model}. It has been kept for export or deletion but cannot be applied."
+    },
+    "unsupported_model": {
+      "title": "Unsupported Govee model",
+      "description": "This config entry identifies model \"{model}\", which this integration cannot safely control. Reconfigure the device with a supported model."
     }
   },
   "services": {
@@ -184,11 +265,11 @@
         },
         "sound_effects": {
           "name": "Sound effects",
-          "description": "Enable audio-reactive overlay."
+          "description": "Enable the H6199 audio-reactive video overlay."
         },
         "sound_effects_softness": {
           "name": "Sound effects softness",
-          "description": "Overlay softness (0-100)."
+          "description": "Set overlay softness from 1 to 100."
         }
       }
     },
@@ -309,6 +390,34 @@
         "to": {
           "name": "New name",
           "description": "New display name for the effect."
+        }
+      }
+    },
+    "update_effect": {
+      "name": "Update effect",
+      "description": "Update a saved custom effect by its stable id, changing its name, content, or both.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "Stable id of the effect to update."
+        },
+        "name": {
+          "name": "New name",
+          "description": "New display name for the effect. Provide a new name, new content, or both."
+        },
+        "content": {
+          "name": "Content",
+          "description": "New effect content object. Provide a new name, new content, or both."
+        }
+      }
+    },
+    "export_effect": {
+      "name": "Export effect",
+      "description": "Return a portable snapshot of a saved custom effect by its stable id.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "Stable id of the effect to export."
         }
       }
     }

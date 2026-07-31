@@ -287,6 +287,128 @@ export function coerceCustomEffects(raw: unknown): CustomEffectEntry[] {
   return out;
 }
 
+// --- Studio shell: tabs and kinds ---------------------------------------
+
+/** The three top-level workspaces of the card. */
+export type TabId = "now" | "studio" | "library";
+
+/** Ordered tab descriptors driving the card's `role="tablist"`. */
+export const TABS: readonly { id: TabId; label: string }[] = [
+  { id: "now", label: "Now" },
+  { id: "studio", label: "Studio" },
+  { id: "library", label: "Library" },
+];
+
+/**
+ * Resolve a roving-tabindex keyboard event to the next tab index:
+ * `ArrowRight`/`ArrowDown` step forward, `ArrowLeft`/`ArrowUp` step back (both
+ * wrap), `Home`/`End` jump to the ends. Any other key returns `current`.
+ */
+export function nextTabIndex(current: number, key: string, count: number): number {
+  if (count <= 0) return current;
+  switch (key) {
+    case "ArrowRight":
+    case "ArrowDown":
+      return (current + 1) % count;
+    case "ArrowLeft":
+    case "ArrowUp":
+      return (current - 1 + count) % count;
+    case "Home":
+      return 0;
+    case "End":
+      return count - 1;
+    default:
+      return current;
+  }
+}
+
+/** The five authorable effect kinds in the Studio. */
+export type StudioKind = "static" | "gradient" | "sketch" | "flat" | "combo";
+
+/**
+ * Studio kind descriptors. `available` gates kinds whose complete authoring
+ * surface has landed.
+ */
+export const STUDIO_KINDS: readonly { id: StudioKind; label: string; available: boolean }[] = [
+  { id: "static", label: "Static", available: true },
+  { id: "gradient", label: "Gradient", available: true },
+  { id: "sketch", label: "Sketch", available: true },
+  { id: "flat", label: "Flat", available: true },
+  { id: "combo", label: "Combo", available: true },
+];
+
+const CONTENT_KIND_BY_STUDIO_KIND: Readonly<Record<StudioKind, string>> = {
+  static: "segments",
+  gradient: "vibrant",
+  sketch: "sketch",
+  flat: "flat",
+  combo: "combo",
+};
+
+/**
+ * Resolve the authoring kinds supported by the selected light.
+ *
+ * Older integration versions do not expose `custom_effect_kinds`, so a missing
+ * attribute retains the complete card for backwards compatibility.
+ */
+export function supportedStudioKinds(raw: unknown): StudioKind[] {
+  const available = STUDIO_KINDS.filter((kind) => kind.available);
+  if (!Array.isArray(raw)) return available.map((kind) => kind.id);
+  const supported = new Set(raw.filter((kind): kind is string => typeof kind === "string"));
+  return available
+    .filter((kind) => supported.has(CONTENT_KIND_BY_STUDIO_KIND[kind.id]))
+    .map((kind) => kind.id);
+}
+
+// --- Studio: typed content builders (twins of custom_effects.content_from_dict) ---
+
+/** JSON shape of a `SegmentContent` effect, as `save_effect(content=)` expects. */
+export interface SegmentContentDict {
+  kind: "segments";
+  colors: (RGB | null)[];
+  brightness: (number | null)[] | null;
+}
+
+/** JSON shape of a `VibrantContent` (gradient) effect. */
+export interface VibrantContentDict {
+  kind: "vibrant";
+  stops: RGB[];
+}
+
+/**
+ * Build a `segments` content dict from a per-segment draft. A `null` colour
+ * means "leave this segment unchanged"; `[0,0,0]` means "off" — the two stay
+ * distinct. `brightness` collapses to `null` when every entry is `null`, so an
+ * unset brightness track is omitted rather than sent as all-null.
+ */
+export function buildSegmentContent(
+  colors: readonly (RGB | null)[],
+  brightness: readonly (number | null)[] | null = null,
+): SegmentContentDict {
+  const hasBrightness = brightness !== null && brightness.some((b) => b !== null);
+  return {
+    kind: "segments",
+    colors: colors.map((c) => (c === null ? null : [c[0], c[1], c[2]])),
+    brightness: hasBrightness ? brightness.map((b) => (b === null ? null : b)) : null,
+  };
+}
+
+/** True when a Static draft carries at least one painted colour or brightness. */
+export function segmentDraftHasContent(
+  colors: readonly (RGB | null)[],
+  brightness: readonly (number | null)[] | null = null,
+): boolean {
+  return (
+    colors.some((c) => c !== null) ||
+    (brightness !== null && brightness.some((b) => b !== null))
+  );
+}
+
+/** Build a `vibrant` (gradient) content dict from ordered colour stops. */
+export function buildVibrantContent(stops: readonly RGB[]): VibrantContentDict {
+  return { kind: "vibrant", stops: stops.map((s) => [s[0], s[1], s[2]]) };
+}
+
 /** Read a non-blank `message` string off an object, or null. */
 function messageOf(value: unknown): string | null {
   if (value !== null && typeof value === "object") {

@@ -15,7 +15,10 @@ from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
     RX_STALE_TIMEOUT,
     GoveeBLECoordinator,
+    _expectations_from_packet,
+    _expected_color_mode_from_packet,
 )
+from custom_components.ha_govee_led_ble.custom_effects import CustomEffect, SegmentContent, VibrantContent
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 
@@ -37,7 +40,8 @@ def _c(**kw):
 async def test_initial_state_and_update(coord, h6199):
     assert (coord.is_on, coord.brightness_pct, coord.rgb_color) == (False, 100, (255, 255, 255))
     assert coord.effect is None and coord.address == "AA:BB:CC:DD:EE:FF" and coord.model == "H617A"
-    assert (coord.music_mode, coord.video_mode, coord.active_custom_id) == ("off", "off", None)
+    assert (coord.music_mode, coord.video_mode, coord.active_custom_id, coord.diy_slot) == ("off", "off", None, None)
+    assert coord.color_mode is None
     assert coord.profile == MODEL_PROFILES["H617A"] and coord.profile.state_readable
     assert (
         coord.profile.supports_music_mode
@@ -51,7 +55,14 @@ async def test_initial_state_and_update(coord, h6199):
         and not h6199.profile.supports_music_style
     )
     coord.is_on, coord.brightness_pct, coord.rgb_color = True, 75, (255, 0, 128)
-    exp = {"is_on": True, "brightness_pct": 75, "rgb_color": (255, 0, 128), "color_temp_kelvin": None, "effect": None}
+    exp = {
+        "is_on": True,
+        "brightness_pct": 75,
+        "rgb_color": (255, 0, 128),
+        "color_temp_kelvin": None,
+        "effect": None,
+        "diy_slot": None,
+    }
     with (
         patch.object(coord, "_ensure_connected", new_callable=AsyncMock),
         patch.object(coord, "_send_state_queries", new_callable=AsyncMock),
@@ -292,7 +303,7 @@ def test_notify_callback_brightness_expectation(h6199):
 
     h6199._expected_state["brightness_pct"] = (75, time.monotonic() + 60)
     cb(None, bytearray([0xAA, 0x04, 0x4B] + [0x00] * 5))
-    assert h6199.brightness_pct == 75 and "brightness_pct" not in h6199._expected_state
+    assert h6199.brightness_pct == 75 and "brightness_pct" in h6199._expected_state
 
     with patch(f"{M}.time.monotonic", return_value=1000):
         h6199._expected_state["brightness_pct"] = (10, 0)
@@ -314,7 +325,7 @@ def test_notify_callback_power_expectation(h6199):
     cb(None, bytearray([0xAA, 0x01, 0x01, 0x00]))
     assert h6199.is_on is True
     assert h6199._field_revisions["is_on"] == field_revision + 1
-    assert "is_on" not in h6199._expected_state
+    assert "is_on" in h6199._expected_state
 
 
 def test_notify_callback_color_temp_window(h6199):
@@ -362,20 +373,50 @@ def test_notify_callback_music_auto_color_clears_manual_color(h6199):
 
 
 def test_active_custom_id_sticky_clear(h6199):
-    """active_custom_id survives a bare-colour aa05 but clears on scene/music/video."""
+    """Custom identity survives only a matching mode with same-connection ownership."""
     cb = h6199._notify_callback
+    h6199.custom_effects = {
+        "segments": CustomEffect("segments", "Segments", "segments", SegmentContent(colors=((255, 0, 0),))),
+        "flame": CustomEffect("flame", "Flame", "flame", VibrantContent(stops=((0, 0, 0), (255, 0, 0)))),
+    }
     for payload, expected_field, expected_value in (
         ([0x15, 0x01, 10, 20, 30], "rgb_color", (10, 20, 30)),
         ([0x15, 0x02, 50], "white_brightness", 50),
     ):
-        h6199.active_custom_id = "flame"
+        h6199.active_custom_id, h6199.effect = "segments", "Segments"
+        h6199.diy_slot = proto.AUTHORED_DIY_SLOT
         cb(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
-        assert h6199.active_custom_id == "flame"
+        assert (h6199.active_custom_id, h6199.effect) == ("segments", "Segments")
+        assert h6199.diy_slot is None
+        assert h6199.color_mode is proto.ParsedMode.COLOUR
         assert getattr(h6199, expected_field) == expected_value
+    h6199.active_custom_id, h6199.effect = "flame", "Flame"
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
+    assert h6199.active_custom_id is None and h6199.effect is None
+    h6199.active_custom_id, h6199.effect = "flame", "Flame"
+    h6199._owned_diy_effect_id = "flame"
+    h6199.music_mode, h6199.video_mode = "rhythm", "movie"
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
+    assert (h6199.active_custom_id, h6199.effect) == ("flame", "Flame")
+    assert h6199.diy_slot == proto.AUTHORED_DIY_SLOT
+    assert (h6199.music_mode, h6199.video_mode) == ("off", "off")
+    h6199.active_custom_id, h6199.effect = "segments", "Segments"
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
+    assert h6199.active_custom_id is None and h6199.effect is None
+    h6199.active_custom_id, h6199.effect = "flame", "Flame"
+    h6199._owned_diy_effect_id = None
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
+    assert h6199.active_custom_id is None and h6199.effect is None
+    h6199.active_custom_id, h6199.effect = "flame", "Flame"
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, 0xEF])))
+    assert h6199.active_custom_id is None and h6199.effect is None
+    assert h6199.diy_slot == 0xEF
     for payload in ([0x04, 0x9D, 0x08], [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3], [0x00, 0x00, 0x01, 42]):
         h6199.active_custom_id = "flame"
+        h6199.diy_slot = 0xEF
         cb(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
         assert h6199.active_custom_id is None
+        assert h6199.diy_slot is None
 
 
 def test_readback_mode_mutual_exclusion(h6199):
@@ -424,13 +465,143 @@ async def test_send_command_arms_expected_state(coord):
 
         await coord.send_command(proto.build_color_rgb(10, 20, 30))
         assert coord._expected_state["rgb_color"][0] == (10, 20, 30)
+        assert "color_temp_kelvin" not in coord._expected_state
 
         mode_id = next(iter(proto.MUSIC_SLUG_BY_ID))
         await coord.send_command(proto.build_music_mode_with_color(mode_id))
         assert coord._expected_state["music_mode"][0] == proto.MUSIC_SLUG_BY_ID[mode_id]
+        assert "rgb_color" not in coord._expected_state
 
         await coord.send_command(proto.build_video_mode(full_screen=False, game_mode=True, saturation=60))
         assert coord._expected_state["video_mode"][0] == "game"
+        assert coord._expected_state["video_full_screen"][0] is False
+        assert coord._expected_state["video_saturation"][0] == 60
+        # The frame is always full, so sound and softness are armed even when sound is off.
+        assert coord._expected_state["video_sound_effects"][0] is False
+        assert coord._expected_state["video_sound_effects_softness"][0] == 100
+
+        await coord.send_command(proto.build_diy_activate(proto.AUTHORED_DIY_SLOT))
+        assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.DIY, proto.AUTHORED_DIY_SLOT)
+
+        await coord.send_command(proto.build_color_rgb(10, 20, 30))
+        assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.COLOUR, 0x01)
+        assert coord._expected_state["rgb_color"][0] == (10, 20, 30)
+
+        await coord.send_command(proto.build_scene(9))
+        assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.SCENE, None)
+        assert coord._expected_state["effect"][0] == proto.SCENE_EFFECT_BY_ID[9]
+
+
+def test_diy_expectation_rejects_stale_static_reply(h6199):
+    h6199.custom_effects = {
+        "flame": CustomEffect("flame", "Flame", "flame", VibrantContent(stops=((0, 0, 0), (255, 0, 0))))
+    }
+    h6199.active_custom_id, h6199.effect = "flame", "Flame"
+    h6199.diy_slot = proto.AUTHORED_DIY_SLOT
+    h6199._owned_diy_effect_id = "flame"
+    h6199._expected_state["color_mode"] = (
+        (proto.ParsedMode.DIY, proto.AUTHORED_DIY_SLOT),
+        time.monotonic() + 60,
+    )
+    cb = h6199._notify_callback
+
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
+    assert (h6199.active_custom_id, h6199.effect, h6199.diy_slot) == (
+        "flame",
+        "Flame",
+        proto.AUTHORED_DIY_SLOT,
+    )
+    assert h6199.rgb_color == (255, 255, 255)
+    assert "color_mode" in h6199._expected_state
+
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
+    assert (h6199.active_custom_id, h6199.effect, h6199.diy_slot) == (
+        "flame",
+        "Flame",
+        proto.AUTHORED_DIY_SLOT,
+    )
+    assert "color_mode" in h6199._expected_state
+
+
+async def test_disconnect_drops_diy_identity_ownership(h6199):
+    h6199.active_custom_id, h6199.effect = "flame", "Flame"
+    h6199.diy_slot = proto.AUTHORED_DIY_SLOT
+    h6199._owned_diy_effect_id = "flame"
+    await h6199.disconnect()
+    assert h6199.active_custom_id is None and h6199.effect is None
+    assert h6199.diy_slot == proto.AUTHORED_DIY_SLOT
+    assert h6199._owned_diy_effect_id is None
+
+
+def test_newer_static_mode_rejects_delayed_diy_reply(h6199):
+    h6199.color_mode = proto.ParsedMode.COLOUR
+    h6199.diy_slot = None
+    h6199._expected_state["color_mode"] = ((proto.ParsedMode.COLOUR, 0x01), time.monotonic() + 60)
+    cb = h6199._notify_callback
+
+    static = bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30]))
+    stale_diy = bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT]))
+    cb(None, static)
+    cb(None, stale_diy)
+
+    assert h6199.color_mode is proto.ParsedMode.COLOUR
+    assert h6199.diy_slot is None
+    assert h6199.rgb_color == (10, 20, 30)
+
+
+def test_static_submode_expectation_rejects_reordered_reply(h6199):
+    h6199._expected_state["color_mode"] = ((proto.ParsedMode.COLOUR, 0x01), time.monotonic() + 60)
+    h6199._expected_state["rgb_color"] = ((10, 20, 30), time.monotonic() + 60)
+    cb = h6199._notify_callback
+
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x02, 80])))
+
+    assert h6199.color_mode is proto.ParsedMode.COLOUR
+    assert h6199.rgb_color == (10, 20, 30)
+    assert h6199.white_brightness == 100
+
+
+def test_music_expectation_rejects_delayed_same_mode_reply(h6199):
+    h6199._expected_state["color_mode"] = ((proto.ParsedMode.MUSIC, None), time.monotonic() + 60)
+    h6199._expected_state["music_mode"] = ("rhythm", time.monotonic() + 60)
+    cb = h6199._notify_callback
+
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x03, 66, 0x00, 0x01, 1, 2, 3])))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])))
+
+    assert h6199.music_mode == "rhythm"
+    assert h6199.color_mode is proto.ParsedMode.MUSIC
+
+
+def test_scene_expectation_rejects_delayed_same_mode_reply(h6199):
+    candy_code = next(code for code, effect in proto.SCENE_EFFECT_BY_ID.items() if effect == "candy")
+    candlelight_code = next(code for code, effect in proto.SCENE_EFFECT_BY_ID.items() if effect == "candlelight")
+    h6199._expected_state["color_mode"] = ((proto.ParsedMode.SCENE, None), time.monotonic() + 60)
+    h6199._expected_state["effect"] = ("candy", time.monotonic() + 60)
+    cb = h6199._notify_callback
+
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, *candy_code.to_bytes(2, "little")])))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, *candlelight_code.to_bytes(2, "little")])))
+
+    assert h6199.effect == "candy"
+    assert h6199.color_mode is proto.ParsedMode.SCENE
+
+
+def test_unknown_mode_clears_restored_metadata(h6199):
+    h6199.custom_effects = {
+        "flame": CustomEffect("flame", "Flame", "flame", VibrantContent(stops=((0, 0, 0), (255, 0, 0))))
+    }
+    h6199.effect, h6199.active_custom_id = "Flame", "flame"
+    h6199.diy_slot = proto.AUTHORED_DIY_SLOT
+    h6199.music_mode, h6199.video_mode = "rhythm", "movie"
+
+    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x99, 0x01])))
+
+    assert h6199.color_mode is proto.ParsedMode.UNKNOWN
+    assert h6199.effect is None and h6199.active_custom_id is None
+    assert h6199.diy_slot is None
+    assert (h6199.music_mode, h6199.video_mode) == ("off", "off")
 
 
 async def test_refresh_state_query_selection(coord):
@@ -633,7 +804,7 @@ async def test_async_paint_segments_rolls_back_on_failure(coord):
 
 
 async def test_async_paint_segments_rejects_unsupported(coord):
-    coord.profile = replace(coord.profile, segment_count=0)
+    coord.profile = replace(coord.profile, supports_segment_writes=False)
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
         pytest.raises(ValueError),
@@ -836,7 +1007,7 @@ def test_device_info_carries_versions_and_omits_connections(coord):
 
 def test_notify_callback_sets_fw_hw_versions(coord):
     fw = proto.build_packet(proto.STATUS_HEADER, proto.FIRMWARE_PACKET_TYPE, list(b"3.02.24"))
-    hw = proto.build_packet(proto.STATUS_HEADER, proto.HARDWARE_PACKET_TYPE, list(b"3.01.01"))
+    hw = proto.build_packet(proto.STATUS_HEADER, proto.HARDWARE_PACKET_TYPE, [0x03, *b"3.01.01"])
     coord._notify_callback(None, bytearray(fw))
     coord._notify_callback(None, bytearray(hw))
     assert coord.fw_version == "3.02.24" and coord.hw_version == "3.01.01"
@@ -871,8 +1042,7 @@ async def test_send_identity_queries_only_unknown(coord):
     c = _c(write_gatt_char=AsyncMock())
     coord._client = c
     await coord._send_identity_queries()
-    c.write_gatt_char.assert_any_await(proto.WRITE_UUID, proto.HW_QUERY, response=False)
-    c.write_gatt_char.assert_any_await(proto.WRITE_UUID, proto.FW_QUERY, response=False)
+    assert [call.args[1] for call in c.write_gatt_char.await_args_list] == [proto.HW_QUERY, proto.FW_QUERY]
     # Only the still-unknown value is re-queried.
     coord.fw_version, coord.hw_version = "3.02.24", None
     c.write_gatt_char.reset_mock()
@@ -883,11 +1053,6 @@ async def test_send_identity_queries_only_unknown(coord):
     c.write_gatt_char.reset_mock()
     await coord._send_identity_queries()
     c.write_gatt_char.assert_not_awaited()
-    # include_hw=False (keep-alive retry path): only firmware, even when hw is unknown.
-    coord.fw_version = coord.hw_version = None
-    c.write_gatt_char.reset_mock()
-    await coord._send_identity_queries(include_hw=False)
-    c.write_gatt_char.assert_awaited_once_with(proto.WRITE_UUID, proto.FW_QUERY, response=False)
 
 
 def test_keep_alive_started_as_background_task(coord):
@@ -907,8 +1072,7 @@ def test_keep_alive_started_as_background_task(coord):
 
 
 async def test_keep_alive_retries_identity_until_bounded(coord):
-    """#97: a connect-time identity reply can be missed, so keep-alive re-queries while a
-    version is unknown, bounded by IDENTITY_RETRY_TICKS so an unanswered aa07 is not polled forever."""
+    """Connect-time identity replies can be missed, so retries remain bounded."""
     coord._client = _c(write_gatt_char=AsyncMock())
     coord.fw_version = coord.hw_version = None
     calls = {"n": 0}
@@ -926,10 +1090,21 @@ async def test_keep_alive_retries_identity_until_bounded(coord):
     assert ident.await_count == IDENTITY_RETRY_TICKS
 
 
-async def test_keep_alive_skips_identity_when_fw_known(coord):
-    """#97: keep-alive re-queries firmware only; a known fw stops retries even if hw stays null."""
+async def test_keep_alive_retries_missing_hw_when_fw_known(coord):
     coord._client = _c(write_gatt_char=AsyncMock())
     coord.fw_version, coord.hw_version = "3.02.24", None
+    with (
+        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock) as ident,
+        patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=False),
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await coord._keep_alive_loop()
+    ident.assert_awaited_once_with()
+
+
+async def test_keep_alive_skips_identity_when_versions_known(coord):
+    coord._client = _c(write_gatt_char=AsyncMock())
+    coord.fw_version, coord.hw_version = "3.02.24", "3.01.01"
     with (
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock) as ident,
         patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=False),
@@ -985,3 +1160,63 @@ async def test_config_entry_first_refresh_raises_config_entry_not_ready(coord):
         bt.async_address_present.return_value = False
         with pytest.raises(ConfigEntryNotReady):
             await coord.async_config_entry_first_refresh()
+
+
+def test_expectations_from_packet_covers_every_command_family():
+    rhythm_id = next(mid for mid, slug in proto.MUSIC_SLUG_BY_ID.items() if slug == "rhythm")
+    spectrum_id = next(mid for mid, slug in proto.MUSIC_SLUG_BY_ID.items() if slug == "spectrum")
+    scene_code = next(iter(proto.SCENE_EFFECT_BY_ID))
+
+    assert _expectations_from_packet(proto.build_power(True)) == {"is_on": True}
+    assert _expectations_from_packet(proto.build_power(False)) == {"is_on": False}
+    assert _expectations_from_packet(proto.build_brightness(37)) == {"brightness_pct": 37}
+
+    rgb = _expectations_from_packet(proto.build_color_rgb(255, 0, 0))
+    assert rgb["rgb_color"] == (255, 0, 0)
+    assert rgb["color_mode"] == (proto.ParsedMode.COLOUR, 0x01)
+
+    # Colour temperature writes carry an all-zero preview RGB, so the frame maps to a kelvin
+    # expectation, never an rgb_color one.
+    ct = _expectations_from_packet(proto.build_color_temp(4000))
+    assert ct["color_temp_kelvin"] == 4000
+    assert "rgb_color" not in ct
+
+    assert _expectations_from_packet(proto.build_white_brightness(80))["white_brightness"] == 80
+
+    assert _expectations_from_packet(proto.build_scene(scene_code))["effect"] == proto.SCENE_EFFECT_BY_ID[scene_code]
+
+    rhythm = _expectations_from_packet(
+        proto.build_music_mode_with_color(rhythm_id, sensitivity=50, color=(10, 20, 30), calm=True)
+    )
+    assert rhythm["music_mode"] == "rhythm"
+    assert rhythm["music_sensitivity"] == 50
+    assert rhythm["music_calm"] is True
+    assert rhythm["music_color"] == (10, 20, 30)
+
+    auto = _expectations_from_packet(proto.build_music_mode_with_color(spectrum_id, sensitivity=40))
+    assert auto["music_mode"] == "spectrum"
+    assert auto["music_color"] is None
+    assert "music_calm" not in auto
+
+    video = _expectations_from_packet(
+        proto.build_video_mode(
+            full_screen=False, game_mode=True, saturation=42, sound_effects=True, sound_effects_softness=55
+        )
+    )
+    assert video["video_mode"] == "game"
+    assert video["video_full_screen"] is False
+    assert video["video_saturation"] == 42
+    assert video["video_sound_effects"] is True
+    assert video["video_sound_effects_softness"] == 55
+
+    diy = proto.build_packet(0x33, 0x05, [proto.COLOR_MODE_DIY, 0xF0])
+    assert _expectations_from_packet(diy)["color_mode"] == (proto.ParsedMode.DIY, 0xF0)
+
+    assert _expectations_from_packet(b"\x00\x01") == {}
+    assert _expectations_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) == {}
+
+
+def test_expected_color_mode_from_packet_rejects_non_colour_packets():
+    assert _expected_color_mode_from_packet(proto.build_power(True)) is None
+    assert _expected_color_mode_from_packet(b"\x33\x05") is None
+    assert _expected_color_mode_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) is None

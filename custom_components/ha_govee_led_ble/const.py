@@ -12,7 +12,9 @@ class ModelProfile:
     state_readable: bool = False
     scene_source: str = "none"
     supports_video_mode: bool = False
-    supports_music_mode: bool = False
+    supports_video_sound_effects: bool = False
+    music_modes: tuple[str, ...] = ()
+    supports_music_color: bool = False
     supports_music_style: bool = False
     supports_music_params: bool = False
     supports_white_brightness: bool = False
@@ -20,10 +22,22 @@ class ModelProfile:
     supports_timers: bool = False
     supports_poweroff_memory: bool = False
     segment_count: int = 0
+    supports_segment_writes: bool = False
 
     @property
     def supports_segments(self) -> bool:
-        return self.segment_count > 0
+        return self.segment_count > 0 and self.supports_segment_writes
+
+    @property
+    def supports_music_mode(self) -> bool:
+        return bool(self.music_modes)
+
+    @property
+    def custom_effect_kinds(self) -> frozenset[str]:
+        kinds = {"segments"} if self.supports_segments else set()
+        if self.supports_diy:
+            kinds.update({"sketch", "vibrant", "flat", "combo"})
+        return frozenset(kinds)
 
 
 MUSIC_MODES: dict[str, int] = {
@@ -57,32 +71,51 @@ MUSIC_MODE_SLUGS: dict[str, int] = {
     "shiny": 0x31,
 }
 
+_H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
+
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617A": ModelProfile(
         "H617A LED Strip",
         state_readable=True,
         scene_source="api",
-        supports_music_mode=True,
+        music_modes=tuple(MUSIC_MODE_SLUGS),
+        supports_music_color=True,
         supports_music_style=True,
         supports_music_params=True,
         supports_diy=True,
         supports_timers=True,
         segment_count=15,
+        supports_segment_writes=True,
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
         supports_video_mode=True,
-        supports_music_mode=True,
+        supports_video_sound_effects=True,
+        music_modes=_H6199_MUSIC_MODES,
         supports_white_brightness=True,
-        supports_diy=True,
-        supports_timers=True,
-        supports_poweroff_memory=True,
+        # Carries no protocol claim. supports_segment_writes is unset, so supports_segments is False
+        # and nothing addresses H6199 segments on the wire; this value only sizes the diagnostic
+        # preview image, which is created for every model. It is NOT 38 on purpose. The device does
+        # answer 38 to aa 40, but that reply has been positively excluded as an app segment count
+        # (an external H7015 reads 30 against 15 segments proven by an exhaustive per-bit sweep), so
+        # copying it in would re-assert the very reading we disproved. The 38 is also not capture-
+        # backed: the vendor app never issues aa 40 to this model, so it came from a direct firmware
+        # register read. See status_reply::unit_count_body. The real number is a question for the
+        # H6199 discovery run, which owns that model's wire behaviour.
         segment_count=15,
     ),
 }
 
+UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
+
+
+def resolve_model(model: str) -> str | None:
+    candidate = model.strip().upper()
+    return next((known for known in MODEL_PROFILES if candidate.startswith(known)), None)
+
 
 def get_profile(model: str) -> ModelProfile:
-    return MODEL_PROFILES.get(model, MODEL_PROFILES["H617A"])
+    resolved = resolve_model(model)
+    return MODEL_PROFILES[resolved] if resolved is not None else UNSUPPORTED_PROFILE

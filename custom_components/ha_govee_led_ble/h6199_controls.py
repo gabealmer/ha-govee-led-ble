@@ -23,9 +23,7 @@ from .light import (
 from .protocol import build_poweroff_memory
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
-_NUMBER_PARAMS = [
-    "music_sensitivity",
-]
+_NUMBER_PARAMS = ["music_sensitivity"]
 
 
 def _supports_number_param(coordinator: GoveeBLECoordinator, key: str) -> bool:
@@ -51,6 +49,8 @@ async def _set_with_rollback(
 
 
 async def _apply_poweroff_memory(coordinator: GoveeBLECoordinator) -> bool:
+    if not coordinator.profile.supports_poweroff_memory:
+        raise ValueError(f"{coordinator.model} does not support power-off memory")
     await coordinator.send_command(build_poweroff_memory(bool(coordinator.poweroff_memory)))
     return True
 
@@ -129,7 +129,7 @@ class PowerOffMemorySwitch(_H6199ControlEntity, RestoreEntity, SwitchEntity):
 
 
 class GoveeMusicStyleSelect(_H6199ControlEntity, SelectEntity):
-    """Dynamic/Calm music style for Rhythm (§2.1); H617A only, replaces the old ``music_calm`` switch."""
+    """Dynamic/Calm music style for Rhythm, Bloom and Shiny (§2.1); H617A only."""
 
     _attr_options = ["dynamic", "calm"]
 

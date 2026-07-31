@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
@@ -5,6 +6,20 @@ from homeassistant.helpers.device_registry import DeviceInfo
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+
+_IDENTITY_EXAMPLE = Path(__file__).parents[1] / "tools" / "harness" / "devices.local.env.example"
+
+
+@pytest.fixture(autouse=True)
+def harness_identity(monkeypatch):
+    """Point the harness at the committed example, so no test needs a real rig identity.
+
+    devices.env refuses to load without an identity file, so without this every test that
+    shells into the harness passes on a machine that happens to have a devices.local.env and
+    fails on a fresh clone and in CI. Using the shipped example rather than a fabricated temp
+    file also means the example cannot rot: if it stops being loadable, these tests say so.
+    """
+    monkeypatch.setenv("HARNESS_IDENTITY_FILE", str(_IDENTITY_EXAMPLE))
 
 
 @pytest.fixture(autouse=True)
@@ -42,6 +57,9 @@ def _make_coord(**ov) -> MagicMock:
         music_daynight_speed=10,
         segment_colors=[(255, 255, 255)] * 15,
         active_custom_id=None,
+        diy_slot=None,
+        color_mode=None,
+        _owned_diy_effect_id=None,
         music_mode="off",
         video_mode="off",
         custom_effects={},
@@ -53,11 +71,15 @@ def _make_coord(**ov) -> MagicMock:
     c.send_command = AsyncMock()
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.resolve_custom = MagicMock(return_value=None)
+    c.is_custom_effect_supported = MagicMock(return_value=True)
     c.custom_effect_display_names = MagicMock(return_value=[])
     c.custom_effect_index = MagicMock(return_value={})
+    c.quarantined_custom_effect_index = MagicMock(return_value={})
 
     def _enter_static_mode() -> None:
         c.effect = c.active_custom_id = None
+        c.diy_slot = None
+        c._owned_diy_effect_id = None
         c.music_mode = c.video_mode = "off"
 
     c._enter_static_mode = MagicMock(side_effect=_enter_static_mode)
