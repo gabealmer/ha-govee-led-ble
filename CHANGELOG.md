@@ -1,6 +1,35 @@
 # CHANGELOG
 
 
+## v4.3.2 (2026-08-01)
+
+### Bug Fixes
+
+- **kaitai**: Correct the type-1 palette_count values and describe the config byte
+  ([`98c8e23`](https://github.com/teh-hippo/ha-govee-led-ble/commit/98c8e231eb604fd290d20f95317e49792cf0728c))
+
+- **kaitai**: Read the Fountain tail as segment arithmetic, not a direction pair
+  ([`06e8cba`](https://github.com/teh-hippo/ha-govee-led-ble/commit/06e8cba4f529399263ba48d3961797bc11df0bde))
+
+- **kaitai**: Record the clock offset byte as a timezone, not a constant
+  ([`13421b1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/13421b12feab3fca883263991adf6134de3aa937))
+
+### Chores
+
+- **deps**: Lock file maintenance
+  ([`704c168`](https://github.com/teh-hippo/ha-govee-led-ble/commit/704c16838a4b7e28415f9ee478da660ed2e79503))
+
+### Documentation
+
+- **kaitai**: Name the vendor formats and warn about the version namespaces
+  ([`8b4b1de`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8b4b1dedffac3a0301a2dca3087558fb61f46063))
+
+### Testing
+
+- Rename the terminator-form parity test to what it actually asserts
+  ([`c2f4804`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c2f48048886a315c78dc2e082eb7c66b6b5eb175))
+
+
 ## v4.3.1 (2026-08-01)
 
 ### Bug Fixes
