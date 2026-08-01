@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v4.3.1 (2026-08-01)
+
+### Bug Fixes
+
+- Keep the StaticPathConfig import valid on Home Assistant 2026.8
+  ([`df7e064`](https://github.com/teh-hippo/ha-govee-led-ble/commit/df7e0643c3ef3b5e193588e7f65b13718275149f))
+
+
 ## v4.3.0 (2026-07-31)
 
 ### Bug Fixes
