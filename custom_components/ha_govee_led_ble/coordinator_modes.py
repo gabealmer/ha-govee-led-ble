@@ -32,6 +32,13 @@ class PreModeSnapshot:
     level: int = 100
 
 
+# Fountain direction, as the two bytes it occupies on the wire. The FIRST is the real control
+# (music_body.ksy::fountain_tail.start_point); the SECOND is a piece count the app derives from
+# the segment count -- segments/3, or segments/4 when the first byte is 1. These literals are
+# therefore correct for a 15-segment strip and only for one: 15/3 = 5 and 15/4 = 3. The H617A is
+# always 15 (Support.supportFactor15PiecesNoGradual), and no other model reaches this table
+# because fountain is absent from _H6199_MUSIC_MODES, so there is nothing to fix here -- but do
+# not carry these numbers to another model without recomputing them.
 FOUNTAIN_DIRECTION_BYTES: dict[str, tuple[int, int]] = {
     "clockwise": (0x00, 0x05),
     "counterclockwise": (0x02, 0x05),
@@ -190,8 +197,8 @@ class _ActiveModeMixin(_CoordinatorBase):
     async def _send_music_params(self, mode_code: int) -> None:
         overrides = {spec.offset: spec.encode(getattr(self, spec.key)) for spec in music_params_for_mode(mode_code)}
         if mode_code == 0x35:
-            phase, selector = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
-            overrides.update({26: phase, 28: selector})
+            start_point, piece_num = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
+            overrides.update({26: start_point, 28: piece_num})
         if mode_code == 0x32:
             # Separation's companion byte is gradient-coupled (0x5e on / 0x61 off, live 2026-07-21).
             overrides[22] = 0x5E if self.music_separation_gradient else 0x61

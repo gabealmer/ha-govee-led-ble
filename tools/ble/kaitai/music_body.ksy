@@ -185,21 +185,46 @@ types:
           15->7 (live 2026-07-23). Derived from the key count (it moves together with
           +1, so it is not an independent control), but the relationship is confirmed.
   fountain_tail:
-    doc: 'Fountain (0x35) tail (4 bytes). Editor = Sensitivity + direction + colour.'
+    doc: |
+      Fountain (0x35) tail (4 bytes). Editor = Sensitivity + direction + colour.
+
+      THIS TAIL IS SEGMENT ARITHMETIC, NOT A DIRECTION PAIR. It was modelled as
+      direction_lo / fixed1 / direction_hi / companion, on the strength of a live A/B/C
+      direction sweep (2026-07-21) in which bytes +0 and +2 both moved with the control.
+      They do move. But +2 is not a direction byte: it is a piece COUNT derived from the
+      segment count, and it changes with direction only because +0 selects which formula
+      produces it. We had a correlation and named it a cause.
+
+      THE ARITHMETIC, and it reproduces the sweep exactly at this device's 15 segments:
+      start_point selects a variant, and for a segment count below 30 the app computes
+      piece_len = 1, speed = 80, and piece_num = segments/3 normally but segments/4 when
+      start_point == 1. Substituting 15:
+        CW       start_point 0 -> 00 01 05 50   swept observation: +0 0x00, +2 0x05
+        Two-way  start_point 1 -> 01 01 03 50   swept observation: +0 0x01, +2 0x03
+        CCW      start_point 2 -> 02 01 05 50   swept observation: +0 0x02, +2 0x05
+      Three for three, including the value that discriminates: 15/3 = 5 and 15/4 = 3, so
+      the Two-way row can only come from the second formula. Derived from vendor code and
+      checked against our own captured sweep; the sweep is ours, the formula is not.
+
+      WHY THE WHOLE TAIL LOOKED INERT. Every byte here is a function of the segment
+      count, which is 15 on this device and always will be. Nothing a user touches moves
+      three of the four. That is the same shape as clock_cmd flag2 (a timezone that never
+      varied because we only capture in one place): a value looks constant when the thing
+      that varies it never varies for us.
     seq:
-      - id: direction_lo
+      - id: start_point
         type: u1
-        doc: '[CONFIRMED_LIVE] +0, direction byte A: CW 0x00 / CCW 0x02 / Two-way 0x01 (A/B/C 2026-07-21)'
-      - id: fixed1
+        doc: '[CONFIRMED_LIVE] +0, the direction control: CW 0x00 / CCW 0x02 / Two-way 0x01, isolated by an A/B/C editor sweep 2026-07-21. That observation is unchanged and still ours. What is new is its SECOND role: it also selects which formula produces piece_num below, which is why that byte appeared to encode direction too. Named for the vendor concept rather than for the UI control because the dual role is the point; a name like direction_lo hides exactly the coupling that misled the earlier reading.'
+      - id: piece_len
         type: u1
         valid: 0x01
-        doc: '[CONFIRMED_LIVE] +1, reads 0x01 in the ONE Fountain body held, plus a second identical body in s2-music.pcap. RE-CAPTURED 2026-07-30 AS THIS DOC ASKED FOR: a fresh app session nine days later re-drove the Fountain tile and uploaded a body BYTE-IDENTICAL to music_body_fountain.bin, so the value no longer rests on a single session. WHAT THAT DOES NOT DO IS SWEEP THE DIRECTION CONTROL: the re-capture applied the mode at its existing setting, so the older claim that this byte is unchanged across all three direction settings remains unsupported by anything in tree. Sweep direction in the editor to settle that. If a direction change moves the byte the parse will fail loudly, which is why pinning it stays defensible.'
-      - id: direction_hi
+        doc: '[CONFIRMED_LIVE] +1, reads 0x01 in the ONE Fountain body held, plus a second identical body in s2-music.pcap, plus a fresh app session nine days later (2026-07-30) that uploaded a BYTE-IDENTICAL body. IT IS NOT FIXED, IT IS DERIVED: the app sets this to 1 while the segment count is below 30 and to 2 at or above it, so on this 15-segment device it can only ever read 0x01. The guard stays pinned at 0x01 deliberately - on a 30-plus-segment device this grammar SHOULD fail loudly rather than quietly accept a value it has never seen. Renamed from fixed1, which asserted the one thing this byte is not.'
+      - id: piece_num
         type: u1
-        doc: '[CONFIRMED_LIVE] +2, direction byte B: CW/CCW 0x05 / Two-way 0x03'
-      - id: companion
+        doc: '[INFERRED] +2, the piece count: segments/3, or segments/4 when start_point == 1. DOWNGRADED FROM CONFIRMED_LIVE 2026-08-01. The values are not in doubt and never were - the A/B/C sweep pinned 0x05 for CW and CCW and 0x03 for Two-way - but the MEANING the old tag asserted, "direction byte B", was wrong, and the tag claims meaning proven by capture. The replacement meaning is vendor-derived, so INFERRED is the honest tier even though the arithmetic reproduces all three swept values at 15 segments (15/3 = 5, 15/4 = 3). TWO WAYS TO PROMOTE IT: craft a Fountain body with a piece_num the app would never send (7, say) and watch whether the pattern changes, which settles whether the device renders from this byte at all; or capture Fountain from a device with a different segment count, where the two formulas give different numbers.'
+      - id: speed
         type: u1
-        doc: '[INFERRED] +3, 0x50 in captures and re-confirmed 2026-07-27 (matches the Dynamic style companion seen elsewhere, including bloom_dynamic on the same day); Fountain exposes no style control, so nothing has yet moved it and its meaning is not isolated'
+        doc: '[INFERRED] +3, the effect speed: 80 while the segment count is below 30, 85 at or above it. Reads 0x50 = 80 in captures and re-confirmed 2026-07-27. THIS REPLACES THE STYLE READING: the byte was previously noted as matching the Dynamic style companion seen on Bloom and elsewhere, which is a coincidence of value, not of role - Fountain exposes no style control, and the reason nothing has ever moved this byte is that it is computed from the segment count rather than chosen. Vendor-derived; promote it with a Fountain capture from a device of a different segment count, which should read 0x55.'
   day_and_night_tail:
     doc: 'Day and Night (0x37) tail (3 bytes). Editor = Sensitivity + seg count + speed + gradient + palette.'
     seq:

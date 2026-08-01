@@ -564,7 +564,11 @@ _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
     ),
     # Piano Keys 0x34: report step music-p-keys (= pcap idx20); [27]=key count 15, [30]=derived floor(count/2).
     0x34: bytes.fromhex("3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000"),
-    # Fountain 0x35: current iOS Clockwise baseline; direction is the pair [26,28].
+    # Fountain 0x35: current iOS Clockwise baseline. [26] is the real direction control
+    # (CW 0x00 / Two-way 0x01 / CCW 0x02); [28] is NOT a second direction byte, it is a
+    # piece count the app derives from the segment count -- segments/3, or segments/4 when
+    # [26] == 1. Writing the two together is therefore correct and matches the app, but they
+    # are a control and its consequence, not a pair. See music_body.ksy::fountain_tail.
     0x35: bytes.fromhex("3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0001055000000000"),
     # Day & Night 0x37: pcap baseline idx27/29; [26]=segments 1, [27]=speed 10 (reproduces both A/B frames).
     0x37: bytes.fromhex("3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010a000000000000"),

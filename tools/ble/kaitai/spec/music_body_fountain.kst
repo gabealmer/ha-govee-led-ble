@@ -1,3 +1,7 @@
+# Fountain (mode 53 = 0x35) at Two-way. Every tail byte is derived from the device's
+# 15 segments, not chosen by the user: start_point 1 selects the /4 formula, so
+# piece_num is 15/4 = 3, while CW and CCW take the /3 formula and read 5. piece_len
+# and speed are the sub-30-segment constants. See music_body.ksy::fountain_tail.
 id: music_body_fountain
 data: music_body_fountain.bin
 imports:
@@ -11,11 +15,11 @@ asserts:
     expected: 7
   - actual: tail_len
     expected: 4
-  - actual: tail.direction_lo
+  - actual: tail.start_point
     expected: 1
-  - actual: tail.fixed1
+  - actual: tail.piece_len
     expected: 1
-  - actual: tail.direction_hi
+  - actual: tail.piece_num
     expected: 3
-  - actual: tail.companion
+  - actual: tail.speed
     expected: 80
