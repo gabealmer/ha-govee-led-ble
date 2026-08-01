@@ -22,6 +22,10 @@ Subcommands:
 
 Only ``build`` and ``scan`` are safe while the vendor app holds the (single) BLE connection.
 ``send`` and ``query`` open a connection and must be run at a coordinated pause.
+
+``send`` and ``query`` REQUIRE ``--address``. They will not find a device for you: with more
+than one Govee strip in range, name-prefix discovery picks whichever is loudest right now, and
+that answer changes between invocations. Run ``scan`` once, then name the device you mean.
 """
 
 from __future__ import annotations
@@ -185,27 +189,6 @@ def describe(frame: bytes, direction: str) -> str:
     return f"cmd action=0x{action:02x} {frame[2:13].hex()}"
 
 
-async def _resolve_target(address: str | None, name_prefix: str, timeout: float):
-    """Return a connect target: the given address, or a discovered BLEDevice matching name_prefix."""
-    if address:
-        return address
-    from bleak import BleakScanner
-
-    print(f"# no --address given; scanning up to {timeout:.0f}s for {name_prefix!r}...", file=sys.stderr)
-    found = await BleakScanner.discover(timeout=timeout, return_adv=True)
-    best = None
-    for device, adv in found.values():
-        name = adv.local_name or device.name or ""
-        if name.startswith(name_prefix):
-            rssi = adv.rssi if adv.rssi is not None else -999
-            if best is None or rssi > best[1]:
-                best = (device, rssi)
-    if best is None:
-        raise SystemExit(f"no device matching {name_prefix!r} found; pass --address")
-    print(f"# using {best[0].name or ''} @ {best[0].address} (rssi={best[1]})", file=sys.stderr)
-    return best[0]
-
-
 async def cmd_scan(args: argparse.Namespace) -> int:
     from bleak import BleakScanner
 
@@ -238,7 +221,7 @@ async def cmd_send(args: argparse.Namespace) -> int:
 
     frames = [complete_frame(text, args.checksum) for text in args.frames]
     response = {"auto": None, "yes": True, "no": False}[args.response]
-    target = await _resolve_target(args.address, args.name_prefix, args.scan_timeout)
+    target = args.address
 
     start = time.monotonic()
     notifications: list[bytes] = []
@@ -269,7 +252,7 @@ async def cmd_query(args: argparse.Namespace) -> int:
     from bleak import BleakClient
 
     frames = [(text, complete_frame(text)) for text in QUERY_FRAMES]
-    target = await _resolve_target(args.address, args.name_prefix, args.scan_timeout)
+    target = args.address
 
     start = time.monotonic()
     replies: list[bytes] = []
@@ -336,16 +319,20 @@ def _add_checksum_arg(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_connect_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--address", help="Bluetooth address of the strip; skips the discovery scan")
-    parser.add_argument(
-        "--name-prefix",
-        default=DEFAULT_NAME_PREFIX,
-        help=f"Advertised-name prefix used to find the strip (default {DEFAULT_NAME_PREFIX!r})",
-    )
+    # --address IS REQUIRED, and that is a safety property rather than an ergonomic one.
+    # This used to fall back to picking whichever device advertised a matching name prefix
+    # with the STRONGEST SIGNAL. With more than one Govee strip in range that is a lottery
+    # re-run on every invocation: on 2026-08-01 two consecutive steps of one differential
+    # landed on two different lights, and the second write went to a device the harness
+    # deliberately refuses to drive (it is deliberately absent from DEVICE_BLE_ADDRESS, and
+    # up.sh direct had already refused it by name). Discovery reached around that refusal,
+    # because a scan consults no map at all.
+    #
+    # The failure is quiet, which is what makes it dangerous: both runs connect, both write
+    # successfully, and the only evidence is one line of address in the log. Use `scan` to
+    # find an address, then pass it. Naming a device is the caller's job.
+    parser.add_argument("--address", required=True, help="Bluetooth address of the strip (see `scan`)")
     parser.add_argument("--timeout", type=float, default=20.0, help="Connect timeout in seconds (default 20)")
-    parser.add_argument(
-        "--scan-timeout", type=float, default=8.0, help="Discovery timeout when --address is omitted (default 8)"
-    )
 
 
 def build_parser() -> argparse.ArgumentParser:
