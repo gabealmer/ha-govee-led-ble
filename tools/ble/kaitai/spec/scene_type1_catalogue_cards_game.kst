@@ -6,6 +6,14 @@ imports:
 asserts:
   - actual: scene_type
     expected: 1
+  - actual: config
+    expected: 131
+  - actual: colour_stride
+    expected: 3
+  - actual: layout
+    expected: 0
+  - actual: brightness_flag
+    expected: true
   - actual: step_count
     expected: 2
   - actual: steps.size
