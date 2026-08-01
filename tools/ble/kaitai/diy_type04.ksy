@@ -9,6 +9,11 @@ doc: |
   17-byte A3 chunks; the a3/idx/xor framing and the trailing empty 0xFF terminator
   are transport, not modelled here). Reassembled on-wire layout:
     byte[0]=01 byte[1]=<linecount> byte[2]=04 byte[3]=<FAMILY> <rest, depends on FAMILY>
+
+  VENDOR NAME: TYPE 0x04 is the vendor's MULTI_V1_NEW_DIY, and FAMILY 0xFF is its
+  "Mix" effect, which is what this spec calls Combo. See govee_common::a3_header for
+  why such names must be quoted against the wire commByte.
+
   The FAMILY byte at byte[3] is read once, then the remainder is type-switched:
   FAMILY == 0xFF selects the Combo layout; any other value IS the flat family code
   and selects the Flat layout. Each layout ends in transport zero padding to the

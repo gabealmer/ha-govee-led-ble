@@ -6,7 +6,14 @@ meta:
     - govee_common
 doc: |
   The reassembled 0xA3 multi-frame body for the shared DIY "TYPE 0x03" custom
-  effect, used by both Finger Sketch and Vibrant on the H617A. The 0xA3 framing,
+  effect, used by both Finger Sketch and Vibrant on the H617A.
+
+  VENDOR NAME: TYPE 0x03 is the vendor's MULTI_V1_NEW_DIY_GRAFFITI, and its
+  "graffiti" really is the freehand-paint surface we call Finger Sketch - established
+  by walking the vendor grammar over catalogue bodies, not by the word. See
+  govee_common::a3_header for why such names must be quoted against the wire commByte.
+
+  The 0xA3 framing,
   the frame indices and the per-frame XOR are transport and are NOT modelled here;
   the reassembly rule lives once on govee_common::a3_header and MUST be read before
   decoding a capture, because this family exercises both framing forms. A

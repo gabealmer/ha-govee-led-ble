@@ -37,6 +37,16 @@ types:
       of this shared header). linecount is the 17-byte A3 chunk count and is never
       below 0x02; its per-payload values are documented at each use site.
 
+      IF YOU QUOTE A VENDOR NAME FOR A PAYLOAD TYPE, QUOTE IT AGAINST THIS BYTE.
+      Four unrelated integers in the vendor app are all called "version", and they
+      disagree: the wire type byte (MULTI_V1_NEW_SCENES = 1, V2 = 2, V3 = 7, V4 = 10),
+      the controller class suffix (the class named V3 emits 7 and the one named V5
+      emits 10), the cloud catalogue's sceneType, and a separate op-type set used only
+      to filter which scenes a device is offered. A name carried across from the wrong
+      one of those lands on a different format entirely. The wire byte is the only
+      identity that survives, which is why the payload specs name their type in
+      numbers first and the vendor's word second.
+
       HOW TO REASSEMBLE (read this before decoding any A3 capture). Concatenate
       bytes[2:19] of EVERY 0xA3 frame in ARRIVAL order, including the frame whose
       index byte is 0xFF, and stop when you have linecount * 17 bytes. That single

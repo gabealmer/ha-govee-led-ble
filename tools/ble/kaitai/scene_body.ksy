@@ -10,6 +10,10 @@ doc: |
     01 <linecount> <scene_type> <record_count> [<rec_len> <rec_data>]... <zero padding>
   Models scene_type 2 (rgbicv2) bodies only; other A3 bodies (music 0x41,
   Flat/Sketch/Vibrant 0x03) use different grammars and must not be routed here.
+
+  VENDOR NAME: scene_type 2 is the vendor's MULTI_V2_NEW_SCENES. See
+  govee_common::a3_header for why that name must always be quoted against the wire
+  commByte and never against a class suffix.
   Every field carries exactly one evidence tag in its doc. The vocabulary and what
   each tag claims are defined once in evidence_lint.py, which also enforces them;
   do not restate them here.
