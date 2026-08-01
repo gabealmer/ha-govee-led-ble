@@ -211,6 +211,11 @@ types:
       three of the four. That is the same shape as clock_cmd flag2 (a timezone that never
       varied because we only capture in one place): a value looks constant when the thing
       that varies it never varies for us.
+
+      HOW piece_num WAS SETTLED. Not by waiting for the app to move it, which it never
+      will, but by crafting values the app cannot produce and watching the strip. That is
+      the general escape from this whole class of field: when the environment will not
+      vary, drive the byte yourself. See piece_num's doc for the sweep.
     seq:
       - id: start_point
         type: u1
@@ -221,10 +226,10 @@ types:
         doc: '[CONFIRMED_LIVE] +1, reads 0x01 in the ONE Fountain body held, plus a second identical body in s2-music.pcap, plus a fresh app session nine days later (2026-07-30) that uploaded a BYTE-IDENTICAL body. IT IS NOT FIXED, IT IS DERIVED: the app sets this to 1 while the segment count is below 30 and to 2 at or above it, so on this 15-segment device it can only ever read 0x01. The guard stays pinned at 0x01 deliberately - on a 30-plus-segment device this grammar SHOULD fail loudly rather than quietly accept a value it has never seen. Renamed from fixed1, which asserted the one thing this byte is not.'
       - id: piece_num
         type: u1
-        doc: '[INFERRED] +2, the piece count: segments/3, or segments/4 when start_point == 1. DOWNGRADED FROM CONFIRMED_LIVE 2026-08-01. The values are not in doubt and never were - the A/B/C sweep pinned 0x05 for CW and CCW and 0x03 for Two-way - but the MEANING the old tag asserted, "direction byte B", was wrong, and the tag claims meaning proven by capture. The replacement meaning is vendor-derived, so INFERRED is the honest tier even though the arithmetic reproduces all three swept values at 15 segments (15/3 = 5, 15/4 = 3). TWO WAYS TO PROMOTE IT: craft a Fountain body with a piece_num the app would never send (7, say) and watch whether the pattern changes, which settles whether the device renders from this byte at all; or capture Fountain from a device with a different segment count, where the two formulas give different numbers.'
+        doc: '[CONFIRMED_LIVE] +2, the piece count: the number of colour blocks the effect holds in its visible queue. PROMOTED FROM INFERRED 2026-08-01 BY A CRAFTED-VALUE SWEEP. The app only ever sends the two values its own arithmetic produces (segments/3, or segments/4 when start_point is 1), so no capture of the app could ever separate a count from a coincidence; driving values the app cannot produce is the only instrument that reaches it. A/B/C/A over a live strip at start_point 0, with every other byte held identical and the frame differing only here and in the checksum: 5 gave five colour blocks queued along the strip, 1 gave a single block on the last segment, 12 gave twelve, and returning to 5 restored five. Counts tracked the byte one-for-one with no clamping, no rejection and no rendering artefacts, and the 7-colour palette simply cycled to fill twelve slots. Each sound event pushes a new colour in at segment 1 and displaces the oldest out the far end, so the byte is the depth of that queue. The vendor arithmetic that produces 5 and 3 on this 15-segment device is still vendor-derived and stays an explanation rather than a claim; what is proven here is what the byte DOES.'
       - id: speed
         type: u1
-        doc: '[INFERRED] +3, the effect speed: 80 while the segment count is below 30, 85 at or above it. Reads 0x50 = 80 in captures and re-confirmed 2026-07-27. THIS REPLACES THE STYLE READING: the byte was previously noted as matching the Dynamic style companion seen on Bloom and elsewhere, which is a coincidence of value, not of role - Fountain exposes no style control, and the reason nothing has ever moved this byte is that it is computed from the segment count rather than chosen. Vendor-derived; promote it with a Fountain capture from a device of a different segment count, which should read 0x55.'
+        doc: '[INFERRED] +3, the effect speed: 80 while the segment count is below 30, 85 at or above it. Reads 0x50 = 80 in captures and re-confirmed 2026-07-27. THIS REPLACES THE STYLE READING: the byte was previously noted as matching the Dynamic style companion seen on Bloom and elsewhere, which is a coincidence of value, not of role - Fountain exposes no style control, and the reason nothing has ever moved this byte is that it is computed from the segment count rather than chosen. Vendor-derived; promote it the way piece_num was promoted, by crafting a value the app cannot send and watching whether the animation rate follows.'
   day_and_night_tail:
     doc: 'Day and Night (0x37) tail (3 bytes). Editor = Sensitivity + seg count + speed + gradient + palette.'
     seq:
