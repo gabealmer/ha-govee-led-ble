@@ -353,16 +353,21 @@ def test_build_sketch_reproduces_a_single_chunk_body():
     assert a3_body(proto.build_a3_multi(0x03, after, terminator=True)) == captured
 
 
-def test_build_sketch_cannot_reproduce_a_multi_chunk_body():
-    """A live divergence, pinned rather than printed.
+def test_the_terminator_form_cannot_reproduce_a_multi_chunk_body():
+    """The two A3 forms, pinned apart on the one body that can tell them apart.
 
-    build_sketch hardcodes terminator=True. That is right for a body fitting one chunk,
-    and wrong the moment the body needs two: the app switches to the plain multi-frame
-    form, where the last DATA chunk carries the 0xff index, while the builder appends a
-    further all-zero frame. The merged-group body is exactly one byte over the boundary.
+    A body fitting a single chunk gets a terminator either way, so `terminator` is
+    unfalsifiable there. The merged-group sketch body is exactly one byte over that
+    boundary, which makes it the smallest fixture that can separate the forms: the plain
+    form gives the last DATA chunk the 0xff index, while the terminator form appends a
+    further all-zero frame and overshoots by 17 bytes.
 
-    The old harness printed this and exited 0, so nothing enforced it in either direction.
-    If build_sketch is fixed, this test fails and must be inverted.
+    This test used to assert the divergence as a live defect, because build_sketch
+    hardcoded terminator=True and could not reproduce this capture. That was corrected on
+    2026-07-31 (see the comment on build_sketch), and the assertions were inverted to pin
+    the fixed behaviour -- but the name and this docstring were left describing the old
+    defect until 2026-08-01. Anything that reads like a standing bug here is stale; the
+    builder is right, and what is pinned is that the WRONG form stays wrong.
     """
     captured = fixture("diy_type03_anchor_sketch_merged")
     after = body_after_type(captured)
