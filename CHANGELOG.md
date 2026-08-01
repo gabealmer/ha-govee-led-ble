@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v4.4.0 (2026-08-01)
+
+### Bug Fixes
+
+- **tools**: Refuse to send to a device nobody named
+  ([`d188661`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d18866122f5aba81d81b444e81dab2a44915f238))
+
+### Features
+
+- **kaitai**: Settle Fountain piece_num on the device, promoting it to confirmed
+  ([`e8b2920`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e8b29207b58035c5b6227385b062e33d61c430c2))
+
+
 ## v4.3.2 (2026-08-01)
 
 ### Bug Fixes
