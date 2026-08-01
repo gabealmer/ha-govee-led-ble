@@ -11,6 +11,12 @@ doc: |
   Only type 1 belongs here; type 2 (rgbicv2) is scene_body.ksy and type 0 has no
   body at all (those nine scenes ship an empty param and are activated by code
   alone, so nothing is uploaded).
+
+  VENDOR NAME: scene_type 1 is the vendor's MULTI_V1_NEW_SCENES. The same grammar
+  also arrives under commByte 7 (MULTI_V3_NEW_SCENES) on other SKUs, shipped as a
+  catalogue scene rather than a user DIY; H617A never emits 7. See
+  govee_common::a3_header for why these names must be quoted against the wire
+  commByte and never against a class suffix.
   Every field carries exactly one evidence tag in its doc. The vocabulary and what
   each tag claims are defined once in evidence_lint.py, which also enforces them;
   do not restate them here.
@@ -27,7 +33,7 @@ doc: |
   Second, eight type-1 catalogue params frozen from the keyless per-SKU
   light-effect-libraries endpoint (see fetch_effect_library.py), carried with the
   type-1 fixtures. Their whole job is breadth that no H617A param can supply: their
-  palette_counts run 1 through 7.
+  palette_counts are 1, 2, 3, 4, 5, 6, 7 and 10.
 
   A LARGER CORPUS WAS REMOVED ON 2026-07-28. A frozen 27-SKU third-party archive
   previously backed the numbers here and let three of these fields carry
@@ -41,10 +47,13 @@ doc: |
   reading that consumed both H617A params just as exactly: a FIXED 0x04 selector
   followed by exactly four rgb, with the step's trailing pair as two independent u1
   fields. It fitted only because palette_count happened to be 4 in both scenes. Across
-  the eight retained type-1 params that byte takes SEVEN different values (1 to 7) and
+  the eight retained type-1 params that byte takes EIGHT different values (1, 2, 3, 4,
+  5, 6, 7 and 10) and
     len(param) == 2 + 5*step_count + 1 + 3*palette_count
-  holds for every one of them. A constant cannot take seven values, so the rival
-  reading is dead and palette_count is a count. This argument survived the corpus
+  holds for every one of them. A constant cannot take eight values, so the rival
+  reading is dead and palette_count is a count. The 10 is cards_game, and it matters
+  more than the others: it is the only value above 7, so it is the one that rules out
+  a 3-bit field as well as a constant. This argument survived the corpus
   removal intact, because it never needed the corpus.
 
   BYTE 0 IS A LAYOUT DISCRIMINATOR, NOT A MARKER. It was modelled as a fixed 0x83
@@ -97,7 +106,7 @@ seq:
     type: u1
     valid:
       eq: 0x83
-    doc: '[INFERRED] layout discriminator rather than a fixed marker, but its meaning rests on vendor catalogue format, not on a capture this grammar round-trips, so it stays inferred. A multi-value marker is real: the type-1 fixtures kept alongside this spec show 0x83 carrying the 5-byte-step-plus-palette layout modelled here. Values 0x03, 0x93 and 0x95 were seen in a frozen cross-SKU corpus that was removed from the repo on 2026-07-28, so they are recorded here as observed history rather than as reproducible evidence: 0x93 indexed 8-byte steps with no palette section, 0x95 10-byte steps with no palette. All three came from a single SKU even then. The guard stays pinned to 0x83 because the grammar must fail closed on layouts it does not model.'
+    doc: '[INFERRED] A PACKED CONFIG BYTE, not a marker: bits 0-2 are the colour-component stride in bytes (3, 4 or 5), bit 3 is ignored by the vendor splitters, bits 4-6 select the layout, and bit 7 is an orthogonal flag not consulted by the layout dispatch. Layout 0 is the 5-byte-step-plus-palette form modelled here; layout 1 replaces it with records of stride+5 bytes and NO palette section; layout 2 and above are rejected outright. Substituting reproduces the values recorded below as lost history: 0x93 is stride 3 layout 1, i.e. 8-byte records with no palette, and 0x95 is stride 5 layout 1, i.e. 10-byte records with no palette. Those two readings came from a frozen cross-SKU corpus removed on 2026-07-28 and were kept here as observed history rather than reproducible evidence; the decomposition derives them independently, so the retired note was accurate, but that does NOT restore the corpus as evidence. 0x03 is the same layout as 0x83 with bit 7 clear. THE DECOMPOSITION IS DELIBERATELY NOT MODELLED AS COMPUTED INSTANCES. Every fixture we hold is 0x83, so instances would return identical values in every one, forever: they could not fail, and evidence_lint exempts pure value: instances because they read no bytes, so the claim would sit in the one place the gate does not look. Capture or craft a 0x93 body first; on the day one parses, the instances become falsifiable and should be added. The guard stays pinned to 0x83 meanwhile because the grammar must fail closed on layouts it does not model, and decomposing the bits would suggest we handle them when we do not.'
   - id: step_count
     type: u1
     doc: '[INFERRED] the number of steps that follow. DOWNGRADED 2026-07-28 from CONFIRMED_LIVE when the frozen cross-SKU corpus that carried it was removed from the repo: that tag rested on 37 catalogue params, and an analysis whose input is gone is prose, not evidence. What survives in-repo is the captured Halloween body, which pins this byte at 6 and consumes exactly, plus the eight catalogue params in the type-1 fixtures, whose step_counts are 1 and 2. Two live values cannot separate a count from a fixed field, and no type-1 scene on any SKU is adjustable, so no capture on this hardware can close it either. Closing it properly needs a fresh catalogue differential or a device with adjustable type-1 scenes.'
@@ -108,7 +117,7 @@ seq:
     doc: '[INFERRED] step_count fixed-width 5-byte steps. DOWNGRADED 2026-07-28 with step_count above: the width-1..16 solver that admitted 5 as the only fitting geometry ran over the frozen cross-SKU corpus, which is no longer in the repo. Width 5 still consumes the captured Halloween body and all eight type-1 fixtures with zero residue, so the geometry is not in doubt for what we hold; what is gone is the breadth that made it the ONLY admissible width.'
   - id: palette_count
     type: u1
-    doc: '[INFERRED] the number of palette colours that follow. DOWNGRADED 2026-07-28 with the fields above when the frozen cross-SKU corpus left the repo. THE FALSIFICATION SURVIVES INTACT: the eight type-1 fixtures kept alongside this spec take palette_count 1, 2, 3, 4, 5, 6 and 7, each consuming exactly, and a constant cannot take seven values, so the rival reading of a fixed 0x04 selector stays dead. The tag drops to inferred not because the argument weakened but because its evidence is catalogue format rather than a device control being moved, and no type-1 scene on any SKU is adjustable, so no capture can promote it.'
+    doc: '[INFERRED] the number of palette colours that follow. DOWNGRADED 2026-07-28 with the fields above when the frozen cross-SKU corpus left the repo. THE FALSIFICATION SURVIVES INTACT: the eight type-1 catalogue params kept alongside this spec take palette_count 1, 2, 3, 4, 5, 6, 7 and 10, each consuming exactly, and a constant cannot take eight values, so the rival reading of a fixed 0x04 selector stays dead. The 10 (cards_game) does the most work of the eight: being the only value above 7 it also rules out a 3-bit field. The tag drops to inferred not because the argument weakened but because its evidence is catalogue format rather than a device control being moved, and no type-1 scene on any SKU is adjustable, so no capture can promote it.'
   - id: palette
     type: govee_common::rgb
     repeat: expr
