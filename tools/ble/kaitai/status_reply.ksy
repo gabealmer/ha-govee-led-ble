@@ -481,8 +481,8 @@ types:
       flag1 = 0x5a read back 0x5a, matching in 6 of 6 driven writes. So this byte is a
       read-back of a stored 8-bit register, not a constant. Its PURPOSE is still
       unknown, which is a separate question from where it lives; see clock_cmd::flag1.
-      Note flag2 has no such mirror: writing flag2 = 0x5a put no 0x5a anywhere in this
-      body, so the two clock flags are not the undifferentiated pair they looked like.
+      Note the UTC offset has no mirror in this body: writing its hour byte to 0x5a put
+      no 0x5a anywhere here. Its mirror is in group 0x32 instead.
 
       GROUP 0x31 CARRIES A LIVE WALL CLOCK, and that, not the music match below, is what
       establishes the window reading. [CONFIRMED_LIVE 2026-07-27d] Body index 6 is the
@@ -498,21 +498,30 @@ types:
       loop that any future clock experiment should verify against.
 
       Note this read-back is NOT a mirror of the clock_cmd body layout, which runs
-      hour/minute/second/weekday/flag1/flag2. Here a zero byte sits between minute and
-      second, the weekday trails at index 10 and flag1 at index 11. Indices 0..3
+      hour/minute/second/weekday/flag1/offset-hours/offset-minutes. Here a zero byte
+      sits between minute and second, the weekday trails at index 10 and flag1 at
+      index 11. Indices 0..3
       (00 03 02 06), 4, 5 and 8 held constant across every read taken on two separate
       days under crafted writes, and remain unexplained.
 
-      GROUP 0x32 INDEX 1 MIRRORS command_write::clock_cmd::flag2. [CONFIRMED_LIVE
+      GROUP 0x32 INDICES 1..2 MIRROR THE UTC OFFSET. [CONFIRMED_LIVE
       2026-07-28] The last clock_cmd body field without a read-back now has one, and it
       is in a DIFFERENT group from the other five. Sentinel-confirmed with a full round
       trip across three 27-group sweeps: baseline 0x0a, then 0x5a after writing
-      flag2 = 0x5a, then 0x0a again after restoring. The sentinel appeared NOWHERE else
+      utc_offset_hours = 0x5a, then 0x0a again after restoring. The sentinel appeared NOWHERE else
       in the window in any phase, so the attribution is unambiguous rather than a
       pattern match.
 
+      [CONFIRMED_LIVE 2026-08-02] Changing the phone from Australia/Sydney (+10:00)
+      to Australia/Adelaide (+09:30), then letting the vendor app reconnect, changed
+      indices 1..2 from the Sydney shape 0a 00 to 09 1e. Restoring the phone to Sydney
+      without reopening the app left 09 1e stored. This independently establishes the
+      signed whole-hour offset and unsigned minute remainder as device state written
+      during clock sync.
+
       THIS VINDICATES THE 0x30 RETRACTION BELOW. The probe was aimed at group 0x30
-      index 7, which carries 0x0a and therefore agreed with flag2's app-constant value.
+      index 7, which carries 0x0a and therefore agreed with the previously observed
+      Sydney offset hour.
       That one-byte agreement was explicitly distrusted when the probe was designed,
       being weaker evidence than the three-byte run this same group had already produced
       and had retracted. The sentinel proved it a coincidence too: 0x30 did not move.
@@ -541,7 +550,7 @@ types:
       that drove brightness and colour-mode without moving anything, the window covers
       the clock register and the free-running counter, and nothing else yet found.
       It is therefore NOT available as a read-back instrument for arbitrary stuck
-      constants, which was the hope when the flag2 mirror turned up.
+      constants, which was the hope when the clock-offset mirror turned up.
 
       THE MUSIC MATCH AT GROUP 0x30 WAS A COINCIDENCE, AND IS RETRACTED. Group 0x30
       returns 00000000 0005640a 00500701, embedding 05 64 0a, byte-for-byte the
@@ -679,19 +688,72 @@ types:
       - id: group
         type: u1
         valid:
-          min: 1
-          max: 5
-        doc: '[CONFIRMED_LIVE] raw group id. Range-checked to the live colour region 01..05, proven by a direct read past it on 2026-07-27: groups 06..0a answer but carry non-colour data, so parsing them as three segments yields impossible brightnesses. Higher groups are not colour either; group 0x31 is a live wall clock, and groups 0x34/0x35 jointly carry a free-running millisecond counter. A 27-group sweep found only those three ever change. See the type doc.'
+          any-of: [1, 2, 3, 4, 5, 49, 50]
+        doc: '[CONFIRMED_LIVE] raw group id. Only the modelled colour groups 01..05 and clock groups 0x31..0x32 are accepted. Direct reads prove groups 06+ answer with unrelated state, so accepting an unknown group as one of these layouts would be a silent wrong answer.'
       - id: segments
         type: segment
         repeat: expr
         repeat-expr: 3
+        if: group >= 1 and group <= 5
         doc: '[CONFIRMED_LIVE] three 4-byte segment records'
+      - id: clock
+        type:
+          switch-on: group
+          cases:
+            49: clock_group_31
+            50: clock_group_32
+        if: group == 49 or group == 50
+        doc: '[CONFIRMED_LIVE] typed extended clock state for group 0x31 or 0x32'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
         doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+  clock_group_31:
+    seq:
+      - id: prefix
+        size: 6
+        doc: '[CONFIRMED_LIVE] six-byte opaque prefix held across timed reads and crafted clock writes'
+      - id: hour
+        type: u1
+        valid:
+          max: 23
+        doc: '[CONFIRMED_LIVE] stored clock hour; isolated by timed reads and reproduced by crafted writes'
+      - id: minute
+        type: u1
+        valid:
+          max: 59
+        doc: '[CONFIRMED_LIVE] stored clock minute; isolated by a live minute rollover and reproduced by crafted writes'
+      - id: separator
+        contents: [0x00]
+        doc: '[CONFIRMED_LIVE] raw zero separator between minute and second in every group 0x31 reply'
+      - id: second
+        type: u1
+        valid:
+          max: 59
+        doc: '[CONFIRMED_LIVE] stored clock second; isolated by timed reads and reproduced by crafted writes'
+      - id: weekday
+        type: u1
+        doc: '[CONFIRMED_LIVE] stored weekday with Mon=1; moved across calendar days and followed crafted writes exactly'
+      - id: flag1
+        type: u1
+        doc: '[INFERRED] stored mirror of command_write::clock_cmd::flag1, isolated with arbitrary sentinels; its purpose remains unknown'
+  clock_group_32:
+    seq:
+      - id: prefix
+        contents: [0x00]
+        doc: '[CONFIRMED_LIVE] raw zero prefix before the UTC offset'
+      - id: utc_offset_hours
+        type: s1
+        doc: '[CONFIRMED_LIVE] signed whole-hour UTC offset stored by app clock sync; changed from Sydney +10 to Adelaide +9 on 2026-08-02'
+      - id: utc_offset_minutes
+        type: u1
+        valid:
+          max: 59
+        doc: '[CONFIRMED_LIVE] unsigned minute remainder of the UTC offset; changed from Sydney 0 to Adelaide 30 on 2026-08-02'
+      - id: tail
+        size: 9
+        doc: '[CONFIRMED_LIVE] nine-byte opaque tail retained because no field inside it has been isolated'
   segment:
     seq:
       - id: brightness

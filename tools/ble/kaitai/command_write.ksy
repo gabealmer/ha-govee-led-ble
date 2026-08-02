@@ -173,7 +173,7 @@ types:
     seq:
       - id: flag
         type: u1
-        doc: '[INFERRED] captured from the app only as 0x00, from two surfaces, always as the prologue to a per-segment paint batch. A crafted 33 a3 01 was accepted and stored on 2026-07-27c (aa a3 read back 0x01, then 0x00 again after restore), so the value set is wider than 0x00. It also SURVIVES A MAINS POWER CYCLE, read back as 0x01 after a cut proven by the aa a5 counter resetting, with a link-drop control run first (2026-07-29), so it is persistent stored state and not a per-connection or per-transaction bracket. It stays INFERRED on the same standard applied to clock_cmd flag1 and flag2: knowing a byte is stored is not knowing what it controls, and what 0x01 changes is still not established.'
+        doc: '[INFERRED] captured from the app only as 0x00, from two surfaces, always as the prologue to a per-segment paint batch. A crafted 33 a3 01 was accepted and stored on 2026-07-27c (aa a3 read back 0x01, then 0x00 again after restore), so the value set is wider than 0x00. It also SURVIVES A MAINS POWER CYCLE, read back as 0x01 after a cut proven by the aa a5 counter resetting, with a link-drop control run first (2026-07-29), so it is persistent stored state and not a per-connection or per-transaction bracket. It stays INFERRED on the same standard applied to clock_cmd flag1: knowing a byte is stored is not knowing what it controls, and what 0x01 changes is still not established.'
       - id: padding
         type: u1
         valid: 0
@@ -209,17 +209,17 @@ types:
       connect. Live differential (device connect at 16:43:16 then 16:51:29,
       2026-07-23): the minute byte moved 0x2b->0x33 and the second byte 0x10->0x1d
       exactly tracking the phone clock, the hour held 0x10=16. Body is
-      hour/minute/second then a weekday byte, then flag1 and the local UTC offset,
-      the rest zero-padded. Weekday isolated across days 2026-07-24: a Friday connect read
+      hour/minute/second then a weekday byte, flag1, and the local UTC offset as
+      signed hours plus an unsigned minute remainder; the rest is zero-padded.
+      Weekday isolated across days 2026-07-24: a Friday connect read
       33 09 16 16 03 05 01 0a (22:22:03, weekday 0x05), one calendar day after the
       0x04 Thursday captures, so the byte is the day of week with Mon=1 (Thu=4,
-      Fri=5); flag1=0x01 and flag2=0x0a held constant across all three captures.
+      Fri=5); flag1=0x01 and the UTC offset was +10:00 across all three captures.
 
-      NO protocol.py BUILDER EXISTS, AND ANYONE ADDING ONE MUST READ flag2 FIRST.
-      The 0x0a in every capture above is UTC+10, i.e. this rig's timezone, not a
+      NO protocol.py BUILDER EXISTS, AND ANYONE ADDING ONE MUST READ THE OFFSET FIRST.
+      The 0x0a 0x00 in every capture above is UTC+10:00, i.e. this rig's timezone, not a
       protocol constant. A builder that copies it from a capture would ship UTC+10 to
-      every user on earth. Derive it from the local offset instead. That trap is the
-      whole reason this field is documented at length below.
+      every user on earth. Derive both components from the local offset instead.
 
       IT CAN NOW BE READ BACK. [CONFIRMED_LIVE 2026-07-27] aa a5 group 0x31 returns a
       live clock (hour, minute and second isolated by a timed double-read), so this
@@ -234,21 +234,24 @@ types:
       (1) Hour, minute and second are echoed back exactly as written.
       (2) The weekday is STORED VERBATIM, not derived: driving it to 0x06 on a Tuesday
           read back 0x06. Six of six writes matched.
-      (3) NEITHER FLAG GATES THE FRAME. Writing flag1 = 0x00 and, separately,
-          flag2 = 0x00 was accepted each time and the clock took, so neither byte is
-          validated. They were varied ONE AT A TIME, because a frame changing both
-          could not attribute a rejection to either.
-      (4) BOTH FLAGS ARE STORED AND MIRRORED, in different groups of the aa a5 window.
-          flag1 is at group 0x31 index 11 and flag2 at group 0x32 index 1. Both were
+      (3) NEITHER REGISTER GATES THE FRAME. Writing flag1 = 0x00 and, separately,
+          utc_offset_hours = 0x00 was accepted each time and the clock took, so neither
+          byte is validated. They were varied ONE AT A TIME, because a frame changing
+          both could not attribute a rejection to either.
+      (4) BOTH REGISTERS ARE STORED AND MIRRORED, in different groups of the aa a5 window.
+          flag1 is at group 0x31 index 11 and utc_offset_hours at group 0x32 index 1. Both were
           proven with arbitrary non-binary sentinels so a coincidence between one-bit
           states was excluded: flag1 read back 0x05, 0x5a and 0x3c as written, and
-          flag2 completed a full round trip 0x0a -> 0x5a -> 0x0a with its sentinel
+          utc_offset_hours completed a full round trip 0x0a -> 0x5a -> 0x0a with its sentinel
           appearing nowhere else across a 27-group sweep. So calling these "two
           constant flag bytes" understated them; they are registers, not padding.
-      Both stay [INFERRED] because knowing a byte is stored is not knowing what it does,
-      the same standard applied to multi_effect_cmd::flag. They are now cheap to hunt,
-      though: each has a read-back, so a future probe can drive one and watch for any
-      device behaviour that follows.
+
+      THE OFFSET MEANING IS NOW LIVE-CONFIRMED. [CONFIRMED_LIVE 2026-08-02] The phone
+      was changed from Australia/Sydney (+10:00) to Australia/Adelaide (+09:30), the
+      vendor app connected and performed its normal sync, and aa a5 group 0x32 changed
+      to indices 1..2 = 09 1e. The phone was restored to Sydney without reopening the
+      app and the device still returned 09 1e, proving these are stored hour and minute
+      components written by the Adelaide sync rather than values consulted at read time.
     seq:
       - id: hour
         type: u1
@@ -271,14 +274,19 @@ types:
       - id: flag1
         type: u1
         doc: '[INFERRED] 0x01 in every app capture, but NOT a constant and NOT ignored. [CONFIRMED_LIVE 2026-07-28] It is a stored 8-bit register mirrored at status_reply aa a5 31 body index 11: crafted writes of 0x05 and 0x5a read back exactly, 6 of 6 driven writes matched, and the clock write was accepted every time so the byte does not gate the frame. WHAT IT CONTROLS is still unestablished, which is why this stays INFERRED. NO IMMEDIATE VISIBLE EFFECT [2026-07-29]: driven to 0x5a with eyes on a solid blue strip at 100% and about 20 s of settling, storage confirmed by read-back in the same window, and nothing changed. That rules out a fast visible effect and nothing more: it may act on a timescale, in a mode, or against a condition absent from the trip. Recasting it as a constant is NOT available either, since it is a demonstrably stored register. Its read-back makes it cheap to test further: drive it and watch for any device behaviour that follows.'
-      - id: flag2
+      - id: utc_offset_hours
+        type: s1
+        doc: '[CONFIRMED_LIVE] signed whole-hour component of the phone local UTC offset. Australia/Sydney app syncs stored 0x0a (+10); changing the phone to Australia/Adelaide and reconnecting the app stored 0x09 while the following field stored 0x1e, exactly +09:30, read back through status_reply aa a5 group 0x32 on 2026-08-02. Restoring the phone to Sydney without reopening the app left 09 1e stored, proving this is device state written during sync. Earlier crafted writes established the byte is mirrored at group 0x32 index 1 and is not frame-gating.'
+      - id: utc_offset_minutes
         type: u1
-        doc: '[INFERRED] THE LOCAL UTC OFFSET IN HOURS. 0x0a is +10, and this rig is UTC+10, which is why it reads 0x0a in every capture we hold: the value is not a protocol constant, it is where we live. Derived from the vendor app, which fills this byte from its own local-offset helper (including DST) and the NEXT byte from the offset''s minute remainder - see padding below. THIS IS THE MOST INSTRUCTIVE FIELD IN THE FILE: it looked constant for months because the entire evidence base was collected in one timezone, so a byte varying with the environment is indistinguishable from a fixed byte when the environment never varies. TESTABLE CHEAPLY AND NOT YET TESTED: set the phone to a HALF-HOUR zone (Adelaide or Darwin, UTC+9:30) and re-capture a connect; this byte should read 0x09 and the first padding byte 0x1e. That single capture promotes both bytes to CONFIRMED_LIVE and needs no DST wait. A pass would also retire the 2026-07-29 "no visible effect" result as expected rather than puzzling: an offset the device stores for its own bookkeeping need not change anything on an LED strip. WHAT SURVIVES UNCHANGED from earlier work: non-gating (a crafted flag2=0x00 was accepted and the clock took, 2026-07-28); stored and read back at status_reply aa a5 group 0x32 index 1, sentinel-confirmed by a full round trip 0x0a -> 0x5a -> 0x0a with the sentinel appearing nowhere else in the 27-group window; no immediate visible effect when driven to 0x5a (2026-07-29). Storage was never in doubt; meaning was, and this is a meaning that storage alone could never have shown.'
+        valid:
+          max: 59
+        doc: '[CONFIRMED_LIVE] unsigned minute remainder of the phone local UTC offset. It was 0x00 in every Sydney (+10:00) connect capture, then stored and read back as 0x1e after an Adelaide (+09:30) app sync on 2026-08-02. The half-hour observation separates this field from the zero padding that follows.'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero. THE FIRST BYTE HERE IS A CANDIDATE FIELD, NOT SETTLED PADDING. The vendor app writes the MINUTE remainder of the UTC offset immediately after flag2, and this rig is UTC+10:00, whose minute remainder is 0 - which is exactly what padding looks like. It is deliberately NOT modelled as a named field: every observation we hold is zero, and naming a byte whose meaning nobody has observed asserts knowledge we do not have (the rule that emptied the retired third evidence tag). Capture a connect with the phone on a half-hour zone (UTC+9:30) and this byte should read 0x1e; that is the observation that would justify splitting it out, and until then the all-zero guard fails loudly on exactly the capture that would prove it, which is the correct behaviour.'
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window after the confirmed UTC offset minute field; grammar-enforced all-zero'
   multi_cmd:
     doc: |
       op 0x05. Second-level dispatcher: the first body byte selects the sub-command,

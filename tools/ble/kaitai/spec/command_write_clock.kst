@@ -14,5 +14,7 @@ asserts:
     expected: 4
   - actual: body.flag1
     expected: 1
-  - actual: body.flag2
+  - actual: body.utc_offset_hours
     expected: 10
+  - actual: body.utc_offset_minutes
+    expected: 0
