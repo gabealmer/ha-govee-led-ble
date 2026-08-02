@@ -1,0 +1,10 @@
+# Second H6199 subordinate version reply from the attributable connect burst.
+id: h6199_status_subordinate_21
+data: h6199_status_subordinate_21.bin
+imports:
+  - h6199_status_reply
+asserts:
+  - actual: domain
+    expected: 33
+  - actual: body.text
+    expected: "1.00.33"
