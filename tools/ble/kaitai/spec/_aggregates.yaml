@@ -679,8 +679,8 @@
     every one exactly that many length-prefixed blocks consume the body up to its padding.
     A count that predicts where the padding starts, across bodies of five different sizes,
     is what makes it a count rather than a small constant.
-  cases: h6199_effect_*
-  collect: block_count
+  cases: h6199_effect_scene_*
+  collect: content.block_count
   distinct_at_least: 5
 
 - id: h6199_effect_chunk_count_varies
@@ -699,15 +699,68 @@
     prefix that varies while the parse continues to land exactly on the padding in every
     body is the claim; a fixed-width block would have failed on the first body of a
     different size.
-  cases: h6199_effect_*
-  collect: blocks[0].len
+  cases: h6199_effect_scene_*
+  collect: content.blocks[0].len
   distinct_at_least: 5
 
-- id: h6199_effect_kind_never_moves
+- id: h6199_effect_kind_has_both_shapes
   doc: >
-    The byte at body offset 2 holds one value across all eight bodies, which is why it is
-    unnamed. Recorded so the absence of variation is a measurement rather than an omission,
-    and so a body that is not a scene has something to be compared against.
+    The kind byte takes both of its values across the corpus, and the two select genuinely
+    different layouts rather than variations on one. It was an unnamed constant while only
+    scene bodies existed; the DIY captures are what separated a version byte from a body
+    type, which is exactly the comparison its note asked for.
   cases: h6199_effect_*
-  collect: opaque_kind
-  distinct_at_least: 1
+  collect: kind
+  distinct_at_least: 2
+
+- id: h6199_effect_diy_speed_moves_alone
+  doc: >
+    Two DIY uploads taken either side of dragging the editor's Speed slider, with the style
+    and palette untouched, differ at exactly the speed byte. Nothing else in the body moved,
+    which is what pins speed to that byte rather than to the pair around it.
+  between: [h6199_effect_diy_fade1_slow, h6199_effect_diy_fade1_fast]
+  differs_at: [5]
+
+- id: h6199_effect_diy_style_moves_two_bytes
+  doc: >
+    Two styles of the same family, tapped one after the other in the live-apply list, differ
+    at exactly the variant byte. The family byte does not move between them, which is what
+    separates the two fields; a single style index would have moved one byte for every
+    change and could not tell these apart from a family change.
+  between: [h6199_effect_diy_fade2, h6199_effect_diy_fade3]
+  differs_at: [4]
+
+- id: h6199_effect_diy_family_moves_alone
+  doc: >
+    Fade1 and Jumping1 are the first style of two different families and differ at exactly
+    the family byte, the variant staying 0 in both. Together with the pair above this is
+    what makes the two bytes independent fields.
+  between: [h6199_effect_diy_fade1_fast, h6199_effect_diy_jumping1]
+  differs_at: [3]
+
+- id: h6199_effect_diy_variant_is_not_an_index
+  doc: >
+    The variant takes six distinct values across eleven styles, and its numbering is what
+    matters rather than its spread: Fade and Twinkle run 0, 1, 2, but Jumping gives 0 and 2
+    and Marquee gives 3, 4, 5. Two departures from a zero-based index in two families is the
+    measurement behind calling it an identifier, and this aggregate exists so that reading
+    cannot quietly regress to an ordinal.
+  cases: h6199_effect_diy_*
+  collect: content.variant
+  distinct_at_least: 6
+
+- id: h6199_effect_diy_families_vary
+  doc: >
+    The family byte takes four distinct values, one per animation family the editor offers.
+  cases: h6199_effect_diy_*
+  collect: content.family
+  distinct_at_least: 4
+
+- id: h6199_effect_diy_palette_length_varies
+  doc: >
+    Deleting one swatch in the editor moved the palette length from 21 to 18 and removed
+    exactly that colour's three bytes. A length that tracks the number of colours, not the
+    body size, is the claim; the body itself stayed the same size because the padding grew.
+  cases: h6199_effect_diy_*
+  collect: content.palette_len
+  distinct_at_least: 2

@@ -3,20 +3,20 @@
 # "fireblood" scene from the House of the Dragon row. The light was off
 # Govee's cloud, so the app reached it by no path but this one, and the PHONE was online,
 # which is what made the cloud-backed gallery usable at all.
-id: h6199_effect_fire_blood
-data: h6199_effect_fire_blood.bin
+id: h6199_effect_scene_fire_blood
+data: h6199_effect_scene_fire_blood.bin
 imports:
   - h6199_effect_upload
 asserts:
   - actual: chunk_count
     expected: 3
-  - actual: opaque_kind
-    expected: "02"
-  - actual: block_count
+  - actual: kind
+    expected: 2
+  - actual: content.block_count
     expected: 1
-  - actual: blocks.size
+  - actual: content.blocks.size
     expected: 1
-  - actual: blocks[0].len
+  - actual: content.blocks[0].len
     expected: 32
-  - actual: padding
+  - actual: content.padding
     expected: "0000000000000000000000000000"

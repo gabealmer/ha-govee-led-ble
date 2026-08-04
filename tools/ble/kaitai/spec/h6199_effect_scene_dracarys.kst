@@ -3,26 +3,26 @@
 # "dracarys" scene from the House of the Dragon row. The light was off
 # Govee's cloud, so the app reached it by no path but this one, and the PHONE was online,
 # which is what made the cloud-backed gallery usable at all.
-id: h6199_effect_dracarys
-data: h6199_effect_dracarys.bin
+id: h6199_effect_scene_dracarys
+data: h6199_effect_scene_dracarys.bin
 imports:
   - h6199_effect_upload
 asserts:
   - actual: chunk_count
     expected: 7
-  - actual: opaque_kind
-    expected: "02"
-  - actual: block_count
+  - actual: kind
+    expected: 2
+  - actual: content.block_count
     expected: 4
-  - actual: blocks.size
+  - actual: content.blocks.size
     expected: 4
-  - actual: blocks[0].len
+  - actual: content.blocks[0].len
     expected: 29
-  - actual: blocks[1].len
+  - actual: content.blocks[1].len
     expected: 26
-  - actual: blocks[2].len
+  - actual: content.blocks[2].len
     expected: 29
-  - actual: blocks[3].len
+  - actual: content.blocks[3].len
     expected: 26
-  - actual: padding
+  - actual: content.padding
     expected: "00"

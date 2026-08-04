@@ -14,17 +14,19 @@ doc: |
   use 0xA1 "in place of 0xA3", and every H6199 upload captured has used 0xA3, so the shared
   reading was already wrong about this family once.
 
-  THE BODY IS A CONTAINER AND THIS GRAMMAR STOPS AT THAT BOUNDARY. Each block's interior is
-  left opaque because no capture varies it under a known control: the eight bodies here were
-  produced by applying eight different catalogue scenes, so every byte inside a block
-  changed at once and nothing is isolated. The DIY editor, which lets an effect be built one
-  parameter at a time, is where those bytes can be pinned, and until then naming them would
-  be reading the H617A grammar into a model that has already broken it.
+  TWO SHAPES SHARE THIS ENVELOPE, chosen by the kind byte. A catalogue scene arrives as a
+  count and a list of length-prefixed blocks whose interior is left opaque. An effect built
+  in the app's DIY editor arrives as parameters - family, variant, speed and a palette -
+  every one of which is isolated, because the editor changes one thing at a time.
 
-  Every field below is derived from eight captured bodies, taken 2026-08-04 by applying
-  eight scenes from three of the app's categories. They span one to five blocks, block
-  lengths 26 to 47, and reassembled lengths 51 to 170, and the structure accounts for every
-  byte of all eight with nothing left over.
+  The scene blocks stay opaque because no capture varies one under a known control: the
+  eight scene bodies came from applying eight different catalogue scenes, so every byte
+  inside a block moved at once. Naming them would mean reading the H617A grammar into a
+  model that has already broken it once.
+
+  Derived from twenty-one bodies captured 2026-08-04: eight scenes from three of the app's
+  categories, and thirteen DIY uploads. The structure accounts for every byte of all
+  twenty-one with nothing left over.
 seq:
   - id: header
     contents: [0x01]
@@ -33,41 +35,126 @@ seq:
     type: u1
     doc: |
       [CONFIRMED_LIVE] how many 17-byte transport chunks the body occupies, at body offset 1.
-      Captured as 3, 3, 4, 6, 7, 7, 7 and 10, and in every case equal BOTH to the number of
-      0xA3 frames the phone actually sent and to the number of chunks the content needs,
-      which is the used length divided by seventeen and rounded up. Two independent ways of
-      arriving at the same number across eight bodies spanning 3 to 10 is what names it.
+      Captured between 2 and 10, and in every case equal BOTH to the number of 0xA3 frames
+      the phone actually sent and to the number of chunks the content needs, which is the
+      used length divided by seventeen and rounded up. Two independent ways of arriving at
+      the same number, across twenty-one bodies, is what names it.
 
       It is redundant with the transport, which is worth stating: the frame count is already
       knowable from the frames themselves, so this is the sender telling the light how much
       to expect rather than anything about the effect.
-  - id: opaque_kind
-    size: 1
-    doc: |
-      [CONFIRMED_LIVE] one byte at body offset 2, captured as 0x02 in all eight bodies and
-      never seen to vary. Unnamed for that reason. A version or a body type are both
-      plausible and neither is evidenced; a body that is not a scene, such as a DIY upload,
-      is what would separate them.
-  - id: block_count
+  - id: kind
     type: u1
+    enum: body_kind
     doc: |
-      [CONFIRMED_LIVE] how many blocks follow, at body offset 3. Captured as 1, 1, 2, 2, 3,
-      3, 4 and 5, and in every case exactly that many length-prefixed blocks are present and
-      consume the body up to its padding. A count that predicts where the padding starts, in
-      eight bodies of five different sizes, is not a coincidence of small numbers.
-  - id: blocks
-    type: block
-    repeat: expr
-    repeat-expr: block_count
-    doc: '[CONFIRMED_LIVE] the effect definition, as block_count length-prefixed blocks starting at body offset 4'
-  - id: padding
-    size-eos: true
-    doc: |
-      [CONFIRMED_LIVE] zero padding out to the transport chunk boundary. Captured as 1 to 16
-      bytes, always zero, in all eight bodies. Its length is whatever is left of the last
-      seventeen-byte chunk, which is why the reassembled length is always a multiple of
-      seventeen and cannot be used as the content length.
+      [CONFIRMED_LIVE] which shape the rest of the body takes, at body offset 2. Captured as
+      0x02 in all eight catalogue-scene uploads and 0x04 in all thirteen DIY-editor uploads,
+      and the two shapes are not variations on each other: a scene body continues with a
+      block count and a list of length-prefixed blocks, a DIY body with four parameters and
+      a palette.
+
+      This byte was first modelled as an unnamed constant, correctly, because the only
+      bodies then captured were scenes and it never moved. The note left on it said a body
+      that is not a scene is what would separate a version from a body type. That capture
+      was then taken, and it did.
+  - id: content
+    type:
+      switch-on: kind
+      cases:
+        'body_kind::scene': scene_content
+        'body_kind::diy': diy_content
+    doc: '[CONFIRMED_LIVE] the effect definition from body offset 3, in the shape the kind byte selects'
+enums:
+  body_kind:
+    0x02: scene
+    0x04: diy
+  effect_family:
+    0x00: fade
+    0x01: jumping
+    0x02: twinkle
+    0x03: marquee
 types:
+  scene_content:
+    seq:
+      - id: block_count
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] how many blocks follow, at body offset 3. Captured as 1, 1, 2, 2,
+          3, 3, 4 and 5, and in every case exactly that many length-prefixed blocks are
+          present and consume the body up to its padding. A count that predicts where the
+          padding starts, in eight bodies of five different sizes, is not a coincidence of
+          small numbers.
+      - id: blocks
+        type: block
+        repeat: expr
+        repeat-expr: block_count
+        doc: '[CONFIRMED_LIVE] the effect definition, as block_count length-prefixed blocks starting at body offset 4'
+      - id: padding
+        size-eos: true
+        doc: |
+          [CONFIRMED_LIVE] zero padding out to the transport chunk boundary. Captured as 1 to
+          16 bytes, always zero, in all eight scene bodies. Its length is whatever is left of
+          the last seventeen-byte chunk, which is why the reassembled length is always a
+          multiple of seventeen and cannot be used as the content length.
+  diy_content:
+    doc: |
+      An effect the user built in the app's DIY editor, sent as parameters rather than as
+      compiled blocks. Every field here is isolated: the editor changes one thing at a time
+      and thirteen uploads were taken that way, so consecutive pairs are controlled
+      comparisons.
+    seq:
+      - id: family
+        type: u1
+        enum: effect_family
+        doc: |
+          [CONFIRMED_LIVE] the animation family, at body offset 3. Captured as 0 for the
+          three Fade styles, 1 for the two Jumping, 2 for the three Twinkle and 3 for the
+          three Marquee, by tapping each style in the editor's live-apply list with the
+          palette and speed untouched, so each pair differs in this byte and the next alone.
+      - id: variant
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] which style within the family, at body offset 4. NOT AN ORDINAL,
+          which is the whole reason this field is worth a note: the numbers are 0, 1, 2 for
+          Fade1..3 and 0, 1, 2 for Twinkle1..3, which invites reading it as a zero-based
+          index, but Jumping1 and Jumping2 give 0 and 2, skipping 1, and Marquee1..3 give 3,
+          4 and 5 rather than starting at zero.
+
+          Two independent departures from an index, in two different families, is what makes
+          it an identifier. The gaps most likely name styles the firmware knows and this
+          SKU's editor does not offer; that is a reading of the gaps and not a measurement.
+      - id: speed
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] animation speed, at body offset 5. Captured as 0x32 and then 0x5c
+          by dragging the editor's Speed slider with nothing else touched, the two uploads
+          differing at this byte alone.
+      - id: palette_len
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] how many palette bytes follow, at body offset 6. Captured as 21
+          with the editor's seven default swatches and 18 after deleting one, three bytes per
+          colour. Deleting a swatch moved this byte and removed exactly that colour's three
+          bytes, which is what ties the count to the palette rather than to the body length.
+      - id: palette
+        type: rgb
+        repeat: expr
+        repeat-expr: palette_len / 3
+        doc: '[CONFIRMED_LIVE] the colours the effect cycles, from body offset 7, in the order the editor draws them'
+      - id: padding
+        size-eos: true
+        doc: '[CONFIRMED_LIVE] zero padding out to the transport chunk boundary, captured as 6 bytes with seven colours and 9 with six'
+  rgb:
+    seq:
+      - id: red
+        type: u1
+        doc: '[CONFIRMED_LIVE] red channel; the editor default palette begins ff 00 00, which is the red swatch it draws first'
+      - id: green
+        type: u1
+        doc: '[CONFIRMED_LIVE] green channel; the fourth swatch is 00 ff 00 and the app draws it green'
+      - id: blue
+        type: u1
+        doc: '[CONFIRMED_LIVE] blue channel; the fifth swatch is 00 00 ff and the app draws it blue'
   block:
     doc: |
       One element of the effect. Eight bodies hold nineteen blocks between them and every one
