@@ -1,0 +1,28 @@
+# H6199 static-colour write, captured 2026-08-03 from the Govee Home iOS app driving the
+# DreamView T1 over BLE with the phone in Airplane Mode. One of four Basic Colors swatches
+# tapped in a single session with nothing else touched, so any pair of them is a controlled
+# comparison. The three primaries are what isolate the channels: a single mixed colour
+# moves every channel byte at once and proves none of them.
+id: h6199_command_colour_blue
+data: h6199_command_colour_blue.bin
+imports:
+  - h6199_command_write
+asserts:
+  - actual: opcode
+    expected: 5
+  - actual: body.sub_mode
+    expected: 21
+  - actual: body.detail.opaque_head
+    expected: "01"
+  - actual: body.detail.red
+    expected: 0
+  - actual: body.detail.green
+    expected: 0
+  - actual: body.detail.blue
+    expected: 255
+  - actual: body.detail.opaque_gap
+    expected: "0000000000"
+  - actual: body.detail.segment_mask
+    expected: 32767
+  - actual: body.detail.opaque_tail
+    expected: "0000000000"

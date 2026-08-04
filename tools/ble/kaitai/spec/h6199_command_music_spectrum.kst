@@ -1,0 +1,20 @@
+# H6199 music-mode write, captured 2026-08-04 from the Govee Home iOS app driving the
+# DreamView T1 over BLE with the phone in Airplane Mode. One of four mode tiles tapped in a
+# single session with the sensitivity slider and the sound-pickup toggle untouched, so any
+# pair of them is a controlled comparison isolating the mode byte alone. Re-tapping the first
+# tile at the end reproduced its frame byte for byte, so the write carries no nonce.
+id: h6199_command_music_spectrum
+data: h6199_command_music_spectrum.bin
+imports:
+  - h6199_command_write
+asserts:
+  - actual: opcode
+    expected: 5
+  - actual: body.sub_mode
+    expected: 19
+  - actual: body.detail.mode
+    expected: 4
+  - actual: body.detail.sensitivity
+    expected: 99
+  - actual: body.detail.opaque_tail
+    expected: "0000000000000000000000000000"

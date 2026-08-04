@@ -310,3 +310,166 @@
   cases: scene_body_*
   collect: record_count
   distinct_at_least: 3
+
+- id: h6199_command_write_power_one_byte
+  doc: >
+    The H6199 power write differs from its counterpart at exactly the payload byte and the
+    checksum, so is_on is that byte and the opcode carries no on/off information. Both were
+    captured 2026-08-03 from the same device page minutes apart, with nothing else touched
+    between them, which is what makes the pair a controlled comparison. Proven on H6199
+    bytes alone: the H617A has the same claim under command_write_power_one_byte, and
+    neither is evidence for the other.
+  between: [h6199_command_power_off, h6199_command_power_on]
+  differs_at: [2, 19]
+
+- id: h6199_brightness_values_vary
+  doc: >
+    Brightness is a value byte, not a constant: three levels taken in one session hold
+    three different percents. Without this a single capture would let percent be modelled
+    from a byte that never moved.
+  cases: h6199_command_brightness_*
+  collect: body.percent
+  distinct_at_least: 3
+
+- id: h6199_brightness_one_byte
+  doc: >
+    Between the extremes of the same session only the percent byte and the checksum moved,
+    so nothing else in the write carries the level. The pair is 100% against 3% because
+    those are the two furthest apart, and a differential that survives the widest change
+    is the strongest one the session supports.
+  between: [h6199_command_brightness_3, h6199_command_brightness_100]
+  differs_at: [2, 19]
+
+- id: h6199_colour_red_channel_isolated
+  doc: >
+    Red against green moves exactly offsets 4 and 5, which is what makes offset 4 the red
+    channel rather than the first byte of an opaque colour blob. The checksum does not
+    move because the XOR of the three channel bytes is 0xff in both frames, which is
+    itself a check on the checksum algorithm.
+  between: [h6199_command_colour_green, h6199_command_colour_red]
+  differs_at: [4, 5]
+
+- id: h6199_colour_blue_channel_isolated
+  doc: >
+    Green against blue moves exactly offsets 5 and 6, completing the isolation: taken with
+    the red/green pair, each of the three primaries moves only its own byte and its
+    neighbour, and no fourth byte ever moves with them.
+  between: [h6199_command_colour_blue, h6199_command_colour_green]
+  differs_at: [5, 6]
+
+- id: h6199_colour_leaves_mode_and_tail_alone
+  doc: >
+    White against red changes two channels and nothing outside offsets 4..6, so the
+    15 01 head and the ff 7f in the tail are not colour-dependent. That is the half of the
+    proof which says the opaque windows are opaque, rather than fields the primaries
+    happened not to disturb.
+  between: [h6199_command_colour_red, h6199_command_colour_white]
+  differs_within: [4, 5, 6]
+
+- id: h6199_segment_masks_vary
+  doc: >
+    Three different selections give three different masks, so offsets 12..13 carry the
+    selection rather than a constant that whole-strip writes happened to share.
+  cases: h6199_command_colour_segment*
+  collect: body.detail.segment_mask
+  distinct_at_least: 3
+
+- id: h6199_segment_mask_moves_alone
+  doc: >
+    Colouring a different single segment the same red moves exactly the low mask byte and
+    the checksum. Holding the colour fixed is what makes this a mask proof rather than a
+    restatement of the channel proof: nothing about red changed between the two frames.
+  between: [h6199_command_colour_segment_1, h6199_command_colour_segment_3]
+  differs_at: [12, 19]
+
+- id: h6199_segment_mask_is_a_bitfield
+  doc: >
+    Selecting both segments at once gives 0x0005, which is 0x0001 OR 0x0004, and it still
+    moves only the low mask byte. An index or a count could not produce that value, so
+    this is the frame that rules out every non-bitfield reading. The union is where a
+    per-field port would stop, because it looks like a third sample of the same field
+    rather than the one sample that carries the argument.
+  between: [h6199_command_colour_segment_1, h6199_command_colour_segment_1_3]
+  differs_at: [12, 19]
+
+- id: h6199_whole_strip_is_just_every_bit_set
+  doc: >
+    A whole-strip write differs from a single-segment write only in the two mask bytes and
+    the checksum. The 15 01 head is identical across both, which is the negative result
+    that stops it being read as a whole-versus-subsection selector: scope lives entirely in
+    the mask, and 0x7fff is simply all fifteen segments named at once.
+  between: [h6199_command_colour_segment_1, h6199_command_colour_red]
+  differs_at: [12, 13, 19]
+
+- id: h6199_schedule_slot_index_moves_alone
+  doc: >
+    Enabling the second timer row rather than the first moves exactly the slot byte and the
+    checksum. Everything else about the two writes is identical, which is what makes byte 2
+    a slot index rather than a flag that was zero by coincidence.
+  between: [h6199_command_schedule_slot0_enabled, h6199_command_schedule_slot1_enabled]
+  differs_at: [2, 19]
+
+- id: h6199_schedule_settings_stay_in_their_own_bytes
+  doc: >
+    Configuring a slot moves the flag, hour, minute and repeat bytes and nothing else, while
+    the slot index holds still. Taken with the pair above, each of the two things a schedule
+    write can change, WHICH slot and WHAT it does, moves a disjoint set of bytes.
+  between: [h6199_command_schedule_slot0_enabled, h6199_command_schedule_slot0_0730_mwf]
+  differs_at: [3, 4, 5, 6, 19]
+
+- id: h6199_clock_fields_vary_between_sessions
+  doc: >
+    Two connect-time clock writes taken on different days at different times of day. A
+    single one of these cannot tell an hour, a weekday or a constant apart; the pair moves
+    hour, minute, second and weekday together and leaves the offset bytes alone, which is
+    exactly the shape a local clock has and the reason those four are named and the offset
+    is still not.
+  between: [h6199_command_clock, h6199_command_clock_tuesday]
+  differs_within: [2, 3, 4, 5, 19]
+
+- id: h6199_music_modes_vary
+  doc: >
+    Four mode tiles give four different codes, so offset 3 carries the selection rather than
+    a constant the session happened to share. The values are 0x03, 0x04, 0x05 and 0x06 and
+    they match MUSIC_MODE_SLUGS exactly, which matters because that mapping reached the
+    H6199 profile from the H617A with no H6199 evidence behind it. It is now measured on
+    this model rather than inherited.
+  cases: h6199_command_music_*
+  collect: body.detail.mode
+  distinct_at_least: 4
+
+- id: h6199_music_sensitivity_held_constant
+  doc: >
+    Every music frame in the session carries the same sensitivity byte. This is the negative
+    that keeps offset 4 honest: it is named INFERRED in the spec precisely because it never
+    varied here, and an aggregate asserting one distinct value is what stops a later reader
+    mistaking four samples of a constant for four samples of a proven field.
+  cases: h6199_command_music_*
+  collect: body.detail.sensitivity
+  distinct_at_least: 1
+
+- id: h6199_music_mode_moves_alone
+  doc: >
+    Rhythm against spectrum moves exactly the mode byte and the checksum. Nothing else in the
+    frame moves, which is the half of the proof that makes offset 3 the mode rather than the
+    first byte of an opaque music blob.
+  between: [h6199_command_music_rhythm, h6199_command_music_spectrum]
+  differs_at: [3, 19]
+
+- id: h6199_music_leaves_sensitivity_and_tail_alone
+  doc: >
+    Energic against rolling, the widest pair in the set, still moves only offsets 3 and 19.
+    Taken with the adjacent pair above, no mode selection ever disturbs the sensitivity byte
+    or the fourteen-byte tail, so those windows are opaque rather than merely undisturbed by
+    neighbouring values.
+  between: [h6199_command_music_energetic, h6199_command_music_rolling]
+  differs_at: [3, 19]
+
+- id: h6199_music_and_static_colour_share_one_register
+  doc: >
+    A music write against a static-colour write differs at offset 2, which is what proves
+    register 0x05 multiplexes modes on that byte rather than always carrying colour. The spec
+    previously held 15 01 as an opaque head, correctly, because nothing had varied it; this
+    pair is the capture that promotes it.
+  between: [h6199_command_music_rhythm, h6199_command_colour_red]
+  differs_within: [2, 3, 4, 5, 6, 12, 13, 19]

@@ -1,0 +1,14 @@
+# H6199 power-on write, captured 2026-08-03 from the Govee Home iOS app driving the
+# DreamView T1 over BLE. Paired with h6199_command_power_off from the same session, so the
+# two differ only in the byte under test.
+id: h6199_command_power_on
+data: h6199_command_power_on.bin
+imports:
+  - h6199_command_write
+asserts:
+  - actual: opcode
+    expected: 1
+  - actual: body.is_on
+    expected: 1
+  - actual: body.opaque_tail
+    expected: "00000000000000000000000000000000"

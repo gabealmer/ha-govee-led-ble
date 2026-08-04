@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from custom_components.ha_govee_led_ble import protocol as proto
+from custom_components.ha_govee_led_ble.const import MUSIC_MODE_SLUGS
 from custom_components.ha_govee_led_ble.custom_effects import ComboContent, FlatContent
 from custom_components.ha_govee_led_ble.protocol import Weekday
 from tools.ble.mock_ble.mock_device import GoveeDeviceSim
@@ -73,6 +74,66 @@ def test_fixture_directory_is_the_kaitai_corpus():
     ],
 )
 def test_builder_reproduces_the_captured_frame(name, built):
+    assert built() == fixture(name)
+
+
+@pytest.mark.parametrize(
+    ("name", "built"),
+    [
+        ("h6199_command_power_off", lambda: proto.build_power(False)),
+        ("h6199_command_power_on", lambda: proto.build_power(True)),
+        ("h6199_command_brightness_3", lambda: proto.build_brightness(3)),
+        ("h6199_command_brightness_51", lambda: proto.build_brightness(51)),
+        ("h6199_command_brightness_100", lambda: proto.build_brightness(100)),
+        ("h6199_command_colour_red", lambda: proto.build_segment_color(proto.ALL_SEGMENTS, 255, 0, 0)),
+        ("h6199_command_colour_green", lambda: proto.build_segment_color(proto.ALL_SEGMENTS, 0, 255, 0)),
+        ("h6199_command_colour_blue", lambda: proto.build_segment_color(proto.ALL_SEGMENTS, 0, 0, 255)),
+        ("h6199_command_colour_white", lambda: proto.build_segment_color(proto.ALL_SEGMENTS, 255, 255, 255)),
+        ("h6199_command_colour_segment_1", lambda: proto.build_segment_color([1], 255, 0, 0)),
+        ("h6199_command_colour_segment_3", lambda: proto.build_segment_color([3], 255, 0, 0)),
+        ("h6199_command_colour_segment_1_3", lambda: proto.build_segment_color([1, 3], 255, 0, 0)),
+        (
+            "h6199_command_schedule_slot0_0730_mwf",
+            lambda: proto.build_timer_schedule(0, True, True, 7, 30, proto.parse_timer_repeat(0x95)),
+        ),
+        (
+            "h6199_command_schedule_slot1_enabled",
+            lambda: proto.build_timer_schedule(1, True, False, 0, 0, proto.parse_timer_repeat(0x80)),
+        ),
+        (
+            "h6199_command_music_rhythm",
+            lambda: proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["rhythm"], 99, None),
+        ),
+        (
+            "h6199_command_music_spectrum",
+            lambda: proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["spectrum"], 99, None),
+        ),
+        (
+            "h6199_command_music_energetic",
+            lambda: proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["energetic"], 99, None),
+        ),
+        (
+            "h6199_command_music_rolling",
+            lambda: proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["rolling"], 99, None),
+        ),
+    ],
+)
+def test_builder_reproduces_the_h6199_captured_frame(name, built):
+    """The builders are shared across models, so a second model is a second chance to be wrong.
+
+    These fixtures are H6199 bytes captured from the vendor app, and several are identical
+    to their H617A counterparts. That sameness is the finding, not a reason to drop them:
+    the duplicate bytes are what proves the shared encoder is right for both, and a
+    fixture reused across models would instead assume it.
+
+    What this does NOT establish is that every other shared builder is safe on the H6199.
+    Only the opcodes named here have been seen on H6199 wire.
+
+    The three segment cases are also where segments_to_mask is checked against a device
+    rather than against itself. The union case is the one that matters: the app asked for
+    two segments and sent 0x0005, so a builder that numbered bits from one, or that sent an
+    index, reproduces the two single-segment frames and fails only here.
+    """
     assert built() == fixture(name)
 
 
