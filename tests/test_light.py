@@ -576,12 +576,14 @@ def test_segment_colors_attribute_present(light, mock_coordinator):
     }
 
 
-def test_h6199_segment_surface_is_gated(h6199_light, mock_h6199_coordinator):
+def test_h6199_segment_surface_is_exposed_but_diy_is_not(h6199_light, mock_h6199_coordinator):
+    """Segments are captured on this model, the A3 DIY body is not, so only one kind shows."""
     mock_h6199_coordinator.custom_effect_index.return_value = {}
 
     assert h6199_light.extra_state_attributes == {
         "custom_effects": {},
-        "custom_effect_kinds": [],
+        "custom_effect_kinds": ["segments"],
+        "segment_colors": [[255, 255, 255]] * 15,
     }
 
 

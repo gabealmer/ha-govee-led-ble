@@ -121,16 +121,22 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # write is verified against a read-back, so if the H6199 also echoes nothing, that service
         # raises. Settle it in the H6199 discovery run.
         static_readback_echoes_color=True,
-        # Carries no protocol claim. supports_segment_writes is unset, so supports_segments is False
-        # and nothing addresses H6199 segments on the wire; this value only sizes the diagnostic
-        # preview image, which is created for every model. It is NOT 38 on purpose. The device does
-        # answer 38 to aa 40, but that reply has been positively excluded as an app segment count
-        # (an external H7015 reads 30 against 15 segments proven by an exhaustive per-bit sweep), so
-        # copying it in would re-assert the very reading we disproved. The 38 is also not capture-
-        # backed: the vendor app never issues aa 40 to this model, so it came from a direct firmware
-        # register read. See status_reply::unit_count_body. The real number is a question for the
-        # H6199 discovery run, which owns that model's wire behaviour.
+        # Fifteen segments, and this now carries a protocol claim rather than sizing a preview
+        # image. A whole-strip write from the app addresses fifteen bits (0x7fff) and the app draws
+        # fifteen tiles for this model, captured 2026-08-03; colouring one segment, then a second,
+        # then both gave 0x0001, 0x0004 and their OR, which is what makes it a mask rather than an
+        # index (h6199_command_write::static_colour_body::segment_mask).
+        #
+        # It is still NOT 38. The device answers 38 to aa 40, but that reply was positively excluded
+        # as an app segment count (an external H7015 reads 30 against 15 segments proven by an
+        # exhaustive per-bit sweep), so copying it in would re-assert the reading we disproved.
         segment_count=15,
+        # build_segment_color reproduces three captured H6199 app writes byte for byte, whole-strip
+        # and per-segment alike, so painting segments is the app's own behaviour on this model
+        # rather than an H617A habit carried across. The brightness sub-register those services also
+        # reach has no H6199 capture, but supports_white_brightness already assumes it, so enabling
+        # this adds no new assumption.
+        supports_segment_writes=True,
     ),
 }
 

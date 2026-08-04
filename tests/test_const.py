@@ -11,7 +11,10 @@ def test_segment_count_and_supports_segments():
     assert MODEL_PROFILES["H617A"].segment_count == 15
     assert MODEL_PROFILES["H6199"].segment_count == 15
     assert MODEL_PROFILES["H617A"].supports_segments
-    assert not MODEL_PROFILES["H6199"].supports_segments
+    # Both models paint segments. The H6199 was gated off until captured app writes on it were
+    # reproduced byte for byte, whole-strip and per-segment, including the union frame that proves
+    # the field is a mask and not an index.
+    assert MODEL_PROFILES["H6199"].supports_segments
 
 
 def test_supports_segments_defaults_false():
@@ -63,4 +66,4 @@ def test_model_specific_music_and_custom_effect_capabilities():
         "flat",
         "combo",
     }
-    assert MODEL_PROFILES["H6199"].custom_effect_kinds == set()
+    assert MODEL_PROFILES["H6199"].custom_effect_kinds == {"segments"}

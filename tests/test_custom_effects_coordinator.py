@@ -225,12 +225,22 @@ async def test_save_rejects_scene_collision(hass, hass_storage):
     assert exc.value.key == "scene_name_collision"
 
 
-async def test_h6199_rejects_unvalidated_segment_effect(hass, hass_storage):
-    coord = _coord(hass, "scene6199", "H6199")
+async def test_h6199_accepts_segments_and_still_rejects_diy(hass, hass_storage):
+    """Segment paint is captured on this model; the A3 DIY body it would also need is not.
+
+    The two kinds were gated together, so proving one reached the other for free. They are
+    separate capabilities and the profile keeps them separate: segments ride the same 33 05 15
+    write reproduced byte-exact from H6199 captures, while every DIY kind needs an A3 body no
+    H6199 capture has ever shown.
+    """
+    coord = _coord(hass, "segments6199", "H6199")
     await coord.async_load_effects()
+    eid = await coord.async_save_effect("Stripes", SegmentContent(colors=((255, 0, 0),)))
+    assert coord.custom_effects[eid].content == SegmentContent(colors=((255, 0, 0),))
+
     with pytest.raises(EffectValidationError) as exc:
-        await coord.async_save_effect("Sunset", SegmentContent(colors=((255, 0, 0),)))
-    assert exc.value.key == "segments_unsupported"
+        await coord.async_save_effect("Glow", _vibrant())
+    assert exc.value.key == "diy_unsupported"
 
 
 async def test_load_flags_stored_scene_collision_with_repair_issue(hass, hass_storage):
