@@ -1,5 +1,9 @@
 __pycache__/
-.venv/
+# No trailing slash. `.venv/` matches a DIRECTORY only, and on a machine where the
+# environment is shared between worktrees `.venv` is a symlink, which that rule does not
+# match at all: one `git add -A` committed a symlink pointing at another worktree's
+# environment, which on merge would have made that worktree's .venv point at itself.
+.venv
 .*_cache/
 .coverage
 
