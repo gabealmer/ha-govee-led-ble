@@ -1,6 +1,7 @@
 """Shared model control entities."""
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -12,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import MUSIC_MODE_SLUGS
+from .const import MUSIC_MODE_SLUGS, ModelProfile
 from .coordinator import GoveeBLECoordinator
 from .coordinator_modes import MUSIC_PARAM_SPECS, MusicParamSpec
 from .entity import GoveeBLEEntity
@@ -20,17 +21,83 @@ from .light import (
     apply_active_music_mode,
     apply_active_video_mode,
 )
-from .protocol import build_poweroff_memory
+from .protocol import (
+    build_blank_screen,
+    build_poweroff_memory,
+    build_relative_brightness,
+    build_video_white_balance,
+)
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
-_NUMBER_PARAMS = ["music_sensitivity"]
+
+
+async def _apply_poweroff_memory(coordinator: GoveeBLECoordinator) -> bool:
+    if not coordinator.profile.supports_poweroff_memory:
+        raise ValueError(f"{coordinator.model} does not support power-off memory")
+    await coordinator.send_command(build_poweroff_memory(bool(coordinator.poweroff_memory)))
+    return True
+
+
+async def _apply_white_balance(coordinator: GoveeBLECoordinator) -> bool:
+    await coordinator.send_command(build_video_white_balance(*coordinator.white_balance))
+    return True
+
+
+async def _apply_relative_brightness(coordinator: GoveeBLECoordinator) -> bool:
+    await coordinator.send_command(build_relative_brightness(int(coordinator.relative_brightness or 0)))
+    return True
+
+
+async def _apply_blank_screen(coordinator: GoveeBLECoordinator) -> bool:
+    await coordinator.send_command(build_blank_screen(bool(coordinator.blank_screen)))
+    return True
+
+
+@dataclass(frozen=True)
+class ControlSpec:
+    """One optimistic control: the coordinator field it stores, what reapplies it, and its bounds.
+
+    ``reapply`` decides how the stored value reaches the device. A setting with a register of its
+    own writes that register; a setting that only exists as a field of a larger frame rewrites the
+    whole frame, and does nothing at all while the mode owning that frame is not the live one.
+    """
+
+    supports: Callable[[ModelProfile], bool]
+    reapply: _ReapplyCallback
+    min_value: int = 0
+    max_value: int = 100
+    mode: NumberMode = NumberMode.SLIDER
+
+
+# Numbers, in the order they are added. Music sensitivity and the two video percentages ride their
+# mode's frame; relative brightness and the white-balance gains each own a register.
+NUMBER_CONTROLS: dict[str, ControlSpec] = {
+    "music_sensitivity": ControlSpec(lambda p: p.supports_music_mode, apply_active_music_mode, max_value=99),
+    "video_saturation": ControlSpec(lambda p: p.supports_video_mode, apply_active_video_mode),
+    "video_sound_effects_softness": ControlSpec(
+        lambda p: p.supports_video_sound_effects, apply_active_video_mode, min_value=1
+    ),
+    "relative_brightness": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
+    # Gains, not a position on the app's warm/cool strip: that marker picks an index into a table
+    # the app ships and only the pair it names reaches the wire, so a box that takes the gain is
+    # the honest control. The app's own neutral is 16 red, 3 blue.
+    "white_balance_red": ControlSpec(
+        lambda p: p.supports_white_balance, _apply_white_balance, max_value=255, mode=NumberMode.BOX
+    ),
+    "white_balance_blue": ControlSpec(
+        lambda p: p.supports_white_balance, _apply_white_balance, max_value=255, mode=NumberMode.BOX
+    ),
+}
+
+SWITCH_CONTROLS: dict[str, ControlSpec] = {
+    "video_sound_effects": ControlSpec(lambda p: p.supports_video_sound_effects, apply_active_video_mode),
+    "blank_screen": ControlSpec(lambda p: p.supports_blank_screen, _apply_blank_screen),
+}
 
 
 def _supports_number_param(coordinator: GoveeBLECoordinator, key: str) -> bool:
-    profile = coordinator.profile
-    if key == "music_sensitivity":
-        return profile.supports_music_mode
-    return False
+    spec = NUMBER_CONTROLS.get(key)
+    return spec is not None and spec.supports(coordinator.profile)
 
 
 async def _set_with_rollback(
@@ -46,13 +113,6 @@ async def _set_with_rollback(
         setattr(coordinator, key, previous)
         raise
     coordinator.async_set_updated_data(coordinator.data or {})
-
-
-async def _apply_poweroff_memory(coordinator: GoveeBLECoordinator) -> bool:
-    if not coordinator.profile.supports_poweroff_memory:
-        raise ValueError(f"{coordinator.model} does not support power-off memory")
-    await coordinator.send_command(build_poweroff_memory(bool(coordinator.poweroff_memory)))
-    return True
 
 
 async def apply_active_music_param(coordinator: GoveeBLECoordinator, *, mode_code: int) -> bool:
@@ -75,25 +135,79 @@ class _H6199ControlEntity(GoveeBLEEntity):
         self._attr_device_info = coordinator.device_info
 
 
-class H6199ParameterNumber(_H6199ControlEntity, NumberEntity):
-    _attr_mode = NumberMode.SLIDER
+class _RestoreLastWritten(_H6199ControlEntity, RestoreEntity):
+    """Restores what this integration last wrote, for a register the device will not read back.
+
+    Restoring is display only: nothing is sent, because the device kept its own setting across
+    our restart and re-asserting a remembered one would overwrite whatever else has changed it.
+    """
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        await self._async_restore_state()
+
+    async def _async_restore_state(self) -> None:
+        if getattr(self.coordinator, self._key) is not None:
+            return
+        last_state = await self.async_get_last_state()
+        if last_state is None:
+            return
+        restored = self._restored_value(last_state.state)
+        if restored is None:
+            return
+        setattr(self.coordinator, self._key, restored)
+        self.coordinator.async_set_updated_data(self.coordinator.data or {})
+
+    def _restored_value(self, state: str) -> Any:
+        raise NotImplementedError
+
+
+class H6199ParameterNumber(_RestoreLastWritten, NumberEntity):
     _attr_native_step = 1
-    _attr_native_min_value = 0
-    _attr_native_max_value = 100
 
     def __init__(self, coordinator: GoveeBLECoordinator, *, key: str, **kwargs: object) -> None:
         super().__init__(coordinator, key=key, **kwargs)
-        if key == "music_sensitivity":
-            self._attr_native_max_value = 99
+        spec = NUMBER_CONTROLS[key]
+        self._attr_mode = spec.mode
+        self._attr_native_min_value = spec.min_value
+        self._attr_native_max_value = spec.max_value
+        self._reapply = spec.reapply
 
     @property
     def native_value(self) -> float | None:
         value = getattr(self.coordinator, self._key)
         return float(value) if value is not None else None
 
+    def _restored_value(self, state: str) -> int | None:
+        try:
+            value = int(round(float(state)))
+        except ValueError:
+            return None
+        return value if self._attr_native_min_value <= value <= self._attr_native_max_value else None
+
     async def async_set_native_value(self, value: float) -> None:
         next_value = int(round(value))
-        await _set_with_rollback(self.coordinator, key=self._key, value=next_value, reapply=apply_active_music_mode)
+        await _set_with_rollback(self.coordinator, key=self._key, value=next_value, reapply=self._reapply)
+
+
+class H6199ControlSwitch(_RestoreLastWritten, SwitchEntity):
+    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str) -> None:
+        super().__init__(coordinator, key=key)
+        self._reapply = SWITCH_CONTROLS[key].reapply
+
+    @property
+    def is_on(self) -> bool | None:
+        value = getattr(self.coordinator, self._key)
+        return None if value is None else bool(value)
+
+    def _restored_value(self, state: str) -> bool | None:
+        return state == STATE_ON if state in (STATE_ON, STATE_OFF) else None
+
+    async def async_turn_on(self, **kwargs: object) -> None:
+        await _set_with_rollback(self.coordinator, key=self._key, value=True, reapply=self._reapply)
+
+    async def async_turn_off(self, **kwargs: object) -> None:
+        await _set_with_rollback(self.coordinator, key=self._key, value=False, reapply=self._reapply)
 
 
 class PowerOffMemorySwitch(_H6199ControlEntity, RestoreEntity, SwitchEntity):
@@ -230,7 +344,9 @@ async def async_setup_number_entry(
 ) -> None:
     coordinator = config_entry.runtime_data
     entities: list[NumberEntity] = [
-        H6199ParameterNumber(coordinator, key=key) for key in _NUMBER_PARAMS if _supports_number_param(coordinator, key)
+        H6199ParameterNumber(coordinator, key=key)
+        for key in NUMBER_CONTROLS
+        if _supports_number_param(coordinator, key)
     ]
     if coordinator.profile.supports_music_params:
         entities.extend(MusicParamNumber(coordinator, spec) for spec in MUSIC_PARAM_SPECS if spec.kind == "number")
@@ -261,7 +377,11 @@ async def async_setup_switch_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = config_entry.runtime_data
-    entities: list[SwitchEntity] = []
+    entities: list[SwitchEntity] = [
+        H6199ControlSwitch(coordinator, key=key)
+        for key, spec in SWITCH_CONTROLS.items()
+        if spec.supports(coordinator.profile)
+    ]
     if coordinator.profile.supports_music_params:
         entities.extend(MusicParamSwitch(coordinator, spec) for spec in MUSIC_PARAM_SPECS if spec.kind == "switch")
     if coordinator.profile.supports_poweroff_memory:

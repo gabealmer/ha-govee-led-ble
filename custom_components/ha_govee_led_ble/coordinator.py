@@ -49,6 +49,7 @@ from .protocol import (
     POWER_PACKET_TYPE,
     READ_UUID,
     SCENE_EFFECT_BY_ID,
+    WHITE_BALANCE_RESET,
     WRITE_UUID,
     ParsedMode,
     ParsedTimerSchedule,
@@ -214,6 +215,14 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 100
         self.music_color: tuple[int, int, int] | None = None
+        # The H6199 display settings and relative brightness. None means never set here, not off:
+        # the app issues aa a9 but no reply has ever been captured, so these registers have no
+        # read-back and the panel that drives them opens on a fixed 50% whatever the device holds.
+        # The entities restore what we last wrote rather than inventing a device state.
+        self.white_balance_red: int | None = None
+        self.white_balance_blue: int | None = None
+        self.relative_brightness: int | None = None
+        self.blank_screen: bool | None = None
         # Per-mode music movement params (§2.3, EXPERIMENTAL); defaults are the capture-pinned
         # template values so an untouched entity reapplies the exact captured body.
         self.music_separation_point = 1
@@ -269,6 +278,19 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         device = registry.async_get_device(identifiers={(DOMAIN, self.address)})
         if device is not None:
             registry.async_update_device(device.id, sw_version=self.fw_version, hw_version=self.hw_version)
+
+    @property
+    def white_balance(self) -> tuple[int, int]:
+        """The gain pair to write, filling either axis never set here with the app's own neutral.
+
+        Both bytes go out together, so setting one axis has to name the other, and there is no
+        read-back to name it from.
+        """
+        reset_red, reset_blue = WHITE_BALANCE_RESET
+        return (
+            reset_red if self.white_balance_red is None else self.white_balance_red,
+            reset_blue if self.white_balance_blue is None else self.white_balance_blue,
+        )
 
     @property
     def unknown_scene_code(self) -> int | None:

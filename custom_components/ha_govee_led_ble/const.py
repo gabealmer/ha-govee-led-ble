@@ -13,6 +13,9 @@ class ModelProfile:
     scene_source: str = "none"
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
+    supports_white_balance: bool = False
+    supports_relative_brightness: bool = False
+    supports_blank_screen: bool = False
     music_modes: tuple[str, ...] = ()
     supports_music_color: bool = False
     supports_music_style: bool = False
@@ -102,6 +105,12 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         state_readable=True,
         supports_video_mode=True,
         supports_video_sound_effects=True,
+        # The three registers the app reaches from the same video sheet, each modelled from an
+        # H6199 capture and reproduced byte-exact by its builder: white balance and blank screen
+        # behind the 33 a9 selector, relative brightness on 33 ae of its own.
+        supports_white_balance=True,
+        supports_relative_brightness=True,
+        supports_blank_screen=True,
         music_modes=_H6199_MUSIC_MODES,
         supports_white_brightness=True,
         # UNVERIFIED, and deliberately named so it can be falsified. The parser assumed this of

@@ -47,6 +47,21 @@
       },
       "sleep_timer_duration": {
         "name": "Sleep timer duration"
+      },
+      "video_saturation": {
+        "name": "Video saturation"
+      },
+      "video_sound_effects_softness": {
+        "name": "Video softness"
+      },
+      "relative_brightness": {
+        "name": "Relative brightness"
+      },
+      "white_balance_red": {
+        "name": "White balance red gain"
+      },
+      "white_balance_blue": {
+        "name": "White balance blue gain"
       }
     },
     "select": {
@@ -101,6 +116,12 @@
       },
       "wakeup_timer": {
         "name": "Wake-up timer"
+      },
+      "video_sound_effects": {
+        "name": "Video sound effects"
+      },
+      "blank_screen": {
+        "name": "Blank screen"
       }
     },
     "time": {

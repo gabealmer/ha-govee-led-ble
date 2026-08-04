@@ -6,6 +6,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.protocol import WHITE_BALANCE_RESET
 
 _IDENTITY_EXAMPLE = Path(__file__).parents[1] / "tools" / "harness" / "devices.local.env.example"
 
@@ -45,6 +46,11 @@ def _make_coord(**ov) -> MagicMock:
         video_full_screen=True,
         video_sound_effects=False,
         video_sound_effects_softness=100,
+        white_balance_red=None,
+        white_balance_blue=None,
+        white_balance=WHITE_BALANCE_RESET,
+        relative_brightness=None,
+        blank_screen=None,
         music_sensitivity=100,
         music_calm=False,
         music_color=None,

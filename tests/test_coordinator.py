@@ -1274,3 +1274,17 @@ def test_expected_color_mode_from_packet_rejects_non_colour_packets():
     assert _expected_color_mode_from_packet(proto.build_power(True)) is None
     assert _expected_color_mode_from_packet(b"\x33\x05") is None
     assert _expected_color_mode_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) is None
+
+
+def test_white_balance_fills_the_untouched_axis_with_the_apps_own_neutral(coord):
+    """The register takes both gains at once and never reads back, so one axis alone is a guess.
+
+    Filling from the pair the app's Reset button writes is the only defensible starting point:
+    zero is a real gain the app never sends, and reusing the other axis would tint the picture.
+    """
+    assert coord.white_balance == proto.WHITE_BALANCE_RESET
+    coord.white_balance_red = 21
+    assert coord.white_balance == (21, proto.WHITE_BALANCE_RESET[1])
+    coord.white_balance_blue = 5
+    assert coord.white_balance == (21, 5)
+    assert proto.build_video_white_balance(*coord.white_balance) == proto.build_video_white_balance(21, 5)
