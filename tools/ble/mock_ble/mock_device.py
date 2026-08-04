@@ -24,9 +24,13 @@ from custom_components.ha_govee_led_ble.protocol import (
     COLOR_MODE_VIDEO,
     COLOR_PACKET_TYPE,
     COMMAND_HEADER,
+    DISPLAY_SETTING_BLANK_SCREEN,
+    DISPLAY_SETTING_PACKET_TYPE,
+    DISPLAY_SETTING_WHITE_BALANCE,
     FIRMWARE_PACKET_TYPE,
     HARDWARE_PACKET_TYPE,
     POWER_PACKET_TYPE,
+    RELATIVE_BRIGHTNESS_PACKET_TYPE,
     SCENE_EFFECT_BY_ID,
     STATIC_SUB_BRIGHTNESS,
     STATIC_SUB_COLOR,
@@ -43,7 +47,6 @@ _COLOR_FLAG = 0x01
 # Human-readable label for the sim's current music mode (inspection only; the integration
 # tracks music as a slug in ``music_mode``, not as an effect string).
 _MUSIC_LABEL_BY_ID = {code: f"music: {name}" for name, code in MUSIC_MODES.items()}
-_WHITE_BALANCE_ACTION = 0xA9
 # op 0xa3 on a write is the multi-effect register (command_write::multi_effect_cmd); the same
 # byte as a query domain reads it back. Distinct from protocol.MULTI_PACKET_PREFIX, which is the
 # 0xa3 *fragment* header and arrives as frame[0] rather than as a command action.
@@ -77,6 +80,8 @@ class GoveeDeviceSim:
         self.video_sound_effects = False
         self.video_sound_effects_softness = 100
         self.video_white_balance: tuple[int, int] | None = None
+        self.relative_brightness: list[int] | None = None
+        self.blank_screen: bool | None = None
         self.music_mode_id: int | None = None
         self.music_sensitivity = 100
         self.music_calm = False
@@ -165,8 +170,12 @@ class GoveeDeviceSim:
             self.brightness_pct = frame[2]
         elif action == COLOR_PACKET_TYPE:
             self._apply_color_command(frame)
-        elif action == _WHITE_BALANCE_ACTION and self.profile.supports_video_mode:
-            self.video_white_balance = (frame[5], frame[6])
+        elif action == DISPLAY_SETTING_PACKET_TYPE:
+            self._apply_display_setting(frame)
+        elif action == RELATIVE_BRIGHTNESS_PACKET_TYPE and self.profile.supports_relative_brightness:
+            # h6199_command_write::relative_brightness_body: the count sits after the head byte,
+            # and reading the head as the count truncates the payload to one edge.
+            self.relative_brightness = list(frame[4 : 4 + frame[3]])
         elif action == MULTI_EFFECT_ACTION:
             self.multi_effect_flag = frame[2]
         elif action == SLEEP_TIMER_ACTION:
@@ -175,6 +184,19 @@ class GoveeDeviceSim:
             self.wakeup_timer = (frame[2], frame[3], frame[4], frame[5], frame[6], frame[7])
         elif action == SCHEDULE_TIMER_ACTION:
             self._apply_schedule_command(frame)
+
+    def _apply_display_setting(self, frame: bytes) -> None:
+        """Route a 33 a9 write on its selector (h6199_command_write::display_setting_body).
+
+        The selector is what tells the two settings apart. Reading every frame on this register as
+        white balance records a blank-screen write as a gain pair, which is a state nothing set.
+        """
+        setting, length = frame[2], frame[3]
+        payload = frame[4 : 4 + length]
+        if setting == DISPLAY_SETTING_WHITE_BALANCE and self.profile.supports_white_balance:
+            self.video_white_balance = (payload[1], payload[2])
+        elif setting == DISPLAY_SETTING_BLANK_SCREEN and self.profile.supports_blank_screen:
+            self.blank_screen = bool(payload[0])
 
     def _apply_schedule_command(self, frame: bytes) -> None:
         index = frame[2]

@@ -223,6 +223,35 @@ def test_video_white_balance_gated():
     assert h617a.video_white_balance is None
 
 
+def test_display_settings_are_told_apart_by_their_selector():
+    """Both settings share the 33 a9 register, so a mock reading every frame the same way lies.
+
+    Taking the gain pair off a blank-screen frame records a white balance nothing asked for, and
+    it reads as a device that answered rather than as an error.
+    """
+    sim = GoveeDeviceSim("H6199")
+    sim.handle_write(proto.build_blank_screen(True))
+    assert sim.blank_screen is True
+    assert sim.video_white_balance is None
+
+    sim.handle_write(proto.build_video_white_balance(21, 5))
+    assert sim.video_white_balance == (21, 5)
+    assert sim.blank_screen is True
+
+    sim.handle_write(proto.build_blank_screen(False))
+    assert sim.blank_screen is False
+    assert sim.video_white_balance == (21, 5)
+
+
+def test_relative_brightness_records_every_edge():
+    sim = GoveeDeviceSim("H6199")
+    sim.handle_write(proto.build_relative_brightness(36))
+    assert sim.relative_brightness == [36, 36, 36, 36]
+    h617a = GoveeDeviceSim("H617A")
+    h617a.handle_write(proto.build_relative_brightness(36))
+    assert h617a.relative_brightness is None
+
+
 def test_segment_writes_address_individual_slots():
     sim = GoveeDeviceSim("H617A")
     sim.handle_write(segment_color_packet((255, 0, 0), mask=0b101))
