@@ -117,6 +117,22 @@ def test_builder_reproduces_the_captured_frame(name, built):
             "h6199_command_music_rolling",
             lambda: proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["rolling"], 99, None),
         ),
+        ("h6199_video_part_movie", lambda: proto.build_video_mode(False, False, 100, False, 100)),
+        ("h6199_video_part_game", lambda: proto.build_video_mode(False, True, 100, False, 100)),
+        ("h6199_video_all_movie", lambda: proto.build_video_mode(True, False, 100, False, 100)),
+        ("h6199_video_all_game", lambda: proto.build_video_mode(True, True, 100, False, 100)),
+        ("h6199_video_saturation_20", lambda: proto.build_video_mode(False, False, 20, True, 12)),
+        ("h6199_video_saturation_88", lambda: proto.build_video_mode(False, False, 88, True, 12)),
+        ("h6199_video_softness_12", lambda: proto.build_video_mode(False, False, 100, True, 12)),
+        ("h6199_video_sound_on", lambda: proto.build_video_mode(False, False, 100, True, 100)),
+        ("h6199_white_balance_cool", lambda: proto.build_video_white_balance(7, 10)),
+        ("h6199_white_balance_mid", lambda: proto.build_video_white_balance(13, 3)),
+        ("h6199_white_balance_reset", lambda: proto.build_video_white_balance(*proto.WHITE_BALANCE_RESET)),
+        ("h6199_white_balance_warm", lambda: proto.build_video_white_balance(21, 5)),
+        ("h6199_blank_screen_on", lambda: proto.build_blank_screen(True)),
+        ("h6199_blank_screen_off", lambda: proto.build_blank_screen(False)),
+        ("h6199_relbright_36", lambda: proto.build_relative_brightness(36)),
+        ("h6199_relbright_100", lambda: proto.build_relative_brightness(100)),
     ],
 )
 def test_builder_reproduces_the_h6199_captured_frame(name, built):
@@ -136,6 +152,29 @@ def test_builder_reproduces_the_h6199_captured_frame(name, built):
     index, reproduces the two single-segment frames and fails only here.
     """
     assert built() == fixture(name)
+
+
+def test_video_source_polarity_is_pinned_by_the_pair_that_differs_only_there():
+    """Game is 1 and Movie is 0, which is the reverse of the order the app lists them in.
+
+    A single frame cannot show this: swap the two and the builder still produces bytes that
+    parse. The proof is the differential (`_aggregates.yaml`: h6199_video_part_movie vs
+    h6199_video_part_game differ at byte 4 and nowhere else), so it is asserted as a
+    differential here too rather than as two independent equalities.
+    """
+    movie, game = fixture("h6199_video_part_movie"), fixture("h6199_video_part_game")
+    moved = [i for i in range(len(movie) - 1) if movie[i] != game[i]]
+    assert moved == [4], "the capture pair no longer isolates the picture profile to one byte"
+    assert game[4] == 1
+    assert proto.build_video_mode(False, True, 100, False, 100)[4] == game[4]
+    assert proto.build_video_mode(False, False, 100, False, 100)[4] == movie[4]
+
+
+def test_relative_brightness_writes_every_edge_because_no_capture_separates_them():
+    """The two captures moved all four edges together, so one level is the only proven form."""
+    frame = proto.build_relative_brightness(36)
+    assert frame == fixture("h6199_relbright_36")
+    assert set(frame[4:8]) == {36}
 
 
 def test_timer_repeat_survives_a_round_trip_through_the_weekday_set():

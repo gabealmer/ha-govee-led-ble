@@ -613,7 +613,27 @@ def test_video_white_balance():
     assert proto.build_video_white_balance(0x07, 0x0A) == H("33a9000301070a00000000000000000000000095")
     assert proto.build_video_white_balance(0x0F, 0x04) == H("33a90003010f0400000000000000000000000093")
     assert proto.build_video_white_balance(-1, 999) == proto.build_video_white_balance(0, 255)
+    assert proto.build_video_white_balance(*proto.WHITE_BALANCE_RESET) == H("33a900030110030000000000000000000000008b")
     _valid(proto.build_video_white_balance(0x10, 0x05))
+
+
+def test_blank_screen():
+    # The selector and the length are what separate this from white balance on the same register;
+    # a builder that shared a fixed length would produce a frame the device reads as the other one.
+    assert proto.build_blank_screen(True) == H("33a90a0601020a007800000000000000000000e7")
+    assert proto.build_blank_screen(False) == H("33a90a0600020a007800000000000000000000e6")
+    assert proto.build_blank_screen(True)[2:4] != proto.build_video_white_balance(16, 3)[2:4]
+    _valid(proto.build_blank_screen(True))
+
+
+def test_relative_brightness():
+    assert proto.build_relative_brightness(36) == H("33ae010424242424000000000000000000000098")
+    assert proto.build_relative_brightness(100) == H("33ae010464646464000000000000000000000098")
+    # Direct percent, not a 0..255 level: a scaled builder sends 0x5B here and the edges dim wrong.
+    assert proto.build_relative_brightness(36)[4] == 36
+    assert proto.build_relative_brightness(200) == proto.build_relative_brightness(100)
+    assert proto.build_relative_brightness(-5) == proto.build_relative_brightness(0)
+    _valid(proto.build_relative_brightness(50))
 
 
 def test_music_mode():

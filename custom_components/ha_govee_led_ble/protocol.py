@@ -31,6 +31,12 @@ BRIGHTNESS_PACKET_TYPE = 0x04
 COLOR_PACKET_TYPE = 0x05
 FIRMWARE_PACKET_TYPE = 0x06
 HARDWARE_PACKET_TYPE = 0x07
+# H6199 registers reached from the vendor app's video sheet (h6199_command_write::command_op).
+DISPLAY_SETTING_PACKET_TYPE = 0xA9
+RELATIVE_BRIGHTNESS_PACKET_TYPE = 0xAE
+# Which setting a 33 a9 write addresses (h6199_command_write::display_setting).
+DISPLAY_SETTING_WHITE_BALANCE = 0x00
+DISPLAY_SETTING_BLANK_SCREEN = 0x0A
 COLOR_MODE_SCENE = 0x04
 COLOR_MODE_VIDEO = 0x00
 COLOR_MODE_MUSIC = 0x13
@@ -507,8 +513,13 @@ def build_video_mode(
     sound_effects: bool = False,
     sound_effects_softness: int = 100,
 ) -> bytes:
-    # H6199 video frame; region 1=all/0=part. iOS always sends the full frame: sound flag plus a
-    # softness byte (floor 0x01) that persists even when sound is off.
+    """Build the H6199 video-mode write (h6199_command_write::video_body).
+
+    Note the polarity of the picture profile, which is the opposite way round to the order the
+    app lists the two in: Game is 1 and Movie is 0. Saturation and softness are direct percents
+    on this model, not 0..255 levels. Softness keeps its captured floor of 1 and persists while
+    sound effects are off, which is the form every captured write takes.
+    """
     params = [
         COLOR_MODE_VIDEO,
         int(full_screen),
@@ -520,13 +531,67 @@ def build_video_mode(
     return build_packet(0x33, 0x05, params)
 
 
-def build_video_white_balance(red: int, blue: int) -> bytes:
-    """Build the H6199 raw two-axis DreamView white-balance frame ``33 a9 00 03 01 <red> <blue>``.
+# The neutral pair the app's own Reset button writes (h6199_white_balance_reset). The register has
+# no captured read-back, so this is what a caller starts from rather than what a device reports.
+WHITE_BALANCE_RESET: tuple[int, int] = (16, 3)
+WHITE_BALANCE_MANUAL = 0x01
+# The bytes after the blank-screen flag, replayed verbatim: identical across both captured writes
+# (h6199_command_write::blank_screen_payload::opaque_tail).
+_BLANK_SCREEN_TAIL = (0x02, 0x0A, 0x00, 0x78, 0x00)
+RELATIVE_BRIGHTNESS_EDGES = 4
+RELATIVE_BRIGHTNESS_HEAD = 0x01
 
-    Red and blue are independent axes, not a single coupled slider: app-sniffed 2026-07-12 and
-    confirmed live on an H6199 2026-07-20. The mapping onto the app's UI control is unproven.
+
+def _build_display_setting(setting: int, payload: list[int]) -> bytes:
+    """Frame one H6199 display setting behind its selector and payload length.
+
+    The length is the payload's own, never a literal: it is what tells the two settings apart from
+    each other's trailing zeros (h6199_command_write::display_setting_body).
     """
-    return build_packet(0x33, 0xA9, [0x00, 0x03, 0x01, _clamp(red, 0, 255), _clamp(blue, 0, 255)])
+    return build_packet(0x33, DISPLAY_SETTING_PACKET_TYPE, [setting, len(payload), *payload])
+
+
+def build_video_white_balance(red: int, blue: int) -> bytes:
+    """Build the H6199 white-balance write (h6199_command_write::white_balance_payload).
+
+    The two bytes are GAINS, and the quantity the user sets does not appear in the frame at all:
+    the app's marker picks an index into a twenty-entry table it ships, and the write carries the
+    pair that index names. Cool is (7, 10) and warm is (21, 5), the two ends of that table, so a
+    caller wanting the app's own neutral should write ``WHITE_BALANCE_RESET``.
+
+    ``manual`` is written as the 1 every captured write carries. It is not exposed: its name rests
+    on the vendor app's encoder rather than on a capture that varied it, and no capture has yet
+    been taken with Auto White Balance on.
+    """
+    return _build_display_setting(
+        DISPLAY_SETTING_WHITE_BALANCE, [WHITE_BALANCE_MANUAL, _clamp(red, 0, 255), _clamp(blue, 0, 255)]
+    )
+
+
+def build_blank_screen(enabled: bool) -> bytes:
+    """Build the H6199 blank-screen display setting (h6199_command_write::blank_screen_payload).
+
+    Only the flag is ours to set. The five bytes after it are replayed from capture: they never
+    moved across either write, and the vendor app's reading of them as a flag and two integers
+    names nothing this project can vary.
+    """
+    return _build_display_setting(DISPLAY_SETTING_BLANK_SCREEN, [int(enabled), *_BLANK_SCREEN_TAIL])
+
+
+def build_relative_brightness(percent: int) -> bytes:
+    """Build the H6199 relative-brightness write (h6199_command_write::relative_brightness_body).
+
+    Every edge is given the same percentage, which is the only form that has been captured: both
+    writes moved all four edges together. Which byte is which edge is NOT isolated, so this takes
+    one level rather than four, and no caller can address a single edge until a capture separates
+    them.
+    """
+    level = _clamp(percent, 0, 100)
+    return build_packet(
+        0x33,
+        RELATIVE_BRIGHTNESS_PACKET_TYPE,
+        [RELATIVE_BRIGHTNESS_HEAD, RELATIVE_BRIGHTNESS_EDGES, *([level] * RELATIVE_BRIGHTNESS_EDGES)],
+    )
 
 
 def build_music_mode_with_color(
@@ -1007,12 +1072,23 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     ),
     "build_video_mode": Evidence(
         "VALIDATED",
-        "H6199 33 05 00 region/mode/sat/sound/softness; always-full frame, softness persists (floor 0x01) "
-        "when sound off; app-sniff 2026-07-12 + h6199-video-controls-batch.pcap",
+        "H6199 33 05 00 region/source/saturation/sound/softness (h6199_command_write::video_body); "
+        "each field pinned by a controlled comparison in h6199_video_*, source polarity Game=1/Movie=0",
     ),
     "build_video_white_balance": Evidence(
         "VALIDATED",
-        "H6199 33 a9 00 03 01 <red><blue>; independent raw axes app-sniffed 2026-07-12; UI mapping unproven",
+        "H6199 white-balance display setting (h6199_command_write::white_balance_payload); the two "
+        "bytes are gains the app picks from a bundled table, byte-exact against h6199_white_balance_*",
+    ),
+    "build_blank_screen": Evidence(
+        "VALIDATED",
+        "H6199 blank-screen display setting (h6199_command_write::blank_screen_payload); flag isolated "
+        "by an on/off pair, trailing bytes replayed from h6199_blank_screen_*",
+    ),
+    "build_relative_brightness": Evidence(
+        "VALIDATED",
+        "H6199 33 ae per-edge relative brightness (h6199_command_write::relative_brightness_body); "
+        "all four edges written together, the only form h6199_relbright_* captured",
     ),
     "build_timer_schedule": Evidence("EXPERIMENTAL", "H617A §4 timer 33 23; write live, ships gated Tier-2"),
     "build_timer_sleep": Evidence("EXPERIMENTAL", "H617A §4 sleep 33 11; reply captured (OBSERVE)"),
