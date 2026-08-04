@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Govee BLE capture, driven through the phone's native USB owner.
 #
-#   govee-capture.sh start <name> [prediction-sha256]   begin capture
-#   govee-capture.sh mark <label>                       timestamp an action within it
-#   govee-capture.sh stop                               stop and decode
-#   govee-capture.sh decode <name> [--all]
-#   govee-capture.sh list
+# Not executable by design, like every script here, so it is invoked through bash. The
+# harness wraps it as capture(), which is what most callers should use.
+#
+#   bash tools/ble/govee-capture.sh start <name> [prediction-sha256]   begin capture
+#   bash tools/ble/govee-capture.sh mark <label>                       timestamp an action
+#   bash tools/ble/govee-capture.sh stop                               stop and decode
+#   bash tools/ble/govee-capture.sh decode <name> [--all]
+#   bash tools/ble/govee-capture.sh list
 #
 # NO TUNNEL IS NEEDED. com.apple.bluetooth.BTPacketLogger is a lockdown service, so this
 # works over plain usbmux; only the app-driving half of the rig is behind RemoteXPC.
@@ -19,6 +22,55 @@
 # session where the app never reached the light produces a clean, empty-looking decode that
 # reads as "the device said nothing", which is a conclusion rather than the error it is.
 # up.sh sets it from the resolved device, so app-mode sessions get it for free.
+#
+# PUT THE PHONE IN AIRPLANE MODE, THEN TURN BLUETOOTH BACK ON, BEFORE CAPTURING. The vendor
+# app prefers any IP path it has and only falls back to BLE, so a capture taken with the
+# phone online UNDERSTATES the protocol instead of revealing it. Measured on the H6199
+# 2026-08-03: with WiFi up the app asked aa 01 power and nothing else; offline, the same
+# device page immediately asked aa 04 brightness, aa 05 colour mode, aa 11/aa 12/aa 23
+# timers, aa a9 calibration and four groups of aa a5 segment colours. Airplane Mode rather
+# than WiFi alone, because cellular keeps the cloud reachable, and Bluetooth back on because
+# Airplane Mode takes it down with everything else. This costs nothing on a model with no
+# IP path, so it is the default rather than a per-model step.
+#
+# TAKING THE DEVICE OFF WI-FI AS A SUBSTITUTE DOES NOT WORK, and the attempt is worth
+# recording because it half-succeeds. On 2026-08-04 the H6199 was pushed credentials for a
+# network that does not exist, first through the app and then by writing the same captured
+# bytes directly from this host. Both times the device accepted the write, spent about
+# eleven seconds trying, and reported failure on ee 11. It then went back to its stored
+# network: with the phone online it still showed as cloud-reachable in the app's device
+# list, beside two lights the same list marks "Device offline". A bad SSID is attempted and
+# abandoned, not retained, so this is not a lever on the light's connectivity.
+#
+# The measurement that sat between those two facts proved less than it looked like.
+# Phone-online captures do ask for less: opening the device page asked only the link and
+# identity domains aa 01/06/07/14/20/21 and not aa 04, aa 05, aa 0f, aa 35, aa a5, aa a9 or
+# aa ae, against a phone-offline control doing the same navigation that asked all of them.
+# That was briefly written up as proof that the shortcut is phone-side and the light's own
+# connectivity irrelevant. It is not proof of that: the light was reachable throughout, so
+# the cheaper reading, that the app asked the cloud and the cloud asked a device that was
+# up, was never excluded. The rule above stands on its own measurement, not on this one.
+#
+# THE EXCLUDING MEASUREMENT HAS NOW BEEN TAKEN, and it changes what the rule is ABOUT.
+# On 2026-08-04 the H6199 was re-homed onto a throwaway network which was then deleted, so
+# for the first time the light was genuinely associated to nothing: an independent check of
+# the wireless controller showed it joined to no SSID at all, six minutes after the network
+# it had committed to stopped existing. With the phone then taken OUT of Airplane Mode and
+# back onto WiFi, opening the device page asked
+#
+#   aa 01 04 05 06 07 0f 11 12 14 20 21 23 35 a5 a9 ae
+#
+# which is the SAME SIXTEEN registers as a phone-offline control taken two hours earlier on
+# the same device and app. Not a subset, not a superset: identical. So the app's shortcut is
+# not phone-side at all. What matters is whether the DEVICE has an IP path, and Airplane Mode
+# is merely the cheapest way to guarantee the app cannot use one.
+#
+# The rule therefore stays as written, because it is still the only thing that is true for
+# every device and costs nothing. But it may be relaxed FOR A DEVICE PROVEN TO BE OFF THE
+# NETWORK, and "proven" means checked against something other than the vendor app: its own
+# device list was wrong about exactly this once already. A device that is merely believed to
+# be offline, or that has been pushed credentials that failed, does not qualify — a failed
+# push is attempted and abandoned, and the light returns to its stored network.
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -125,9 +177,17 @@ case "${1:-}" in
       echo "capture preflight failed: no HCI frames in ${PREFLIGHT_SECONDS}s. In order:" >&2
       echo "  1. install Apple's Bluetooth Logging profile ($BLUETOOTH_LOGGING_PROFILE_URL;" >&2
       echo "     UUID $BLUETOOTH_LOGGING_PROFILE_UUID), then toggle Bluetooth;" >&2
-      echo "  2. the phone is visible to $PMD3 usbmux list (after a replug, restart this" >&2
-      echo "     host's usbmuxd service if the device is attached but absent there);" >&2
+      echo "  2. backend is '$BACKEND'. On WSL with the phone natively owned it must be" >&2
+      echo "     idevicebtlogger; the pymobiledevice3 backend cannot reach that phone and" >&2
+      echo "     records an empty capture. resolve_device derives this, so a shell that" >&2
+      echo "     never called it is the usual cause." >&2
       echo "  3. toggle Bluetooth off then on. Log: $CAP/$name.log" >&2
+      # DO NOT suggest `pymobiledevice3 usbmux list` here. It cannot work on this rig at all:
+      # pymobiledevice3 ships a Wsl class whose usbmux address is the Windows iTunes TCP
+      # endpoint, so the CLI reports "Failed to connect to usbmuxd socket" while the daemon is
+      # running, holds the phone, and answers a hand-written ListDevices perfectly well. That
+      # advice cost a session hunting a healthy daemon. USBMUXD_SOCKET_ADDRESS is what makes
+      # the library reach the real socket, and devices.env exports it.
       # A LOCKED PHONE IS NOT A CAUSE OF THIS, measured 2026-08-03: with the lock state
       # confirmed LOCKED immediately beforehand, a capture recorded 21 KB in 12s and decoded
       # to 31 ATT frames. Suggesting it first sent a session hunting the wrong thing while a

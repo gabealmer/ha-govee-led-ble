@@ -282,6 +282,18 @@ types:
       does not query 0x40 either. Absence of a query is therefore NOT evidence that a
       model lacks the register.
 
+      THAT DIAGNOSIS IS NOW CONFIRMED, AND IT IS FIXABLE AT THE PHONE. Measured
+      2026-08-03: with the iPhone in Airplane Mode and Bluetooth re-enabled, so the app
+      had no IP path at all, the same device page immediately asked aa 04 and got
+      brightness=30, and went on to ask aa 0f, aa 23, aa 12, aa 11, aa a9, aa ae, aa 35,
+      aa 05 and four groups of aa a5 segment colours, none of which it had asked for
+      minutes earlier over the same BLE link with WiFi up. The H6199 has no LAN API, so
+      the app's only non-BLE route is Govee's cloud, and severing the phone's IP
+      connectivity forces the whole UI onto the wire. Capture H6199 with the phone
+      offline; a capture taken with WiFi up understates the protocol rather than
+      revealing it. aa 40 was still not asked in that session, so the paragraph above
+      stands for this register specifically.
+
       Our integration never reads this domain (segment count comes from a hardcoded
       ModelProfile), so the open label costs nothing.
     seq:
