@@ -473,3 +473,34 @@
     pair is the capture that promotes it.
   between: [h6199_command_music_rhythm, h6199_command_colour_red]
   differs_within: [2, 3, 4, 5, 6, 12, 13, 19]
+
+- id: h6199_wifi_result_has_both_outcomes
+  doc: >
+    Two distinct status values, each produced deliberately rather than waited for: a network
+    invented to be impossible gave one, and credentials for a network that existed gave the
+    other. Before this the failure value was the only one ever seen, and a single observed
+    value cannot tell you whether a byte is a status or a constant. Producing the other one
+    on purpose is what makes it a status.
+  cases: h6199_wifi_result_*
+  collect: status
+  distinct_at_least: 2
+
+- id: h6199_wifi_result_differs_only_in_status
+  doc: >
+    Success against failure moves exactly the status byte and the checksum. The sixteen-byte
+    tail is identical in both, so the frame carries no reason, no error code and no detail
+    about which step failed. That negative is worth pinning: it is why the ~11 second delay
+    and an independent check of what the light actually joined are the only ways to tell an
+    association failure from a later one.
+  between: [h6199_wifi_result_failure, h6199_wifi_result_success]
+  differs_at: [2, 19]
+
+- id: h6199_wifi_sequence_indices_vary
+  doc: >
+    The frames of one provisioning sequence carry distinct indices, which is what makes the
+    index an ordering field rather than a constant repeated on every write. The terminator's
+    0xff is included deliberately: it is a sentinel and not the count, and reading it as the
+    last data frame is the mistake the H617A's 0xA3 fragmenter invites.
+  cases: h6199_wifi_frame_*
+  collect: index
+  distinct_at_least: 6

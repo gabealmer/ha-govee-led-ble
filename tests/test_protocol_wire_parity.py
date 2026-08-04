@@ -23,6 +23,7 @@ from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import MUSIC_MODE_SLUGS
 from custom_components.ha_govee_led_ble.custom_effects import ComboContent, FlatContent
 from custom_components.ha_govee_led_ble.protocol import Weekday
+from tools.ble import wifi_provision
 from tools.ble.mock_ble.mock_device import GoveeDeviceSim
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tools" / "ble" / "kaitai" / "src"
@@ -464,3 +465,42 @@ def test_type_one_scene_bodies_are_the_catalogue_param_framed(code, name):
     assert a3_body(proto.build_a3_multi(1, param)) == captured
     assert captured[3 : 3 + len(param)] == param
     assert captured[0] == 0x01 and captured[2] == 0x01
+
+
+def test_wifi_encoder_reproduces_the_sequence_the_firmware_accepted():
+    """The provisioning encoder is checked against captured bytes, not against itself.
+
+    This is the one encoder in the tree whose output is written to a device's persistent
+    configuration, and we have exactly one sequence the firmware is known to have accepted.
+    So the encoder's own guard rebuilds that sequence, and this pins the guard: if the
+    fragmentation rule or the body layout drifts, both the tool's self-check and this test
+    fail together rather than the tool quietly blessing a new shape.
+
+    The credentials are invented. A real network's must never be committed, and the tool
+    reads them from stdin for the same reason.
+    """
+    assert wifi_provision.verify_against_known_accepted()
+
+    frames = wifi_provision.build(wifi_provision.KNOWN_ACCEPTED_SSID, wifi_provision.KNOWN_ACCEPTED_PASSWORD)
+    for label, frame in zip(["header", "data1", "data2", "data3", "data4", "terminator"], frames, strict=True):
+        assert frame == fixture(f"h6199_wifi_frame_{label}"), label
+
+
+def test_wifi_body_is_forty_nine_bytes_and_fragments_into_four():
+    """The two trailing bytes are the whole reason the sequence has four data frames.
+
+    They were on the wire before they were understood and were briefly read as padding,
+    which made the frame count look unpredictable. A 47-byte body has never been
+    acknowledged by this firmware and a 49-byte one has, so the encoder always sends them.
+    """
+    body = wifi_provision.build_body(wifi_provision.KNOWN_ACCEPTED_SSID, wifi_provision.KNOWN_ACCEPTED_PASSWORD)
+    assert body == fixture("h6199_wifi_body_fakenet")
+    assert len(body) == 49
+    assert len(wifi_provision.build_sequence(body)) == 6  # header + 4 data + terminator
+
+
+def test_an_open_network_sends_a_zero_length_passphrase():
+    """password_len is why the body cannot be read as fixed-width fields."""
+    body = wifi_provision.build_body("OPENNET", "")
+    assert body[8] == 0
+    assert body[:8] == b"\x07OPENNET"

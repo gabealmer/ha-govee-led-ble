@@ -216,10 +216,32 @@ async def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def resolve_frame_texts(texts: list[str]) -> list[str]:
+    """Expand a literal ``-`` into frames read from stdin, one per line.
+
+    A frame carrying a Wi-Fi passphrase must never be an argument: argv is world-readable
+    through /proc for the life of the process, so passing provisioning frames on the command
+    line leaks the credential to every account on the box. This is the same reason wda.py
+    reads typed text from stdin, and the reason that verb exists at all.
+
+    Blank lines and ``#`` comments are dropped, so a generated frame file can explain itself.
+    """
+    if texts != ["-"]:
+        return texts
+    out = []
+    for line in sys.stdin.read().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            out.append(line)
+    if not out:
+        raise ValueError("no frames on stdin")
+    return out
+
+
 async def cmd_send(args: argparse.Namespace) -> int:
     from bleak import BleakClient
 
-    frames = [complete_frame(text, args.checksum) for text in args.frames]
+    frames = [complete_frame(text, args.checksum) for text in resolve_frame_texts(args.frames)]
     response = {"auto": None, "yes": True, "no": False}[args.response]
     target = args.address
 
@@ -381,7 +403,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Connect to the strip, write each frame, then optionally subscribe to "
         "the notify characteristic and print notifications. Opens a connection.",
     )
-    p_send.add_argument("frames", nargs="+", metavar="HEXFRAME", help="One or more frames (see 'build')")
+    p_send.add_argument(
+        "frames",
+        nargs="+",
+        metavar="HEXFRAME",
+        help="One or more frames (see 'build'), or a single '-' to read them from stdin",
+    )
     p_send.add_argument(
         "--listen",
         type=float,
