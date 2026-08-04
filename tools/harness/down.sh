@@ -73,11 +73,25 @@ if [ "$state_mode" != direct ]; then
 fi
 
 ha_entry "$DEVICE_ENTRY" enable >/dev/null
-entry_state="$(ha_entry "$DEVICE_ENTRY" status)"
-grep -q '"state": "loaded"' <<<"$entry_state" && grep -q '"disabled_by": null' <<<"$entry_state" || {
-  grep -E '"state"|"disabled_by"' <<<"$entry_state" >&2
-  echo "entry did not come back cleanly" >&2; exit 1
-}
+# Polled, and NOT fatal. The entry can only load once the light's single BLE link is free,
+# and that happens when the phone drops it, which is asynchronous and can take tens of
+# seconds: the app kill above is best-effort, and a phone that still holds the link reports
+# "unreachable at setup" until it lets go. Home Assistant retries setup on its own backoff,
+# so a not-yet-loaded entry here is a normal race and not a teardown failure.
+#
+# It used to `exit 1` on the first reading, which is the same ordering mistake this script
+# already documents twice below: a step that can legitimately fail placed before steps that
+# must always run. On 2026-08-04 it aborted teardown while the phone still held the link,
+# leaving the session state file behind, so the next shell believed a session was up and the
+# rig looked live when it was not.
+entry_state=""
+for _ in $(seq 1 "${HA_ENTRY_ATTEMPTS:-6}"); do
+  entry_state="$(ha_entry "$DEVICE_ENTRY" status)"
+  grep -q '"state": "loaded"' <<<"$entry_state" && grep -q '"disabled_by": null' <<<"$entry_state" && break
+  sleep "${HA_ENTRY_DELAY:-10}"
+done
+entry_ok=1
+grep -q '"state": "loaded"' <<<"$entry_state" && grep -q '"disabled_by": null' <<<"$entry_state" || entry_ok=0
 
 # Only after the link is back, and never fatally: tunneld is root-owned and its stop needs
 # passwordless sudo, so a failure here must not abort the script before the entry is handed
@@ -93,7 +107,15 @@ if [ "$state_mode" != direct ]; then
 fi
 
 rm -f "$state_file"
-echo "== down: $DEVICE_NAME entry loaded, disabled_by null"
+if [ "$entry_ok" = 1 ]; then
+  echo "== down: $DEVICE_NAME entry loaded, disabled_by null"
+else
+  grep -E '"state"|"disabled_by"|"reason"' <<<"$entry_state" >&2
+  echo "== down: the rig IS down and the phone is released, but the entry has not loaded yet." >&2
+  echo "   Home Assistant retries on its own backoff. If it stays unreachable, something is" >&2
+  echo "   still holding the light's one BLE link: check the phone's app is closed." >&2
+  cleanup_status=1
+fi
 
 # Last, so it cannot come between the device and its owner, and loud, so it cannot be the
 # thing nobody read. A capture that holds none of the light's frames is a session to repeat.

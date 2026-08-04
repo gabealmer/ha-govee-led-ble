@@ -42,23 +42,40 @@ capture() {{
 }}
 ha_entry() {{
   echo "ha_entry $1 $2" >> "$CALLS"
-  [ "$2" = status ] && printf '{{"state": "loaded", "disabled_by": null}}\\n'
+  [ "$2" = status ] && printf '{entry_status}\\n'
   return 0
 }}
 """
 
+_ENTRY_LOADED = '{{"state": "loaded", "disabled_by": null}}'
+_ENTRY_STUCK = '{{"state": "setup_retry", "disabled_by": null, "reason": "unreachable at setup"}}'
 
-def _run_down(tmp_path: Path, *, capture_exit: int) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+
+def _run_down(
+    tmp_path: Path, *, capture_exit: int, entry_status: str = _ENTRY_LOADED
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     rig = tmp_path / "harness"
     rig.mkdir()
     (rig / "down.sh").write_text(_DOWN_SH.read_text())
-    (rig / "phone.sh").write_text(_STUB_PHONE_SH.format(capture_exit=capture_exit))
+    (rig / "phone.sh").write_text(
+        _STUB_PHONE_SH.format(capture_exit=capture_exit, entry_status=entry_status)
+    )
     calls = tmp_path / "calls.log"
     state = tmp_path / "state"
     state.write_text("app tv entry-tv\n")
 
     env = os.environ.copy()
-    env.update({"CALL_LOG": str(calls), "STATE_FILE": str(state), "HARNESS_STATE_FILE": str(state)})
+    env.update(
+        {
+            "CALL_LOG": str(calls),
+            "STATE_FILE": str(state),
+            "HARNESS_STATE_FILE": str(state),
+            # The retry exists for a real race, but waiting it out here would add a minute
+            # to the suite for a stub that will never change its answer.
+            "HA_ENTRY_ATTEMPTS": "2",
+            "HA_ENTRY_DELAY": "0",
+        }
+    )
     result = subprocess.run(  # noqa: S603
         ["/bin/bash", str(rig / "down.sh")],
         check=False,
@@ -68,6 +85,10 @@ def _run_down(tmp_path: Path, *, capture_exit: int) -> tuple[subprocess.Complete
         timeout=60,
     )
     return result, calls.read_text().splitlines() if calls.exists() else []
+
+
+def _state_file(tmp_path: Path) -> Path:
+    return tmp_path / "state"
 
 
 def test_a_failed_capture_verdict_still_gives_the_link_back(tmp_path: Path):
@@ -111,3 +132,32 @@ def test_other_capture_failures_stay_tolerated(tmp_path: Path, capture_exit: int
 
     assert result.returncode == 0, result.stderr
     assert "ha_entry entry-tv enable" in calls
+
+
+def test_an_entry_that_has_not_loaded_yet_still_completes_the_teardown(tmp_path: Path):
+    """The entry can only load once the light's one BLE link is free, and that happens when
+    the phone drops it, asynchronously. Treating the first reading as fatal aborted teardown
+    before the phone was released and before the state file was removed, so the next shell
+    believed a session was up. Home Assistant retries on its own backoff; this script's job
+    is to finish."""
+    result, calls = _run_down(tmp_path, capture_exit=0, entry_status=_ENTRY_STUCK)
+
+    assert "phone_usbipd_release" in calls
+    assert not _state_file(tmp_path).exists(), "a rig that is down must not look live"
+
+
+def test_an_entry_that_has_not_loaded_yet_is_reported_loudly(tmp_path: Path):
+    """Not fatal is not the same as not mentioned: the light is the point of the rig."""
+    result, _ = _run_down(tmp_path, capture_exit=0, entry_status=_ENTRY_STUCK)
+
+    assert result.returncode == 1
+    assert "has not loaded yet" in result.stderr
+    assert "one BLE link" in result.stderr
+    assert "entry loaded, disabled_by null" not in result.stdout
+
+
+def test_a_loaded_entry_is_not_polled_repeatedly(tmp_path: Path):
+    """Positive control for the retry: it must not cost a delay on the normal path."""
+    _, calls = _run_down(tmp_path, capture_exit=0)
+
+    assert calls.count("ha_entry entry-tv status") == 1
