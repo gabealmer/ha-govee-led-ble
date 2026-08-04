@@ -250,6 +250,18 @@ def unique(source: str, name: str) -> dict[str, Any]:
     """
     found = matching(source, name)
     if not found:
+        # Near-misses, because the failure that costs a round trip is a name that LOOKS
+        # right. Govee's scene tiles are called "Green\xa0Reign" with a non-breaking space,
+        # which is indistinguishable from an ordinary one in a terminal and in a diff, so
+        # "nothing on screen is called that" reads as the wrong screen rather than as the
+        # wrong space. Matching stays exact; only the error message is forgiving.
+        squashed = " ".join(name.split()).casefold()
+        close = sorted({e["name"] for e in named(source) if " ".join(e["name"].split()).casefold() == squashed})
+        if close:
+            raise NotFoundError(
+                f"nothing on screen is called {name!r}, but {', '.join(repr(c) for c in close)} "
+                f"differs from it only in whitespace or case. Use the exact name."
+            )
         raise NotFoundError(f"nothing on screen is called {name!r}")
     if len(found) > 1:
         # Narrow by KIND first, then by whether it is actually on screen. Both are functional
@@ -561,8 +573,8 @@ class Screen:
         )
         time.sleep(0.6)
 
-    def pick(self, value: str) -> str:
-        """Set the on-screen picker wheel to `value` by NAME, not by swiping to it.
+    def pick(self, value: str, wheel: int = 0) -> str:
+        """Set an on-screen picker wheel to `value` by NAME, not by swiping to it.
 
         Govee puts several numeric parameters behind a modal wheel: Minimum IC, Maximum ICs,
         Number of IC. A wheel is the worst possible target for a gesture, because the value
@@ -573,8 +585,13 @@ class Screen:
         name-based, and reading the wheel's own `value` back afterwards confirms the set
         rather than assuming it. Raises if the wheel did not take the value, because a
         silently ignored set is how a probe ends up reporting a parameter it never applied.
+
+        `wheel` selects which one, because a modal can hold more than a single wheel: the
+        timer's "Set time" carries hours and minutes side by side, and addressing only the
+        first would set an hour and leave the minutes to whatever they already read, which
+        is exactly the silent half-application the read-back above exists to prevent.
         """
-        element_id = self._element_id("**/XCUIElementTypePickerWheel")
+        element_id = self._element_id(f"**/XCUIElementTypePickerWheel[{wheel + 1}]")
         _request(
             self.base_url,
             "POST",
@@ -583,10 +600,121 @@ class Screen:
         )
         time.sleep(0.4)
         wheels = [e for e in elements(self.source()) if e["type"] == "XCUIElementTypePickerWheel"]
-        landed = wheels[0]["value"] if wheels else None
+        if wheel >= len(wheels):
+            raise WdaError(f"picker wheel {wheel} does not exist; the screen has {len(wheels)}")
+        landed = wheels[wheel]["value"]
         if str(landed) != value:
-            raise WdaError(f"picker wheel would not take {value!r}; it reads {landed!r}")
+            raise WdaError(f"picker wheel {wheel} would not take {value!r}; it reads {landed!r}")
         return value
+
+    def slide(self, name: str, to: float, start: float = 0.5) -> dict[str, Any]:
+        """Drag along a named element's rect, addressed as a FRACTION of its width.
+
+        A slider is the one control a name alone cannot drive: the name says which slider,
+        the fraction says where along it. Everything else here is named because pixels go
+        stale; a fraction of a named element's own rect does not, so this keeps the rule.
+
+        NAME THE ELEMENT THAT SPANS THE TRACK, NOT THE THUMB. Govee draws the thumb as an
+        XCUIElementTypeImage whose rect is the thumb alone, so a drag "along" it travels a
+        few points. On the video Relative Brightness sheet the element that spans the track
+        is the percentage label, so `slide '50%' 0.9` is the call that works. That is also
+        why this accepts any named element rather than a slider type: what is needed is
+        something whose rect IS the range, and the app does not promise that is the control.
+
+        WHY W3C ACTIONS AND NOT THE HID PATH. `phone.sh` can already drag by screen pixel
+        through serve-web's /touch, and on 2026-08-04 that path stopped delivering: the same
+        drag on the same slider moved nothing and put nothing on the wire, while this one
+        moved it 50% -> 100% and produced the 33 ae write that named the register. /touch
+        answers 200 either way, because a 200 means the report was dispatched and not that
+        backboardd honoured it, so the failure is silent. Prefer this.
+
+        Judgement is left to the caller: `act.sh` already decides delivery from the screen
+        diff and the BLE that follows, and a read-back here could not use the element's name
+        anyway - the label this is aimed at is CALLED '50%' and stops existing on success.
+
+        The label is the track only APPROXIMATELY. On the Relative Brightness sheet the real
+        track is (51,551,300,35) and the label (83,552,300,33): same width, origin 32 points
+        right, so a fraction of the label runs long and settings above about 0.85 clamp to
+        full. That is tolerable for isolating a register, where what matters is that two
+        writes differ, and it is recorded here so nobody reads a fraction as a percentage.
+        """
+        _, element = self.await_usable(name)
+        if not element["visible"]:
+            raise NotDisplayedError(f"{name!r} is in the tree at {element['rect']} but is not displayed")
+        x, y, width, height = (int(value) for value in element["rect"])
+        if width < 2:
+            raise WdaError(f"{name!r} is {width} points wide; name the track, not the thumb")
+        origin, target, midline = x + round(width * start), x + round(width * to), y + height // 2
+        self.swipe(origin, midline, target, midline)
+        return {"rect": (str(x), str(y), str(width), str(height)), "from": origin, "to": target}
+
+    def swipe(self, x1: int, y1: int, x2: int, y2: int) -> None:
+        """Drag between two absolute coordinates, in WDA POINTS.
+
+        The primitive `slide` is built on, exposed because two things need it that no name
+        can express. Sliders whose track is UNNAMED: the video Sound Effects "Softness"
+        control is an unnamed element at (31,746,334,35) whose only named neighbour is the
+        caption above it, so a drag along the name travels the wrong row. And SCROLLING,
+        which this module otherwise only does as a side effect of reaching for a name - the
+        video page's second toggle sat at y=904 on an 874-point screen, and a tap aimed at
+        its rect landed off the screen and reported nothing wrong.
+        """
+        moves = [
+            {
+                "type": "pointerMove",
+                "duration": 40,
+                "x": int(x1 + round((x2 - x1) * step / 12)),
+                "y": int(y1 + round((y2 - y1) * step / 12)),
+            }
+            for step in range(1, 13)
+        ]
+        self._actions(
+            [{"type": "pointerMove", "duration": 0, "x": int(x1), "y": int(y1)}, {"type": "pointerDown", "button": 0}]
+            # Held either side of the movement because a drag with no dwell reads as a flick:
+            # the control takes the gesture as a scroll of whatever is underneath it.
+            + [{"type": "pause", "duration": 200}]
+            + moves
+            + [{"type": "pause", "duration": 200}, {"type": "pointerUp", "button": 0}]
+        )
+
+    def point(self, x: int, y: int) -> None:
+        """Tap one absolute coordinate, in WDA POINTS, for controls a name cannot single out.
+
+        The last resort, and deliberately not the first: it is the coordinate dependence this
+        module exists to avoid. It earns its place because names in this app are repeated far
+        more often than they are unique - the video sheet carries four identical edge
+        checkboxes called `new light btn 7022 unchoose da` and two toggles called
+        `light btn mode off` - and `unique()` is right to refuse those. When only POSITION
+        distinguishes two controls, position is the honest way to choose between them.
+
+        Read the coordinate off the element's own rect from `find`, not off a screenshot.
+        WDA points are 402x874 on this phone while the small screenshot is 422x917, so the
+        two differ by about 5% and a screenshot pixel used here lands low and right.
+
+        This is NOT the serve-web /touch path, which on 2026-08-04 answered 200 while
+        delivering nothing.
+        """
+        self._actions(
+            [
+                {"type": "pointerMove", "duration": 0, "x": int(x), "y": int(y)},
+                {"type": "pointerDown", "button": 0},
+                {"type": "pause", "duration": 120},
+                {"type": "pointerUp", "button": 0},
+            ]
+        )
+
+    def _actions(self, steps: list[dict[str, Any]]) -> None:
+        _request(
+            self.base_url,
+            "POST",
+            f"/session/{self.session}/actions",
+            {
+                "actions": [
+                    {"type": "pointer", "id": "finger1", "parameters": {"pointerType": "touch"}, "actions": steps}
+                ]
+            },
+            timeout=30.0,
+        )
 
     def tap_beside(self, name: str, anchor: str, where: str = "row") -> dict[str, Any]:
         """Tap the element called `name` that belongs to the item or section labelled `anchor`."""
@@ -670,19 +798,66 @@ class Screen:
 
 def _main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("list", "find", "tap", "chain", "shot"))
+    parser.add_argument(
+        "command", choices=("list", "find", "tap", "slide", "point", "swipe", "chain", "shot", "type", "pick")
+    )
     parser.add_argument("name", nargs="?")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
+    parser.add_argument(
+        "--to",
+        type=float,
+        help="where along the named element to drag to, as a fraction of its width (slide only)",
+    )
+    parser.add_argument(
+        "--from",
+        dest="start",
+        type=float,
+        default=0.5,
+        help="where along the named element the drag starts, as a fraction of its width (slide only)",
+    )
+    parser.add_argument(
+        "--wheel",
+        type=int,
+        default=0,
+        help="which picker wheel to set, left to right from 0 (pick only)",
+    )
     parser.add_argument(
         "--shot",
         metavar="PATH",
         help="screenshot immediately after the tap, to catch a toast that the element tree never shows",
     )
     args = parser.parse_args(argv[1:])
-    if args.command in ("find", "tap", "chain", "shot") and not args.name:
+    if args.command in ("find", "tap", "slide", "chain", "shot", "pick") and not args.name:
         parser.error(f"{args.command} needs an argument")
+    if args.command == "point" and not (args.name and len(args.name.split()) == 2):
+        parser.error("point needs 'X Y' in WDA points, as one quoted argument")
+    if args.command == "swipe" and not (args.name and len(args.name.split()) == 4):
+        parser.error("swipe needs 'X1 Y1 X2 Y2' in WDA points, as one quoted argument")
+    if args.command == "slide" and args.to is None:
+        parser.error("slide needs --to, a fraction of the named element's width")
 
     screen = Screen(args.base_url).open()
+    if args.command == "type":
+        # STDIN, NEVER ARGV. The first caller for this types a Wi-Fi passphrase into the
+        # device's provisioning form, and a command argument is world-readable through
+        # /proc for the life of the process, so a real network's password would be exposed
+        # to every account on the box. Reading the value here keeps it in a pipe.
+        # Trailing newline stripped: the shell adds one and the field would receive a
+        # submit that the caller did not ask for.
+        screen.type_text(sys.stdin.read().rstrip("\n"))
+        return 0
+    if args.command == "pick":
+        print(screen.pick(args.name, args.wheel))
+        return 0
+    if args.command == "slide":
+        print(screen.slide(args.name, args.to, args.start))
+        return 0
+    if args.command == "point":
+        screen.point(*(int(v) for v in args.name.split()))
+        return 0
+    if args.command == "swipe":
+        screen.swipe(*(int(v) for v in args.name.split()))
+        return 0
     if args.command == "list":
         # Everything, not just what is on screen. An element that is scrolled out of view is
         # still in the tree, and filtering to visible ones hid two thirds of the Finger Sketch

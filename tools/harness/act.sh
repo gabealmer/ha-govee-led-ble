@@ -1,10 +1,26 @@
 #!/usr/bin/env bash
 # One step of the loop: act, settle, screenshot, and show the BLE frames in between.
 #
+#   act.sh <label> name 'element name' the element's accessibility name; PREFER THIS
+#   act.sh <label> slide 'track name' FROM TO   drag along that element, as 0..1 fractions
+#   act.sh <label> point X Y           WDA POINTS off an element's rect; last resort
+#   act.sh <label> swipe X1 Y1 X2 Y2   WDA POINTS; unnamed slider tracks, and scrolling
 #   act.sh <label> tap  X Y            small-screenshot pixels, read off the CURRENT shot
 #   act.sh <label> drag X1 Y1 X2 Y2
 #   act.sh <label> wait                no gesture, just observe
 #   act.sh shot [label]
+#
+# `name` and `slide` are the gestures to reach for first, and the pixel forms are the
+# fallback. wda.py exists because coordinates go stale without warning - a promotional
+# banner appeared mid-session once and moved every tile 145 pixels - and for most of this
+# script's life the loop that records evidence could not use it, so every survey went back
+# to pixels and inherited that failure. A named gesture also fails LOUDLY when the name is
+# absent or ambiguous, where a stale coordinate lands on whatever is now underneath it.
+#
+# The pixel forms are additionally UNRELIABLE, not merely brittle. On 2026-08-04 `drag`
+# moved the video Relative Brightness slider not at all while `slide` moved it 50% -> 100%
+# on the same control seconds later, and /touch returned 200 throughout: a 200 means the
+# report was dispatched, not that backboardd honoured it.
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/phone.sh"
 # Sourcing phone.sh is NOT enough to describe the rig. resolve_device is what reconstructs a
@@ -17,10 +33,14 @@ resolve_device "$(harness_running_session_device || echo "$DEVICE_DEFAULT")"
 SETTLE_SECONDS="${SETTLE_SECONDS:-3}"
 [ "${1:-}" = shot ] && { shot "${2:-shot}"; exit 0; }
 
-label="${1:?label required}"; gesture="${2:?tap|drag|wait required}"; shift 2
+label="${1:?label required}"; gesture="${2:?name|slide|point|swipe|tap|drag|wait required}"; shift 2
 
 deliver() {
   case "$gesture" in
+    name)  wda tap "$1" ;;
+    slide) wda slide "$1" --from "$2" --to "$3" ;;
+    point) wda point "$1 $2" ;;
+    swipe) wda swipe "$1 $2 $3 $4" ;;
     tap)  # shellcheck disable=SC2046
           tap $(to_gesture_space "$1" "$2") ;;
     drag) # shellcheck disable=SC2046
@@ -72,8 +92,11 @@ fraction=1.0; [ -z "$before" ] || fraction="$(changed_fraction "$before" "$after
 require_unlocked "$after" || { echo "   nothing landed, and the diff above is meaningless" >&2; exit 1; }
 
 if [ "$gesture" != wait ] && ! delivered "$fraction" "$ble"; then
-  echo "   nothing changed (diff $fraction, no BLE); resending once through a fresh client" >&2
-  hid_down; sleep 2; hid_up
+  echo "   nothing changed (diff $fraction, no BLE); resending once" >&2
+  # Only the pixel path has a client to refresh. A named gesture is delivered by WDA, so
+  # cycling serve-web there would restart a component that was never in the path and
+  # report its restart as the remedy.
+  case "$gesture" in name|slide|point|swipe) ;; *) hid_down; sleep 2; hid_up ;; esac
   deliver "$@"; sleep "$SETTLE_SECONDS"
   after="$(shot "$label-retry")"; ble="$(ble_since_mark)"
   fraction="$(changed_fraction "$before" "$after")"
