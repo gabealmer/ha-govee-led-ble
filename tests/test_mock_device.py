@@ -7,6 +7,7 @@ import pytest
 from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import MUSIC_MODES
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from custom_components.ha_govee_led_ble.scenes import SCENES
 from tests.mock_ble import (
     MODELS,
     MockBle,
@@ -134,11 +135,13 @@ async def test_colour_readback_is_accepted_and_never_blacks_out(mock_ble: MockBl
     await coord._ensure_connected()
     # Let the stale effect arrive from the device rather than poking it in, so the state under
     # test is one the coordinator actually reaches.
-    sim.handle_write(proto.build_scene(2205))
+    # Candlelight because both models name it: the H6199 only names the three scenes a
+    # capture confirmed it can start, so an arbitrary catalogue code reads back unnamed there.
+    sim.handle_write(proto.build_scene(SCENES["candlelight"].code))
     (reply,) = sim.handle_write(proto.COLOR_MODE_QUERY)
     coord._apply_color_mode_payload(reply[2:-1])
     learned_effect = coord.effect
-    assert learned_effect == "candy"
+    assert learned_effect == "candlelight"
 
     # The register sits at 0 until something writes it, which is the state every colour write
     # lands in. The reply must still confirm the mode rather than be discarded as stale.
@@ -284,10 +287,10 @@ async def test_ensure_connected_converges_core_state(mock_ble: MockBle):
 
 async def test_refresh_state_converges_effect(mock_ble: MockBle):
     sim, coord = mock_ble.sim, mock_ble.coordinator
-    sim.handle_write(proto.build_scene(2205))
+    sim.handle_write(proto.build_scene(SCENES["candlelight"].code))
     coord.effect = None
-    assert await coord.refresh_state(expected_effect="candy") is True
-    assert coord.effect == "candy"
+    assert await coord.refresh_state(expected_effect="candlelight") is True
+    assert coord.effect == "candlelight"
 
 
 async def test_refresh_state_converges_music_mode(mock_ble: MockBle):

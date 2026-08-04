@@ -474,11 +474,17 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         if not self._accept_expected("color_mode", observed_color_mode):
             return ()
         self.color_mode = parsed.mode
+        # The parser names a scene code from one shared catalogue, which is an H617A numbering.
+        # It agrees with H6199 wire for the three codes a capture confirmed and diverges after
+        # that (Forest is 2163 there and 212 here), so a name is only trusted for a model that
+        # owns it. Otherwise this would put a name outside effect_list into state, and assert a
+        # scene the light is not running.
+        scene_effect = parsed.effect if parsed.effect in self.scene_name_set else None
         # A scene we cannot name still leaves the light running something, and effect has to stay
         # None because HA rejects one outside effect_list. Keep the raw id so the state is honest
         # rather than silently claiming nothing is on. None for every other mode, so this one
         # assignment cannot leave a stale code behind.
-        self._scene_code = parsed.scene_code if parsed.effect is None else None
+        self._scene_code = parsed.scene_code if scene_effect is None else None
         observed: list[str] = []
         accept_parameters = True
         active_custom = self.custom_effects.get(self.active_custom_id) if self.active_custom_id is not None else None
@@ -521,8 +527,8 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             else:
                 accept_parameters = False
         elif parsed.mode is ParsedMode.SCENE:
-            if self._accept_expected("effect", parsed.effect):
-                self.effect = parsed.effect
+            if self._accept_expected("effect", scene_effect):
+                self.effect = scene_effect
                 self.music_mode, self.video_mode, self.active_custom_id = "off", "off", None
                 self.diy_slot = None
                 self._owned_diy_effect_id = None

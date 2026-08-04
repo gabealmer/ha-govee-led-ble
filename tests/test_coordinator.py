@@ -140,8 +140,8 @@ def test_notify_callback(h6199):
         (1, 2, 3),
     )
     assert h6199.effect is None
-    cb(None, bytearray([0xAA, 0x05, 0x04, 0x9D, 0x08]))
-    assert h6199.effect == "candy"
+    cb(None, bytearray([0xAA, 0x05, 0x04, 0x09, 0x00]))
+    assert h6199.effect == "candlelight"
     h6199.is_on = False
     cb(None, bytearray([0xAA]))
     cb(None, bytearray([0x33, 0x01, 0x01, 0x00]))
@@ -149,9 +149,10 @@ def test_notify_callback(h6199):
 
 
 def test_notify_callback_parses_full_frame_with_checksum(h6199):
+    """The scenes here are ones this model was captured starting, because it names no others."""
     cb = h6199._notify_callback
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x9D, 0x08])))
-    assert h6199.effect == "candy"
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x01, 0x00])))
+    assert h6199.effect == "sunset"
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x09])))
     assert h6199.effect == "candlelight"
 
@@ -424,9 +425,9 @@ def test_readback_mode_mutual_exclusion(h6199):
     cb = h6199._notify_callback
     music = bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3]))
     video = bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 42]))
-    scene = bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x9D, 0x08]))
+    scene = bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x09, 0x00]))
 
-    h6199.video_mode, h6199.effect, h6199.active_custom_id = "game", "candy", "flame"
+    h6199.video_mode, h6199.effect, h6199.active_custom_id = "game", "candlelight", "flame"
     cb(None, music)
     assert (h6199.music_mode, h6199.video_mode, h6199.effect, h6199.active_custom_id) == (
         "spectrum",
@@ -435,7 +436,7 @@ def test_readback_mode_mutual_exclusion(h6199):
         None,
     )
 
-    h6199.music_mode, h6199.effect, h6199.active_custom_id = "rhythm", "candy", "flame"
+    h6199.music_mode, h6199.effect, h6199.active_custom_id = "rhythm", "candlelight", "flame"
     cb(None, video)
     assert (h6199.video_mode, h6199.music_mode, h6199.effect, h6199.active_custom_id) == (
         "game",
@@ -447,7 +448,7 @@ def test_readback_mode_mutual_exclusion(h6199):
     h6199.music_mode, h6199.video_mode, h6199.active_custom_id = "rhythm", "movie", "flame"
     cb(None, scene)
     assert (h6199.effect, h6199.music_mode, h6199.video_mode, h6199.active_custom_id) == (
-        "candy",
+        "candlelight",
         "off",
         "off",
         None,
@@ -575,16 +576,16 @@ def test_music_expectation_rejects_delayed_same_mode_reply(h6199):
 
 
 def test_scene_expectation_rejects_delayed_same_mode_reply(h6199):
-    candy_code = next(code for code, effect in proto.SCENE_EFFECT_BY_ID.items() if effect == "candy")
+    sunrise_code = next(code for code, effect in proto.SCENE_EFFECT_BY_ID.items() if effect == "sunrise")
     candlelight_code = next(code for code, effect in proto.SCENE_EFFECT_BY_ID.items() if effect == "candlelight")
     h6199._expected_state["color_mode"] = ((proto.ParsedMode.SCENE, None), time.monotonic() + 60)
-    h6199._expected_state["effect"] = ("candy", time.monotonic() + 60)
+    h6199._expected_state["effect"] = ("sunrise", time.monotonic() + 60)
     cb = h6199._notify_callback
 
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, *candy_code.to_bytes(2, "little")])))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, *sunrise_code.to_bytes(2, "little")])))
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, *candlelight_code.to_bytes(2, "little")])))
 
-    assert h6199.effect == "candy"
+    assert h6199.effect == "sunrise"
     assert h6199.color_mode is proto.ParsedMode.SCENE
 
 
@@ -1249,6 +1250,26 @@ def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):
     assert coord.unknown_scene_code == unknown
     coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_STATIC, 0x00]))
     assert coord.unknown_scene_code is None
+
+
+def test_a_scene_code_is_only_named_for_a_model_that_owns_the_name(h6199):
+    """The catalogue is an H617A numbering, so naming an H6199 readback from it invents state.
+
+    Forest is 2163 in the catalogue and 212 on this model's wire, so agreement past the three
+    captured codes is coincidence. Naming a code anyway would put a value outside effect_list
+    into state and claim a scene the light is not running.
+    """
+    catalogue_only = next(code for code, name in proto.SCENE_EFFECT_BY_ID.items() if name not in h6199.scene_name_set)
+    h6199._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *catalogue_only.to_bytes(2, "little")]))
+    assert h6199.effect is None
+    assert h6199.unknown_scene_code == catalogue_only
+
+    # The three this model was captured starting are named, because a capture confirmed the code.
+    for name in ("sunrise", "sunset", "candlelight"):
+        code = next(c for c, n in proto.SCENE_EFFECT_BY_ID.items() if n == name)
+        h6199._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *code.to_bytes(2, "little")]))
+        assert h6199.effect == name
+        assert h6199.unknown_scene_code is None
 
 
 def test_video_readback_is_gated_on_the_model(coord, h6199):
