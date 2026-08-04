@@ -672,3 +672,42 @@
   cases: h6199_scene_*
   collect: body.detail.kind
   distinct_at_least: 2
+
+- id: h6199_effect_block_count_varies
+  doc: >
+    The block count takes five distinct values across the eight captured bodies, and in
+    every one exactly that many length-prefixed blocks consume the body up to its padding.
+    A count that predicts where the padding starts, across bodies of five different sizes,
+    is what makes it a count rather than a small constant.
+  cases: h6199_effect_*
+  collect: block_count
+  distinct_at_least: 5
+
+- id: h6199_effect_chunk_count_varies
+  doc: >
+    The chunk count takes five distinct values from 3 to 10. It is redundant with the
+    transport, equalling both the number of 0xA3 frames sent and the used length divided by
+    seventeen and rounded up, and two independent routes to the same number across eight
+    bodies is the evidence for the name.
+  cases: h6199_effect_*
+  collect: chunk_count
+  distinct_at_least: 5
+
+- id: h6199_effect_first_block_length_varies
+  doc: >
+    The first block's length byte takes five distinct values between 26 and 47. A length
+    prefix that varies while the parse continues to land exactly on the padding in every
+    body is the claim; a fixed-width block would have failed on the first body of a
+    different size.
+  cases: h6199_effect_*
+  collect: blocks[0].len
+  distinct_at_least: 5
+
+- id: h6199_effect_kind_never_moves
+  doc: >
+    The byte at body offset 2 holds one value across all eight bodies, which is why it is
+    unnamed. Recorded so the absence of variation is a measurement rather than an omission,
+    and so a body that is not a scene has something to be compared against.
+  cases: h6199_effect_*
+  collect: opaque_kind
+  distinct_at_least: 1
