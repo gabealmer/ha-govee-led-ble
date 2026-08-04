@@ -504,3 +504,171 @@
   cases: h6199_wifi_frame_*
   collect: index
   distinct_at_least: 6
+
+- id: h6199_video_region_one_byte
+  doc: >
+    Part and All were tapped with the picture profile left on Game and nothing else
+    touched. The two writes differ at exactly the region byte and the checksum, which is
+    what pins the region to that byte rather than to the pair of bytes that move together
+    when the sheet is first opened.
+  between: [h6199_video_part_game, h6199_video_all_game]
+  differs_at: [3, 19]
+
+- id: h6199_video_source_one_byte
+  doc: >
+    Movie was tapped with the region left on All. Exactly the source byte and the checksum
+    moved, which also settles the polarity: the app lists Game first, and Game is the 1.
+  between: [h6199_video_all_game, h6199_video_all_movie]
+  differs_at: [4, 19]
+
+- id: h6199_video_sound_effects_one_byte
+  doc: >
+    The Sound Effects toggle was switched on with the region and profile already settled.
+    Exactly the sound byte and the checksum moved, so enabling sound does not re-send the
+    mode as a different shape; it sets one flag in the same body.
+  between: [h6199_video_part_movie, h6199_video_sound_on]
+  differs_at: [6, 19]
+
+- id: h6199_video_softness_one_byte
+  doc: >
+    The Softness slider, which only exists while sound effects are on, was dragged from
+    full to near its low end. Exactly the softness byte and the checksum moved, which is
+    what separates it from the byte at offset 5 that also reads 100 and never moves.
+  between: [h6199_video_sound_on, h6199_video_softness_12]
+  differs_at: [7, 19]
+
+- id: h6199_video_saturation_one_byte
+  doc: >
+    The Saturation slider, which lives one level down inside Color Calibration rather than
+    on the video sheet, was dragged between two levels with nothing else touched. Exactly
+    the saturation byte and the checksum moved. This is the byte that held 0x64 across
+    every earlier video write while four other fields were varied deliberately, which is
+    why it went unnamed: the control that moves it had not been opened.
+  between: [h6199_video_saturation_88, h6199_video_saturation_20]
+  differs_at: [5, 19]
+
+- id: h6199_video_saturation_varies
+  doc: >
+    Saturation takes three distinct values across the video corpus, so the reading that it
+    is a constant preamble byte is dead.
+  cases: h6199_video_*
+  collect: body.detail.saturation
+  distinct_at_least: 3
+
+- id: h6199_relbright_edges_move_together
+  doc: >
+    Both relative-brightness writes carry four equal percentages, and they differ at those
+    four bytes and NOWHERE else - not even at the checksum, because four equal bytes XOR
+    to zero whatever they are. That confinement is what makes the four bytes the payload.
+    It is deliberately NOT evidence that the four are independent edges: this pair cannot
+    tell four per-edge values from one value repeated, which is why edge_percent is
+    INFERRED and why the settling capture moves a single edge.
+  between: [h6199_relbright_100, h6199_relbright_36]
+  differs_at: [4, 5, 6, 7]
+
+- id: h6199_relbright_percent_varies
+  doc: >
+    The edge percentage takes two distinct values across the corpus, so a grammar reading
+    those bytes as a constant preamble is dead.
+  cases: h6199_relbright_*
+  collect: body.edge_percent[0]
+  distinct_at_least: 2
+
+- id: h6199_blank_screen_one_byte
+  doc: >
+    The blank-screen toggle was switched on and straight back off. The two writes differ at
+    exactly one payload byte and the checksum, which is what tells a flag inside a shared
+    body apart from two different sub-commands under one opcode - the reading the 0a 06
+    preamble would otherwise invite.
+  between: [h6199_blank_screen_on, h6199_blank_screen_off]
+  differs_at: [4, 19]
+
+- id: h6199_white_balance_red_varies
+  doc: >
+    The red gain takes four distinct values across the corpus, driven by the marker's
+    position alone.
+  cases: h6199_white_balance_*
+  collect: body.payload.red
+  distinct_at_least: 4
+
+- id: h6199_white_balance_blue_varies
+  doc: >
+    The blue gain takes three distinct values and, unlike red, does NOT rise with the
+    marker: it reads 10, 3, 3, 5 as the marker moves from cool to warm. That is the
+    measurement which rules out the two bytes being one 16-bit number, because no
+    endianness makes a non-monotonic low byte and a monotonic high byte into a value that
+    tracks a single slider. They are a gain PAIR chosen from a table.
+  cases: h6199_white_balance_*
+  collect: body.payload.blue
+  distinct_at_least: 3
+
+- id: h6199_white_balance_manual_held_constant
+  doc: >
+    The manual flag holds one value across every capture, because all of them were taken on
+    the manual strip. It is named from the vendor encoder rather than from a comparison,
+    and this aggregate records that the isolating capture - turning Auto White Balance on -
+    has not been taken.
+  cases: h6199_white_balance_*
+  collect: body.payload.manual
+  distinct_at_least: 1
+
+- id: h6199_white_balance_only_the_gains_move
+  doc: >
+    Two white-balance writes taken at different marker positions differ at exactly the two
+    gain bytes and the checksum. That confinement is what keeps the selector, the length
+    and the manual flag out of the setting, and it holds whether the two bytes are read as
+    a pair of gains or as one number - it is the blue gain's non-monotonic values, not this
+    differential, that decides between those.
+  between: [h6199_white_balance_cool, h6199_white_balance_warm]
+  differs_at: [5, 6, 19]
+
+- id: h6199_display_setting_selector_and_length_move_together
+  doc: >
+    The two settings that share opcode 0xa9 differ in both the selector and the length, and
+    in the payload that follows. This is the pair that shows the body is a selector and a
+    count rather than the fixed 0a 06 preamble a single sample supported, and it is why the
+    tail is sized from the count instead of being a constant width.
+  between: [h6199_white_balance_reset, h6199_blank_screen_on]
+  differs_within: [2, 3, 5, 6, 8, 19]
+
+- id: h6199_scene_ids_vary
+  doc: >
+    The scene number takes seven distinct values across the corpus, from three of the app's
+    categories. A grammar reading those two bytes as a constant preamble is dead.
+  cases: h6199_scene_*
+  collect: body.detail.scene_id
+  distinct_at_least: 7
+
+- id: h6199_scene_adjacent_tiles_are_adjacent_numbers
+  doc: >
+    Two tiles next to each other in one row differ at exactly the low id byte and the
+    checksum. Adjacency in the catalogue producing adjacency in the number is what makes
+    these bytes an identifier rather than two unrelated fields, and it is the claim a
+    per-fixture assert cannot make.
+  between: [h6199_scene_dracarys, h6199_scene_green_reign]
+  differs_at: [3, 19]
+
+- id: h6199_scene_low_numbers_are_adjacent_too
+  doc: >
+    The same adjacency holds at the other end of the range, in a different category and for
+    the other kind, so it is a property of the numbering and not of one row.
+  between: [h6199_scene_sunrise, h6199_scene_sunset]
+  differs_at: [3, 19]
+
+- id: h6199_scene_high_byte_moves_between_categories
+  doc: >
+    A scene from the House of the Dragon row differs from a Natural one in BOTH id bytes as
+    well as the kind. That the high byte moves at all is what makes the number two bytes
+    wide rather than one; every scene captured outside that row carries a zero there.
+  between: [h6199_scene_sunrise, h6199_scene_dracarys]
+  differs_within: [3, 4, 5, 19]
+
+- id: h6199_scene_kind_has_both_values
+  doc: >
+    The kind byte takes both of its values across the corpus. It is the byte that predicts
+    whether an 0xA3 definition upload preceded the write - it did for every scene marked 2
+    and for none marked 1, over eleven scenes - which is why it is a kind and not the top
+    byte of a wider number.
+  cases: h6199_scene_*
+  collect: body.detail.kind
+  distinct_at_least: 2

@@ -1,0 +1,20 @@
+# H6199 blank-screen display setting, captured 2026-08-04 from the Govee Home iOS app driving the DreamView T1
+# over BLE. The light was off Govee's cloud entirely, so the app could reach it by no path
+# but this one. The toggle was switched on and straight back off with nothing else touched.
+id: h6199_blank_screen_on
+data: h6199_blank_screen_on.bin
+imports:
+  - h6199_command_write
+asserts:
+  - actual: opcode
+    expected: 169
+  - actual: body.setting
+    expected: 10
+  - actual: body.len
+    expected: 6
+  - actual: body.payload.is_on
+    expected: 1
+  - actual: body.payload.opaque_tail
+    expected: "020a007800"
+  - actual: body.opaque_tail
+    expected: "000000000000000000"

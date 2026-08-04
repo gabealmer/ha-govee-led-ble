@@ -1,0 +1,24 @@
+# H6199 video-mode write with saturation moved, captured 2026-08-04 from the Govee Home iOS app driving the DreamView T1
+# over BLE. The light was off Govee's cloud entirely, so the app could reach it by no path
+# but this one. Taken by dragging the Saturation slider inside Color Calibration, one level per write, with nothing else touched.
+id: h6199_video_saturation_88
+data: h6199_video_saturation_88.bin
+imports:
+  - h6199_command_write
+asserts:
+  - actual: opcode
+    expected: 5
+  - actual: body.sub_mode
+    expected: 0
+  - actual: body.detail.region
+    expected: 0
+  - actual: body.detail.source
+    expected: 0
+  - actual: body.detail.saturation
+    expected: 88
+  - actual: body.detail.sound_effects
+    expected: 1
+  - actual: body.detail.softness
+    expected: 12
+  - actual: body.detail.opaque_tail
+    expected: "0000000000000000000000"
