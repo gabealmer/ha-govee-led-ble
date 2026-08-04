@@ -25,6 +25,7 @@ _STUB_PHONE_SH = """
 CALLS="$CALL_LOG"
 HARNESS_STATE_FILE="$STATE_FILE"
 GOVEE_APP_PROCESS=GoveeHome
+HARNESS_RSD_BACKEND=tunneld
 DEVICE_DEFAULT=tv
 
 resolve_device() {{ DEVICE_NAME="${{1:-tv}}"; DEVICE_ENTRY=entry-$DEVICE_NAME; DEVICE_SKU=H6199; }}
@@ -32,6 +33,7 @@ pmd3() {{ echo "pmd3 $*" >> "$CALLS"; }}
 wda_down() {{ echo "wda_down" >> "$CALLS"; }}
 hid_down() {{ echo "hid_down" >> "$CALLS"; }}
 tunnel_down() {{ echo "tunnel_down" >> "$CALLS"; }}
+phone_usbipd_release() {{ echo "phone_usbipd_release" >> "$CALLS"; }}
 capture() {{
   echo "capture $*" >> "$CALLS"
   echo "decode output on stdout"
@@ -56,7 +58,7 @@ def _run_down(tmp_path: Path, *, capture_exit: int) -> tuple[subprocess.Complete
     state.write_text("app tv entry-tv\n")
 
     env = os.environ.copy()
-    env.update({"CALL_LOG": str(calls), "STATE_FILE": str(state)})
+    env.update({"CALL_LOG": str(calls), "STATE_FILE": str(state), "HARNESS_STATE_FILE": str(state)})
     result = subprocess.run(  # noqa: S603
         ["/bin/bash", str(rig / "down.sh")],
         check=False,

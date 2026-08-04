@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Govee BLE capture, driven from the lab over USB.
+# Govee BLE capture, driven through the phone's native USB owner.
 #
 #   govee-capture.sh start <name> [prediction-sha256]   begin capture
 #   govee-capture.sh mark <label>                       timestamp an action within it
@@ -10,7 +10,9 @@
 # NO TUNNEL IS NEEDED. com.apple.bluetooth.BTPacketLogger is a lockdown service, so this
 # works over plain usbmux; only the app-driving half of the rig is behind RemoteXPC.
 #
-# Env: GOVEE_CAPTURE_DIR (default ~/govee-captures), PYMOBILEDEVICE3, PREFLIGHT_SECONDS.
+# Env: GOVEE_CAPTURE_DIR (default ~/govee-captures), PYMOBILEDEVICE3, IDEVICEBTLOGGER,
+# PREFLIGHT_SECONDS. Set GOVEE_CAPTURE_BACKEND=idevicebtlogger for classic pcap from native
+# WSL USB; the default remains pymobiledevice3 pcapng for the lab.
 #
 # GOVEE_EXPECTED_PEER is the BLE address the capture is SUPPOSED to be of. Set it and stop
 # decodes only that peer and fails when the capture holds none of its frames. Without it a
@@ -24,9 +26,55 @@ REPO_DIR="$(cd "$SELF_DIR/../.." && pwd)"
 CAP="${GOVEE_CAPTURE_DIR:-$HOME/govee-captures}"
 STATE="$CAP/.current"
 PMD3="${PYMOBILEDEVICE3:-pymobiledevice3}"
+IDEVICEBTLOGGER="${IDEVICEBTLOGGER:-idevicebtlogger}"
 PREFLIGHT_SECONDS="${PREFLIGHT_SECONDS:-15}"
+BACKEND="${GOVEE_CAPTURE_BACKEND:-native}"
+BLUETOOTH_LOGGING_PROFILE_URL="${BLUETOOTH_LOGGING_PROFILE_URL:-https://secure-appldnld.apple.com/iOSProfiles/BluetoothLogging.mobileconfig}"
+BLUETOOTH_LOGGING_PROFILE_UUID="${BLUETOOTH_LOGGING_PROFILE_UUID:-D8A1D847-C161-4D0A-9426-FB9C3E48297D}"
 
 usage() { grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+stop_logger() {
+  local pid=$1
+  kill "$pid" 2>/dev/null || true
+}
+
+start_logger() {
+  local out=$1 name=$2
+  if [ "$BACKEND" = idevicebtlogger ]; then
+    nohup "$IDEVICEBTLOGGER" -u "$PHONE_UDID" -f pcap -x "$out" >"$CAP/$name.log" 2>&1 &
+    echo $!
+    return
+  fi
+  # --format is not optional: the default is Apple's PacketLogger .pklg.
+  # shellcheck disable=SC2046
+  nohup "$PMD3" $(btlogger_argv) --format pcapng "$out" >"$CAP/$name.log" 2>&1 &
+  echo $!
+}
+
+capture_suffix() {
+  case "$BACKEND" in
+    native) echo pcapng ;;
+    idevicebtlogger) echo pcap ;;
+    *)
+      echo "unknown capture backend '$BACKEND'" >&2
+      return 1
+      ;;
+  esac
+}
+
+capture_path() {
+  local name=$1
+  local suffix
+  for suffix in pcap pcapng; do
+    [ -f "$CAP/$name.$suffix" ] && {
+      printf '%s\n' "$CAP/$name.$suffix"
+      return 0
+    }
+  done
+  echo "no capture named '$name'" >&2
+  return 1
+}
 
 # 10.2.3 takes `btlogger [OPTIONS] {out}`; upstream moved it under a `capture` subcommand.
 # Passing the wrong one is not a soft failure: the extra word is eaten as the OUTPUT PATH,
@@ -61,27 +109,29 @@ case "${1:-}" in
     name="${2:-}"; [ -n "$name" ] || usage 1
     sha="${3:--}"
     [ "$sha" = - ] || [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || { echo "prediction SHA-256 must be 64 lowercase hex" >&2; exit 1; }
-    [ -f "$STATE" ] && { read -r old _ < "$STATE"; kill "$old" 2>/dev/null || true; rm -f "$STATE"; }
+    [ -f "$STATE" ] && { read -r old _ < "$STATE"; stop_logger "$old"; rm -f "$STATE"; }
     name="${name//[^A-Za-z0-9._-]/_}"; mkdir -p "$CAP"
-    out="$CAP/$name.pcapng"; rm -f "$out"
-    # --format is not optional: the default is Apple's PacketLogger .pklg, a different
-    # container again, and naming the file .pcapng would not make it one.
-    # shellcheck disable=SC2046
-    nohup "$PMD3" $(btlogger_argv) --format pcapng "$out" >"$CAP/$name.log" 2>&1 &
-    pid=$!
-    printf '%s %s %s %s %s\n' "$pid" "$name" "$(date --iso-8601=ns)" "$sha" "${GOVEE_EXPECTED_PEER:--}" > "$STATE"
+    suffix="$(capture_suffix)"
+    out="$CAP/$name.$suffix"; rm -f "$out"
+    pid="$(start_logger "$out" "$name")"
+    printf '%s %s %s %s %s %s\n' \
+      "$pid" "$name" "$(date --iso-8601=ns)" "$sha" "${GOVEE_EXPECTED_PEER:--}" "$suffix" > "$STATE"
     : > "$CAP/$name.actions.tsv"
     for _ in $(seq 1 "$PREFLIGHT_SECONDS"); do
       sleep 1; [ "$(frames_seen "$out")" -gt 0 ] && break
     done
     if [ "$(frames_seen "$out")" -eq 0 ]; then
-      kill "$pid" 2>/dev/null || true; rm -f "$STATE" "$CAP/$name.actions.tsv"
+      stop_logger "$pid"; rm -f "$STATE" "$CAP/$name.actions.tsv"
       echo "capture preflight failed: no HCI frames in ${PREFLIGHT_SECONDS}s. In order:" >&2
-      echo "  1. the iPhone is unlocked;" >&2
-      echo "  2. the Bluetooth logging (PacketLogger) profile is installed and active;" >&2
-      echo "  3. the phone is on USB ($PMD3 usbmux list; the guest muxer does NOT hotplug," >&2
-      echo "     so a replug needs: sudo systemctl restart hippoxmox-usbmuxd.service);" >&2
-      echo "  4. toggle Bluetooth off then on. Log: $CAP/$name.log" >&2
+      echo "  1. install Apple's Bluetooth Logging profile ($BLUETOOTH_LOGGING_PROFILE_URL;" >&2
+      echo "     UUID $BLUETOOTH_LOGGING_PROFILE_UUID), then toggle Bluetooth;" >&2
+      echo "  2. the phone is visible to $PMD3 usbmux list (after a replug, restart this" >&2
+      echo "     host's usbmuxd service if the device is attached but absent there);" >&2
+      echo "  3. toggle Bluetooth off then on. Log: $CAP/$name.log" >&2
+      # A LOCKED PHONE IS NOT A CAUSE OF THIS, measured 2026-08-03: with the lock state
+      # confirmed LOCKED immediately beforehand, a capture recorded 21 KB in 12s and decoded
+      # to 31 ATT frames. Suggesting it first sent a session hunting the wrong thing while a
+      # missing logging profile went unread, so it is not listed at all.
       exit 1
     fi
     echo "recording '$name' (pid $pid); mark each action before it starts, then: stop"
@@ -95,7 +145,9 @@ case "${1:-}" in
     ;;
   stop)
     [ -f "$STATE" ] || { echo "no capture running"; exit 1; }
-    read -r pid name started sha peer < "$STATE"
+    read -r pid name started sha peer suffix < "$STATE"
+    suffix="${suffix:-pcapng}"
+    out="$CAP/$name.$suffix"
     kill -INT "$pid" 2>/dev/null || true
     for _ in $(seq 1 10); do kill -0 "$pid" 2>/dev/null || break; sleep 0.3; done
     kill "$pid" 2>/dev/null || true
@@ -106,8 +158,8 @@ case "${1:-}" in
       "$([ "${peer:--}" = - ] && echo null || echo "\"$peer\"")" > "$CAP/$name.meta.json"
     echo "stopped '$name'"
     if [ "${peer:--}" = - ]; then
-      uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$CAP/$name.pcapng"
-    elif ! uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$CAP/$name.pcapng" --peer "$peer"; then
+      uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$out"
+    elif ! uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$out" --peer "$peer"; then
       # The decoder already said which peers it did see. This adds the one thing it cannot
       # know: that the session was FOR this device, so a capture without it is a failed run
       # to repeat, not a result to interpret.
@@ -122,8 +174,12 @@ case "${1:-}" in
     ;;
   decode)
     name="${2:-}"; [ -n "$name" ] || usage 1; shift 2
-    uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$CAP/$name.pcapng" "$@"
+    uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$(capture_path "$name")" "$@"
     ;;
-  list) ls -lh "$CAP"/*.pcapng 2>/dev/null || echo "no captures yet" ;;
+  list)
+    shopt -s nullglob
+    captures=("$CAP"/*.pcap "$CAP"/*.pcapng)
+    [ "${#captures[@]}" -gt 0 ] && ls -lh "${captures[@]}" || echo "no captures yet"
+    ;;
   *) usage 0 ;;
 esac

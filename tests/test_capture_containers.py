@@ -1,9 +1,9 @@
 """Prove the decoder reads both capture containers, and dates them to the same instant.
 
-An iPhone HCI capture now arrives as pcapng from ``pymobiledevice3 btlogger capture``
-rather than as classic pcap from ``idevicebtlogger``. The frames inside are byte-identical
-(link type 201: a big-endian direction pseudo-header, the H4 type byte, the HCI payload),
-so the container swap should be invisible below ``iter_frames``.
+An iPhone HCI capture arrives as pcapng from ``pymobiledevice3 btlogger capture`` on the lab
+or classic pcap from native WSL ``idevicebtlogger``. The frames inside are byte-identical
+(link type 201: a big-endian direction pseudo-header, the H4 type byte, the HCI payload), so
+the container choice should be invisible below ``iter_frames``.
 
 The timestamps are NOT identical, and that is the part worth a gate. ``idevicebtlogger``
 stored the device's local wall clock as though it were UTC. ``write_pcapng_stream``
@@ -43,8 +43,8 @@ def phone_timezone(monkeypatch: pytest.MonkeyPatch):
     """Pin the host zone to the phone's.
 
     A classic pcap records a wall clock with no offset attached, so recovering the instant
-    needs the zone it was written in. New pcapng captures carry a true instant and need no
-    such assumption, which is one more reason the old container is legacy-read-only.
+    needs the zone it was written in. pcapng captures carry a true instant and need no such
+    assumption.
     """
     monkeypatch.setenv("TZ", CAPTURE_TZ)
     time.tzset()

@@ -30,16 +30,10 @@ WDA_PORT = 8100
 STARTUP_TIMEOUT = 180.0
 
 
-async def main() -> int:
+async def _run(rsd) -> int:
     from pymobiledevice3 import usbmux
     from pymobiledevice3.exceptions import ConnectionFailedError
     from pymobiledevice3.services.dvt.testmanaged.xcuitest import TestConfig, XCUITestService
-    from pymobiledevice3.tunneld.api import get_tunneld_device_by_udid
-
-    rsd = await get_tunneld_device_by_udid(UDID)
-    if rsd is None:
-        print("no tunnel for this device; raise tunneld first", file=sys.stderr)
-        return 1
 
     cfg = await TestConfig.create_for(rsd, runner_bundle_id=RUNNER_BUNDLE_ID)
     task = asyncio.create_task(XCUITestService(rsd).run(cfg), name="wda-xctrunner")
@@ -71,6 +65,24 @@ async def main() -> int:
     print("WDA-READY", flush=True)
     await task
     return 0
+
+
+async def main() -> int:
+    if os.environ.get("HARNESS_RSD_BACKEND") == "userspace":
+        # USB/IP hands the phone to this Linux process. A shared tunneld cannot discover it
+        # reliably, while CoreDeviceProxy opens directly over the native usbmuxd socket.
+        from pymobiledevice3.remote.userspace_tunnel import UserspaceRsdTunnel
+
+        async with UserspaceRsdTunnel(serial=UDID) as rsd:
+            return await _run(rsd)
+
+    from pymobiledevice3.tunneld.api import get_tunneld_device_by_udid
+
+    rsd = await get_tunneld_device_by_udid(UDID)
+    if rsd is None:
+        print("no tunnel for this device; raise tunneld first", file=sys.stderr)
+        return 1
+    return await _run(rsd)
 
 
 if __name__ == "__main__":

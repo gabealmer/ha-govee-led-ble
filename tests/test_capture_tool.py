@@ -1,11 +1,13 @@
 import json
 import os
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 
 _REPO = Path(__file__).parents[1]
 _SCRIPT = _REPO / "tools" / "ble" / "govee-capture.sh"
+_PCAP_FIXTURE = _REPO / "tests" / "fixtures" / "govee_hci.pcap"
 _PCAPNG_FIXTURE = _REPO / "tests" / "fixtures" / "govee_hci.pcapng"
 _EMPTY_PCAPNG_FIXTURE = _REPO / "tests" / "fixtures" / "govee_hci_empty.pcapng"
 
@@ -38,20 +40,37 @@ def _stub_logger(tmp_path: Path, *, writes: bytes) -> str:
         'if [[ " $* " == *" --help "* ]]; then echo "Usage: pymobiledevice3 btlogger [OPTIONS] {out}"; exit 0; fi\n'
         'out="${@: -1}"\n'  # the output path is the last argument, as in the real CLI
         f'cat "{payload}" > "$out"\n'
-        "sleep 60\n"
+        "exec sleep 60\n"
     )
     stub.chmod(0o755)
     return str(stub)
 
 
+def _assert_logger_stopped(state: Path, pid: int, result: subprocess.CompletedProcess[bytes]) -> None:
+    assert result.returncode == 0, result.stderr.decode()
+    assert not state.exists()
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"logger pid {pid} survived capture stop")
+
+
 def _stop(tmp_path: Path, stub: str) -> None:
-    if (tmp_path / "captures" / ".current").exists():
-        subprocess.run(  # noqa: S603
-            ["/bin/bash", str(_SCRIPT), "stop"],
-            check=False,
-            capture_output=True,
-            env=_capture_env(tmp_path, stub),
-        )
+    state = tmp_path / "captures" / ".current"
+    if not state.exists():
+        return
+    pid = int(state.read_text().split()[0])
+    result = subprocess.run(  # noqa: S603
+        ["/bin/bash", str(_SCRIPT), "stop"],
+        check=False,
+        capture_output=True,
+        env=_capture_env(tmp_path, stub),
+    )
+    _assert_logger_stopped(state, pid, result)
 
 
 def test_mark_records_timestamped_batch_action(tmp_path: Path):
@@ -142,7 +161,8 @@ def test_start_refuses_a_capture_carrying_no_frames(tmp_path: Path):
 
     assert result.returncode == 1
     assert "no HCI frames" in result.stderr
-    assert "Bluetooth logging" in result.stderr
+    assert "BluetoothLogging.mobileconfig" in result.stderr
+    assert "D8A1D847-C161-4D0A-9426-FB9C3E48297D" in result.stderr
     assert not (tmp_path / "captures" / ".current").exists()
     # The file the preflight rejected was a valid capture, not a broken one.
     assert (tmp_path / "captures" / "empty-run.pcapng").stat().st_size > 0
@@ -166,7 +186,7 @@ def test_start_uses_the_capture_subcommand_when_the_installed_cli_has_one(tmp_pa
         f'echo "$@" > "{argv_log}"\n'
         'out="${@: -1}"\n'
         f'cat "{payload}" > "$out"\n'
-        "sleep 60\n"
+        "exec sleep 60\n"
     )
     stub.chmod(0o755)
     try:
@@ -200,6 +220,57 @@ def test_start_accepts_a_capture_that_is_carrying_frames(tmp_path: Path):
         assert (tmp_path / "captures" / ".current").read_text().split()[1] == "live-run"
     finally:
         _stop(tmp_path, stub)
+
+
+def test_wsl_capture_uses_native_idevicebtlogger_pcap(tmp_path: Path):
+    """Windows pymobiledevice3 has only ever made zero-byte captures.
+
+    The app path transfers USB ownership to WSL, where the known-good native logger writes
+    classic pcap. This checks the real command shape and container choice without a phone.
+    """
+    logger = tmp_path / "idevicebtlogger"
+    argv_log = tmp_path / "argv.log"
+    logger.write_text(
+        f'#!/bin/bash\nprintf "%s\\n" "$*" > "{argv_log}"\ncat "{_PCAP_FIXTURE}" > "${{@: -1}}"\nexec sleep 60\n'
+    )
+    logger.chmod(0o755)
+    env = _capture_env(tmp_path)
+    env.update(
+        {
+            "GOVEE_CAPTURE_BACKEND": "idevicebtlogger",
+            "IDEVICEBTLOGGER": str(logger),
+            "PHONE_UDID": "00008140-AAAABBBBCCCCDDDD",
+        }
+    )
+
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["/bin/bash", str(_SCRIPT), "start", "wsl-run"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "captures" / "wsl-run.pcap").is_file()
+        assert argv_log.read_text().split()[:5] == [
+            "-u",
+            "00008140-AAAABBBBCCCCDDDD",
+            "-f",
+            "pcap",
+            "-x",
+        ]
+    finally:
+        state = tmp_path / "captures" / ".current"
+        if state.exists():
+            pid = int(state.read_text().split()[0])
+            stopped = subprocess.run(  # noqa: S603
+                ["/bin/bash", str(_SCRIPT), "stop"],
+                check=False,
+                capture_output=True,
+                env=env,
+            )
+            _assert_logger_stopped(state, pid, stopped)
 
 
 # The peer the committed pcapng fixture was built around, and one that is not in it.
