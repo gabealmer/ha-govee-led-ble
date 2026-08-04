@@ -7,6 +7,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.protocol import WHITE_BALANCE_RESET
+from custom_components.ha_govee_led_ble.scenes import get_scene_names
 
 _IDENTITY_EXAMPLE = Path(__file__).parents[1] / "tools" / "harness" / "devices.local.env.example"
 
@@ -73,6 +74,11 @@ def _make_coord(**ov) -> MagicMock:
         data={},
     )
     d |= ov
+    profile = d["profile"]
+    d.setdefault(
+        "scene_name_set",
+        frozenset(get_scene_names()) if profile.scene_source == "api" else frozenset(profile.builtin_scenes),
+    )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
     c.send_command = AsyncMock()
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()

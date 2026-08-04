@@ -118,7 +118,7 @@ class _ActiveModeMixin(_CoordinatorBase):
     def scene_name_set(self) -> frozenset[str]:
         if self.profile.scene_source == "api":
             return frozenset(get_scene_names())
-        return frozenset()
+        return frozenset(self.profile.builtin_scenes)
 
     @property
     def active_mode(self) -> str:

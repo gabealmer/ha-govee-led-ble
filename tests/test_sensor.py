@@ -59,12 +59,18 @@ def test_scene_name_set_h617a_uses_catalogue(h617a):
     assert h617a.scene_name_set
 
 
-def test_scene_name_set_h6199_is_empty(h6199):
-    assert h6199.scene_name_set == frozenset()
+def test_scene_name_set_h6199_holds_only_the_scenes_the_light_holds(h6199):
+    """The catalogue has 83 scenes; this model can start three of them without an upload."""
+    assert h6199.scene_name_set == frozenset({"candlelight", "sunrise", "sunset"})
+    assert h6199.scene_name_set < frozenset(get_scene_names())
 
 
-def test_h6199_effect_never_reads_as_scene(h6199):
-    h6199.is_on, h6199.effect, h6199.music_mode, h6199.video_mode = True, get_scene_names()[0], "off", "off"
+def test_h6199_effect_reads_as_scene_only_for_a_scene_it_can_start(h6199):
+    h6199.is_on, h6199.music_mode, h6199.video_mode = True, "off", "off"
+    h6199.effect = "sunrise"
+    assert GoveeActiveModeSensor(h6199).native_value == "scene"
+    # A catalogue name this model cannot start is not a scene here, whatever the H617A calls it.
+    h6199.effect = "forest"
     assert GoveeActiveModeSensor(h6199).native_value == "colour"
 
 

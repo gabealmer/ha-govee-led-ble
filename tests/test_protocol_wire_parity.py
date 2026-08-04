@@ -23,6 +23,7 @@ from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import MUSIC_MODE_SLUGS
 from custom_components.ha_govee_led_ble.custom_effects import ComboContent, FlatContent
 from custom_components.ha_govee_led_ble.protocol import Weekday
+from custom_components.ha_govee_led_ble.scenes import SCENES
 from tools.ble import wifi_provision
 from tools.ble.mock_ble.mock_device import GoveeDeviceSim
 
@@ -133,6 +134,9 @@ def test_builder_reproduces_the_captured_frame(name, built):
         ("h6199_blank_screen_off", lambda: proto.build_blank_screen(False)),
         ("h6199_relbright_36", lambda: proto.build_relative_brightness(36)),
         ("h6199_relbright_100", lambda: proto.build_relative_brightness(100)),
+        ("h6199_scene_sunrise", lambda: proto.build_h6199_scene("", 0)[0]),
+        ("h6199_scene_sunset", lambda: proto.build_h6199_scene("", 1)[0]),
+        ("h6199_scene_candlelight", lambda: proto.build_h6199_scene("", 9)[0]),
     ],
 )
 def test_builder_reproduces_the_h6199_captured_frame(name, built):
@@ -168,6 +172,41 @@ def test_video_source_polarity_is_pinned_by_the_pair_that_differs_only_there():
     assert game[4] == 1
     assert proto.build_video_mode(False, True, 100, False, 100)[4] == game[4]
     assert proto.build_video_mode(False, False, 100, False, 100)[4] == movie[4]
+
+
+def test_h6199_scene_activation_is_not_the_h617a_one():
+    """The models disagree at byte 5, so applying a scene with the shared builder is wrong bytes.
+
+    `scene_body::kind` [CONFIRMED_LIVE] carries 1 on the H6199 for a scene the light already
+    holds. The H617A activation has no such byte and leaves the position at the scene type,
+    which is 0 for a catalogue scene. Both frames are otherwise identical, so the mistake
+    survives every test that only checks the scene number.
+    """
+    for name, code in (("sunrise", 0), ("sunset", 1), ("candlelight", 9)):
+        captured = fixture(f"h6199_scene_{name}")
+        h617a = proto.build_scene_multi("", code, 0)[-1]
+        moved = [i for i in range(len(captured) - 1) if captured[i] != h617a[i]]
+        assert moved == [5], name
+        assert captured[5] == 1 and h617a[5] == 0, name
+
+
+def test_the_shared_catalogue_only_agrees_with_h6199_wire_for_the_scenes_we_offer():
+    """The catalogue is an H617A numbering, so it may only be read for codes a capture confirms.
+
+    Sunrise, Sunset and Candlelight are 0, 1 and 9 in both, which is why taking their codes
+    from the shared catalogue is safe. Forest shows the agreement is coincidence and not a
+    rule: 2163 in the catalogue against 212 on this model's wire. Any scene beyond the three
+    would therefore be sending the wrong number even if we could upload its body, which is a
+    second and independent reason the offered list is closed.
+    """
+    for name in ("sunrise", "sunset", "candlelight"):
+        frame = fixture(f"h6199_scene_{name}")
+        assert int.from_bytes(frame[3:5], "little") == SCENES[name].code, name
+        assert frame[5] == 1, name
+    forest = fixture("h6199_scene_forest")
+    assert int.from_bytes(forest[3:5], "little") == 212 != SCENES["forest"].code
+    for name in ("forest", "dracarys", "fire_blood", "green_reign"):
+        assert fixture(f"h6199_scene_{name}")[5] == 2, name
 
 
 def test_relative_brightness_writes_every_edge_because_no_capture_separates_them():

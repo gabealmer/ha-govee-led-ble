@@ -25,7 +25,7 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import DOMAIN, MUSIC_MODES
+from .const import DOMAIN, MUSIC_MODES, ModelProfile
 from .coordinator import GoveeBLECoordinator
 from .custom_effects import SegmentContent
 from .entity import GoveeBLEEntity
@@ -42,11 +42,12 @@ from .protocol import (
     build_brightness,
     build_color_rgb,
     build_color_temp,
+    build_h6199_scene,
     build_power,
     build_scene_multi,
     kelvin_to_rgb,
 )
-from .scenes import SCENES, get_scene_names
+from .scenes import SCENES, SceneEntry
 
 # fmt: on
 
@@ -71,6 +72,18 @@ _MUSIC_EFFECTS: dict[str, str] = {f"Music: {name.title()}": name.replace(" ", "_
 
 
 _DEFAULT_SEGMENT_COLOR: tuple[int, int, int] = (255, 255, 255)
+
+
+def _scene_packets(profile: ModelProfile, scene: SceneEntry) -> list[bytes]:
+    """Pick the activation the model's own app sends, which is not the same frame on both.
+
+    The H6199 write carries a third byte saying whether the light already holds the scene, and
+    the H617A write is two bytes with nothing there. Sharing one builder sent an H617A frame to
+    an H6199, which differs from the captured one at exactly that byte.
+    """
+    if profile.scene_source == "builtin":
+        return build_h6199_scene(scene.param, scene.code, scene.scene_type)
+    return build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed)
 
 
 def _coerce_segment_colors(raw: Any, count: int) -> list[tuple[int, int, int]] | None:
@@ -219,7 +232,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     @property
     def effect_list(self) -> list[str]:
         p = self.coordinator.profile
-        scenes = get_scene_names() if p.scene_source == "api" else []
+        scenes = sorted(self.coordinator.scene_name_set)
         music = [label for label, slug in _MUSIC_EFFECTS.items() if slug in p.music_modes]
         video = list(_VIDEO_EFFECTS) if p.supports_video_mode else []
         return [*scenes, *self.coordinator.custom_effect_display_names(), *music, *video]
@@ -268,7 +281,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 and isinstance(effect.content, SegmentContent)
             ):
                 coordinator.active_custom_id, coordinator.effect = effect.id, effect.display_name
-        elif coordinator.color_mode is None and key in SCENES:
+        elif coordinator.color_mode is None and key in coordinator.scene_name_set:
             coordinator.effect = key
 
     async def _async_restore_segments(self) -> None:
@@ -349,9 +362,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if (effect := coordinator.resolve_custom(key)) is not None:
             await coordinator.async_apply_custom_effect(effect.id)
             return
-        scene = SCENES.get(key)
+        scene = SCENES.get(key) if key in coordinator.scene_name_set else None
         if scene is not None:
-            for packet in build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed):
+            for packet in _scene_packets(coordinator.profile, scene):
                 await coordinator.send_command(packet)
             coordinator.effect, coordinator.active_custom_id = key, None
             coordinator.diy_slot = None

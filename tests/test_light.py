@@ -128,11 +128,14 @@ def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinat
     assert el[: len(SCENES) + 1] == sorted(SCENES.keys()) + ["My Custom"]
     assert "Music: Energetic" in el and "Music: Piano Keys" in el
     assert "Video: Movie" not in el and "music: energetic" not in el
-    # H6199: no scene catalogue (scene_source "none"): customs + music + video effects.
+    # H6199: only the three scenes its light already holds, then customs + music + video.
     mock_h6199_coordinator.custom_effect_display_names.return_value = ["Solo"]
     h = h6199_light.effect_list
-    assert h[0] == "Solo" and "Music: Rhythm" in h and h[-2:] == ["Video: Movie", "Video: Game"]
+    assert h[:4] == ["candlelight", "sunrise", "sunset", "Solo"]
+    assert "Music: Rhythm" in h and h[-2:] == ["Video: Movie", "Video: Game"]
     assert "Music: Bloom" not in h and "Music: Shiny" not in h
+    # A scene needing an uploaded body is not offered, because we do not hold the body.
+    assert "forest" not in h and "aurora" not in h
 
 
 async def test_turn_on_custom_effect_applies(light, mock_coordinator):
@@ -156,6 +159,25 @@ async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
     assert co.effect == "rainbow" and co.active_custom_id is None
     assert co.diy_slot is None
     assert co.music_mode == "off" and co.video_mode == "off"
+
+
+async def test_h6199_scene_uses_its_own_activation_frame(h6199_light, mock_h6199_coordinator):
+    """Applying a scene here used to send the H617A frame, which differs at the kind byte."""
+    co = mock_h6199_coordinator
+    co.is_on = True
+    await h6199_light.async_turn_on(effect="sunrise")
+    sent = [call.args[0] for call in co.send_command.call_args_list]
+    assert sent == proto.build_h6199_scene("", SCENES["sunrise"].code)
+    assert sent != proto.build_scene_multi("", SCENES["sunrise"].code, 0)
+    assert co.effect == "sunrise"
+
+
+async def test_h6199_refuses_a_scene_it_cannot_start(h6199_light, mock_h6199_coordinator):
+    """The catalogue holds Forest; this light does not, and its number differs here anyway."""
+    mock_h6199_coordinator.is_on = True
+    with pytest.raises(ServiceValidationError):
+        await h6199_light.async_turn_on(effect="forest")
+    mock_h6199_coordinator.send_command.assert_not_awaited()
 
 
 async def test_turn_on_unknown_effect_raises(light, mock_coordinator):

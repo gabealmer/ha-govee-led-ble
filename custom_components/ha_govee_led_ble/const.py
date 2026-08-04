@@ -11,6 +11,7 @@ class ModelProfile:
     name: str
     state_readable: bool = False
     scene_source: str = "none"
+    builtin_scenes: tuple[str, ...] = ()
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
     supports_white_balance: bool = False
@@ -103,6 +104,20 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
+        # Only the three scenes the light already holds. Every H6199 scene write carries a kind
+        # byte saying whether a definition has to be uploaded first, and across eleven captured
+        # scenes it predicted an 0xA3 upload with no exceptions: kind 1 for Sunrise, Sunset and
+        # Candlelight and nothing on the wire before them, kind 2 for the other eight and a body
+        # of between 51 and 170 bytes each time (h6199_command_write::scene_body::kind). We hold
+        # none of those bodies, so the other eight cannot be started and are not offered.
+        #
+        # The three names and codes are the shared catalogue's own, which the captures confirm
+        # rather than assume: 0, 1 and 9 in both. That agreement does not extend past them.
+        # Forest is 2163 in the catalogue and 212 on H6199 wire, so the catalogue is an H617A
+        # numbering that happens to coincide at the low end, and reading a code out of it for
+        # any scene this list does not name would be sending the wrong scene.
+        scene_source="builtin",
+        builtin_scenes=("candlelight", "sunrise", "sunset"),
         supports_video_mode=True,
         supports_video_sound_effects=True,
         # The three registers the app reaches from the same video sheet, each modelled from an
