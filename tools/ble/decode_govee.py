@@ -81,13 +81,29 @@ def _is_music_stream(v: bytes) -> bool:
 
 
 def _is_govee(v: bytes) -> bool:
-    # 0x33 write / 0xAA read / 0xA3 multi-part write are the H617A opcode set. 0xA1 is
-    # the multi-part upload opcode used by the H6127/H6199 family in place of 0xA3, so
-    # filtering it out would leave us blind to their DIY uploads during app-sniff work.
-    # The 20-byte length and XOR check still gate the match strictly.
+    # 0x33 write / 0xAA read / 0xA3 multi-part write are the H617A opcode set. 0xA1 is a
+    # second multi-part upload header; on the H6199 it carries Wi-Fi provisioning (a1 11).
+    #
+    # It was described here as the opcode that family uses "in place of 0xA3" for DIY
+    # uploads. That was wrong for the H6199 and is corrected rather than deleted, because the
+    # belief is the kind that regrows: captures on 2026-08-04 of the DIY editor and of
+    # applying a saved DIY put 27 0xA3 frames on the wire and not one 0xA1. Both headers are
+    # live on this model, for different jobs, so neither replaces the other.
+    #
+    # 0xEE is DEVICE-INITIATED and was missing here, which cost more than it looks. The
+    # H6199 reports the outcome of a Wi-Fi association on ee 11, about eleven seconds after
+    # the credentials are written, and this allowlist dropped it. A provisioning capture
+    # therefore decoded as a write that was acknowledged and never answered, which read as
+    # the device ignoring the request when it had in fact replied and said it failed. The
+    # frame was in the capture the whole time and only --all would show it.
+    #
+    # The lesson generalises past this one header: a filter keyed on what we already know
+    # about hides exactly the traffic that would teach us something new, so anything
+    # 20 bytes long with a valid XOR is now let through on these headers rather than being
+    # judged on whether we recognise it.
     if _is_music_stream(v):
         return True
-    return len(v) == 20 and v[0] in (0x33, 0xAA, 0xA3, 0xA1) and _xor_ok(v)
+    return len(v) == 20 and v[0] in (0x33, 0xAA, 0xA3, 0xA1, 0xEE) and _xor_ok(v)
 
 
 # Observed 0xAA query/status types (phone TX = query, light RX = reply).
@@ -222,9 +238,58 @@ def _segment_mask(pair: bytes) -> str:
     return f"0x{bits:04x}(seg {','.join(segments) if segments else '-'})"
 
 
-def label(v: bytes, direction: str) -> str:
+def _is_wifi_credential_frame(v: bytes) -> bool:
+    """An 0xA1 multi-part upload carrying sub-opcode 0x11, the Wi-Fi credential push.
+
+    CONFIRMED ON WIRE 2026-08-04 against a fabricated network: the reassembled body is
+    [ssid_len][ssid][pw_len][password][runMode][tzHours][iotVersion][tzMinutes] followed by
+    a two-byte big-endian length and the cloud endpoint. The SSID and passphrase are plain
+    UTF-8, so these frames are a network password in clear.
+    """
+    return len(v) >= 2 and v[0] == 0xA1 and v[1] == 0x11
+
+
+def _is_device_mac_frame(v: bytes) -> bool:
+    """An 0xAA reply on domain 0x14, which answers with the device's Wi-Fi MAC.
+
+    CONFIRMED ON WIRE 2026-08-04: opening the app's Wi-Fi settings queries aa 14 and the
+    device answers with six bytes of MAC. That is hardware identity for a specific unit, of
+    the same kind as the phone UDID the identity guard exists for, and it is why the private
+    issue tracking this work omits domain 0x14 from the corpus.
+
+    Redacted for the same reason as the credential frames rather than a different one: a
+    routine decode should not be able to put a permanent hardware identifier into a
+    terminal, a transcript, or a pasted excerpt.
+    """
+    return len(v) >= 2 and v[0] == 0xAA and v[1] == 0x14
+
+
+def secret_reason(v: bytes) -> str | None:
+    """Why this frame's payload is withheld, or None when it is safe to print.
+
+    ONE PREDICATE FOR EVERY COLUMN. The first version of this guard redacted the label and
+    left the raw hex printing the passphrase one column to its left, so the decision about
+    what may be shown has exactly one home and every renderer asks it.
+    """
+    if _is_wifi_credential_frame(v):
+        return "wifi credentials"
+    if _is_device_mac_frame(v):
+        return "device mac"
+    return None
+
+
+def render_payload(v: bytes, *, show_secrets: bool = False) -> str:
+    """The payload column, with credentials and hardware identity withheld by default."""
+    reason = None if show_secrets else secret_reason(v)
+    if reason is not None:
+        return v[:2].hex() + f" <{reason} withheld>"
+    return v.hex()
+
+
+def label(v: bytes, direction: str, *, show_secrets: bool = False) -> str:
     """Best-effort human label using the known Govee command map."""
     _require_direction(direction)
+    reason = None if show_secrets else secret_reason(v)
     h = v[0]
     if _is_music_stream(v):
         return f"mic-stream rgb=({v[3]},{v[4]},{v[5]})"
@@ -232,7 +297,24 @@ def label(v: bytes, direction: str) -> str:
         return f"multi-frame idx={v[1]:#04x} {v[2:12].hex()}"
     if h == 0xA1:
         # H6127/H6199-family multi-part upload; byte[1] is a sub-opcode, byte[2] the index.
+        # The index survives redaction: the fragmentation is the structural part worth
+        # reading and none of it is secret.
+        if reason is not None:
+            return f"multi-frame(a1) sub=0x11 idx={v[2]:#04x} <{reason} withheld>"
         return f"multi-frame(a1) sub={v[1]:#04x} idx={v[2]:#04x} {v[3:12].hex()}"
+    if h == 0xEE:
+        # Device-initiated Wi-Fi association result, seen 2026-08-04 about eleven seconds
+        # after an a1 11 credential write, from both the app and a direct write of the same
+        # bytes. Only the failing value has been observed, from a network invented for the
+        # test that could not possibly exist, so "not connected" is measured while
+        # "connected" is the app's own reading of the same byte carried over. Stated that
+        # way round deliberately: a successful association has never been captured here.
+        if v[1] == 0x11:
+            state = "connected" if v[2] == 0 else "NOT connected"
+            return f"wifi-connect result={v[2]:#04x} ({state})"
+        return f"device-report type={v[1]:#04x} {v[2:12].hex()}"
+    if reason is not None:
+        return f"reply type={v[1]:#04x} <{reason} withheld>"
     if h == 0xAA:
         return _label_aa(v, direction)
     if h != 0x33:
@@ -271,6 +353,11 @@ def label(v: bytes, direction: str) -> str:
         if mode == 0x0A:
             # govee_common::diy_selector: slot then type_byte, two independent u1 fields.
             return f"diy slot={v[3]:#04x} type={v[4]:#04x} {v[3:13].hex()}"
+        if mode == 0x13:
+            # h6199_command_write::music_body. Named rather than left to the generic line
+            # below, which rendered it "color/music sub=0x03" and read as a colour write.
+            names = {0x03: "rhythm", 0x04: "spectrum", 0x05: "energetic", 0x06: "rolling"}
+            return f"music {names.get(v[3], f'mode={v[3]:#04x}')} sensitivity={v[4]}"
         return f"color/{detail} sub={v[3]:#04x} {v[3:13].hex()}"
     if action == 0x09:
         return f"time/cfg {v[2:9].hex()}"
@@ -556,6 +643,11 @@ def main() -> int:
         action="store_true",
         help="print a capture holding more than one Govee source without narrowing it first",
     )
+    parser.add_argument(
+        "--show-secrets",
+        action="store_true",
+        help="print payloads withheld by default: Wi-Fi credentials (a1 11) and the device Wi-Fi MAC (aa 14)",
+    )
     opts = parser.parse_args()
 
     data = open(opts.capture, "rb").read()
@@ -617,7 +709,7 @@ def main() -> int:
                     record.opcode,
                     record.attribute_handle,
                     value,
-                    label(value, record.direction),
+                    label(value, record.direction, show_secrets=opts.show_secrets),
                     first,
                 )
             )
@@ -636,7 +728,10 @@ def main() -> int:
     print(f"# {'peer':<17} {'dir':<3} {'op':<12} {'hdl':<6} {'payload (hex)':<41} label")
     for peer, direction, opcode, handle, value, lab, first in rows:
         mark = " " if first else "."
-        print(f"{mark} {peer:<17} {direction:<3} {WRITE_OPCODES[opcode]:<12} {handle:#06x} {value.hex():<41} {lab}")
+        print(
+            f"{mark} {peer:<17} {direction:<3} {WRITE_OPCODES[opcode]:<12} {handle:#06x} "
+            f"{render_payload(value, show_secrets=opts.show_secrets):<41} {lab}"
+        )
     if not opts.all:
         print("# ('.' = repeat of an earlier packet; pass --all to include non-Govee ATT values)")
     return 0

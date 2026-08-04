@@ -105,3 +105,130 @@ def test_colour_temperature_label_reports_the_kelvin_that_was_encoded(kelvin):
 def test_scene_label_reports_the_scene_id_that_was_encoded(scene_id):
     """scene_id is u2le; rendering byte 3 alone showed scene 1173 as 'sub=0x95'."""
     assert f"scene id={scene_id}" in dg.label(proto.build_scene(scene_id), "TX")
+
+
+def _wifi_credential_frame() -> bytes:
+    """An a1 11 fragment shaped like the app's credential push, with an obvious passphrase.
+
+    Modelled on frames captured 2026-08-04 against a fabricated network, but built here
+    rather than replayed, so the test states its own secret and cannot pass by accident.
+    """
+    body = bytes([0x04]) + b"HOME" + bytes([0x08]) + b"hunter22"
+    frame = bytes([0xA1, 0x11, 0x01]) + body.ljust(16, b"\x00")
+    checksum = 0
+    for byte in frame[:19]:
+        checksum ^= byte
+    return frame[:19] + bytes([checksum])
+
+
+def test_wifi_credentials_are_withheld_from_both_columns_by_default():
+    """The payload column is the one that leaked, so it is asserted alongside the label.
+
+    The first cut of this guard redacted only the label, and the raw twenty-byte hex went
+    on printing the passphrase one column to its left. Checking a single rendering would
+    have passed against that version, so both are checked against the secret itself rather
+    than against a phrasing.
+    """
+    frame = _wifi_credential_frame()
+    assert dg._is_wifi_credential_frame(frame)
+
+    rendered = dg.render_payload(frame) + " " + dg.label(frame, "TX")
+    assert b"hunter22".hex() not in rendered
+    assert b"HOME".hex() not in rendered
+    assert "withheld" in dg.render_payload(frame)
+    assert "withheld" in dg.label(frame, "TX")
+    # The fragment index survives redaction: it is the structural half worth reading.
+    assert "idx=0x01" in dg.label(frame, "TX")
+
+
+def test_wifi_credentials_are_printed_when_explicitly_asked_for():
+    """Redaction has to be escapable, or the one capture that needs the bytes is unreadable."""
+    frame = _wifi_credential_frame()
+    assert b"hunter22".hex() in dg.render_payload(frame, show_secrets=True)
+    assert dg.label(frame, "TX", show_secrets=True).startswith("multi-frame(a1) sub=0x11")
+
+
+def test_other_a1_uploads_are_not_redacted():
+    """DIY uploads share the 0xA1 family and must stay readable; only sub-opcode 0x11 is secret."""
+    frame = bytes([0xA1, 0x0A, 0x01]) + bytes(range(16))
+    checksum = 0
+    for byte in frame[:19]:
+        checksum ^= byte
+    frame = frame[:19] + bytes([checksum])
+    assert not dg._is_wifi_credential_frame(frame)
+    assert "withheld" not in dg.label(frame, "TX")
+    assert dg.render_payload(frame) == frame.hex()
+
+
+def _device_mac_reply() -> bytes:
+    """An aa 14 reply, which answers with the unit's Wi-Fi MAC.
+
+    The MAC here is invented. The real one belongs to a specific piece of hardware and is
+    the reason domain 0x14 is kept out of the corpus, so it is not written down even in a
+    test asserting that it would not be printed.
+    """
+    frame = bytes([0xAA, 0x14, 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11]).ljust(19, b"\x00")
+    checksum = 0
+    for byte in frame[:19]:
+        checksum ^= byte
+    return frame[:19] + bytes([checksum])
+
+
+def test_device_mac_is_withheld_from_both_columns_by_default():
+    """Hardware identity gets the same treatment as a passphrase, and for the same reason.
+
+    This one is not hypothetical: a routine decode of a session where the app's Wi-Fi
+    settings were opened printed the real MAC before this guard existed.
+    """
+    frame = _device_mac_reply()
+    assert dg.secret_reason(frame) == "device mac"
+    assert "deadbeef" not in dg.render_payload(frame)
+    assert "deadbeef" not in dg.label(frame, "RX")
+    assert "withheld" in dg.render_payload(frame)
+    assert "withheld" in dg.label(frame, "RX")
+    assert "deadbeef" in dg.render_payload(frame, show_secrets=True)
+
+
+def test_other_aa_replies_are_not_redacted():
+    """Only domain 0x14 is identity; the rest of the status surface must stay readable."""
+    frame = bytes([0xAA, 0x01, 0x01]).ljust(19, b"\x00")
+    checksum = 0
+    for byte in frame[:19]:
+        checksum ^= byte
+    frame = frame[:19] + bytes([checksum])
+    assert dg.secret_reason(frame) is None
+    assert dg.render_payload(frame) == frame.hex()
+
+
+def _wifi_connect_result(status: int) -> bytes:
+    frame = bytes([0xEE, 0x11, status]).ljust(19, b"\x00")
+    checksum = 0
+    for byte in frame[:19]:
+        checksum ^= byte
+    return frame[:19] + bytes([checksum])
+
+
+def test_device_initiated_reports_are_not_filtered_out():
+    """0xEE frames must survive _is_govee, which is where they were being lost.
+
+    The H6199 answers a Wi-Fi credential write on ee 11 about eleven seconds later. Because
+    the header allowlist did not include 0xEE, a provisioning capture decoded as a write
+    that was acknowledged and never answered, and the device looked like it had ignored the
+    request when it had replied to say it failed. Asserting the filter, not just the label,
+    because the filter is what hid it.
+    """
+    assert dg._is_govee(_wifi_connect_result(0x01))
+
+
+@pytest.mark.parametrize(("status", "expected"), [(0x00, "connected"), (0x01, "NOT connected")])
+def test_wifi_connect_result_reports_the_status_byte(status, expected):
+    label = dg.label(_wifi_connect_result(status), "RX")
+    assert "wifi-connect" in label
+    assert expected in label
+
+
+def test_wifi_connect_result_is_not_treated_as_a_secret():
+    """It carries an outcome, not a credential, so redaction must not swallow the answer."""
+    frame = _wifi_connect_result(0x01)
+    assert dg.secret_reason(frame) is None
+    assert dg.render_payload(frame) == frame.hex()
