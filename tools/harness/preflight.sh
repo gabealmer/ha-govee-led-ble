@@ -11,7 +11,6 @@ if [ "$mode" = app ] &&
      { [ -z "${HARNESS_HOST_KIND:-}" ] && grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null; }; }; then
   export HARNESS_PHONE_BACKEND=native
   export HARNESS_RSD_BACKEND=userspace
-  export GOVEE_CAPTURE_BACKEND=idevicebtlogger
 fi
 
 # shellcheck source=tools/harness/phone.sh

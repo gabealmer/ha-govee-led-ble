@@ -78,6 +78,19 @@ def test_wsl_points_pymobiledevice3_at_native_usbmuxd(tmp_path):
     assert result.stdout.strip() == "/var/run/usbmuxd"
 
 
+def test_wsl_native_phone_selects_the_idevicebtlogger_capture_backend(tmp_path):
+    """The capture backend follows phone ownership, and is derived rather than exported.
+
+    It used to be set by up.sh and preflight.sh, one copy each, so it reached only their own
+    process trees. Any later shell fell back to the pymobiledevice3 backend, which cannot
+    reach a natively-owned phone: it records an empty capture and the preflight reports "no
+    HCI frames", which reads as a Bluetooth problem rather than an environment one.
+    """
+    tree = _usb_tree(tmp_path, {"1-2": ("05ac", _UDID.replace("-", ""))})
+    result = _run('printf "%s\\n" "$GOVEE_CAPTURE_BACKEND"', tmp_path, tree, host_kind="wsl")
+    assert result.stdout.strip() == "idevicebtlogger"
+
+
 def test_wsl_userspace_backend_resolves_the_pinned_native_pmd3_tool(tmp_path):
     root = tmp_path / "mise-tool"
     binary = root / "pymobiledevice3" / "bin" / "pymobiledevice3"

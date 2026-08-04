@@ -7,6 +7,12 @@
 #   act.sh shot [label]
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/phone.sh"
+# Sourcing phone.sh is NOT enough to describe the rig. resolve_device is what reconstructs a
+# running session's ownership, and without it this script silently used the ambient WSL
+# defaults: dvt then talked to the wrong usbmux and every screenshot failed with "DDI
+# mounted?", while WDA, which needs none of that, kept working and made it look like a
+# screenshot problem. act.sh takes no device argument, so it adopts whichever session is up.
+resolve_device "$(harness_running_session_device || echo "$DEVICE_DEFAULT")"
 
 SETTLE_SECONDS="${SETTLE_SECONDS:-3}"
 [ "${1:-}" = shot ] && { shot "${2:-shot}"; exit 0; }

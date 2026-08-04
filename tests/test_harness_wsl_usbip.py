@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 _REPO = Path(__file__).parents[1]
@@ -224,6 +225,12 @@ def _app_phone_stub() -> str:
     return """#!/usr/bin/env bash
 set -eu
 mkdir -p "$HARNESS_RUN_DIR"
+# phone.sh derives this from the phone backend and host kind (devices.env,
+# harness_derive_backend_env), so a stub standing in for phone.sh has to supply it too.
+# The real rule is pinned against the real tree by
+# test_wsl_native_phone_selects_the_idevicebtlogger_capture_backend; this line only keeps
+# the stub a faithful stand-in, and up.sh deliberately no longer sets it.
+GOVEE_CAPTURE_BACKEND="${GOVEE_CAPTURE_BACKEND:-idevicebtlogger}"
 printf 'source phone=%s rsd=%s capture=%s\\n' \
   "$HARNESS_PHONE_BACKEND" "$HARNESS_RSD_BACKEND" "$GOVEE_CAPTURE_BACKEND" >> "$CALL_LOG"
 GOVEE_APP_PROCESS=GoveeHome
@@ -385,3 +392,161 @@ ha_entry() {
     assert "tunnel-down" not in sequence
     assert "ha-entry entry-tv enable" in sequence
     assert not any("strip" in call for call in sequence)
+
+
+def test_a_later_shell_adopts_the_running_sessions_ownership(tmp_path: Path):
+    """resolve_device must reconstruct a session it did not start.
+
+    up.sh forces native ownership for a WSL app session and records it, but nothing read it
+    back, so every later shell fell to the ambient WSL default of `windows`. That silently
+    produced the wrong capture backend, left USBMUXD_SOCKET_ADDRESS unset (so pymobiledevice3
+    used its Wsl class's Windows iTunes TCP address and reported a healthy usbmuxd as dead),
+    and picked the unpinned pymobiledevice3. Captures taken that way record nothing.
+    """
+    state = tmp_path / "state-strip"
+    state.write_text("app strip entry-strip native userspace\n")
+    env = os.environ.copy()
+    env.update(
+        {
+            "HARNESS_IDENTITY_FILE": str(_IDENTITY),
+            "HARNESS_HOST_KIND": "wsl",
+            "HARNESS_STATE_FILE": str(state),
+            "HARNESS_RUN_DIR": str(tmp_path / "run"),
+            "GOVEE_CAPTURE_DIR": str(tmp_path / "captures"),
+        }
+    )
+    # A shell that did not run up.sh has none of these.
+    for leaked in ("HARNESS_PHONE_BACKEND", "HARNESS_RSD_BACKEND", "GOVEE_CAPTURE_BACKEND", "USBMUXD_SOCKET_ADDRESS"):
+        env.pop(leaked, None)
+
+    result = subprocess.run(  # noqa: S603
+        [
+            "/bin/bash",
+            "-c",
+            f"source {_PHONE_SH} >/dev/null 2>&1; resolve_device strip; "
+            f'printf "%s %s %s %s\\n" "$HARNESS_PHONE_BACKEND" "$HARNESS_RSD_BACKEND" '
+            f'"$GOVEE_CAPTURE_BACKEND" "$USBMUXD_SOCKET_ADDRESS"',
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split() == [
+        "native",
+        "userspace",
+        "idevicebtlogger",
+        "/var/run/usbmuxd",
+    ]
+
+
+def test_session_paths_are_derived_from_the_device_not_inherited(tmp_path: Path):
+    """down.sh has to find a session started by a different shell.
+
+    The paths were supplied by whoever ran up.sh, so a teardown elsewhere read the absent
+    unsuffixed state file, concluded the mode was `direct`, and skipped the whole phone half:
+    the capture kept running, WDA kept an XCTest session open on the phone, serve-web kept
+    listening and the USB stayed attached to WSL.
+    """
+    env = os.environ.copy()
+    env.update({"HARNESS_IDENTITY_FILE": str(_IDENTITY), "HARNESS_HOST_KIND": "wsl"})
+    for leaked in ("HARNESS_STATE_FILE", "HARNESS_RUN_DIR"):
+        env.pop(leaked, None)
+
+    result = subprocess.run(  # noqa: S603
+        [
+            "/bin/bash",
+            "-c",
+            f"source {_PHONE_SH} >/dev/null 2>&1; resolve_device strip; "
+            f'printf "%s\\n%s\\n" "$HARNESS_STATE_FILE" "$HARNESS_RUN_DIR"',
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    tmp = tempfile.gettempdir()
+    assert result.stdout.splitlines() == [
+        f"{tmp}/govee-harness-state-strip",
+        f"{tmp}/govee-harness-strip",
+    ]
+
+
+def test_backend_overrides_wait_until_the_backend_is_final(tmp_path: Path):
+    """Function overrides cannot be unloaded, so they must not be chosen before adoption.
+
+    phone.sh used to source the Windows backend at source time from the ambient default,
+    which on WSL is `windows`. Adopting a running session then fixed every VARIABLE and none
+    of the FUNCTIONS, so capture() stayed the Windows stub and refused a capture on a
+    natively-owned phone with advice to run up.sh -- inside a session where up.sh had
+    already run and the state file said native.
+    """
+    state = tmp_path / "state-strip"
+    state.write_text("app strip entry-strip native userspace\n")
+    env = os.environ.copy()
+    env.update(
+        {
+            "HARNESS_IDENTITY_FILE": str(_IDENTITY),
+            "HARNESS_HOST_KIND": "wsl",
+            "HARNESS_STATE_FILE": str(state),
+            "HARNESS_RUN_DIR": str(tmp_path / "run"),
+            "GOVEE_CAPTURE_DIR": str(tmp_path / "captures"),
+        }
+    )
+    for leaked in ("HARNESS_PHONE_BACKEND", "HARNESS_RSD_BACKEND", "GOVEE_CAPTURE_BACKEND"):
+        env.pop(leaked, None)
+
+    result = subprocess.run(  # noqa: S603
+        [
+            "/bin/bash",
+            "-c",
+            f"source {_PHONE_SH} >/dev/null 2>&1; resolve_device strip; declare -f capture",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "govee-capture.sh" in result.stdout, result.stdout
+    assert "unsupported" not in result.stdout, "capture() is still the Windows stub"
+
+
+def test_a_tool_with_no_device_argument_adopts_the_running_session(tmp_path: Path):
+    """act.sh takes a gesture, not a device, and still has to describe the rig correctly.
+
+    It sourced phone.sh and stopped there, so it ran on the ambient WSL defaults: dvt talked
+    to the wrong usbmux and every screenshot failed with "DDI mounted?", while WDA, which
+    needs neither, kept working -- which made it read as a screenshot problem rather than an
+    environment one.
+
+    Refusing when the answer is ambiguous is the point. A gesture aimed at the wrong light is
+    the silent wrong answer, so several sessions must fail rather than pick one.
+    """
+    prefix = tmp_path / "state"
+    env = os.environ.copy()
+    env.update({"HARNESS_IDENTITY_FILE": str(_IDENTITY), "HARNESS_STATE_PREFIX": str(prefix)})
+
+    def ask() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(  # noqa: S603
+            ["/bin/bash", "-c", f"source {_PHONE_SH} >/dev/null 2>&1; harness_running_session_device"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+        )
+
+    assert ask().returncode != 0, "no session up must not resolve to a device"
+
+    (tmp_path / "state-strip").write_text("app strip entry-strip native userspace\n")
+    found = ask()
+    assert found.returncode == 0, found.stderr
+    assert found.stdout.strip() == "strip"
+
+    (tmp_path / "state-tv").write_text("app tv entry-tv native userspace\n")
+    assert ask().returncode != 0, "two sessions up is ambiguous and must refuse"

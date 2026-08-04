@@ -11,22 +11,33 @@ REPO_DIR="$(cd "$HARNESS_DIR/../.." && pwd)"
 source "$HARNESS_DIR/devices.env"
 mkdir -p "$HARNESS_RUN_DIR" "$GOVEE_CAPTURE_DIR" "$GOVEE_SHOT_DIR"
 
-# Resolve once. The WSL userspace path deliberately chooses the pinned mise pipx environment:
-# it supplies the Python library used by the WDA daemon as well as its CLI, while Windows owns
-# neither when USB/IP is attached.
-if [ "$HARNESS_RSD_BACKEND" = userspace ] &&
-   [ "$PYMOBILEDEVICE3_IS_DEFAULT" = 1 ] &&
-   command -v mise >/dev/null 2>&1 &&
-   pmd3_root="$(mise where "$NATIVE_PMD3_TOOL" 2>/dev/null)" &&
-   [ -x "$pmd3_root/pymobiledevice3/bin/pymobiledevice3" ]; then
-  PYMOBILEDEVICE3="$pmd3_root/pymobiledevice3/bin/pymobiledevice3"
-elif resolved_pmd3="$(command -v "$PYMOBILEDEVICE3" 2>/dev/null)"; then
-  PYMOBILEDEVICE3="$resolved_pmd3"
-elif command -v mise >/dev/null 2>&1 &&
-     resolved_pmd3="$(mise which "$PYMOBILEDEVICE3" 2>/dev/null)"; then
-  PYMOBILEDEVICE3="$resolved_pmd3"
-fi
-unset resolved_pmd3 pmd3_root
+# Resolve the CLI to use. The WSL userspace path deliberately chooses the pinned mise pipx
+# environment: it supplies the Python library used by the WDA daemon as well as its CLI, while
+# Windows owns neither when USB/IP is attached.
+#
+# A function, not a straight-line block, because the choice depends on HARNESS_RSD_BACKEND and
+# that is not final until resolve_device has adopted a running session's state. Resolving only
+# at source time picked the fallback interpreter for every shell that had not run up.sh, and
+# the fallback is a DIFFERENT pymobiledevice3 install that does not honour
+# USBMUXD_SOCKET_ADDRESS, so it reported a dead usbmuxd against a healthy one.
+PYMOBILEDEVICE3_REQUESTED="$PYMOBILEDEVICE3"
+harness_resolve_pmd3() {
+  local resolved_pmd3 pmd3_root
+  PYMOBILEDEVICE3="$PYMOBILEDEVICE3_REQUESTED"
+  if [ "$HARNESS_RSD_BACKEND" = userspace ] &&
+     [ "$PYMOBILEDEVICE3_IS_DEFAULT" = 1 ] &&
+     command -v mise >/dev/null 2>&1 &&
+     pmd3_root="$(mise where "$NATIVE_PMD3_TOOL" 2>/dev/null)" &&
+     [ -x "$pmd3_root/pymobiledevice3/bin/pymobiledevice3" ]; then
+    PYMOBILEDEVICE3="$pmd3_root/pymobiledevice3/bin/pymobiledevice3"
+  elif resolved_pmd3="$(command -v "$PYMOBILEDEVICE3" 2>/dev/null)"; then
+    PYMOBILEDEVICE3="$resolved_pmd3"
+  elif command -v mise >/dev/null 2>&1 &&
+       resolved_pmd3="$(mise which "$PYMOBILEDEVICE3" 2>/dev/null)"; then
+    PYMOBILEDEVICE3="$resolved_pmd3"
+  fi
+}
+harness_resolve_pmd3
 
 PMD3_COMMAND_TIMEOUT="${PMD3_COMMAND_TIMEOUT:-60}"
 pmd3() { timeout "$PMD3_COMMAND_TIMEOUT" "$PYMOBILEDEVICE3" "$@"; }
@@ -904,7 +915,19 @@ capture() { bash "$REPO_DIR/tools/ble/govee-capture.sh" "$@"; }
 current_capture_name() { cut -d' ' -f2 "$GOVEE_CAPTURE_DIR/.current" 2>/dev/null || true; }
 ha_entry() { bash "$HARNESS_DIR/ha.sh" "$1" "$2"; }
 
-if [ "$HARNESS_PHONE_BACKEND" = windows ]; then
+# Backend-specific overrides REDEFINE functions above, and a source cannot be undone. So they
+# must not be loaded until the backend is final, which it is not at source time: the ambient
+# default on WSL is `windows` and resolve_device may still adopt `native` from a running
+# session. Loading them early was a real failure, not a hypothetical one — capture() was
+# replaced by the Windows stub, which then refused a capture on a natively-owned phone with
+# advice to run up.sh, in a session where up.sh had already run.
+harness_load_backend_overrides() {
+  [ "$HARNESS_PHONE_BACKEND" = windows ] || return 0
+  [ -z "${HARNESS_BACKEND_OVERRIDES_LOADED:-}" ] || return 0
+  HARNESS_BACKEND_OVERRIDES_LOADED=1
   # shellcheck source=tools/harness/phone_windows.sh
   source "$HARNESS_DIR/phone_windows.sh"
-fi
+}
+
+# Final already if the caller pinned it; otherwise resolve_device loads them after adopting.
+[ -z "$HARNESS_PHONE_BACKEND_EXPLICIT" ] || harness_load_backend_overrides

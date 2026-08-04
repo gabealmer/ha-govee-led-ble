@@ -5,7 +5,29 @@
 # long time against an absent phone, and handing the link back must not wait on one.
 set -euo pipefail
 
-state_file="${HARNESS_STATE_FILE:-/tmp/govee-harness-state}"
+# The state has to be read BEFORE phone.sh is sourced (it selects the owner that stood the
+# session up), but the path is per device, so it is derived from the argument here rather
+# than waiting for resolve_device. Reading the unsuffixed default instead meant a teardown
+# from any shell that had not run up.sh found nothing, fell through to `direct`, and left the
+# capture running, WDA holding an XCTest session, serve-web listening and the USB attached.
+#
+# The prefix is spelled out rather than taken from HARNESS_STATE_PREFIX in devices.env, and
+# that duplication is deliberate: sourcing devices.env here to get it would set
+# HARNESS_PHONE_BACKEND, so when phone.sh sourced it again the *_EXPLICIT flags would record
+# a caller pin that never happened. Keep the two in step by hand.
+state_file="${HARNESS_STATE_FILE:-}"
+if [ -z "$state_file" ]; then
+  if [ -n "${1:-}" ]; then
+    state_file="/tmp/govee-harness-state-$1"
+  else
+    # No device named: adopt the session if exactly one is up, so the common case of a single
+    # rig needs no argument. More than one is ambiguous and must be named explicitly.
+    _candidates=(); for _f in /tmp/govee-harness-state-*; do [ -s "$_f" ] && _candidates+=("$_f"); done
+    [ "${#_candidates[@]}" = 1 ] && state_file="${_candidates[0]}"
+    unset _candidates _f
+  fi
+  state_file="${state_file:-/tmp/govee-harness-state}"
+fi
 state_mode=direct state_device="" state_phone_backend="" state_rsd_backend=""
 [ -s "$state_file" ] &&
   read -r state_mode state_device _ state_phone_backend state_rsd_backend <"$state_file"
