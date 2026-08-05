@@ -7,9 +7,11 @@ doc: |
   command grammar. This root begins with the attributable iPhone capture
   h6199-aa40.pcap and deliberately imports no shared Govee types.
 
-  The first captured H6199 write is the connect-time clock sync. Its field names
-  are kept inferred until H6199 captures vary them independently; the byte
-  positions and 20-byte envelope are capture-backed.
+  The first captured H6199 write is the connect-time clock sync. Every one of its field
+  names was inferred at first, on the rule that one frame cannot tell a field from a
+  constant. A second clock capture on a different day and time has since moved the hour,
+  minute, second and weekday, which is what named those four; the three bytes nothing has
+  moved are still inferred, and are marked so below.
 
   TWO OPCODES ARE PROVEN ABSENT on this model, which is worth stating here
   because both are present in the vendor app for other SKUs and so will be found
@@ -135,7 +137,8 @@ types:
     doc: |
       Selects a scene by NUMBER. The scene's own definition is not in this frame: when the
       light does not already hold it, the app uploads the definition over 0xA3 first and
-      this write is the reference that starts it. That upload is not modelled here.
+      this write is the reference that starts it. That upload is modelled separately, in
+      h6199_effect_upload, whose kind byte separates a catalogue scene from a DIY effect.
     seq:
       - id: scene_id
         type: u2le
@@ -361,20 +364,24 @@ types:
       - id: manual
         type: u1
         doc: |
-          [CONFIRMED_LIVE] set while white balance is being driven by hand, at frame offset
+          [INFERRED] set while white balance is being driven by hand, at frame offset
           4. Captured as 0x01 in all seven white-balance writes.
 
           It was first modelled as an unnamed constant on exactly that evidence, which was a
           sampling artefact: every capture was taken with the manual strip, so the byte had
           no opportunity to move. It is named here on the vendor app's own encoder, which
-          writes this position as the negation of an auto-white-balance flag, and it is
-          therefore the one field in this type whose name rests on a hint rather than on a
-          controlled comparison. Settle it by turning Auto White Balance on and capturing.
+          writes this position as the negation of an auto-white-balance flag. That is a hint
+          and not a controlled comparison, and it is why the tag is inferred while every
+          other field in this type is confirmed: the position and the value are
+          capture-backed, the NAME is not. Settle it by turning Auto White Balance on and
+          capturing.
       - id: red
         type: u1
         doc: |
           [CONFIRMED_LIVE] red gain, at frame offset 5. Captured as 7 at the cool end of the
-          strip, then 13, 15, 16 from the app's Reset button, and 21 at the warm end.
+          strip, then 13 and 15, then 16 from the app's Reset button, and 21 at the warm
+          end. Only the 16 came from Reset. Four of the five are committed as fixtures; the
+          15 is the one position with no bytes under src/.
       - id: blue
         type: u1
         doc: |
