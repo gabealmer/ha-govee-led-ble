@@ -916,3 +916,39 @@
     rather than a coincidence of one value appearing twice.
   between: [h6199_effect_workshop_hey_there_retention, h6199_effect_workshop_hey_there_speed]
   differs_at: [18]
+
+- id: h6199_effect_body_kind_has_three_shapes
+  doc: >
+    The body kind takes three values across the corpus. It was an unnamed constant while only
+    scene bodies existed, and each new value arrived from a route nobody had driven: the DIY
+    editor gave 4, and applying a gallery scene whose class is 1 gave 1. Only two of the three
+    have a modelled content, which this aggregate keeps visible.
+  cases: h6199_effect_*
+  collect: kind
+  distinct_at_least: 3
+
+- id: h6199_workshop_brightness_speed_moves_alone
+  doc: >
+    Dragging only the Brightness Changing Speed slider moves one byte of the compiled block.
+  between: [h6199_effect_workshop_hey_there_speed, h6199_effect_workshop_bright_speed]
+  differs_at: [14]
+
+- id: h6199_workshop_retention_brightest_moves_alone
+  doc: >
+    Dragging only the Retention Time of the Brightest Light slider moves the byte beside it.
+  between: [h6199_effect_workshop_bright_speed, h6199_effect_workshop_ret_brightest]
+  differs_at: [15]
+
+- id: h6199_workshop_retention_darkest_moves_alone
+  doc: >
+    And its darkest-light counterpart moves the next byte again. Three sliders in a row moving
+    three consecutive bytes is what makes the run positional rather than three coincidences.
+  between: [h6199_effect_workshop_ret_brightest, h6199_effect_workshop_ret_darkest]
+  differs_at: [16]
+
+- id: h6199_workshop_brightness_scope_moves_alone
+  doc: >
+    The Brightness Scope range slider's lower handle moves a byte six positions earlier, so the
+    brightness controls are not one contiguous run and the gap between them is real.
+  between: [h6199_effect_workshop_ret_darkest, h6199_effect_workshop_scope_low]
+  differs_at: [12]

@@ -196,19 +196,17 @@ types:
           touched, reproduced the first write BYTE FOR BYTE and repeated the whole upload;
           had the byte meant what it was named, the second apply is where it changes.
 
-          NOTHING YET SHOWS THIS BYTE CARRIES INFORMATION OF ITS OWN. On every committed
-          fixture it is a function of the id: every class-1 id is below 10, every class-2 id
-          is 212 or above, and the two class-0 ids sit between. So "it names where the scene
-          came from" and "it is redundant with which block of the id space the scene came
-          from" fit the corpus equally, and the second is not a rival meaning so much as the
-          possibility that there is no independent field here at all. A reading was briefly
-          committed that six class-1 ids all appearing in the vendor app's twelve-entry
-          built-in list settled this. It does not: those six are also the six smallest ids in
-          the corpus, so the built-in list and the low band cannot be told apart by them.
+          IT IS NOT REDUNDANT WITH THE ID, which for a while it appeared to be: every class-1
+          id was below 10 and every class-2 id was 212 or above, so the byte was a function of
+          the id on every fixture then committed and could have carried nothing of its own.
+          Applying the gallery's "Sweet" settles that. Its id is 107 and its class is 1, and
+          the two AI effects at 70 and 140 carry class 0, so a smaller id and a larger id both
+          carry a DIFFERENT class than the one between them. No partition of the id range
+          produces that, and the byte therefore carries information the id does not.
 
-          THE CAPTURE THAT WOULD SETTLE IT moves this byte with the id HELD, or moves the id
-          within one band with this byte held. Neither exists, and no aggregate here asserts
-          one, because none can be written from the current corpus.
+          IT IS ALSO NOT WHETHER A DEFINITION WAS UPLOADED, which was the last residue of the
+          original reading still standing. Sweet is class 1 and is preceded by an 0xA3 upload,
+          where the six other class-1 scenes are preceded by none.
 
           Two further readings remain live, both from the vendor Android app and so hints
           rather than evidence. One builds this position from the low byte of a scene's music

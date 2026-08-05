@@ -58,15 +58,22 @@ seq:
       bodies then captured were scenes and it never moved. The note left on it said a body
       that is not a scene is what would separate a version from a body type. That capture
       was then taken, and it did.
+
+      A THIRD VALUE, 0x01, arrived later still, from applying the gallery's "Sweet". Its
+      content is not modelled: one body cannot be told from padding, and this grammar leaves
+      it raw rather than guessing a layout from a single sample. It is named in the enum so
+      that meeting one is recognised rather than mistaken for a corrupt scene body.
   - id: content
     type:
       switch-on: kind
       cases:
+        'body_kind::builtin_parameters': unmodelled_content
         'body_kind::scene': scene_content
         'body_kind::diy': diy_content
     doc: '[CONFIRMED_LIVE] the effect definition from body offset 3, in the shape the kind byte selects'
 enums:
   body_kind:
+    0x01: builtin_parameters
     0x02: scene
     0x04: diy
   effect_family:
@@ -79,6 +86,15 @@ enums:
     0x09: rainbow
     0x0a: crossing
 types:
+  unmodelled_content:
+    doc: |
+      A body shape with exactly one sample, held whole. Naming anything inside it would be
+      reading a layout off a single body, which is the mistake this grammar's other types were
+      each written to avoid; the bytes are kept so a second sample can be diffed against them.
+    seq:
+      - id: opaque_body
+        size-eos: true
+        doc: '[CONFIRMED_LIVE] the entire body after the kind byte, captured once and not varied'
   scene_content:
     seq:
       - id: block_count
@@ -192,11 +208,52 @@ types:
         type: u1
         doc: '[CONFIRMED_LIVE] the block length, not counting itself; captured between 26 and 47 across 30 blocks'
       - id: opaque_head
-        size: 13
+        size: 7
         doc: |
-          [CONFIRMED_LIVE] the first thirteen bytes of the block, still unnamed. Every one of
-          them moved between every pair of differently-authored effects, so nothing in here is
+          [CONFIRMED_LIVE] the first seven bytes of the block, still unnamed. Every one of them
+          moved between every pair of differently-authored effects, so nothing in here is
           isolated by a controlled comparison.
+      - id: brightness_scope_low
+        size: 1
+        if: len >= 15
+        doc: |
+          [CONFIRMED_LIVE] the bottom of the layer's "Brightness Scope" range, at block offset
+          7, scaled to 0..255. Captured 2026-08-05 by dragging that range slider's lower handle
+          alone: the byte went from 0 to 0x5b while the editor's label went from 0% to 35%,
+          and 91 of 255 is 35.7%.
+      - id: opaque_gap
+        size: 1
+        doc: |
+          [CONFIRMED_LIVE] one byte at block offset 8, unnamed. The Brightness Scope control
+          has an upper handle which would sit naturally here, but no capture moved it: the
+          drag was refused and the label stayed at 100%, so this byte has never varied.
+      - id: brightness_change_speed
+        size: 1
+        if: len >= 15
+        doc: |
+          [CONFIRMED_LIVE] the layer's "Brightness Changing Speed", at block offset 9, scaled to
+          0..255. Captured by dragging that slider alone: 0x80 at 50% became 0xed, and 237 of
+          255 is 93%.
+      - id: retention_time_brightest
+        size: 1
+        if: len >= 15
+        doc: |
+          [CONFIRMED_LIVE] the layer's "Retention Time of the Brightest Light", at block offset
+          10, written directly. Captured by dragging that slider alone, 20 becoming 154, which
+          is what the editor then displayed.
+      - id: retention_time_darkest
+        size: 1
+        if: len >= 15
+        doc: |
+          [CONFIRMED_LIVE] the layer's "Retention Time of the Darkest Light", at block offset
+          11, written directly. Captured the same way, 20 becoming 195.
+
+          THE TWO RETENTION TIMES SIT TOGETHER AND ARE WRITTEN DIRECTLY, while the two speeds
+          around them are scaled to 0..255. Both conventions appear inside one block, so
+          neither can be assumed for a byte that has not been driven.
+      - id: opaque_gap2
+        size: 1
+        doc: '[CONFIRMED_LIVE] one byte at block offset 12, unnamed and never seen to vary'
       - id: colour_change_speed
         size: 1
         if: len >= 15
