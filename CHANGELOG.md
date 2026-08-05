@@ -1,31 +1,201 @@
 # CHANGELOG
 
 
-## v4.4.0 (2026-08-01)
+## v4.5.0 (2026-08-05)
+
+### Bug Fixes
+
+- Ignore a .venv symlink, not just a .venv directory
+  ([`55e9d92`](https://github.com/teh-hippo/ha-govee-led-ble/commit/55e9d923a6c04ddce46ac3015eac08c98143a7f4))
+
+- **ble**: Key the capture source guard on the connection, not the address
+  ([`a691353`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a6913535bc2f62cd0825e606517e4ab9e833cecd))
+
+- **ble**: Stop analyse_capture reading a second connection as this one
+  ([`137de6f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/137de6f9a920f70f4f84a777b8cd19f2739a1efa))
+
+- **ble**: Stop the decoder printing secrets and dropping replies
+  ([`e9a221b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e9a221bc16548214afbf6fd8a28febcc5236150d))
+
+- **coordinator**: Only name a scene readback for a model that owns the name
+  ([`a4791aa`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a4791aa3045138d990ef8e474e970b693becae22))
+
+- **h6199**: Send this model's own scene frame, and offer only the scenes it holds
+  ([`0946b4a`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0946b4a3796faab54cb4dc13fd5e675fd1cb3e5b))
+
+- **harness**: Finish the teardown when the entry has not loaded yet
+  ([`ed1a973`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ed1a973882a3f02e81b15592d755ecbb8602399c))
+
+- **harness**: Rebuild a session's state from the device, not the shell
+  ([`b871433`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b8714332b0ef345a78dd53c14cb8c389a6ae4a60))
+
+- **harness**: Scroll the container the screen actually has
+  ([`eed1810`](https://github.com/teh-hippo/ha-govee-led-ble/commit/eed1810929c55fcf1c567b509a70af50dc7ba063))
+
+- **kaitai**: Count the H6199 effect blocks and drop the DIY editor plan
+  ([`27f4d0c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/27f4d0c587da95299d2ec8c7809e0afc7556a3e7))
+
+- **kaitai**: Name the scene byte for what it is, with three readings still open
+  ([`0d8623a`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0d8623a2dd78ba1ee05fed93daaf46488973bafb))
+
+- **kaitai**: Reject an aggregate threshold that cannot fail
+  ([`4831122`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4831122b3ad6db42d666a3f5cfbb1ee24620d6b4))
+
+- **kaitai**: Retire three H6199 write docs that later captures overtook
+  ([`883c1f8`](https://github.com/teh-hippo/ha-govee-led-ble/commit/883c1f83e4d84dc1bb2b32c7db21ca1ba6dd3f25))
+
+- **kaitai**: Retract an over-claimed reading and the numbers propping it up
+  ([`7536b48`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7536b486daea6ff0549fba13693b5c2876a0226b))
+
+- **kaitai**: The H6199 power read-back is inferred, not confirmed
+  ([`0439dc5`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0439dc5ccc4e5cebdc4828bde47b42b50fbc23fe))
+
+- **kaitai**: The scene byte reports provenance, not whether the light holds it
+  ([`8adf25f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8adf25f895721c7f6cd29b5dd5aaa87bff55e845))
+
+- **kaitai**: Two H6199 aggregates could not fail, and one had gone stale
+  ([`57b209a`](https://github.com/teh-hippo/ha-govee-led-ble/commit/57b209abf098f42b545aa26e3378f7a531d39551))
+
+- **mock**: Read a 33 a9 write on its selector instead of assuming white balance
+  ([`c3941a6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c3941a660b1247cf6d2e820d4ed8da79163baeb2))
+
+### Chores
+
+- **deps**: Lock file maintenance
+  ([`e7d5ed1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e7d5ed19e55d7d27d9b8be55ce3060715716eb2a))
+
+- **deps**: Lock file maintenance
+  ([`aaa22a5`](https://github.com/teh-hippo/ha-govee-led-ble/commit/aaa22a56576f632c36896c1edc14a5fc2a87fde7))
+
+- **kaitai**: Correct clock timezone fields
+  ([`7afbc91`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7afbc91b5ab5fd9d86c375d795b31afa2d3e741d))
+
+- **mise**: Own the zsign pin here rather than globally
+  ([`0817118`](https://github.com/teh-hippo/ha-govee-led-ble/commit/08171187c910a33a5a2f5768f212d74e9d7030f7))
+
+### Code Style
+
+- **tests**: Format the teardown test that went in unformatted
+  ([`decc12b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/decc12ba44ca06e32e2c806cbaaef19d668b32e3))
+
+### Documentation
+
+- A capture source is a connection, not an address
+  ([`de2af7b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/de2af7b215030a04f65573bb2c020543e18b2337))
+
+- **ble**: Capture with the DEVICE off IP, not just the phone
+  ([`9d6dd7d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9d6dd7dfbead29f856b4de08f026488d7b82dfab))
+
+- **harness**: Record the recipes found, and retire three wrong claims
+  ([`d91029a`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d91029a58d8a07e8c09fb0f9788ff8d26b486c3a))
+
+- **kaitai**: The Workshop slot takes community effects too
+  ([`ff3c0da`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ff3c0daecd524445cd28471bc57fa1aecb8c817f))
+
+### Features
+
+- **ble**: Document the Wi-Fi provisioning wire, and give it an encoder
+  ([`44ff5ce`](https://github.com/teh-hippo/ha-govee-led-ble/commit/44ff5ce1a1c977c78e9dc98392ea11d5ccad12f4))
+
+- **h6199**: Let the model paint segments, which its own app writes
+  ([`3429223`](https://github.com/teh-hippo/ha-govee-led-ble/commit/342922354f980d980147d0c5a23fbbd8a4308915))
+
+- **h6199**: Make white balance, blank screen and the video percentages settable
+  ([`1cd7390`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1cd7390d0de1beab2c8292d73ae5e89471259fea))
+
+- **harness**: Drive the app by name, and give the gesture loop a drag
+  ([`fd9feb3`](https://github.com/teh-hippo/ha-govee-led-ble/commit/fd9feb3d1e043b326870b366fee8ed21f753eb71))
+
+- **harness**: Own the phone natively on WSL, mount the DDI off USB/IP
+  ([`5878413`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5878413da11135b34110d561a27ec2ed63bb75e3))
+
+- **kaitai**: Add H6199 capture baseline
+  ([`47793db`](https://github.com/teh-hippo/ha-govee-led-ble/commit/47793db70d1955ec74268406f66ea6e192f944b1))
+
+- **kaitai**: Document H6199 status queries
+  ([`12058ea`](https://github.com/teh-hippo/ha-govee-led-ble/commit/12058eae24a2448abbadd19374fbffbdc6a90543))
+
+- **kaitai**: Four live fields come out of the music body's opaque tail
+  ([`d2a8ddd`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d2a8dddedfcfa0095ba50c4243b8c582d6f6cae6))
+
+- **kaitai**: Model the aa 05 reply, which this model does answer after all
+  ([`1d3c095`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1d3c095972583c8cde1a1f6d54e1e28bd54a83b7))
+
+- **kaitai**: Model the H6199 effect upload as the container it is
+  ([`b1263e6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b1263e67b0f2d910547346b031ee2f6d0950d405))
+
+- **kaitai**: Model the H6199 phone-microphone music stream from its own bytes
+  ([`3a50864`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3a50864331c94d0fa4242c146b5ddc4e995b9e61))
+
+- **kaitai**: Model the H6199 video sheet, and the registers behind it
+  ([`fecb9a3`](https://github.com/teh-hippo/ha-govee-led-ble/commit/fecb9a3d6a083c768b066748f624c210a02b5e97))
+
+- **kaitai**: Open the H6199 DIY effect body, and let it name the kind byte
+  ([`1a94450`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1a944502d375974b724dcc4ed7fb92bbffadb5b6))
+
+- **kaitai**: Open two fields inside the H6199 scene block
+  ([`693672b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/693672b8496ba92e81c85ffa1db1714be5e283d8))
+
+- **kaitai**: Settle the H6199 command register on captured bytes
+  ([`b27a653`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b27a6538bd73338cb56434ed18bdec2ccf9d4212))
+
+- **kaitai**: Settle the H6199 music sensitivity against the vendor app
+  ([`4ee3b37`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4ee3b378177275788f74a3f7d02e45581308bdbb))
+
+- **kaitai**: Settle three APK disagreements against the device
+  ([`d26e1de`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d26e1de24064c04e25957623e06d946a31aedd4f))
+
+- **kaitai**: The scene class tracks the vendor's built-in list
+  ([`aa135ef`](https://github.com/teh-hippo/ha-govee-led-ble/commit/aa135eff2365b636f37b26a7d2e42c1af6315ed3))
+
+- **kaitai**: The scene classifier is a real field, and a third body shape exists
+  ([`9a6fa1b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9a6fa1b476cd5587bd44f10c426c7d2133e52347))
+
+- **kaitai**: Workshop applies a user effect as a scene into a fixed slot
+  ([`24b1bc6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/24b1bc6377df086677cbd9290b68401a06644db0))
+
+- **protocol**: Encode the three H6199 registers the capture campaign proved
+  ([`d4f1538`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d4f1538b8c0ab46265512778fadef05ddb731453))
+
+### Refactoring
+
+- **kaitai**: Model the type-1 config byte instead of pinning it to 0x83
+  ([`faf1322`](https://github.com/teh-hippo/ha-govee-led-ble/commit/faf13226bc911789af5d22509e1f43cb7bb805f4))
+
+### Testing
+
+- Catch a real identifier however it was disguised
+  ([`f60aadf`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f60aadf0f3a4c84b3412cf849f0aa232451efaf0))
+
+- **kaitai**: Fixture the Effects Lab scene applies, and give the id a third high byte
+  ([`2e05868`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2e058689f616059ec67e1b81105fecffbefa86ff))
+
+
+## v4.4.0 (2026-08-02)
 
 ### Bug Fixes
 
 - **tools**: Refuse to send to a device nobody named
-  ([`d188661`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d18866122f5aba81d81b444e81dab2a44915f238))
+  ([`5a0256b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5a0256b8d50ad842e615cea5e684f0d2dbd56800))
 
 ### Features
 
 - **kaitai**: Settle Fountain piece_num on the device, promoting it to confirmed
-  ([`e8b2920`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e8b29207b58035c5b6227385b062e33d61c430c2))
+  ([`2253af7`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2253af7bd54d25b769207f45c879870913e0da29))
 
 
-## v4.3.2 (2026-08-01)
+## v4.3.2 (2026-08-02)
 
 ### Bug Fixes
 
 - **kaitai**: Correct the type-1 palette_count values and describe the config byte
-  ([`98c8e23`](https://github.com/teh-hippo/ha-govee-led-ble/commit/98c8e231eb604fd290d20f95317e49792cf0728c))
+  ([`d6f609b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d6f609b26687fa6b61371187ab4aceccb23b1307))
 
 - **kaitai**: Read the Fountain tail as segment arithmetic, not a direction pair
-  ([`06e8cba`](https://github.com/teh-hippo/ha-govee-led-ble/commit/06e8cba4f529399263ba48d3961797bc11df0bde))
+  ([`f986e9b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f986e9bc2ffdcdcc108ddaf63d906e8cb8917e0f))
 
 - **kaitai**: Record the clock offset byte as a timezone, not a constant
-  ([`13421b1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/13421b12feab3fca883263991adf6134de3aa937))
+  ([`09762ac`](https://github.com/teh-hippo/ha-govee-led-ble/commit/09762acc04b9d3e43c6d483fc82df6301996b686))
 
 ### Chores
 
@@ -35,12 +205,12 @@
 ### Documentation
 
 - **kaitai**: Name the vendor formats and warn about the version namespaces
-  ([`8b4b1de`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8b4b1dedffac3a0301a2dca3087558fb61f46063))
+  ([`1bfa613`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1bfa613348427f12fc3f1938410063d589baf3f3))
 
 ### Testing
 
 - Rename the terminator-form parity test to what it actually asserts
-  ([`c2f4804`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c2f48048886a315c78dc2e082eb7c66b6b5eb175))
+  ([`59b06e0`](https://github.com/teh-hippo/ha-govee-led-ble/commit/59b06e06f6ad728b58c1fb57d094afbf22583a79))
 
 
 ## v4.3.1 (2026-08-01)
