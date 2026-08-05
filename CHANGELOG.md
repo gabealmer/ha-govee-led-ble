@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v5.0.1 (2026-08-05)
+
+### Bug Fixes
+
+- Preserve enabled edge controls on upgrade
+  ([`5b22514`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5b2251418901f63280d4893f0cc1cb419a02a80e))
+
+
 ## v5.0.0 (2026-08-05)
 
 ### Bug Fixes
