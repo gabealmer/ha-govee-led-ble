@@ -57,6 +57,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     active_custom_id: str | None
     diy_slot: int | None
     color_mode: ParsedMode | None
+    scene_speed_scene_code: int | None
+    scene_speed_index: int | None
+    _control_lock: asyncio.Lock
     _owned_diy_effect_id: str | None
     _pre_mode_snapshot: PreModeSnapshot
     custom_effects: dict[str, CustomEffect]
@@ -72,6 +75,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     if TYPE_CHECKING:
 
         async def send_command(self, packet: bytes) -> None: ...
+
+        async def refresh_state(self, *, expected_effect: str | None = None) -> bool: ...
 
         @property
         def scene_name_set(self) -> frozenset[str]: ...

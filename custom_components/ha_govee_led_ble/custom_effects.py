@@ -265,7 +265,7 @@ def _flat_from_dict(data: dict[str, Any]) -> FlatContent:
 def _combo_from_dict(data: dict[str, Any]) -> ComboContent:
     return ComboContent(
         variant=int(data.get("variant", 0x00)),
-        speed=int(data.get("speed", 0x32)),
+        speed=int(data.get("speed", 0x33)),
         palette=tuple(_rgb_from_json(s) for s in data.get("palette", ())),
         effects=tuple((int(family), int(variant)) for family, variant in data.get("effects", ())),
     )

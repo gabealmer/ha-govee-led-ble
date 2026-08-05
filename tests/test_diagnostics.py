@@ -52,6 +52,7 @@ async def test_redacts_unique_id(mock_h6199_coordinator):
     assert diag["entry"]["entry_id"] == entry.entry_id
     assert diag["entry"]["data"] == {CONF_MODEL: "H6199"}
     assert diag["entry"]["options"] == {"experimental": {"timers": True}}
+    assert diag["coordinator"]["address"] == "**REDACTED**"
 
 
 async def test_last_rx_aa05_found(mock_h6199_coordinator):
@@ -63,7 +64,7 @@ async def test_last_rx_aa05_found(mock_h6199_coordinator):
     ]
     diag = await _run(_prep(mock_h6199_coordinator, packet_log=log))
     assert diag["coordinator"]["last_rx_aa05_raw"] == "aa05beef"
-    assert diag["coordinator"]["packet_log"] is log
+    assert diag["coordinator"]["packet_log"] == log
 
 
 async def test_last_rx_aa05_picks_most_recent(mock_h6199_coordinator):
@@ -125,11 +126,19 @@ async def test_surfaces_core_state(mock_h6199_coordinator):
     coord._expected_state = {"brightness_pct": (55, 0.0)}
     diag = await _run(coord)
     coord = diag["coordinator"]
-    assert coord["address"] == "11:22:33:44:55:66"
+    assert coord["address"] == "**REDACTED**"
     assert coord["model"] == "H6199"
     assert coord["is_on"] is True
     assert coord["effect"] == "video: movie"
     assert coord["expected_brightness_pct"] == 55
+
+
+async def test_full_diagnostics_contains_no_ble_address(mock_h6199_coordinator):
+    coord = _prep(mock_h6199_coordinator)
+    diag = await _run(coord)
+    blob = str(diag)
+    assert "11:22:33:44:55:66" not in blob
+    assert "AA:BB:CC:DD:EE:FF" not in blob
 
 
 async def test_unknown_white_balance_is_not_reported_as_neutral(mock_h6199_coordinator):

@@ -209,6 +209,8 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.diy_slot: int | None = None
         self.color_mode: ParsedMode | None = None
         self._scene_code: int | None = None
+        self.scene_speed_scene_code: int | None = None
+        self.scene_speed_index: int | None = None
         self._owned_diy_effect_id: str | None = None
         self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
         self.custom_effects: dict[str, CustomEffect] = {}
@@ -553,6 +555,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 self.music_mode, self.video_mode, self.active_custom_id = "off", "off", None
                 self.diy_slot = None
                 self._owned_diy_effect_id = None
+                self._sync_scene_speed(scene_effect)
                 observed.append("effect")
         elif parsed.mode is ParsedMode.COLOUR:
             known_custom = active_custom is not None and isinstance(active_custom.content, SegmentContent)
@@ -628,6 +631,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             elif domain == BRIGHTNESS_PACKET_TYPE:
                 if self._accept_expected("brightness_pct", payload[0]):
                     self.brightness_pct = payload[0]
+                    observed = ("brightness_pct",)
             elif domain == COLOR_PACKET_TYPE:
                 observed = self._apply_color_mode_payload(payload)
             elif domain == DISPLAY_SETTING_PACKET_TYPE:
@@ -746,6 +750,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         *,
         expected_effect: str | None = None,
         expected_on: bool | None = None,
+        expected_brightness: int | None = None,
         expected_music_mode: str | None = None,
         expected_music_sensitivity: int | None = None,
         expected_music_calm: bool | None = None,
@@ -771,6 +776,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             for field, value in (
                 ("effect", expected_effect),
                 ("is_on", expected_on),
+                ("brightness_pct", expected_brightness),
                 ("music_mode", expected_music_mode),
                 ("music_sensitivity", expected_music_sensitivity),
                 ("music_calm", expected_music_calm),
@@ -817,16 +823,27 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
         deadline = time.monotonic() + timeout
         query_power = expected_on is not None
+        query_brightness = expected_brightness is not None
         query_color = expected_music_auto_color or any(value is not None for value in color_expectations)
         query_white_balance = expected_white_balance is not None
         query_blank_screen = expected_blank_screen is not None
         query_relative_brightness = expected_relative_brightness is not None
-        if not any((query_power, query_color, query_white_balance, query_blank_screen, query_relative_brightness)):
+        if not any(
+            (
+                query_power,
+                query_brightness,
+                query_color,
+                query_white_balance,
+                query_blank_screen,
+                query_relative_brightness,
+            )
+        ):
             query_power = query_color = True
         queried_domains = {
             domain
             for domain, enabled in (
                 (POWER_PACKET_TYPE, query_power),
+                (BRIGHTNESS_PACKET_TYPE, query_brightness),
                 (COLOR_PACKET_TYPE, query_color),
                 (DISPLAY_SETTING_PACKET_TYPE, query_white_balance or query_blank_screen),
                 (RELATIVE_BRIGHTNESS_PACKET_TYPE, query_relative_brightness),
@@ -835,15 +852,13 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         }
         domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in queried_domains}
         while time.monotonic() < deadline:
-            # Avoid querying brightness as part of verification to reduce stale/out-of-order
-            # updates overriding optimistic writes.
             async with self._lock:
                 if self._client is not client:
                     return False
                 if query_white_balance or query_blank_screen or query_relative_brightness:
                     ok = await self._send_state_queries(
                         query_power=query_power,
-                        query_brightness=False,
+                        query_brightness=query_brightness,
                         query_color_mode=query_color,
                         query_white_balance=query_white_balance,
                         query_blank_screen=query_blank_screen,
@@ -851,7 +866,9 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                     )
                 else:
                     ok = await self._send_state_queries(
-                        query_power=query_power, query_brightness=False, query_color_mode=query_color
+                        query_power=query_power,
+                        query_brightness=query_brightness,
+                        query_color_mode=query_color,
                     )
             if not ok:
                 await self._disconnect_if_current(client)
@@ -944,6 +961,8 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         if not self.profile.supports_segments:
             raise ValueError(f"{self.model} does not support per-segment control")
         resolved: list[SegmentColorGroup] = [(list(segments), rgb) for segments, rgb in groups]
+        if not resolved or any(not segments for segments, _rgb in resolved):
+            raise ValueError("at least one non-empty segment group is required")
         snapshot = list(self.segment_colors)
         try:
             for segments, rgb in resolved:

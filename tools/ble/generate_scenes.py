@@ -51,15 +51,20 @@ def _speed_config(scene: dict[str, Any]) -> list[Any] | None:
     default_index = indices.pop()
     record_count = len(scene_record_spans(base64.b64decode(scene["param"])))
     pages: list[list[Any]] = []
+    option_counts: set[int] = set()
     for entry in entries:
         page = int(entry["page"])
         if not 0 <= page < record_count:
             raise ValueError(f"{label}: page {page} has no record (body holds {record_count})")
         options = [entry.get("moveIn", []), entry.get("moveAll", [])]
         for values in options:
-            if values and not 0 <= default_index < len(values):
-                raise ValueError(f"{label}: page {page} default index {default_index} outside {values}")
+            if values:
+                option_counts.add(len(values))
+                if not 0 <= default_index < len(values):
+                    raise ValueError(f"{label}: page {page} default index {default_index} outside {values}")
         pages.append([page, *options])
+    if len(option_counts) != 1:
+        raise ValueError(f"{label}: pages disagree on option count {sorted(option_counts)}")
     return [default_index, pages]
 
 

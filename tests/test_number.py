@@ -15,6 +15,8 @@ from custom_components.ha_govee_led_ble.h6199_controls import (
     _supports_number_param,
     async_setup_number_entry,
 )
+from custom_components.ha_govee_led_ble.number import SceneSpeedNumber
+from custom_components.ha_govee_led_ble.number import async_setup_entry as async_setup_number_platform
 from custom_components.ha_govee_led_ble.protocol import (
     WHITE_BALANCE_RESET,
     build_relative_brightness,
@@ -22,6 +24,7 @@ from custom_components.ha_govee_led_ble.protocol import (
     build_video_mode,
     build_video_white_balance,
 )
+from custom_components.ha_govee_led_ble.scenes import SCENES
 
 
 def test_native_value_property(mock_h6199_coordinator):
@@ -102,6 +105,56 @@ async def test_setup_number_entry_h617a(mock_coordinator):
         "music_daynight_segments",
         "music_daynight_speed",
     ]
+
+
+async def test_scene_speed_number_tracks_the_active_scene(mock_coordinator):
+    c = mock_coordinator
+    scene = SCENES["glacier"]
+    assert scene.speed is not None
+    c.scene_speed_context = ("glacier", scene)
+    c.scene_speed_scene_code = scene.code
+    c.scene_speed_index = scene.speed.default_index
+    entity = SceneSpeedNumber(c)
+
+    assert entity.entity_registry_enabled_default is True
+    assert entity.native_min_value == 1
+    assert entity.native_max_value == scene.speed.option_count == 3
+    assert entity.native_value == scene.speed.default_index + 1 == 3
+    assert entity.extra_state_attributes == {"scene_code": scene.code}
+
+    await entity.async_set_native_value(1)
+    c.async_set_scene_speed.assert_awaited_once_with(0)
+
+
+async def test_scene_speed_restore_is_scoped_to_the_active_scene(mock_coordinator):
+    c = mock_coordinator
+    scene = SCENES["glacier"]
+    assert scene.speed is not None
+    c.scene_speed_context = ("glacier", scene)
+    c.scene_speed_scene_code = scene.code
+    c.scene_speed_index = scene.speed.default_index
+    entity = SceneSpeedNumber(c)
+    entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="2", attributes={"scene_code": scene.code}))
+
+    await entity._async_restore_state()
+
+    c._sync_scene_speed.assert_called_once_with("glacier", speed_index=1)
+    c.async_set_updated_data.assert_called_once_with(c.data)
+
+    c._sync_scene_speed.reset_mock()
+    entity.async_get_last_state = AsyncMock(
+        return_value=MagicMock(state="1", attributes={"scene_code": SCENES["christmas"].code})
+    )
+    await entity._async_restore_state()
+    c._sync_scene_speed.assert_not_called()
+
+
+async def test_number_platform_adds_scene_speed_only_for_h617a(mock_coordinator, mock_h6199_coordinator):
+    for coordinator, expected in ((mock_coordinator, True), (mock_h6199_coordinator, False)):
+        add = MagicMock()
+        await async_setup_number_platform(MagicMock(), MagicMock(runtime_data=coordinator), add)
+        entities = [entity for call in add.call_args_list for entity in call.args[0]]
+        assert any(isinstance(entity, SceneSpeedNumber) for entity in entities) is expected
 
 
 async def test_setup_number_entry_h6199(mock_h6199_coordinator):

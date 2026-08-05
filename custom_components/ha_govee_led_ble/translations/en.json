@@ -15,6 +15,9 @@
         }
       }
     },
+    "error": {
+      "invalid_address": "Enter a valid 12-digit BLE MAC address."
+    },
     "abort": {
       "already_configured": "Device is already configured",
       "not_supported": "This device is not a supported Govee model"
@@ -27,6 +30,9 @@
       }
     },
     "number": {
+      "scene_speed": {
+        "name": "Scene speed"
+      },
       "music_sensitivity": {
         "name": "Music sensitivity"
       },
@@ -194,6 +200,9 @@
     "invalid_effect_content": {
       "message": "The effect content is malformed."
     },
+    "invalid_segments": {
+      "message": "Select at least one valid segment."
+    },
     "too_many_segment_brightness": {
       "message": "Too many segment brightness values were provided."
     },
@@ -328,8 +337,8 @@
           "description": "Microphone sensitivity (0-100)."
         },
         "calm": {
-          "name": "Calm rhythm",
-          "description": "Enable calm rhythm variant (rhythm mode only)."
+          "name": "Calm style",
+          "description": "Enable the Calm variant for Rhythm, Bloom, or Shiny. Only Rhythm currently has read-back verification; Bloom and Shiny are optimistic."
         },
         "color": {
           "name": "Color",

@@ -11,6 +11,7 @@ from homeassistant.const import CONF_ADDRESS
 from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES, resolve_model
 
 MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H\w+)")
+_MANUAL_ADDRESS_PATTERN = re.compile(r"^[0-9A-F]{12}$")
 
 
 def _extract_model(name: str) -> str | None:
@@ -19,6 +20,13 @@ def _extract_model(name: str) -> str | None:
 
 def _normalize_address(address: str) -> str:
     return address.strip().upper()
+
+
+def _normalize_manual_address(address: str) -> str:
+    compact = address.strip().upper().replace(":", "").replace("-", "")
+    if not _MANUAL_ADDRESS_PATTERN.fullmatch(compact):
+        raise ValueError("invalid BLE address")
+    return ":".join(compact[index : index + 2] for index in range(0, 12, 2))
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -46,11 +54,18 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            await self.async_set_unique_id(_normalize_address(user_input[CONF_ADDRESS]))
+            try:
+                address = _normalize_manual_address(user_input[CONF_ADDRESS])
+            except ValueError:
+                return self._show_user_form(errors={CONF_ADDRESS: "invalid_address"})
+            await self.async_set_unique_id(address)
             self._abort_if_unique_id_configured()
             return self.async_create_entry(
                 title=f"Govee {user_input[CONF_MODEL]}", data={CONF_MODEL: user_input[CONF_MODEL]}
             )
+        return self._show_user_form()
+
+    def _show_user_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:
         models = list(MODEL_PROFILES.keys())
         return self.async_show_form(
             step_id="user",
@@ -60,4 +75,5 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_MODEL): vol.In(models),
                 }
             ),
+            errors=errors,
         )

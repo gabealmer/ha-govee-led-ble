@@ -83,6 +83,22 @@ async def test_user_step_creates_entry(hass: HomeAssistant):
     assert r["type"] == FlowResultType.CREATE_ENTRY and r["data"][CONF_MODEL] == "H617A"
 
 
+@pytest.mark.parametrize("address", ["aa-bb-cc-dd-ee-ff", "aabbccddeeff"])
+async def test_user_step_normalizes_common_manual_address_formats(hass: HomeAssistant, address):
+    r = await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: address, CONF_MODEL: "H617A"})
+    assert r["type"] == FlowResultType.CREATE_ENTRY
+    assert hass.config_entries.async_entries(DOMAIN)[0].unique_id == "AA:BB:CC:DD:EE:FF"
+
+
+@pytest.mark.parametrize("address", ["", "AA:BB:CC", "GG:BB:CC:DD:EE:FF", "not-an-address"])
+async def test_user_step_rejects_invalid_manual_address(hass: HomeAssistant, address):
+    r = await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: address, CONF_MODEL: "H617A"})
+    assert r["type"] == FlowResultType.FORM
+    assert r["step_id"] == "user"
+    assert r["errors"] == {CONF_ADDRESS: "invalid_address"}
+    assert not hass.config_entries.async_entries(DOMAIN)
+
+
 async def test_user_step_requires_explicit_model(hass: HomeAssistant):
     r = await _init(hass, config_entries.SOURCE_USER)
     with pytest.raises(InvalidData):

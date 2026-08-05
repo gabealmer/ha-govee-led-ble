@@ -13,9 +13,10 @@ from .protocol import (
     build_music_mode_with_color,
     build_music_params_a3,
     build_power,
+    build_scene_multi,
     build_white_brightness,
 )
-from .scenes import get_scene_names
+from .scenes import SCENES, SceneEntry, get_scene_names
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,71 @@ class _ActiveModeMixin(_CoordinatorBase):
             return "video"
         return "colour"
 
+    @property
+    def scene_speed_context(self) -> tuple[str, SceneEntry] | None:
+        """Return the active H617A scene and its complete catalogue Speed metadata."""
+        if not self.profile.supports_scene_speed or self.active_mode != "scene" or self.effect is None:
+            return None
+        scene = SCENES.get(self.effect)
+        if scene is None or scene.speed is None:
+            return None
+        _ = scene.speed.option_count
+        return self.effect, scene
+
+    def _sync_scene_speed(self, scene_name: str | None, *, speed_index: int | None = None) -> None:
+        """Tie the optimistic speed position to one scene, defaulting on a scene change."""
+        scene = SCENES.get(scene_name) if self.profile.supports_scene_speed and scene_name is not None else None
+        if scene is None or scene.speed is None:
+            self.scene_speed_scene_code = self.scene_speed_index = None
+            return
+        count = scene.speed.option_count
+        if (
+            speed_index is None
+            and self.scene_speed_scene_code == scene.code
+            and self.scene_speed_index is not None
+            and 0 <= self.scene_speed_index < count
+        ):
+            return
+        resolved = scene.speed.default_index if speed_index is None else speed_index
+        if not 0 <= resolved < count:
+            raise ValueError(f"scene speed index {resolved} outside 0..{count - 1}")
+        self.scene_speed_scene_code, self.scene_speed_index = scene.code, resolved
+
+    async def async_set_scene_speed(self, index: int) -> None:
+        """Re-upload the active scene at one documented Speed position.
+
+        The status reply confirms scene identity but does not carry the Speed position, so the
+        resulting index remains optimistic even after the scene check succeeds.
+        """
+        async with self._control_lock:
+            context = self.scene_speed_context
+            if context is None:
+                raise ValueError("The active scene does not expose a documented Speed control")
+            scene_name, scene = context
+            assert scene.speed is not None
+            if not 0 <= index < scene.speed.option_count:
+                raise ValueError(f"scene speed index {index} outside 0..{scene.speed.option_count - 1}")
+            if self.scene_speed_scene_code == scene.code and self.scene_speed_index == index:
+                return
+
+            async def apply() -> None:
+                for packet in build_scene_multi(
+                    scene.param,
+                    scene.code,
+                    scene.scene_type,
+                    scene.speed,
+                    speed_index=index,
+                ):
+                    await self.send_command(packet)
+
+            await apply()
+            if self.profile.state_readable and not await self.refresh_state(expected_effect=scene_name):
+                await apply()
+                if not await self.refresh_state(expected_effect=scene_name):
+                    raise RuntimeError(f"Failed to confirm scene {scene_name!r} after changing Speed")
+            self._sync_scene_speed(scene_name, speed_index=index)
+            self.async_set_updated_data(self.data or {})
+
     def _capture_static_state(self) -> PreModeSnapshot:
         if self.color_temp_kelvin is not None:
             return PreModeSnapshot(kind="color_temp", kelvin=self.color_temp_kelvin)
@@ -148,7 +214,7 @@ class _ActiveModeMixin(_CoordinatorBase):
 
     @property
     def music_style(self) -> str:
-        """Dynamic/Calm view of the Rhythm STYLE byte (§2.1), backed by the ``music_calm`` bool."""
+        """Dynamic/Calm view for Rhythm, Bloom and Shiny, backed by ``music_calm``."""
         return "calm" if self.music_calm else "dynamic"
 
     @music_style.setter

@@ -96,6 +96,7 @@ class _GoveeLightOwner:
             *,
             expected_effect: str | None = None,
             expected_on: bool | None = None,
+            expected_brightness: int | None = None,
             expected_music_mode: str | None = None,
             expected_music_sensitivity: int | None = None,
             expected_music_calm: bool | None = None,
@@ -121,6 +122,14 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
 
     # fmt: off
     async def async_set_video_mode(self, mode: str, saturation: int = 100,
+            capture_region: str | None = None, full_screen: bool = True,
+            sound_effects: bool = False, sound_effects_softness: int | None = None) -> None:
+        async with self.coordinator._control_lock:
+            await self._async_set_video_mode(
+                mode, saturation, capture_region, full_screen, sound_effects, sound_effects_softness
+            )
+
+    async def _async_set_video_mode(self, mode: str, saturation: int = 100,
             capture_region: str | None = None, full_screen: bool = True,
             sound_effects: bool = False, sound_effects_softness: int | None = None) -> None:
         # fmt: on
@@ -168,6 +177,11 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._notify_state_changed()
 
     async def async_set_music_mode(self, mode: str, sensitivity: int = 99,
+            color: tuple[int, int, int] | None = None, calm: bool | None = None) -> None:
+        async with self.coordinator._control_lock:
+            await self._async_set_music_mode(mode, sensitivity, color, calm)
+
+    async def _async_set_music_mode(self, mode: str, sensitivity: int = 99,
             color: tuple[int, int, int] | None = None, calm: bool | None = None) -> None:
         if mode in MUSIC_MODE_ALIASES:
             canonical = MUSIC_MODE_ALIASES[mode]
@@ -217,6 +231,10 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._notify_state_changed()
 
     async def async_set_white_brightness(self, brightness: int = 100) -> None:
+        async with self.coordinator._control_lock:
+            await self._async_set_white_brightness(brightness)
+
+    async def _async_set_white_brightness(self, brightness: int = 100) -> None:
         self._require_support("set_white_brightness", supported=self.coordinator.profile.supports_white_brightness)
         with self._rollback():
             async def apply() -> None:
@@ -236,19 +254,39 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
-        self._require_support("paint_segments", supported=self.coordinator.profile.supports_segments)
-        resolved: list[SegmentColorGroup] = [(group["segments"], group["rgb_color"]) for group in groups]
-        await self.coordinator.async_paint_segments(resolved)
+        async with self.coordinator._control_lock:
+            self._require_support("paint_segments", supported=self.coordinator.profile.supports_segments)
+            if not groups or any(not group.get("segments") for group in groups):
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="invalid_segments",
+                )
+            resolved: list[SegmentColorGroup] = [(group["segments"], group["rgb_color"]) for group in groups]
+            try:
+                await self.coordinator.async_paint_segments(resolved)
+            except (TypeError, ValueError) as err:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="invalid_segments",
+                ) from err
 
     async def async_set_segment_color(self, segments: list[int], color: tuple[int, int, int]) -> None:
         group: dict[str, Any] = {"segments": segments, "rgb_color": color}
         await self.async_paint_segments([group])
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
-        self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
-        await self.coordinator.send_command(build_segment_brightness(segments, brightness))
-        self.coordinator._enter_static_mode()
-        self._notify_state_changed()
+        async with self.coordinator._control_lock:
+            self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
+            try:
+                packet = build_segment_brightness(segments, brightness)
+            except (TypeError, ValueError) as err:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="invalid_segments",
+                ) from err
+            await self.coordinator.send_command(packet)
+            self.coordinator._enter_static_mode()
+            self._notify_state_changed()
 
     async def async_save_effect(
         self, name: str, content: dict[str, Any] | None = None, capture_current: bool = False

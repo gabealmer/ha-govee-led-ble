@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import replace
 from types import SimpleNamespace
@@ -84,7 +85,7 @@ async def test_turn_on_variants(light, mock_coordinator):
     await light.async_turn_on(brightness=128)
     assert co.send_command.call_count == 1
     assert co.send_command.call_args_list[0].args[0] == proto.build_brightness(50)
-    co.refresh_state.assert_not_awaited()
+    assert co.refresh_state.await_args.kwargs["expected_brightness"] == 50
     c = await _on(rgb_color=(255, 0, 128))
     assert len(c) == 2 and c[1].args[0] == proto.build_color_rgb(255, 0, 128) and co.rgb_color == (255, 0, 128)
     c = await _on(color_temp_kelvin=4000)
@@ -159,6 +160,21 @@ async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
     assert co.effect == "rainbow" and co.active_custom_id is None
     assert co.diy_slot is None
     assert co.music_mode == "off" and co.video_mode == "off"
+
+
+async def test_turn_on_scene_reuses_only_that_scenes_speed(light, mock_coordinator):
+    co = mock_coordinator
+    scene = SCENES["glacier"]
+    assert scene.speed is not None
+    co.is_on = True
+    co.scene_speed_scene_code, co.scene_speed_index = scene.code, 0
+
+    await light.async_turn_on(effect="glacier")
+
+    assert [call.args[0] for call in co.send_command.await_args_list] == proto.build_scene_multi(
+        scene.param, scene.code, scene.scene_type, scene.speed, speed_index=0
+    )
+    co._sync_scene_speed.assert_called_once_with("glacier", speed_index=0)
 
 
 async def test_h6199_scene_uses_its_own_activation_frame(h6199_light, mock_h6199_coordinator):
@@ -568,6 +584,22 @@ async def test_paint_segments_calls_coordinator(light, mock_coordinator):
     mock_coordinator.async_paint_segments.assert_awaited_once_with([([1, 2, 3], (255, 0, 0)), ([4, 5], (0, 255, 0))])
 
 
+@pytest.mark.parametrize(
+    "method,kwargs",
+    [
+        ("async_paint_segments", {"groups": []}),
+        ("async_paint_segments", {"groups": [{"segments": [], "rgb_color": (1, 2, 3)}]}),
+        ("async_set_segment_color", {"segments": [], "color": (1, 2, 3)}),
+        ("async_set_segment_brightness", {"segments": [], "brightness": 50}),
+    ],
+)
+async def test_segment_services_reject_empty_selections(light, mock_coordinator, method, kwargs):
+    with pytest.raises(ServiceValidationError) as exc:
+        await getattr(light, method)(**kwargs)
+    assert exc.value.translation_key == "invalid_segments"
+    mock_coordinator.send_command.assert_not_awaited()
+
+
 async def test_set_segment_color_delegates(light, mock_coordinator):
     await light.async_set_segment_color(segments=[7, 8], color=(1, 2, 3))
     mock_coordinator.async_paint_segments.assert_awaited_once_with([([7, 8], (1, 2, 3))])
@@ -689,6 +721,7 @@ def test_coerce_segment_colors_variants():
 
 async def test_async_added_to_hass_triggers_restore(light):
     light._async_restore_effect = AsyncMock()
+    light._async_restore_static_color = AsyncMock()
     light._async_restore_segments = AsyncMock()
     with patch(
         "custom_components.ha_govee_led_ble.entity.GoveeBLEEntity.async_added_to_hass",
@@ -697,7 +730,89 @@ async def test_async_added_to_hass_triggers_restore(light):
         await light.async_added_to_hass()
     super_added.assert_awaited_once()
     light._async_restore_effect.assert_awaited_once()
+    light._async_restore_static_color.assert_awaited_once()
     light._async_restore_segments.assert_awaited_once()
+
+
+async def test_restore_static_rgb_as_last_known_presentation(light, mock_coordinator):
+    mock_coordinator.color_mode = proto.ParsedMode.COLOUR
+    light.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            attributes={
+                "color_mode": ColorMode.RGB,
+                "rgb_color": [12, 34, 56],
+                "segment_colors": [[12, 34, 56]] * 15,
+            }
+        )
+    )
+
+    await light._async_restore_static_color()
+    await light._async_restore_segments()
+
+    assert mock_coordinator.rgb_color == (12, 34, 56)
+    assert mock_coordinator.segment_colors == [(12, 34, 56)] * 15
+    assert light._attr_color_mode is ColorMode.RGB
+    mock_coordinator.send_command.assert_not_awaited()
+
+
+async def test_restore_static_colour_temperature_as_last_known_presentation(light, mock_coordinator):
+    mock_coordinator.color_mode = proto.ParsedMode.COLOUR
+    light.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            attributes={
+                "color_mode": ColorMode.COLOR_TEMP,
+                "color_temp_kelvin": 4200,
+            }
+        )
+    )
+
+    await light._async_restore_static_color()
+
+    assert mock_coordinator.color_temp_kelvin == 4200
+    assert light._attr_color_mode is ColorMode.COLOR_TEMP
+    mock_coordinator.send_command.assert_not_awaited()
+
+
+async def test_restore_static_colour_never_overwrites_a_live_effect(light, mock_coordinator):
+    mock_coordinator.color_mode = proto.ParsedMode.SCENE
+    mock_coordinator.effect = "rainbow"
+    light.async_get_last_state = AsyncMock()
+
+    await light._async_restore_static_color()
+
+    light.async_get_last_state.assert_not_called()
+    assert mock_coordinator.effect == "rainbow"
+
+
+async def test_control_lock_keeps_failed_rollback_before_newer_colour(light, mock_coordinator):
+    mock_coordinator.is_on = True
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    sent: list[bytes] = []
+    red = proto.build_color_rgb(255, 0, 0)
+    blue = proto.build_color_rgb(0, 0, 255)
+
+    async def send(packet: bytes) -> None:
+        sent.append(packet)
+        if packet == red:
+            first_started.set()
+            await release_first.wait()
+            raise BleakError("failed red write")
+
+    mock_coordinator.send_command = AsyncMock(side_effect=send)
+    first = asyncio.create_task(light.async_turn_on(rgb_color=(255, 0, 0)))
+    await first_started.wait()
+    second = asyncio.create_task(light.async_turn_on(rgb_color=(0, 0, 255)))
+    await asyncio.sleep(0)
+    assert sent == [red]
+
+    release_first.set()
+    with pytest.raises(BleakError):
+        await first
+    await second
+
+    assert sent == [red, blue]
+    assert mock_coordinator.rgb_color == (0, 0, 255)
 
 
 async def test_restore_custom_sets_active_custom_id(light, mock_coordinator):

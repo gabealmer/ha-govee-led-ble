@@ -10,6 +10,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components.light import (  # type: ignore[attr-defined]
     ATTR_BRIGHTNESS,
+    ATTR_COLOR_MODE,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_EFFECT,
     ATTR_RGB_COLOR,
@@ -74,7 +75,7 @@ _MUSIC_EFFECTS: dict[str, str] = {f"Music: {name.title()}": name.replace(" ", "_
 _DEFAULT_SEGMENT_COLOR: tuple[int, int, int] = (255, 255, 255)
 
 
-def _scene_packets(profile: ModelProfile, scene: SceneEntry) -> list[bytes]:
+def _scene_packets(profile: ModelProfile, scene: SceneEntry, *, speed_index: int | None = None) -> list[bytes]:
     """Pick the activation the model's own app sends, which is not the same frame on both.
 
     The H6199 write carries a third byte saying whether the light already holds the scene, and
@@ -83,7 +84,21 @@ def _scene_packets(profile: ModelProfile, scene: SceneEntry) -> list[bytes]:
     """
     if profile.scene_source == "builtin":
         return build_h6199_scene(scene.param, scene.code, scene.scene_type)
-    return build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed)
+    return build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed, speed_index=speed_index)
+
+
+def _coerce_rgb(raw: Any) -> tuple[int, int, int] | None:
+    if not isinstance(raw, list | tuple) or len(raw) != 3:
+        return None
+    try:
+        red, green, blue = (int(channel) for channel in raw)
+    except TypeError, ValueError:
+        return None
+    return (
+        max(0, min(255, red)),
+        max(0, min(255, green)),
+        max(0, min(255, blue)),
+    )
 
 
 def _coerce_segment_colors(raw: Any, count: int) -> list[tuple[int, int, int]] | None:
@@ -120,6 +135,7 @@ async def async_setup_entry(
     _pct = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
     _sound_softness = vol.All(vol.Coerce(int), vol.Range(min=1, max=100))
     _segment = vol.All(vol.Coerce(int), vol.Range(min=1, max=15))
+    _segments = vol.All([_segment], vol.Length(min=1))
     _rgb = vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple))
     # fmt: off
     p.async_register_entity_service("set_video_mode", {
@@ -140,17 +156,17 @@ async def async_setup_entry(
         vol.Optional("brightness", default=100): _pct,
     }, "async_set_white_brightness")
     p.async_register_entity_service("paint_segments", {
-        vol.Required("groups"): [{
-            vol.Required("segments"): [_segment],
+        vol.Required("groups"): vol.All([{
+            vol.Required("segments"): _segments,
             vol.Required("rgb_color"): _rgb,
-        }],
+        }], vol.Length(min=1)),
     }, "async_paint_segments")
     p.async_register_entity_service("set_segment_color", {
-        vol.Required("segments"): [_segment],
+        vol.Required("segments"): _segments,
         vol.Required("color"): _rgb,
     }, "async_set_segment_color")
     p.async_register_entity_service("set_segment_brightness", {
-        vol.Required("segments"): [_segment],
+        vol.Required("segments"): _segments,
         vol.Required("brightness"): _pct,
     }, "async_set_segment_brightness")
     p.async_register_entity_service("save_effect", {
@@ -254,6 +270,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         await self._async_restore_effect()
+        await self._async_restore_static_color()
         await self._async_restore_segments()
 
     async def _async_restore_effect(self) -> None:
@@ -283,12 +300,75 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 coordinator.active_custom_id, coordinator.effect = effect.id, effect.display_name
         elif coordinator.color_mode is None and key in coordinator.scene_name_set:
             coordinator.effect = key
+            coordinator._sync_scene_speed(key)
+
+    async def _async_restore_static_color(self) -> None:
+        coordinator = self.coordinator
+        if coordinator.color_mode not in (None, ParsedMode.COLOUR):
+            return
+        if (
+            coordinator.effect is not None
+            or coordinator.active_custom_id is not None
+            or coordinator.diy_slot is not None
+            or coordinator.music_mode != "off"
+            or coordinator.video_mode != "off"
+        ):
+            return
+        if (last_state := await self.async_get_last_state()) is None:
+            return
+        if last_state.attributes.get(ATTR_EFFECT):
+            return
+        raw_mode = last_state.attributes.get(ATTR_COLOR_MODE)
+        if isinstance(raw_mode, ColorMode):
+            restored_mode = raw_mode
+        elif isinstance(raw_mode, str):
+            try:
+                restored_mode = ColorMode(raw_mode)
+            except ValueError:
+                return
+        else:
+            return
+        if restored_mode is ColorMode.RGB:
+            if (rgb := _coerce_rgb(last_state.attributes.get(ATTR_RGB_COLOR))) is None:
+                return
+            coordinator.rgb_color = rgb
+            coordinator.color_temp_kelvin = None
+            if (
+                _coerce_segment_colors(last_state.attributes.get("segment_colors"), len(coordinator.segment_colors))
+                is None
+            ):
+                coordinator.segment_colors = [rgb] * len(coordinator.segment_colors)
+        elif restored_mode is ColorMode.COLOR_TEMP:
+            try:
+                kelvin = int(last_state.attributes[ATTR_COLOR_TEMP_KELVIN])
+            except KeyError, TypeError, ValueError:
+                return
+            if not MIN_COLOR_TEMP_KELVIN <= kelvin <= MAX_COLOR_TEMP_KELVIN:
+                return
+            coordinator.color_temp_kelvin = kelvin
+            if (
+                _coerce_segment_colors(last_state.attributes.get("segment_colors"), len(coordinator.segment_colors))
+                is None
+            ):
+                coordinator.segment_colors = [kelvin_to_rgb(kelvin)] * len(coordinator.segment_colors)
+        else:
+            return
+        self._attr_color_mode = restored_mode
+        coordinator.async_set_updated_data(coordinator.data or {})
 
     async def _async_restore_segments(self) -> None:
         coordinator = self.coordinator
         count = coordinator.profile.segment_count
         if not count or coordinator.segment_colors != [_DEFAULT_SEGMENT_COLOR] * count:
             return
+        if coordinator.color_mode not in (None, ParsedMode.COLOUR):
+            return
+        if coordinator.music_mode != "off" or coordinator.video_mode != "off" or coordinator.diy_slot is not None:
+            return
+        if coordinator.effect is not None:
+            effect = coordinator.resolve_custom(coordinator.effect)
+            if effect is None or not isinstance(effect.content, SegmentContent):
+                return
         if (last_state := await self.async_get_last_state()) is None:
             return
         restored = _coerce_segment_colors(last_state.attributes.get("segment_colors"), count)
@@ -302,6 +382,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         *,
         expected_effect: str | None = None,
         expected_on: bool | None = None,
+        expected_brightness: int | None = None,
         expected_music_mode: str | None = None,
         expected_music_sensitivity: int | None = None,
         expected_music_calm: bool | None = None,
@@ -322,6 +403,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self.coordinator.refresh_state,
             expected_effect=expected_effect,
             expected_on=expected_on,
+            expected_brightness=expected_brightness,
             expected_music_mode=expected_music_mode,
             expected_music_sensitivity=expected_music_sensitivity,
             expected_music_calm=expected_music_calm,
@@ -364,17 +446,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         scene = SCENES.get(key) if key in coordinator.scene_name_set else None
         if scene is not None:
-            for packet in _scene_packets(coordinator.profile, scene):
+            speed_index = coordinator.scene_speed_index if coordinator.scene_speed_scene_code == scene.code else None
+            for packet in _scene_packets(coordinator.profile, scene, speed_index=speed_index):
                 await coordinator.send_command(packet)
             coordinator.effect, coordinator.active_custom_id = key, None
             coordinator.diy_slot = None
             coordinator._owned_diy_effect_id = None
             coordinator.music_mode = coordinator.video_mode = "off"
+            coordinator._sync_scene_speed(key, speed_index=speed_index)
             return
         if coordinator.profile.supports_video_mode:
             mode = next((m for label, m in _VIDEO_EFFECTS.items() if _normalize_effect_name(label) == key), None)
             if mode is not None:
-                await self.async_set_video_mode(
+                await self._async_set_video_mode(
                     mode=mode,
                     saturation=coordinator.video_saturation,
                     full_screen=coordinator.video_full_screen,
@@ -403,6 +487,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        async with self.coordinator._control_lock:
+            await self._async_turn_on(**kwargs)
+
+    async def _async_turn_on(self, **kwargs: Any) -> None:
         power_on = partial(self.coordinator.send_command, build_power(True))
         with self._rollback():
             if not self.coordinator.is_on:
@@ -411,8 +499,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 await self._refresh_with_retry(expected_on=True, retry_command=power_on)
             if ATTR_BRIGHTNESS in kwargs:
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
-                await self.coordinator.send_command(build_brightness(pct))
+
+                async def apply_brightness() -> None:
+                    await self.coordinator.send_command(build_brightness(pct))
+
+                await apply_brightness()
                 self.coordinator.brightness_pct = pct
+                await self._refresh_with_retry(
+                    expected_brightness=pct,
+                    retry_command=apply_brightness,
+                )
             if ATTR_RGB_COLOR in kwargs:
                 r, g, b = kwargs[ATTR_RGB_COLOR]
                 await self.coordinator.send_command(build_color_rgb(r, g, b))
@@ -432,6 +528,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._notify_state_changed()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        async with self.coordinator._control_lock:
+            await self._async_turn_off(**kwargs)
+
+    async def _async_turn_off(self, **kwargs: Any) -> None:
         power_off = partial(self.coordinator.send_command, build_power(False))
         with self._rollback():
             await power_off()

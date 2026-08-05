@@ -71,6 +71,8 @@ def _make_coord(**ov) -> MagicMock:
         active_custom_id=None,
         diy_slot=None,
         color_mode=None,
+        scene_speed_scene_code=None,
+        scene_speed_index=None,
         _owned_diy_effect_id=None,
         music_mode="off",
         video_mode="off",

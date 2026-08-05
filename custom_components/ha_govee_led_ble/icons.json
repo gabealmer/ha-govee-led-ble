@@ -6,6 +6,9 @@
       }
     },
     "number": {
+      "scene_speed": {
+        "default": "mdi:speedometer"
+      },
       "music_sensitivity": {
         "default": "mdi:microphone"
       },

@@ -11,7 +11,7 @@ set_music_mode:
   target: {entity: {integration: ha_govee_led_ble}}
   fields:
     mode: {required: true, example: "energetic", selector: {select: {options: ["energetic", "rhythm", "spectrum", "rolling", "separation", "hopping", "piano keys", "fountain", "day and night", "bloom", "shiny", "energic"]}}}
-    sensitivity: {default: 99, selector: {number: {min: 0, max: 99, step: 1, unit_of_measurement: "%"}}}
+    sensitivity: {default: 99, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
     calm: {required: false, selector: {boolean:}}
     color: {required: false, selector: {color_rgb:}}
 set_white_brightness:

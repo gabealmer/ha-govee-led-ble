@@ -197,6 +197,18 @@ def test_content_types_registry():
     assert _CONTENT_TYPES["combo"] is ComboContent
 
 
+def test_combo_omitted_speed_matches_the_capture_backed_default():
+    parsed = content_from_dict(
+        {
+            "kind": "combo",
+            "palette": [[1, 2, 3]],
+            "effects": [[0x00, 0x00]],
+        }
+    )
+    assert isinstance(parsed, ComboContent)
+    assert parsed.speed == ComboContent().speed == 0x33
+
+
 # --------------------------------------------------------------------------- #
 # normalise_name
 # --------------------------------------------------------------------------- #

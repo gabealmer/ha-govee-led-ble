@@ -12,6 +12,7 @@ class ModelProfile:
     state_readable: bool = False
     scene_source: str = "none"
     builtin_scenes: tuple[str, ...] = ()
+    supports_scene_speed: bool = False
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
     supports_white_balance: bool = False
@@ -86,6 +87,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H617A LED Strip",
         state_readable=True,
         scene_source="api",
+        supports_scene_speed=True,
         music_modes=tuple(MUSIC_MODE_SLUGS),
         supports_music_color=True,
         supports_music_style=True,

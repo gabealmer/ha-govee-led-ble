@@ -29,6 +29,17 @@ class SceneSpeed:
     default_index: int
     pages: tuple[ScenePage, ...]
 
+    @property
+    def option_count(self) -> int:
+        """Return the shared slider length, rejecting internally inconsistent catalogue data."""
+        counts = {len(values) for page in self.pages for values in (page.move_in, page.move_all) if values}
+        if len(counts) != 1:
+            raise ValueError(f"Scene Speed pages disagree on option count: {sorted(counts)}")
+        count = counts.pop()
+        if not 0 <= self.default_index < count:
+            raise ValueError(f"Scene Speed default index {self.default_index} outside 0..{count - 1}")
+        return count
+
 
 @dataclass(frozen=True, slots=True)
 class SceneEntry:
@@ -57,7 +68,9 @@ def _load_speed(data: list[object]) -> SceneSpeed | None:
         )
         for entry in raw_pages
     )
-    return SceneSpeed(default_index=default_index, pages=pages)
+    speed = SceneSpeed(default_index=default_index, pages=pages)
+    _ = speed.option_count
+    return speed
 
 
 def _load_scenes() -> dict[str, SceneEntry]:

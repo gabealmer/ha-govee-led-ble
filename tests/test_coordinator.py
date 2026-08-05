@@ -19,6 +19,7 @@ from custom_components.ha_govee_led_ble.coordinator import (
     _expected_color_mode_from_packet,
 )
 from custom_components.ha_govee_led_ble.custom_effects import CustomEffect, SegmentContent, VibrantContent
+from custom_components.ha_govee_led_ble.scenes import SCENES
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 
@@ -685,6 +686,8 @@ async def test_refresh_state_query_selection(coord):
     ) -> bool:
         if query_power:
             coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
+        if query_brightness:
+            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [42])))
         if query_color_mode:
             coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x9D, 0x08])))
         return True
@@ -699,6 +702,10 @@ async def test_refresh_state_query_selection(coord):
 
         assert await coord.refresh_state(expected_effect="candy", expected_on=None) is True
         sq.assert_awaited_with(query_power=False, query_brightness=False, query_color_mode=True)
+        sq.reset_mock()
+
+        assert await coord.refresh_state(expected_brightness=42) is True
+        sq.assert_awaited_with(query_power=False, query_brightness=True, query_color_mode=False)
         sq.reset_mock()
 
         assert await coord.refresh_state(expected_effect=None, expected_on=None) is True
@@ -917,6 +924,32 @@ async def test_async_paint_segments_rejects_invalid_segments(coord, bad):
         await coord.async_paint_segments([(bad, (1, 2, 3))])
     sc.assert_not_awaited()
     assert coord.segment_colors == before
+
+
+async def test_scene_speed_reuploads_and_confirms_the_active_scene(coord):
+    scene = SCENES["glacier"]
+    assert scene.speed is not None
+    coord.is_on, coord.effect = True, "glacier"
+    coord._sync_scene_speed("glacier")
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "refresh_state", new=AsyncMock(return_value=True)) as refresh,
+        patch.object(coord, "async_set_updated_data") as pushed,
+    ):
+        await coord.async_set_scene_speed(0)
+
+    assert [call.args[0] for call in send.await_args_list] == proto.build_scene_multi(
+        scene.param, scene.code, scene.scene_type, scene.speed, speed_index=0
+    )
+    refresh.assert_awaited_once_with(expected_effect="glacier")
+    assert (coord.scene_speed_scene_code, coord.scene_speed_index) == (scene.code, 0)
+    pushed.assert_called_once()
+
+
+async def test_scene_speed_rejects_a_scene_without_documented_metadata(coord):
+    coord.is_on, coord.effect = True, "rainbow"
+    with pytest.raises(ValueError, match="does not expose"):
+        await coord.async_set_scene_speed(0)
 
 
 def test_notify_callback_poweroff_memory(h6199):

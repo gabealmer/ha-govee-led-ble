@@ -23,6 +23,7 @@ def test_catalogue_valid():
     assert names == sorted(names) and len(names) == len(SCENES)
     codes = [e.code for e in SCENES.values() if e.is_simple]
     assert len(codes) == len(set(codes))
+    assert {scene.speed.option_count for scene in SCENES.values() if scene.speed is not None} == {3, 4}
 
 
 _SIMPLE = ["sunrise", "sunset", "rainbow", "candlelight", "romantic", "movie", "energetic", "twinkle", "breathe"]
@@ -160,6 +161,7 @@ def test_build_scene_multi_uploads_the_corrected_glacier_body():
         (lambda config: config[0].update(page=99), "has no record"),
         (lambda config: config[1].update(defaultIndex=0), "disagree on defaultIndex"),
         (lambda config: config[0].update(moveIn=[250]), "outside"),
+        (lambda config: config[0].update(moveIn=[237, 244, 250, 255]), "option count"),
     ],
 )
 def test_generator_rejects_a_catalogue_whose_speed_config_stops_resolving(mutate, message):
