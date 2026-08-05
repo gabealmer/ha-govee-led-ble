@@ -51,7 +51,7 @@ async def test_initial_state_and_update(coord, h6199):
     assert h6199.profile == MODEL_PROFILES["H6199"] and h6199.profile.state_readable
     assert (
         h6199.profile.supports_video_mode
-        and h6199.profile.supports_white_brightness
+        and not h6199.profile.supports_white_brightness
         and not h6199.profile.supports_music_style
     )
     coord.is_on, coord.brightness_pct, coord.rgb_color = True, 75, (255, 0, 128)
@@ -158,6 +158,43 @@ def test_notify_callback(h6199):
     cb(None, bytearray([0xAA]))
     cb(None, bytearray([0x33, 0x01, 0x01, 0x00]))
     assert h6199.is_on is False
+
+
+def test_display_replies_reject_stale_composite_values_atomically(h6199):
+    h6199.white_balance_red, h6199.white_balance_blue = 16, 3
+    h6199._arm_expected_values({"white_balance_red": 21, "white_balance_blue": 5})
+    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 13, 3])))
+    assert (h6199.white_balance_red, h6199.white_balance_blue) == (16, 3)
+
+    h6199.blank_screen = True
+    h6199._arm_expected_values({"blank_screen": True})
+    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 120, 0])))
+    assert h6199.blank_screen is True
+
+    expected = (51, 20, 31, 41)
+    h6199.relative_brightness = None
+    (
+        h6199.relative_brightness_left,
+        h6199.relative_brightness_top,
+        h6199.relative_brightness_right,
+        h6199.relative_brightness_bottom,
+    ) = expected
+    h6199._arm_expected_values(
+        {
+            "relative_brightness": None,
+            "relative_brightness_left": 51,
+            "relative_brightness_top": 20,
+            "relative_brightness_right": 31,
+            "relative_brightness_bottom": 41,
+        }
+    )
+    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xAE, [1, 4, 91, 91, 91, 91])))
+    assert (
+        h6199.relative_brightness_left,
+        h6199.relative_brightness_top,
+        h6199.relative_brightness_right,
+        h6199.relative_brightness_bottom,
+    ) == expected
 
 
 def test_notify_callback_parses_full_frame_with_checksum(h6199):
@@ -357,6 +394,7 @@ def test_notify_callback_power_expectation(h6199):
 
 def test_notify_callback_color_temp_window(h6199):
     """A stale aa05 STATIC reply must not clear an optimistic color temp within the window."""
+    h6199.profile = replace(h6199.profile, static_readback_echoes_color=True)
     cb = h6199._notify_callback
     reply = bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30]))
 
@@ -401,6 +439,7 @@ def test_notify_callback_music_auto_color_clears_manual_color(h6199):
 
 def test_active_custom_id_sticky_clear(h6199):
     """Custom identity survives only a matching mode with same-connection ownership."""
+    h6199.profile = replace(h6199.profile, static_readback_echoes_color=True)
     cb = h6199._notify_callback
     h6199.custom_effects = {
         "segments": CustomEffect("segments", "Segments", "segments", SegmentContent(colors=((255, 0, 0),))),
@@ -561,6 +600,7 @@ async def test_disconnect_drops_diy_identity_ownership(h6199):
 
 
 def test_newer_static_mode_rejects_delayed_diy_reply(h6199):
+    h6199.profile = replace(h6199.profile, static_readback_echoes_color=True)
     h6199.color_mode = proto.ParsedMode.COLOUR
     h6199.diy_slot = None
     h6199._expected_state["color_mode"] = ((proto.ParsedMode.COLOUR, 0x01), time.monotonic() + 60)
@@ -577,6 +617,7 @@ def test_newer_static_mode_rejects_delayed_diy_reply(h6199):
 
 
 def test_static_submode_expectation_rejects_reordered_reply(h6199):
+    h6199.profile = replace(h6199.profile, static_readback_echoes_color=True)
     h6199._expected_state["color_mode"] = ((proto.ParsedMode.COLOUR, 0x01), time.monotonic() + 60)
     h6199._expected_state["rgb_color"] = ((10, 20, 30), time.monotonic() + 60)
     cb = h6199._notify_callback
@@ -662,6 +703,32 @@ async def test_refresh_state_query_selection(coord):
 
         assert await coord.refresh_state(expected_effect=None, expected_on=None) is True
         sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
+
+
+async def test_refresh_state_queries_each_display_domain(h6199):
+    h6199._client = client = _c()
+
+    async def _reply(**kwargs) -> bool:
+        if kwargs.get("query_white_balance"):
+            h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 21, 5])))
+        if kwargs.get("query_blank_screen"):
+            h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 1, 2, 10, 0, 120, 0])))
+        if kwargs.get("query_relative_brightness"):
+            h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41])))
+        return True
+
+    with (
+        patch.object(h6199, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(h6199, "_send_state_queries", new=AsyncMock(side_effect=_reply)) as queries,
+    ):
+        assert await h6199.refresh_state(expected_white_balance=(21, 5))
+        assert queries.await_args.kwargs["query_white_balance"] is True
+        queries.reset_mock()
+        assert await h6199.refresh_state(expected_blank_screen=True)
+        assert queries.await_args.kwargs["query_blank_screen"] is True
+        queries.reset_mock()
+        assert await h6199.refresh_state(expected_relative_brightness=(51, 20, 31, 41))
+        assert queries.await_args.kwargs["query_relative_brightness"] is True
 
 
 async def test_refresh_state_rejects_optimistic_value_without_fresh_reply(coord):
@@ -799,11 +866,11 @@ def test_segment_colors_empty_for_unsupported(hass):
     assert c.segment_colors == [] and c.profile.segment_count == 0
 
 
-def test_whole_strip_reply_leaves_segments_untouched(h6199):
-    """A color-mode read reply updates rgb_color but must not clobber painted segments."""
+def test_h6199_static_reply_reports_mode_only(h6199):
     h6199.segment_colors = [(1, 2, 3)] * 15
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
-    assert h6199.rgb_color == (10, 20, 30)
+    assert h6199.color_mode is proto.ParsedMode.COLOUR
+    assert h6199.rgb_color == (255, 255, 255)
     assert h6199.segment_colors == [(1, 2, 3)] * 15
 
 

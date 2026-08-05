@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
@@ -85,6 +86,7 @@ def _make_coord(**ov) -> MagicMock:
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
     c.send_command = AsyncMock()
+    c._control_lock = asyncio.Lock()
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.resolve_custom = MagicMock(return_value=None)
     c.is_custom_effect_supported = MagicMock(return_value=True)

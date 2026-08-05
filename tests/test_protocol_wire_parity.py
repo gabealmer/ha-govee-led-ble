@@ -414,10 +414,9 @@ def test_music_builder_reproduces_the_captured_frame(name, built):
     assert built() == fixture(name)
 
 
-def test_sensitivity_is_clamped_at_the_captured_ceiling():
-    """99 is the highest value any capture carries, and the builder must not exceed it."""
-    assert proto.build_music_mode_with_color(0x03, 255, None)[4] == 99
-    assert fixture("music_frame_rhythm_sens99")[4] == 99
+def test_h6199_sensitivity_reaches_the_captured_ceiling():
+    assert proto.build_music_mode_with_color(0x03, 255, None)[4] == 100
+    assert fixture("h6199_music_sensitivity_100")[4] == 100
 
 
 def a3_body(frames: list[bytes]) -> bytes:

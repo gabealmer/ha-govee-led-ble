@@ -57,7 +57,11 @@ def test_model_specific_music_and_custom_effect_capabilities():
     )
     assert MODEL_PROFILES["H6199"].music_modes == ("energetic", "rhythm", "spectrum", "rolling")
     assert MODEL_PROFILES["H617A"].supports_music_color
-    assert not MODEL_PROFILES["H6199"].supports_music_color
+    assert MODEL_PROFILES["H6199"].supports_music_color
+    assert (MODEL_PROFILES["H617A"].music_sensitivity_min, MODEL_PROFILES["H617A"].music_sensitivity_max) == (0, 99)
+    assert (MODEL_PROFILES["H6199"].music_sensitivity_min, MODEL_PROFILES["H6199"].music_sensitivity_max) == (1, 100)
+    assert not MODEL_PROFILES["H6199"].supports_white_brightness
+    assert not MODEL_PROFILES["H6199"].static_readback_echoes_color
     assert MODEL_PROFILES["H6199"].supports_video_sound_effects
     assert MODEL_PROFILES["H617A"].custom_effect_kinds == {
         "segments",

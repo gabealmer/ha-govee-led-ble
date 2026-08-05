@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -33,7 +34,7 @@ def test_native_value_property(mock_h6199_coordinator):
 async def test_music_sensitivity(mock_h6199_coordinator):
     (c := mock_h6199_coordinator).music_mode, c.music_color = "rolling", (10, 20, 30)
     entity = N(c, key="music_sensitivity", name="T")
-    assert entity.native_max_value == 99  # device caps sensitivity at 99, not 100
+    assert (entity.native_min_value, entity.native_max_value) == (1, 100)
     await entity.async_set_native_value(77)
     assert c.music_sensitivity == 77
     c.async_select_music_slug.assert_awaited_once_with("rolling")
@@ -62,6 +63,31 @@ async def test_set_with_rollback_noop(mock_h6199_coordinator):
     await _set_with_rollback(c, key="music_sensitivity", value=c.music_sensitivity, reapply=reapply)
     reapply.assert_not_called()
     c.async_set_updated_data.assert_not_called()
+
+
+async def test_control_transactions_are_serialized(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.music_sensitivity = 10
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    applied: list[int] = []
+
+    async def reapply(coordinator):
+        applied.append(coordinator.music_sensitivity)
+        if len(applied) == 1:
+            first_started.set()
+            await release_first.wait()
+        return True
+
+    first = asyncio.create_task(_set_with_rollback(c, key="music_sensitivity", value=20, reapply=reapply))
+    await first_started.wait()
+    second = asyncio.create_task(_set_with_rollback(c, key="music_sensitivity", value=30, reapply=reapply))
+    await asyncio.sleep(0)
+    assert applied == [20]
+    release_first.set()
+    await asyncio.gather(first, second)
+    assert applied == [20, 30]
+    assert c.music_sensitivity == 30
 
 
 async def test_setup_number_entry_h617a(mock_coordinator):
@@ -127,24 +153,44 @@ def test_white_balance_numbers_are_boxes_over_the_full_gain_range(mock_h6199_coo
     assert red.native_value is None
 
 
-async def test_white_balance_writes_both_axes_naming_the_untouched_one(mock_h6199_coordinator):
-    """One byte cannot be sent alone, and nothing here reads the other back, so it comes from us."""
+async def test_white_balance_writes_both_live_axes(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.white_balance_red = c.white_balance_blue = None
+    c.white_balance_red, c.white_balance_blue = WHITE_BALANCE_RESET
     c.white_balance = (WHITE_BALANCE_RESET[0], 9)
+    c.refresh_state = AsyncMock(return_value=True)
     await N(c, key="white_balance_blue").async_set_native_value(9)
     assert c.white_balance_blue == 9
     c.send_command.assert_awaited_once_with(build_video_white_balance(WHITE_BALANCE_RESET[0], 9))
+    c.refresh_state.assert_awaited_once_with(expected_white_balance=(WHITE_BALANCE_RESET[0], 9))
+
+
+async def test_white_balance_raw_gain_requires_both_live_axes(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.white_balance_red = c.white_balance_blue = None
+    with pytest.raises(ValueError, match="has not been read"):
+        await N(c, key="white_balance_blue").async_set_native_value(9)
+    c.send_command.assert_not_called()
 
 
 async def test_white_balance_rolls_back_when_the_write_fails(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.white_balance_red = 16
+    c.white_balance_red, c.white_balance_blue = WHITE_BALANCE_RESET
     c.send_command = AsyncMock(side_effect=BleakError("timeout"))
     with pytest.raises(BleakError):
         await N(c, key="white_balance_red").async_set_native_value(21)
     assert c.white_balance_red == 16
     c.async_set_updated_data.assert_not_called()
+
+
+async def test_white_balance_verification_failure_rolls_back_both_gains(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.white_balance_red, c.white_balance_blue = WHITE_BALANCE_RESET
+    c.white_balance = (21, 3)
+    c.refresh_state = AsyncMock(return_value=False)
+    with pytest.raises(RuntimeError, match="not confirmed"):
+        await N(c, key="white_balance_red").async_set_native_value(21)
+    assert (c.white_balance_red, c.white_balance_blue) == WHITE_BALANCE_RESET
+    assert c.send_command.await_count == 2
 
 
 async def test_relative_brightness_writes_a_direct_percent(mock_h6199_coordinator):
@@ -161,6 +207,7 @@ async def test_relative_brightness_writes_a_direct_percent(mock_h6199_coordinato
         c.relative_brightness_bottom,
     ) == (36, 36, 36, 36)
     c.send_command.assert_awaited_once_with(build_relative_brightness(36))
+    c.refresh_state.assert_awaited_once_with(expected_relative_brightness=(36, 36, 36, 36))
 
 
 async def test_relative_brightness_edge_preserves_the_other_three(mock_h6199_coordinator):
@@ -174,6 +221,7 @@ async def test_relative_brightness_edge_preserves_the_other_three(mock_h6199_coo
     await N(c, key="relative_brightness_top").async_set_native_value(25)
     assert c.relative_brightness is None
     c.send_command.assert_awaited_once_with(build_relative_brightness_edges(51, 25, 31, 41))
+    c.refresh_state.assert_awaited_once_with(expected_relative_brightness=(51, 25, 31, 41))
 
 
 async def test_relative_brightness_edge_requires_a_read_or_all_edges_write(mock_h6199_coordinator):
@@ -181,6 +229,29 @@ async def test_relative_brightness_edge_requires_a_read_or_all_edges_write(mock_
     with pytest.raises(ValueError, match="has not been read"):
         await N(c, key="relative_brightness_left").async_set_native_value(50)
     c.send_command.assert_not_called()
+
+
+async def test_relative_brightness_verification_failure_rolls_back_every_edge(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    old = (51, 20, 31, 41)
+    (
+        c.relative_brightness_left,
+        c.relative_brightness_top,
+        c.relative_brightness_right,
+        c.relative_brightness_bottom,
+    ) = old
+    c.relative_brightness = None
+    c.refresh_state = AsyncMock(return_value=False)
+    with pytest.raises(RuntimeError, match="not confirmed"):
+        await N(c, key="relative_brightness_top").async_set_native_value(25)
+    assert (
+        c.relative_brightness_left,
+        c.relative_brightness_top,
+        c.relative_brightness_right,
+        c.relative_brightness_bottom,
+    ) == old
+    assert c.relative_brightness is None
+    assert c.send_command.await_count == 2
 
 
 async def test_video_percentages_ride_the_video_frame_only_while_video_is_live(mock_h6199_coordinator):
@@ -202,13 +273,14 @@ def test_softness_floor_matches_the_wire(mock_h6199_coordinator):
     assert N(mock_h6199_coordinator, key="video_sound_effects_softness").native_min_value == 1
 
 
-async def test_number_restores_last_written_without_sending(mock_h6199_coordinator):
+async def test_number_does_not_restore_read_backed_state(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.relative_brightness = None
     entity = N(c, key="relative_brightness")
     entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="36"))
     await entity._async_restore_state()
-    assert c.relative_brightness == 36
+    assert c.relative_brightness is None
+    entity.async_get_last_state.assert_not_called()
     c.send_command.assert_not_called()
 
 

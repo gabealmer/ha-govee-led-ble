@@ -37,9 +37,6 @@ PLATFORMS = [
 _LEGACY_ENTITY_SUFFIXES = {
     "_video_brightness",
     "_white_brightness",
-    "_video_saturation",
-    "_video_sound_effects",
-    "_video_sound_effects_softness",
     "_music_calm",
     "_music_mode",
 }

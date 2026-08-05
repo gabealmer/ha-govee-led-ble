@@ -349,7 +349,7 @@
     },
     "paint_segments": {
       "name": "Paint segments",
-      "description": "Paint one or more color groups onto the addressable segments (H617A).",
+      "description": "Paint one or more color groups onto supported addressable segments.",
       "fields": {
         "groups": {
           "name": "Groups",

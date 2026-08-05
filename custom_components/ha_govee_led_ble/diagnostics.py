@@ -79,7 +79,11 @@ async def async_get_config_entry_diagnostics(
             "music_color": coordinator.music_color,
             "white_brightness": coordinator.white_brightness,
             "video_full_screen": coordinator.video_full_screen,
-            "white_balance": coordinator.white_balance,
+            "white_balance": (
+                (coordinator.white_balance_red, coordinator.white_balance_blue)
+                if coordinator.white_balance_red is not None and coordinator.white_balance_blue is not None
+                else None
+            ),
             "relative_brightness": coordinator.relative_brightness,
             "relative_brightness_edges": {
                 edge: getattr(coordinator, f"relative_brightness_{edge}") for edge in ("left", "top", "right", "bottom")

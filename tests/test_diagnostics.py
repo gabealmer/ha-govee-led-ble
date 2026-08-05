@@ -130,3 +130,10 @@ async def test_surfaces_core_state(mock_h6199_coordinator):
     assert coord["is_on"] is True
     assert coord["effect"] == "video: movie"
     assert coord["expected_brightness_pct"] == 55
+
+
+async def test_unknown_white_balance_is_not_reported_as_neutral(mock_h6199_coordinator):
+    coord = _prep(mock_h6199_coordinator)
+    coord.white_balance_red = coord.white_balance_blue = None
+    diag = await _run(coord)
+    assert diag["coordinator"]["white_balance"] is None

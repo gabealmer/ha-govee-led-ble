@@ -550,8 +550,8 @@ WHITE_BALANCE_PRESETS: dict[str, tuple[int, int]] = {
     "warm": (21, 5),
 }
 # The pair the app's own Reset button writes (h6199_white_balance_reset), which is table entry 16.
-# This is where a caller starts from, not what a device reports. The light does answer aa a9, but
-# that reply is not parsed here, so nothing in this module can say what one currently holds.
+# This is where a caller starts from, not what a device currently reports; the aa a9 read-back
+# carries the reset reference and current pair separately.
 WHITE_BALANCE_RESET: tuple[int, int] = WHITE_BALANCE_PRESETS["neutral"]
 WHITE_BALANCE_MANUAL = 0x01
 # The bytes after the blank-screen flag, replayed verbatim: identical across both captured writes
@@ -639,7 +639,7 @@ def build_music_mode_with_color(
     calm: bool = False,
 ) -> bytes:
     # byte 5 STYLE = Dynamic(0)/Calm(1); byte 6 COUNT = manual colour count (0 = auto-colour on).
-    params = [0x13, mode_id, _clamp(sensitivity, 0, 99), int(calm)]
+    params = [0x13, mode_id, _clamp(sensitivity, 0, 100), int(calm)]
     if color is not None:
         params.extend([0x01, *(_clamp(channel, 0, 255) for channel in color)])
     return build_packet(0x33, 0x05, params)

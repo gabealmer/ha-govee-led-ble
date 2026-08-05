@@ -32,6 +32,19 @@ from .protocol import (
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
 
+_READ_BACKED_KEYS = frozenset(
+    {
+        "white_balance_red",
+        "white_balance_blue",
+        "relative_brightness",
+        "relative_brightness_left",
+        "relative_brightness_top",
+        "relative_brightness_right",
+        "relative_brightness_bottom",
+        "blank_screen",
+    }
+)
+
 
 async def _apply_poweroff_memory(coordinator: GoveeBLECoordinator) -> bool:
     if not coordinator.profile.supports_poweroff_memory:
@@ -41,8 +54,14 @@ async def _apply_poweroff_memory(coordinator: GoveeBLECoordinator) -> bool:
 
 
 async def _apply_white_balance(coordinator: GoveeBLECoordinator) -> bool:
-    await coordinator.send_command(build_video_white_balance(*coordinator.white_balance))
-    return True
+    expected = coordinator.white_balance
+    fields = {"white_balance_red": expected[0], "white_balance_blue": expected[1]}
+    for _ in range(2):
+        coordinator._arm_expected_values(fields)
+        await coordinator.send_command(build_video_white_balance(*expected))
+        if await coordinator.refresh_state(expected_white_balance=expected):
+            return True
+    raise RuntimeError("White-balance write was not confirmed by the device")
 
 
 async def _apply_relative_brightness(coordinator: GoveeBLECoordinator) -> bool:
@@ -51,13 +70,31 @@ async def _apply_relative_brightness(coordinator: GoveeBLECoordinator) -> bool:
         raise ValueError("Relative-brightness edge state has not been read; set all edges first")
     left, top, right, bottom = values
     assert left is not None and top is not None and right is not None and bottom is not None
-    await coordinator.send_command(build_relative_brightness_edges(left, top, right, bottom))
-    return True
+    expected = left, top, right, bottom
+    aggregate = left if len(set(expected)) == 1 else None
+    fields = {
+        "relative_brightness": aggregate,
+        "relative_brightness_left": left,
+        "relative_brightness_top": top,
+        "relative_brightness_right": right,
+        "relative_brightness_bottom": bottom,
+    }
+    for _ in range(2):
+        coordinator._arm_expected_values(fields)
+        await coordinator.send_command(build_relative_brightness_edges(*expected))
+        if await coordinator.refresh_state(expected_relative_brightness=expected):
+            return True
+    raise RuntimeError("Relative-brightness write was not confirmed by the device")
 
 
 async def _apply_blank_screen(coordinator: GoveeBLECoordinator) -> bool:
-    await coordinator.send_command(build_blank_screen(bool(coordinator.blank_screen)))
-    return True
+    expected = bool(coordinator.blank_screen)
+    for _ in range(2):
+        coordinator._arm_expected_values({"blank_screen": expected})
+        await coordinator.send_command(build_blank_screen(expected))
+        if await coordinator.refresh_state(expected_blank_screen=expected):
+            return True
+    raise RuntimeError("Blank-screen write was not confirmed by the device")
 
 
 @dataclass(frozen=True)
@@ -79,7 +116,7 @@ class ControlSpec:
 # Numbers, in the order they are added. Music sensitivity and the two video percentages ride their
 # mode's frame; relative brightness and the white-balance gains each own a register.
 NUMBER_CONTROLS: dict[str, ControlSpec] = {
-    "music_sensitivity": ControlSpec(lambda p: p.supports_music_mode, apply_active_music_mode, max_value=99),
+    "music_sensitivity": ControlSpec(lambda p: p.supports_music_mode, apply_active_music_mode),
     "video_saturation": ControlSpec(lambda p: p.supports_video_mode, apply_active_video_mode),
     "video_sound_effects_softness": ControlSpec(
         lambda p: p.supports_video_sound_effects, apply_active_video_mode, min_value=1
@@ -125,18 +162,20 @@ async def _set_fields_with_rollback(
     White balance is why this takes a mapping: both gains go out in one frame, so rolling back one
     of them without the other would leave a stored pair the device was never sent.
     """
-    previous = {key: getattr(coordinator, key) for key in values}
-    if previous == values:
-        return
-    for key, value in values.items():
-        setattr(coordinator, key, value)
-    try:
-        await reapply(coordinator)
-    except Exception:
-        for key, value in previous.items():
+    async with coordinator._control_lock:
+        previous = {key: getattr(coordinator, key) for key in values}
+        if previous == values:
+            return
+        for key, value in values.items():
             setattr(coordinator, key, value)
-        raise
-    coordinator.async_set_updated_data(coordinator.data or {})
+        try:
+            await reapply(coordinator)
+        except Exception:
+            coordinator._clear_expected_fields(*values)
+            for key, value in previous.items():
+                setattr(coordinator, key, value)
+            raise
+        coordinator.async_set_updated_data(coordinator.data or {})
 
 
 async def apply_active_music_param(coordinator: GoveeBLECoordinator, *, mode_code: int) -> bool:
@@ -160,14 +199,14 @@ class _H6199ControlEntity(GoveeBLEEntity):
 
 
 class _RestoreLastWritten(_H6199ControlEntity, RestoreEntity):
-    """Restores what this integration last wrote, for a register nothing here reads back yet.
+    """Restore last-written state only for controls the device cannot report.
 
     Restoring is display only: nothing is sent, because the device kept its own setting across
     our restart and re-asserting a remembered one would overwrite whatever else has changed it.
 
-    It also yields to the wire rather than competing with it. The restore is skipped once the
-    coordinator field holds a value, so a reply parser that populates it during startup wins and
-    this class needs no change on the day one lands.
+    Read-backed fields remain unknown until a device reply arrives. Restoring them during the
+    asynchronous first-refresh window can seed stale siblings that a later partial write sends
+    back over the device's real state.
     """
 
     async def async_added_to_hass(self) -> None:
@@ -175,7 +214,7 @@ class _RestoreLastWritten(_H6199ControlEntity, RestoreEntity):
         await self._async_restore_state()
 
     async def _async_restore_state(self) -> None:
-        if getattr(self.coordinator, self._key) is not None:
+        if self._key in _READ_BACKED_KEYS or getattr(self.coordinator, self._key) is not None:
             return
         last_state = await self.async_get_last_state()
         if last_state is None:
@@ -197,8 +236,12 @@ class H6199ParameterNumber(_RestoreLastWritten, NumberEntity):
         super().__init__(coordinator, key=key, **kwargs)
         spec = NUMBER_CONTROLS[key]
         self._attr_mode = spec.mode
-        self._attr_native_min_value = spec.min_value
-        self._attr_native_max_value = spec.max_value
+        self._attr_native_min_value = (
+            coordinator.profile.music_sensitivity_min if key == "music_sensitivity" else spec.min_value
+        )
+        self._attr_native_max_value = (
+            coordinator.profile.music_sensitivity_max if key == "music_sensitivity" else spec.max_value
+        )
         self._reapply = spec.reapply
 
     @property
@@ -215,6 +258,19 @@ class H6199ParameterNumber(_RestoreLastWritten, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         next_value = int(round(value))
+        if self._key in {"white_balance_red", "white_balance_blue"}:
+            values = {
+                "white_balance_red": (
+                    next_value if self._key == "white_balance_red" else self.coordinator.white_balance_red
+                ),
+                "white_balance_blue": (
+                    next_value if self._key == "white_balance_blue" else self.coordinator.white_balance_blue
+                ),
+            }
+            if any(gain is None for gain in values.values()):
+                raise ValueError("White-balance state has not been read; select a preset first")
+            await _set_fields_with_rollback(self.coordinator, values, reapply=self._reapply)
+            return
         if self._key == "relative_brightness":
             await _set_fields_with_rollback(
                 self.coordinator,

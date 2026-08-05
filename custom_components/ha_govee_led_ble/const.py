@@ -18,6 +18,8 @@ class ModelProfile:
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
     music_modes: tuple[str, ...] = ()
+    music_sensitivity_min: int = 0
+    music_sensitivity_max: int = 99
     supports_music_color: bool = False
     supports_music_style: bool = False
     supports_music_params: bool = False
@@ -127,15 +129,12 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_relative_brightness=True,
         supports_blank_screen=True,
         music_modes=_H6199_MUSIC_MODES,
-        supports_white_brightness=True,
-        # UNVERIFIED, and deliberately named so it can be falsified. The parser assumed this of
-        # every model until the H617A disproved it (status_reply::cm_static: the byte after the
-        # mode mirrors the 33 a3 register, and no colour is ever echoed). That evidence is H617A
-        # only and says nothing about this model, so the old assumption is kept here rather than
-        # silently extended or silently dropped. supports_white_brightness depends on it: the
-        # write is verified against a read-back, so if the H6199 also echoes nothing, that service
-        # raises. Settle it in the H6199 discovery run.
-        static_readback_echoes_color=True,
+        music_sensitivity_min=1,
+        music_sensitivity_max=100,
+        supports_music_color=True,
+        # The attributable H6199 static reply carries mode 0x15 followed only by zeros
+        # (h6199_status_reply::colour_mode_body). It identifies static mode but echoes neither
+        # colour nor white brightness, so the verified white-brightness service cannot be offered.
         # Fifteen segments, and this now carries a protocol claim rather than sizing a preview
         # image. A whole-strip write from the app addresses fifteen bits (0x7fff) and the app draws
         # fifteen tiles for this model, captured 2026-08-03; colouring one segment, then a second,
@@ -149,8 +148,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # build_segment_color reproduces three captured H6199 app writes byte for byte, whole-strip
         # and per-segment alike, so painting segments is the app's own behaviour on this model
         # rather than an H617A habit carried across. The brightness sub-register those services also
-        # reach has no H6199 capture, but supports_white_brightness already assumes it, so enabling
-        # this adds no new assumption.
+        # reach has no H6199 capture. That existing service remains fire-and-forget and is not
+        # widened by the static read-back correction above.
         supports_segment_writes=True,
     ),
 }

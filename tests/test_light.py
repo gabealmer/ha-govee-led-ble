@@ -270,12 +270,19 @@ async def test_set_music_mode_stores_calm_for_shiny(light, mock_coordinator):
     assert co.music_calm is True
 
 
-@pytest.mark.parametrize("kwargs", [{"color": (1, 2, 3)}, {"calm": True}])
+@pytest.mark.parametrize("kwargs", [{"calm": True}])
 async def test_h6199_rejects_unvalidated_music_parameters(h6199_light, mock_h6199_coordinator, kwargs):
     with pytest.raises(ServiceValidationError) as exc:
         await h6199_light.async_set_music_mode(mode="rhythm", sensitivity=60, **kwargs)
     assert exc.value.translation_key == "unsupported_model"
     mock_h6199_coordinator.async_select_music_slug.assert_not_awaited()
+
+
+async def test_h6199_accepts_and_preserves_fixed_music_color(h6199_light, mock_h6199_coordinator):
+    co = mock_h6199_coordinator
+    await h6199_light.async_set_music_mode(mode="rhythm", sensitivity=60, color=(1, 2, 3))
+    co.async_select_music_slug.assert_awaited_once_with("rhythm")
+    assert co.music_color == (1, 2, 3)
 
 
 async def test_rejects_calm_for_unstyled_mode(light, mock_coordinator):
@@ -372,9 +379,9 @@ async def test_set_music_normalises_sensitivity_and_confirms_auto_color(h6199_li
     await h6199_light.async_set_music_mode(mode="spectrum", sensitivity=100, color=None)
 
     kwargs = co.refresh_state.await_args.kwargs
-    assert co.music_sensitivity == 99
+    assert co.music_sensitivity == 100
     assert kwargs["expected_on"] is True
-    assert kwargs["expected_music_sensitivity"] == 99
+    assert kwargs["expected_music_sensitivity"] == 100
     assert kwargs["expected_music_color"] is None
     assert kwargs["expected_music_auto_color"] is True
 
@@ -412,6 +419,7 @@ async def test_set_music_retry_restores_requested_parameters(light, mock_coordin
 
 async def test_set_white_retry_replays_power_and_level(h6199_light, mock_h6199_coordinator):
     co = mock_h6199_coordinator
+    co.profile = replace(co.profile, supports_white_brightness=True, static_readback_echoes_color=True)
     co.refresh_state = AsyncMock(side_effect=[False, True])
     packet = proto.build_white_brightness(47)
 
@@ -485,11 +493,9 @@ async def test_set_video_and_basic_music(h6199_light, mock_h6199_coordinator):
     co.async_select_music_slug.reset_mock()
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
-    await lt.async_set_white_brightness(brightness=47)
-    c = co.send_command.call_args_list
-    assert c[0].args[0] == proto.build_power(True)
-    assert c[1].args[0] == proto.build_white_brightness(47)
-    assert co.white_brightness == 47 and co.brightness_pct == 100 and co.effect is None
+    with pytest.raises(ServiceValidationError):
+        await lt.async_set_white_brightness(brightness=47)
+    assert co.white_brightness == 100 and co.brightness_pct == 100 and co.effect is None
 
 
 async def test_video_sound_requires_capability(h6199_light, mock_h6199_coordinator):
@@ -506,6 +512,7 @@ async def test_video_sound_requires_capability(h6199_light, mock_h6199_coordinat
 async def test_set_white_brightness_clears_active_custom(h6199_light, mock_h6199_coordinator):
     """Entering a static mode (white) drops any sticky custom/music/video so one mode stays active."""
     co = mock_h6199_coordinator
+    co.profile = replace(co.profile, supports_white_brightness=True, static_readback_echoes_color=True)
     co.active_custom_id, co.effect, co.music_mode = "diy-7", "My Effect", "rhythm"
     await h6199_light.async_set_white_brightness(brightness=50)
     assert co.active_custom_id is None and co.effect is None
@@ -528,13 +535,14 @@ async def test_h617a_rejection_and_rollback(light, h6199_light, mock_h6199_coord
             await getattr(light, svc)(**kw)
     for method, kw, attr, val in [
         ("async_set_video_mode", dict(mode="movie", saturation=42), "video_saturation", 100),
-        ("async_set_white_brightness", dict(brightness=60), "white_brightness", 100),
     ]:
         mock_h6199_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("fail")])
         mock_h6199_coordinator.is_on = False
         with pytest.raises(BleakError):
             await getattr(h6199_light, method)(**kw)
         assert mock_h6199_coordinator.is_on is False and getattr(mock_h6199_coordinator, attr) == val
+    with pytest.raises(ServiceValidationError):
+        await h6199_light.async_set_white_brightness(brightness=60)
 
 
 async def test_setup_entry_registers_segment_services(mock_coordinator):

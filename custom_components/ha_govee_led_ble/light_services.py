@@ -187,7 +187,10 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             )
         with self._rollback():
             c = self.coordinator
-            resolved_sensitivity = min(sensitivity, 99)
+            resolved_sensitivity = max(
+                c.profile.music_sensitivity_min,
+                min(sensitivity, c.profile.music_sensitivity_max),
+            )
             if slug in MUSIC_STYLE_SLUGS and calm is not None:
                 c.music_calm = calm
             style_calm = c.music_calm if slug in MUSIC_STYLE_SLUGS else None

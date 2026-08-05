@@ -668,7 +668,7 @@ def test_music_mode():
 
     chk(0x05, dict(sensitivity=80), slice(0, 6), (0x33, 0x05, 0x13, 0x05, 80, 0x00))
     chk(0x04, dict(sensitivity=100, color=(255, 0, 128)), slice(6, 10), (0x01, 255, 0, 128))
-    chk(0x03, dict(sensitivity=150), 4, 99)
+    chk(0x03, dict(sensitivity=150), 4, 100)
     chk(0x03, dict(sensitivity=80, calm=True), 5, 0x01)
     chk(0x03, dict(sensitivity=50, calm=True, color=(128, 64, 32)), slice(5, 10), (0x01, 0x01, 128, 64, 32))
 

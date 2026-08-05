@@ -14,6 +14,11 @@ def coord(hass):
     return GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A")
 
 
+@pytest.fixture
+def h6199(hass):
+    return GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199")
+
+
 def _sent(sc):
     return [call.args[0] for call in sc.await_args_list]
 
@@ -33,6 +38,21 @@ async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):
     assert coord.effect is None and coord.active_custom_id is None
     assert coord.diy_slot is None
     assert coord._owned_diy_effect_id is None
+
+
+async def test_h6199_music_reapply_preserves_fixed_colour(h6199):
+    h6199.music_color = (1, 2, 3)
+    with patch.object(h6199, "send_command", new_callable=AsyncMock) as sc:
+        await h6199.async_select_music_slug("rhythm")
+    assert _sent(sc) == [
+        proto.build_power(True),
+        proto.build_music_mode_with_color(
+            MUSIC_MODE_SLUGS["rhythm"],
+            sensitivity=h6199.music_sensitivity,
+            color=(1, 2, 3),
+            calm=False,
+        ),
+    ]
 
 
 async def test_entering_music_from_color_temp_captures_color_temp_snapshot(coord):

@@ -190,6 +190,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.address, self.model, self.profile = address, model, profile
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
+        self._control_lock = asyncio.Lock()
         self._cancel_disconnect: CALLBACK_TYPE | None = None
         self._keep_alive_task: asyncio.Task[None] | None = None
         self._keep_alive_ticks = 0
@@ -444,9 +445,21 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         if "color_mode" in expectations:
             for field in _COLOR_EXPECTATION_FIELDS:
                 self._expected_state.pop(field, None)
+        self._arm_expected_values(expectations)
+
+    def _arm_expected_values(self, expectations: dict[str, Any]) -> None:
+        """Protect optimistic fields from reordered replies until their verification window ends."""
         deadline = time.monotonic() + EXPECTED_STATE_TTL
         for field, value in expectations.items():
             self._expected_state[field] = (value, deadline)
+
+    def _clear_expected_fields(self, *fields: str) -> None:
+        for field in fields:
+            self._expected_state.pop(field, None)
+
+    def _accept_expected_values(self, values: dict[str, Any]) -> bool:
+        """Accept a composite reply atomically; one stale sibling rejects the whole group."""
+        return all(self._accept_expected(field, value) for field, value in values.items())
 
     def _accept_expected(self, field: str, value: Any) -> bool:
         """Consult the optimistic window for `field`.
@@ -620,33 +633,40 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             elif domain == DISPLAY_SETTING_PACKET_TYPE:
                 display_setting = parse_display_setting_response(payload)
                 if display_setting.current_white_balance is not None:
-                    self.white_balance_red, self.white_balance_blue = display_setting.current_white_balance
-                    observed = ("white_balance_red", "white_balance_blue")
+                    red, blue = display_setting.current_white_balance
+                    values = {"white_balance_red": red, "white_balance_blue": blue}
+                    if self._accept_expected_values(values):
+                        self.white_balance_red, self.white_balance_blue = red, blue
+                        observed = tuple(values)
                 elif display_setting.blank_screen is not None:
-                    self.blank_screen = display_setting.blank_screen
-                    observed = ("blank_screen",)
+                    if self._accept_expected("blank_screen", display_setting.blank_screen):
+                        self.blank_screen = display_setting.blank_screen
+                        observed = ("blank_screen",)
             elif domain == RELATIVE_BRIGHTNESS_PACKET_TYPE:
                 relative_brightness = parse_relative_brightness_response(payload)
-                values = (
+                edges = (
                     relative_brightness.left,
                     relative_brightness.top,
                     relative_brightness.right,
                     relative_brightness.bottom,
                 )
-                (
-                    self.relative_brightness_left,
-                    self.relative_brightness_top,
-                    self.relative_brightness_right,
-                    self.relative_brightness_bottom,
-                ) = values
-                self.relative_brightness = values[0] if len(set(values)) == 1 else None
-                observed = (
-                    "relative_brightness",
-                    "relative_brightness_left",
-                    "relative_brightness_top",
-                    "relative_brightness_right",
-                    "relative_brightness_bottom",
-                )
+                aggregate = edges[0] if len(set(edges)) == 1 else None
+                edge_values: dict[str, Any] = {
+                    "relative_brightness": aggregate,
+                    "relative_brightness_left": edges[0],
+                    "relative_brightness_top": edges[1],
+                    "relative_brightness_right": edges[2],
+                    "relative_brightness_bottom": edges[3],
+                }
+                if self._accept_expected_values(edge_values):
+                    self.relative_brightness = aggregate
+                    (
+                        self.relative_brightness_left,
+                        self.relative_brightness_top,
+                        self.relative_brightness_right,
+                        self.relative_brightness_bottom,
+                    ) = edges
+                    observed = tuple(edge_values)
             elif domain == FIRMWARE_PACKET_TYPE:
                 self._note_identity(fw_version=parse_fw_version(payload))
             elif domain == HARDWARE_PACKET_TYPE:
@@ -670,6 +690,9 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         query_power: bool = True,
         query_brightness: bool = True,
         query_color_mode: bool = True,
+        query_white_balance: bool | None = None,
+        query_blank_screen: bool | None = None,
+        query_relative_brightness: bool | None = None,
     ) -> bool:
         if not self._client or not self._client.is_connected:
             return False
@@ -681,13 +704,19 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 queries.append(BRIGHTNESS_QUERY)
             if query_color_mode:
                 queries.append(COLOR_MODE_QUERY)
-            if query_power and query_brightness and query_color_mode:
-                if self.profile.supports_white_balance:
-                    queries.append(WHITE_BALANCE_QUERY)
-                if self.profile.supports_blank_screen:
-                    queries.append(BLANK_SCREEN_QUERY)
-                if self.profile.supports_relative_brightness:
-                    queries.append(RELATIVE_BRIGHTNESS_QUERY)
+            full_query = query_power and query_brightness and query_color_mode
+            if self.profile.supports_white_balance and (
+                query_white_balance if query_white_balance is not None else full_query
+            ):
+                queries.append(WHITE_BALANCE_QUERY)
+            if self.profile.supports_blank_screen and (
+                query_blank_screen if query_blank_screen is not None else full_query
+            ):
+                queries.append(BLANK_SCREEN_QUERY)
+            if self.profile.supports_relative_brightness and (
+                query_relative_brightness if query_relative_brightness is not None else full_query
+            ):
+                queries.append(RELATIVE_BRIGHTNESS_QUERY)
             for query in queries:
                 self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
@@ -728,6 +757,9 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         expected_video_sound_effects: bool | None = None,
         expected_video_sound_effects_softness: int | None = None,
         expected_white_brightness: int | None = None,
+        expected_white_balance: tuple[int, int] | None = None,
+        expected_blank_screen: bool | None = None,
+        expected_relative_brightness: tuple[int, int, int, int] | None = None,
         timeout: float = 2.0,
     ) -> bool:
         if not self.profile.state_readable:
@@ -754,6 +786,21 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         }
         if expected_music_auto_color:
             expectations["music_color"] = None
+        if expected_white_balance is not None:
+            expectations["white_balance_red"], expectations["white_balance_blue"] = expected_white_balance
+        if expected_blank_screen is not None:
+            expectations["blank_screen"] = expected_blank_screen
+        if expected_relative_brightness is not None:
+            left, top, right, bottom = expected_relative_brightness
+            expectations.update(
+                {
+                    "relative_brightness": left if len(set(expected_relative_brightness)) == 1 else None,
+                    "relative_brightness_left": left,
+                    "relative_brightness_top": top,
+                    "relative_brightness_right": right,
+                    "relative_brightness_bottom": bottom,
+                }
+            )
         color_expectations = (
             expected_effect,
             expected_music_mode,
@@ -771,13 +818,18 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         deadline = time.monotonic() + timeout
         query_power = expected_on is not None
         query_color = expected_music_auto_color or any(value is not None for value in color_expectations)
-        if not query_power and not query_color:
+        query_white_balance = expected_white_balance is not None
+        query_blank_screen = expected_blank_screen is not None
+        query_relative_brightness = expected_relative_brightness is not None
+        if not any((query_power, query_color, query_white_balance, query_blank_screen, query_relative_brightness)):
             query_power = query_color = True
         queried_domains = {
             domain
             for domain, enabled in (
                 (POWER_PACKET_TYPE, query_power),
                 (COLOR_PACKET_TYPE, query_color),
+                (DISPLAY_SETTING_PACKET_TYPE, query_white_balance or query_blank_screen),
+                (RELATIVE_BRIGHTNESS_PACKET_TYPE, query_relative_brightness),
             )
             if enabled
         }
@@ -788,9 +840,19 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             async with self._lock:
                 if self._client is not client:
                     return False
-                ok = await self._send_state_queries(
-                    query_power=query_power, query_brightness=False, query_color_mode=query_color
-                )
+                if query_white_balance or query_blank_screen or query_relative_brightness:
+                    ok = await self._send_state_queries(
+                        query_power=query_power,
+                        query_brightness=False,
+                        query_color_mode=query_color,
+                        query_white_balance=query_white_balance,
+                        query_blank_screen=query_blank_screen,
+                        query_relative_brightness=query_relative_brightness,
+                    )
+                else:
+                    ok = await self._send_state_queries(
+                        query_power=query_power, query_brightness=False, query_color_mode=query_color
+                    )
             if not ok:
                 await self._disconnect_if_current(client)
                 return False

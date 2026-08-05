@@ -60,14 +60,21 @@ async def test_cleanup_legacy_entities(hass: HomeAssistant):
     registry = MagicMock()
     stale = MagicMock(unique_id="112233445566_video_brightness", entity_id="number.govee_video_brightness")
     stale2 = MagicMock(unique_id="112233445566_white_brightness", entity_id="number.govee_white_brightness")
-    stale3 = MagicMock(unique_id="112233445566_video_saturation", entity_id="number.govee_video_saturation")
     stale4 = MagicMock(unique_id="112233445566_music_calm", entity_id="switch.govee_music_calm")
+    current = [
+        MagicMock(unique_id="112233445566_video_saturation", entity_id="number.govee_video_saturation"),
+        MagicMock(unique_id="112233445566_video_sound_effects", entity_id="switch.govee_video_sound_effects"),
+        MagicMock(
+            unique_id="112233445566_video_sound_effects_softness",
+            entity_id="number.govee_video_sound_effects_softness",
+        ),
+    ]
     keep = MagicMock(unique_id="112233445566_music_sensitivity", entity_id="number.govee_music_sensitivity")
     with (
         patch("custom_components.ha_govee_led_ble.er.async_get", return_value=registry),
         patch(
             "custom_components.ha_govee_led_ble.er.async_entries_for_config_entry",
-            return_value=[stale, stale2, stale3, stale4, keep],
+            return_value=[stale, stale2, stale4, *current, keep],
         ),
     ):
         await _async_cleanup_legacy_entities(hass, entry)
@@ -75,11 +82,12 @@ async def test_cleanup_legacy_entities(hass: HomeAssistant):
         [
             call("number.govee_video_brightness"),
             call("number.govee_white_brightness"),
-            call("number.govee_video_saturation"),
             call("switch.govee_music_calm"),
         ]
     )
-    assert registry.async_remove.call_count == 4
+    assert registry.async_remove.call_count == 3
+    for entity in current:
+        assert call(entity.entity_id) not in registry.async_remove.call_args_list
 
 
 async def test_cleanup_unsupported_h6199_entities(hass: HomeAssistant, mock_h6199_coordinator):

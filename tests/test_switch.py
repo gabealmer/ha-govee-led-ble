@@ -57,10 +57,13 @@ async def test_blank_screen_turn_on_and_off_send_the_register(mock_h6199_coordin
     await entity.async_turn_on()
     assert c.blank_screen is True
     c.send_command.assert_awaited_once_with(build_blank_screen(True))
+    c.refresh_state.assert_awaited_once_with(expected_blank_screen=True)
     c.send_command.reset_mock()
+    c.refresh_state.reset_mock()
     await entity.async_turn_off()
     assert c.blank_screen is False
     c.send_command.assert_awaited_once_with(build_blank_screen(False))
+    c.refresh_state.assert_awaited_once_with(expected_blank_screen=False)
 
 
 async def test_blank_screen_rolls_back_when_the_write_fails(mock_h6199_coordinator):
@@ -74,7 +77,17 @@ async def test_blank_screen_rolls_back_when_the_write_fails(mock_h6199_coordinat
     c.async_set_updated_data.assert_not_called()
 
 
-async def test_control_switch_restores_last_written_without_sending(mock_h6199_coordinator):
+async def test_blank_screen_verification_failure_rolls_back(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.blank_screen = False
+    c.refresh_state = AsyncMock(return_value=False)
+    with pytest.raises(RuntimeError, match="not confirmed"):
+        await H6199ControlSwitch(c, key="blank_screen").async_turn_on()
+    assert c.blank_screen is False
+    assert c.send_command.await_count == 2
+
+
+async def test_control_switch_does_not_restore_read_backed_state(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.blank_screen = None
     entity = H6199ControlSwitch(c, key="blank_screen")
@@ -84,7 +97,8 @@ async def test_control_switch_restores_last_written_without_sending(mock_h6199_c
         new_callable=AsyncMock,
     ):
         await entity.async_added_to_hass()
-    assert c.blank_screen is True
+    assert c.blank_screen is None
+    entity.async_get_last_state.assert_not_called()
     c.send_command.assert_not_called()
 
 
