@@ -83,8 +83,11 @@ cached WDA session so the next call re-activates it), then navigate. Two capture
 way on 2026-08-04 came back 50/50 and 62-of-108 attributed with no kill involved.
 
 Check it rather than assume it. `govee-capture.sh stop` compares the capture against the
-device it was supposed to be of and fails when none of its frames are there, and decoding
-without `--allow-unattributed` will refuse a capture that is mostly unaddressed.
+device it was supposed to be of and fails when none of its frames are there. A session with
+no bound device is checked against the weaker thing that is still true of it: that the
+capture holds ONE BLE connection's worth of Govee traffic, since a phone paired with the
+whole house records several. Decoding without `--allow-unattributed` will refuse a capture
+that is mostly unaddressed, and that flag never lets two connections be read as one.
 
 ## Writing Wi-Fi credentials to a device
 
