@@ -1,6 +1,28 @@
 # CHANGELOG
 
 
+## v4.6.0 (2026-08-05)
+
+### Bug Fixes
+
+- **ble**: Read a captured 33 a9 on its selector, and name 33 ae
+  ([`5beeef6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5beeef6d42778aef73879024e21ce902e9f4ffd8))
+
+- **h6199**: These registers are unread, not unreadable
+  ([`d72bb64`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d72bb64a967b6335c2b5f73bf8eddeb1a64accd8))
+
+- **harness**: Stop two session caches fighting over the one WebDriverAgent
+  ([`e9d299c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e9d299cd4d11c874a1938cd1a754bd1f3236b7e0))
+
+### Features
+
+- **h6199**: Offer white balance as the strip positions the app writes
+  ([`e678fd3`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e678fd33018349b19d1f792085dad7557a8561e5))
+
+- **kaitai**: Name the H6199 scene block trailer, and retire two false constants
+  ([`8944566`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8944566848cf5b66e0cda86cea6f44504e92b9e2))
+
+
 ## v4.5.0 (2026-08-05)
 
 ### Bug Fixes
