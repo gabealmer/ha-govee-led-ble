@@ -1,0 +1,11 @@
+# H6199 colour-mode status reply, captured from the Govee Home iOS app driving the
+# DreamView T1 over BLE. Taken with the light in video mode. The payload is left raw: no write in that session set these values, so the resemblance to the video write's layout is unconfirmed.
+id: h6199_status_colour_mode_video
+data: h6199_status_colour_mode_video.bin
+imports:
+  - h6199_status_reply
+asserts:
+  - actual: domain
+    expected: 5
+  - actual: body.mode
+    expected: 0

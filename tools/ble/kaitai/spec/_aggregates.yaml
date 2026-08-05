@@ -833,3 +833,14 @@
     which byte a value sits in would have changed it.
   between: [h6199_music_stream_red, h6199_music_stream_green]
   differs_at: [3, 4]
+
+- id: h6199_status_colour_mode_reports_every_mode
+  doc: >
+    The colour-mode reply carries four distinct mode values across four sessions, one per
+    mode the app can select. That the light reports the SAME set the write side selects on
+    is the device confirming that enum from the other direction, rather than us reading our
+    own encoder back to ourselves. It also settles a question the integration had been
+    assuming rather than testing: this model does answer an aa 05 query.
+  cases: h6199_status_colour_mode_*
+  collect: body.mode
+  distinct_at_least: 4

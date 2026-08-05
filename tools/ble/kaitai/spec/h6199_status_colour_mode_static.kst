@@ -1,0 +1,11 @@
+# H6199 colour-mode status reply, captured from the Govee Home iOS app driving the
+# DreamView T1 over BLE. Taken with the light showing a static colour. Its body is entirely zero, so this reply says which mode is active and nothing more.
+id: h6199_status_colour_mode_static
+data: h6199_status_colour_mode_static.bin
+imports:
+  - h6199_status_reply
+asserts:
+  - actual: domain
+    expected: 5
+  - actual: body.mode
+    expected: 21
