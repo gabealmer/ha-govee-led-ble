@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v4.8.0 (2026-08-05)
+
+### Features
+
+- **h617a**: Align controls and add scene speed
+  ([`012530e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/012530ebf362070c6fbb3b6e70caa4c0f84f7faa))
+
+
 ## v4.7.1 (2026-08-05)
 
 ### Bug Fixes
