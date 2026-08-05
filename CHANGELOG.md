@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v5.0.0 (2026-08-05)
+
+### Bug Fixes
+
+- Preserve HA harness executable
+  ([`8b605c4`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8b605c4ccd4563f5567503aa3515a57e142d6c5f))
+
+### Features
+
+- Simplify controls and verify H6199 on device
+  ([`e1087b1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e1087b1c91d04adfe0cd77928006706c81696ec7))
+
+### Breaking Changes
+
+- Removes the effect preview entities and replaces the H6199 white balance preset and raw gain
+  entities with one position slider.
+
+
 ## v4.8.0 (2026-08-05)
 
 ### Features
