@@ -30,7 +30,7 @@ doc: |
 seq:
   - id: header
     contents: [0x01]
-    doc: '[CONFIRMED_LIVE] effect-body marker at body offset 0, captured as 0x01 in all eight bodies'
+    doc: '[CONFIRMED_LIVE] effect-body marker at body offset 0, captured as 0x01 in all twenty-one bodies'
   - id: chunk_count
     type: u1
     doc: |
@@ -157,12 +157,12 @@ types:
         doc: '[CONFIRMED_LIVE] blue channel; the fifth swatch is 00 00 ff and the app draws it blue'
   block:
     doc: |
-      One element of the effect. Eight bodies hold nineteen blocks between them and every one
-      is a length byte followed by exactly that many bytes.
+      One element of the effect. Eight bodies hold twenty-one blocks between them and every
+      one is a length byte followed by exactly that many bytes.
     seq:
       - id: len
         type: u1
-        doc: '[CONFIRMED_LIVE] the block length, not counting itself; captured between 26 and 47 across nineteen blocks'
+        doc: '[CONFIRMED_LIVE] the block length, not counting itself; captured between 26 and 47 across twenty-one blocks'
       - id: opaque_body
         size: len
         doc: |
@@ -175,7 +175,8 @@ types:
           values such as 0x01, 0x05, 0x0a and 0x0f, then a pair that is usually 02 01. Runs
           of RGB-looking triples appear later in most blocks. None of that is a measurement.
 
-          Settle it in the DIY editor, where one parameter can be changed at a time. A
-          previous survey there already isolated an effect family and variant to two adjacent
-          bytes by applying five styles with one palette, which is the shape the experiment
-          should take here.
+          THE DIY EDITOR WAS THE PROPOSED WAY IN AND IT IS NOT ONE. That experiment has since
+          been run and it opened diy_content instead: an effect built in the editor arrives
+          as parameters and a palette, not as blocks, so no amount of changing one thing at
+          a time there ever varies a block. Settling this needs two uploads of the SAME
+          catalogue scene differing in one property, and no capture has produced such a pair.
