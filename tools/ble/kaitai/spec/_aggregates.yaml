@@ -809,3 +809,22 @@
   cases: h6199_effect_diy_*
   collect: content.palette_len
   distinct_at_least: 2
+
+- id: h6199_music_stream_channels_are_independent
+  doc: >
+    The same magnitude appears alone on each of the three channels, so they are three bytes
+    and not one intensity with a fixed hue. All three of those frames carry the identical
+    checksum, which is what a sum over the frame produces and a position-weighted scheme
+    would not, so the fixtures pin the checksum rule as well as the layout.
+  cases: h6199_music_stream_*
+  collect: red
+  distinct_at_least: 3
+
+- id: h6199_music_stream_red_moves_alone
+  doc: >
+    Two stream frames of the same magnitude on different channels differ at exactly the two
+    channel bytes and nowhere else, the checksum included. That the checksum does NOT move
+    while two payload bytes do is itself the evidence for sum-8: any scheme sensitive to
+    which byte a value sits in would have changed it.
+  between: [h6199_music_stream_red, h6199_music_stream_green]
+  differs_at: [3, 4]
