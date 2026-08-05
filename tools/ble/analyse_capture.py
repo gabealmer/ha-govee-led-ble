@@ -6,7 +6,13 @@ Companion to ``govee-capture.sh``: that script writes ``<name>.pcap`` alongside 
 marks and, for each action, prints the 0x33 command writes, the non-power 0xaa
 read-backs, and the reassembled 0xA3 multi-frame body.
 
-    analyse_capture.py <name> [--address AA:BB:...] [--tail-seconds N]
+    analyse_capture.py <name> [--source SEL] [--allow-unattributed] [--tail-seconds N]
+
+ONE CAPTURE, ONE DEVICE. This tool concatenates frames into a reassembled body, so a
+capture holding two BLE connections does not produce a mixed listing here, it produces a
+body no device ever sent. It refuses such a capture until --source narrows it, and unlike
+the decoder it offers no way to mix on purpose, because there is no reading for which that
+is the right answer.
 
 A3 REASSEMBLY. The app uses ``build_a3_multi``'s non-terminator form: the LAST data
 chunk carries index 0xff, so its 17-byte payload is real data, not an empty terminator.
@@ -30,7 +36,18 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from decode_govee import a3_body_is_complete, parse_capture, reassemble_a3, segment_a3  # noqa: E402
+from decode_govee import (  # noqa: E402
+    SourceSelectionError,
+    a3_body_is_complete,
+    govee_sources,
+    is_unattributed,
+    parse_capture,
+    reassemble_a3,
+    resolve_source,
+    segment_a3,
+    source_labels,
+    source_of,
+)
 
 DEFAULT_CAPTURE_DIR = Path(os.environ.get("GOVEE_CAPTURE_DIR", Path.home() / "govee-captures"))
 # New captures are pcapng; the pre-2026-07-30 corpus is classic pcap. Both read the same.
@@ -60,7 +77,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("name", help="capture name, without the container suffix")
     ap.add_argument("--capture-dir", type=Path, default=DEFAULT_CAPTURE_DIR)
-    ap.add_argument("--address", help="restrict to one BLE peer address")
+    ap.add_argument(
+        "--source",
+        "--address",
+        dest="source",
+        help="restrict to one source: a BLE address, a unique address tail, or a connection (?conn-0x4e)",
+    )
+    ap.add_argument(
+        "--allow-unattributed",
+        action="store_true",
+        help="accept frames whose connection this capture never saw open, so no address is known for them",
+    )
     ap.add_argument("--tail-seconds", type=float, default=25.0, help="window length for the final mark")
     args = ap.parse_args()
 
@@ -77,14 +104,48 @@ def main() -> int:
         return 1
 
     trace = parse_capture(capture.read_bytes(), allow_truncated=True)
-    tx = [
-        r
-        for r in trace.att
-        if r.direction == "TX"
-        and r.attribute_handle == 0x14
-        and (args.address is None or r.address in (args.address, None))
-    ]
-    rx = [r for r in trace.att if r.direction == "RX" and r.attribute_handle == 0x10]
+    sources = govee_sources(trace)
+    labels = source_labels(trace.att)
+    print(f"# Govee sources: {'  '.join(f'{s}={n}' for s, n in sorted(sources.items(), key=lambda kv: -kv[1]))}")
+
+    # This tool CONCATENATES frames into a body, so a second source here does not produce a
+    # mixed listing, it produces a body that no device ever sent. There is deliberately no
+    # --all-peers equivalent: narrowing is always available and mixing is never meaningful.
+    if args.source is None and len(sources) > 1:
+        print(
+            f"error: this capture holds {len(sources)} Govee sources, so any body reassembled from it "
+            "may fuse two devices' frames. Narrow it with --source <address, address tail or connection>.",
+            file=sys.stderr,
+        )
+        return 2
+    wanted: str | None = None
+    if args.source is not None:
+        try:
+            wanted = resolve_source(sources, args.source)
+        except SourceSelectionError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    unattributed = [s for s in sources if is_unattributed(s)]
+    if unattributed and not args.allow_unattributed:
+        print(
+            f"error: Govee frames on {len(unattributed)} connection(s) ({', '.join(unattributed)}) cannot be "
+            "attributed to a peer, because those connections were opened before the capture started. "
+            "Pass --allow-unattributed to read them as frames from a device this capture never named.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # BOTH directions are filtered. Filtering only the writes left every notification on
+    # attribute handle 0x10 in, from any connection, so a second device's replies were read
+    # as this one's answers. The write filter was no better: it kept records whose address
+    # was None as well as the requested one, which on a capture that named nobody is every
+    # record there is, so --address restricted nothing at all on exactly the captures it was
+    # reached for.
+    def mine(record) -> bool:
+        return wanted is None or source_of(record, labels) == wanted
+
+    tx = [r for r in trace.att if r.direction == "TX" and r.attribute_handle == 0x14 and mine(r)]
+    rx = [r for r in trace.att if r.direction == "RX" and r.attribute_handle == 0x10 and mine(r)]
 
     marks = load_marks(args.capture_dir / f"{args.name}.actions.tsv")
     if not marks:
