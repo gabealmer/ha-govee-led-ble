@@ -218,7 +218,22 @@ case "${1:-}" in
       "$([ "${peer:--}" = - ] && echo null || echo "\"$peer\"")" > "$CAP/$name.meta.json"
     echo "stopped '$name'"
     if [ "${peer:--}" = - ]; then
-      uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$out"
+      # --allow-unattributed, because an unbound session is ad-hoc or direct-mode and a
+      # connection that predates the window is its normal state, not a failure. It does NOT
+      # weaken the guard that matters here: the decoder still refuses a capture holding more
+      # than one BLE connection's worth of Govee traffic, which is a failed run to repeat
+      # rather than a result to interpret. That refusal is the whole reason this branch
+      # checks an exit status at all. It used to ignore one, and on 2026-08-05 an unbound
+      # session holding two live connections stopped clean and was read as one light.
+      if ! uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$out" --allow-unattributed; then
+        echo "capture '$name' is not usable as evidence about one device" >&2
+        echo "  the phone was talking to more than one thing on BLE while this recorded," >&2
+        echo "  so no reading off it belongs to any particular device. Narrow it with" >&2
+        echo "  'govee-capture.sh decode $name --source <connection> --allow-unattributed'" >&2
+        echo "  once you know which connection was the light, or recapture with the others" >&2
+        echo "  disconnected." >&2
+        exit 3
+      fi
     elif ! uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$out" --peer "$peer"; then
       # The decoder already said which peers it did see. This adds the one thing it cannot
       # know: that the session was FOR this device, so a capture without it is a failed run

@@ -16,14 +16,23 @@ used to filter Govee traffic out of the phone's other BLE activity.
 
 Usage: uv run python tools/ble/decode_govee.py <capture.pcapng|capture.pcap> [options]
   --all                   also print packets that are not Govee (raw ATT values)
-  --peer ADDR             keep only one BLE peer; full address or a unique address tail
+  --source SEL            keep one source; an address, an address tail, or ?conn-0xNN
   --allow-unattributed    proceed past frames whose connection predates the capture
   --all-peers             dump a multi-source capture mixed, on purpose
 
 A phone talks to every light it is paired with, so one capture can hold more than one
 model. Reading a second model's frames as this one's is not a rendering mistake, it is a
 false protocol finding, so a capture holding more than one Govee source is REFUSED until
-it is narrowed with --peer. The peer summary is printed either way.
+it is narrowed with --source. The source summary is printed either way.
+
+A SOURCE IS A CONNECTION, NOT AN ADDRESS. Counting sources by peer address made the guard
+fire only on the captures that did not need it. Every frame on a connection the capture
+never saw open has no address, so on 2026-08-05 a session holding two ATT connections,
+2189 Govee-shaped frames on 0x4e and 2 on 0x56, collapsed into the single bucket "?=2191"
+and printed clean. The second connection was a heart-rate wearable whose own framing
+happens to pass the 20-byte XOR test, so the frames were not even Govee, and nothing in
+the output said so. The ATT connection handle is present on every frame whether or not an
+address ever was, so it is what the count keys on now.
 """
 
 import argparse
@@ -50,6 +59,7 @@ class AttRecord:
     timestamp: datetime
     direction: str
     connection_handle: int
+    connection_epoch: int
     address: str | None
     opcode: int
     attribute_handle: int
@@ -101,6 +111,16 @@ def _is_govee(v: bytes) -> bool:
     # about hides exactly the traffic that would teach us something new, so anything
     # 20 bytes long with a valid XOR is now let through on these headers rather than being
     # judged on whether we recognise it.
+    #
+    # SHAPE IS NOT IDENTITY, and it never was. Twenty bytes with a valid XOR is a 1-in-256
+    # accident for any frame whose first byte lands in this set, so a busy connection to
+    # something else entirely will contribute a few frames here. Two did, in a capture on
+    # 2026-08-05: 76 frames of a length-prefixed transport (magic aa 01, u16le length, u16le
+    # flags, CRC-16/MODBUS over that 6-byte header, then length bytes of payload) shared a
+    # capture with the light, on an accessory whose other characteristic was a standard
+    # Heart Rate Measurement. Two of the 76 XOR'd out and were labelled "reply power=on".
+    # Nothing here can fix that, because the collision is genuine. The connection they
+    # arrived on is what tells them apart, which is why govee_sources counts connections.
     if _is_music_stream(v):
         return True
     return len(v) == 20 and v[0] in (0x33, 0xAA, 0xA3, 0xA1, 0xEE) and _xor_ok(v)
@@ -516,8 +536,18 @@ def _connection_event(timestamp: datetime, h4: bytes) -> ConnectionEvent | None:
 
 
 def parse_capture(data: bytes, *, allow_truncated: bool = False) -> CaptureTrace:
-    """Parse connection lifecycle and attributed ATT records from an iPhone HCI capture."""
+    """Parse connection lifecycle and attributed ATT records from an iPhone HCI capture.
+
+    Each record carries a CONNECTION EPOCH as well as its handle. A handle is only unique
+    while its connection is up: the controller hands the same number back out after a
+    disconnect, so two devices can own 0x4e in one capture and counting handles alone would
+    merge them. An epoch is minted on every captured connect, dropped on the matching
+    disconnect, and minted again the first time a frame arrives on a handle with none, which
+    is how a connection that predates the capture gets an identity at all.
+    """
     active_connections: dict[int, str] = {}
+    open_epochs: dict[int, int] = {}
+    minted = 0
     connection_events: list[ConnectionEvent] = []
     att_records: list[AttRecord] = []
     for timestamp, pkt in iter_frames(data, allow_truncated=allow_truncated):
@@ -526,10 +556,14 @@ def parse_capture(data: bytes, *, allow_truncated: bool = False) -> CaptureTrace
         direction = "RX" if (struct.unpack(">I", pkt[0:4])[0] & 1) else "TX"
         h4 = pkt[4:]
         if event := _connection_event(timestamp, h4):
-            if event.connected and event.address is not None:
-                active_connections[event.connection_handle] = event.address
+            if event.connected:
+                minted += 1
+                open_epochs[event.connection_handle] = minted
+                if event.address is not None:
+                    active_connections[event.connection_handle] = event.address
             else:
                 active_connections.pop(event.connection_handle, None)
+                open_epochs.pop(event.connection_handle, None)
             connection_events.append(event)
             continue
         if h4[0] != 0x02:  # H4 ACL only
@@ -547,11 +581,16 @@ def parse_capture(data: bytes, *, allow_truncated: bool = False) -> CaptureTrace
         opcode = att[0]
         if opcode not in WRITE_OPCODES or len(att) < 3:
             continue
+        epoch = open_epochs.get(connection_handle)
+        if epoch is None:
+            minted += 1
+            epoch = open_epochs[connection_handle] = minted
         att_records.append(
             AttRecord(
                 timestamp=timestamp,
                 direction=direction,
                 connection_handle=connection_handle,
+                connection_epoch=epoch,
                 address=active_connections.get(connection_handle),
                 opcode=opcode,
                 attribute_handle=struct.unpack("<H", att[1:3])[0],
@@ -579,50 +618,121 @@ def _iter_att(data: bytes) -> Iterator[tuple[str, int, int, bytes]]:
         yield record.direction, record.opcode, record.attribute_handle, record.value
 
 
-UNATTRIBUTED = "?"
+UNATTRIBUTED_PREFIX = "?conn-"
 
 
-def govee_peers(trace: CaptureTrace) -> dict[str, int]:
-    """Count Govee-shaped frames per BLE peer, newest-first insertion order.
+def is_unattributed(source: str) -> bool:
+    """Whether a source key names a connection whose peer this capture never saw."""
+    return source.startswith(UNATTRIBUTED_PREFIX)
+
+
+def source_labels(records: Iterable[AttRecord]) -> dict[int, str]:
+    """Name every connection epoch that carries ATT traffic, for use when no address exists.
+
+    The handle is what an operator can line up against Wireshark, so it leads the name. The
+    epoch index is appended only when the same handle is opened more than once in this
+    capture, because that is the only time the handle alone is ambiguous and a suffix on
+    every line would just be noise.
+
+    Computed over ALL records rather than the Govee ones, so a connection's name does not
+    change depending on which filter is being looked through.
+    """
+    order: dict[int, list[int]] = {}
+    for record in records:
+        epochs = order.setdefault(record.connection_handle, [])
+        if record.connection_epoch not in epochs:
+            epochs.append(record.connection_epoch)
+    labels: dict[int, str] = {}
+    for handle, epochs in order.items():
+        for index, epoch in enumerate(epochs, 1):
+            suffix = f"#{index}" if len(epochs) > 1 else ""
+            labels[epoch] = f"{UNATTRIBUTED_PREFIX}{handle:#04x}{suffix}"
+    return labels
+
+
+def source_of(record: AttRecord, labels: dict[int, str]) -> str:
+    """The source key of one record: its peer address, or the connection it arrived on."""
+    return record.address or labels[record.connection_epoch]
+
+
+def govee_sources(trace: CaptureTrace) -> dict[str, int]:
+    """Count Govee-shaped frames per source, where a source is ONE BLE CONNECTION.
 
     A phone talks to every light it is paired with, so a capture is only evidence about
-    ONE model if it holds one Govee peer or is filtered to one. Frames on a connection
-    whose HCI connect event was not captured have no address and are counted under
-    ``UNATTRIBUTED``: they are not silently discarded, because "we never saw who sent
-    this" and "this device sent nothing" have to stay distinguishable.
+    ONE model if it holds one source or is filtered to one. The address is used when the
+    capture saw the connection open, because a device that reconnects mid-capture would
+    otherwise count twice. Otherwise the connection itself is the source, which is the
+    whole point: the address is the field that goes missing, and a count keyed on it
+    reports one source for a capture holding several and reports it as silence rather
+    than as an error.
     """
+    labels = source_labels(trace.att)
     counts: dict[str, int] = {}
     for record in trace.att:
         if _is_govee(record.value):
-            key = record.address or UNATTRIBUTED
+            key = source_of(record, labels)
             counts[key] = counts.get(key, 0) + 1
     return counts
 
 
-class PeerSelectionError(Exception):
-    """A --peer argument that cannot be resolved to exactly one captured peer."""
+class SourceSelectionError(Exception):
+    """A --source argument that cannot be resolved to exactly one captured source."""
 
 
-def resolve_peer(peers: Iterable[str], wanted: str) -> str:
-    """Resolve ``wanted`` to one captured peer address, by full match or unique suffix.
+_HANDLE_PREFIXES = ("0X", "HDL", "HANDLE")
+
+
+def resolve_source(sources: Iterable[str], wanted: str) -> str:
+    """Resolve ``wanted`` to one captured source: an address, an address tail, or a connection.
 
     Suffix matching exists because a Govee light advertises its address tail in its BLE
     local name (``Govee_H6199_3B73``), so the tail is the identifier actually to hand at
-    the rig. Every unresolvable case raises rather than returning nothing: an address
-    that matches no peer is a typo, and a typo that filtered everything out would read
-    as a device that stayed silent, which is the failure this whole filter exists to stop.
+    the rig. A capture that never saw its connections open has no address to offer, so the
+    printed connection key (``?conn-0x4e``) and the bare handle (``0x4e``) resolve too:
+    refusing to select anything at all would leave the operator with a refusal and no way
+    past it, which is how an unreadable capture turns back into an unread one.
+
+    Every unresolvable case raises rather than returning nothing: an address that matches
+    no source is a typo, and a typo that filtered everything out would read as a device
+    that stayed silent, which is the failure this whole filter exists to stop.
     """
-    known = [p for p in peers if p != UNATTRIBUTED]
-    normal = wanted.upper().replace(":", "")
-    exact = [p for p in known if p.replace(":", "") == normal]
-    if exact:
-        return exact[0]
-    suffix = [p for p in known if p.replace(":", "").endswith(normal)]
+    known = list(sources)
+    normal = wanted.upper().replace(":", "").replace("-", "").strip("?")
+    if normal.startswith(_HANDLE_PREFIXES) or wanted.startswith("?"):
+        handle = normal.removeprefix("CONN").removeprefix("HANDLE").removeprefix("HDL")
+        connections = {s: s.removeprefix(UNATTRIBUTED_PREFIX).upper() for s in known if is_unattributed(s)}
+        exact = [s for s, name in connections.items() if name == handle]
+        if len(exact) == 1:
+            return exact[0]
+        same_handle = [s for s, name in connections.items() if name.partition("#")[0] == handle]
+        if len(same_handle) == 1:
+            return same_handle[0]
+        if not same_handle:
+            raise SourceSelectionError(f"no captured source matches {wanted!r}; captured: {_known(known)}")
+        raise SourceSelectionError(
+            f"{wanted!r} matches {len(same_handle)} connections: {', '.join(same_handle)}; "
+            "that handle was opened more than once here, so name the one you mean"
+        )
+    addressed = [s for s in known if not is_unattributed(s)]
+    exact_address = [s for s in addressed if s.replace(":", "") == normal]
+    if exact_address:
+        return exact_address[0]
+    suffix = [s for s in addressed if s.replace(":", "").endswith(normal)]
     if len(suffix) == 1:
         return suffix[0]
     if not suffix:
-        raise PeerSelectionError(f"no captured peer matches {wanted!r}; captured: {', '.join(known) or 'none'}")
-    raise PeerSelectionError(f"{wanted!r} matches {len(suffix)} peers: {', '.join(suffix)}")
+        raise SourceSelectionError(f"no captured source matches {wanted!r}; captured: {_known(known)}")
+    raise SourceSelectionError(f"{wanted!r} matches {len(suffix)} peers: {', '.join(suffix)}")
+
+
+def _known(sources: Iterable[str]) -> str:
+    """List what IS in the capture, connections included.
+
+    Listing only addresses is what turned the failing case into a dead end: an unattributed
+    capture answered ``captured: none``, which reads as an empty capture rather than as one
+    holding two connections nobody ever named.
+    """
+    return ", ".join(sources) or "none"
 
 
 def main() -> int:
@@ -630,13 +740,15 @@ def main() -> int:
     parser.add_argument("capture", help="pcapng or pcap file from govee-capture.sh")
     parser.add_argument("--all", action="store_true", help="also print ATT values that are not Govee")
     parser.add_argument(
+        "--source",
         "--peer",
-        help="keep only frames to/from this BLE peer; full address or a unique address tail",
+        dest="source",
+        help="keep only frames from one source; a BLE address, a unique address tail, or a connection (?conn-0x4e)",
     )
     parser.add_argument(
         "--allow-unattributed",
         action="store_true",
-        help="proceed even though some Govee frames belong to a connection this capture never saw open",
+        help="accept frames whose connection this capture never saw open, so no address is known for them",
     )
     parser.add_argument(
         "--all-peers",
@@ -652,39 +764,52 @@ def main() -> int:
 
     data = open(opts.capture, "rb").read()
     trace = parse_capture(data)
-    peers = govee_peers(trace)
+    sources = govee_sources(trace)
+    labels = source_labels(trace.att)
+    header = f"# {opts.capture}\n# Govee sources: {_render_sources(sources) or 'none'}"
 
-    wanted: str | None = None
-    if opts.peer is not None:
-        try:
-            wanted = resolve_peer(peers, opts.peer)
-        except PeerSelectionError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return 2
-        # An unattributed frame MIGHT belong to the requested peer, so filtering past one
-        # silently understates that peer's traffic. Refuse by default: the whole point of
-        # --peer is that a capture is evidence about one model, and a filter that drops
-        # frames it could not classify would make a partial capture look like a whole one.
-        if peers.get(UNATTRIBUTED) and not opts.allow_unattributed:
-            print(
-                f"error: {peers[UNATTRIBUTED]} Govee frame(s) belong to a connection opened before the "
-                "capture started, so they cannot be attributed to a peer. Recapture with the app "
-                "restarted inside the capture window, or pass --allow-unattributed to ignore them.",
-                file=sys.stderr,
-            )
-            return 2
-
+    # ORDER MATTERS: contamination is reported before incompleteness. A capture holding two
+    # sources invalidates every row below it whatever else is true of it, and it is the
+    # finding an operator must not be able to walk past while fixing something smaller.
+    #
     # A dump the operator forgot to narrow is the trap, not the one they narrowed wrongly.
     # More than one Govee source means every row below could belong to either, and a
     # mixed dump reads exactly like a single device's session. An opt-in filter you can
     # forget protects nothing, so this refuses rather than warns.
-    if wanted is None and len(peers) > 1 and not opts.all_peers:
-        print(f"# {opts.capture}")
-        print(f"# Govee peers: {_render_peers(peers)}")
+    if opts.source is None and len(sources) > 1 and not opts.all_peers:
+        print(header)
         print(
-            f"error: this capture holds {len(peers)} Govee sources, so nothing read off it is "
-            "evidence about one model. Narrow it with --peer <address or address tail>, or pass "
-            "--all-peers to dump it mixed on purpose.",
+            f"error: this capture holds {len(sources)} Govee sources, so nothing read off it is "
+            "evidence about one model. Narrow it with --source <address, address tail or connection>, "
+            "or pass --all-peers to dump it mixed on purpose.",
+            file=sys.stderr,
+        )
+        return 2
+
+    wanted: str | None = None
+    if opts.source is not None:
+        try:
+            wanted = resolve_source(sources, opts.source)
+        except SourceSelectionError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+    # --allow-unattributed accepts ONE thing: that some frames belong to a connection this
+    # capture never saw open, so no address is known for them. It deliberately does NOT
+    # suppress the refusal above. Those are separate claims: this one is about how complete
+    # the naming is, that one is about whether two devices are mixed together. Letting it
+    # cover both would disarm the guard on exactly the captures that have nothing else left
+    # to go on, and govee-capture.sh passes it on every unbound stop, so the fix would be
+    # dead at the call site that swallowed the failing session in the first place.
+    unattributed = [s for s in sources if is_unattributed(s)]
+    if unattributed and not opts.allow_unattributed:
+        print(header)
+        print(
+            f"error: {sum(sources[s] for s in unattributed)} Govee frame(s) on {len(unattributed)} "
+            f"connection(s) ({', '.join(unattributed)}) cannot be attributed to a peer, because those "
+            "connections were opened before the capture started. Recapture with the app restarted inside "
+            "the capture window, or pass --allow-unattributed to read them as frames from a device this "
+            "capture never named.",
             file=sys.stderr,
         )
         return 2
@@ -693,8 +818,8 @@ def main() -> int:
     seen: set[bytes] = set()
     total = govee = 0
     for record in trace.att:
-        peer = record.address or UNATTRIBUTED
-        if wanted is not None and peer != wanted:
+        source = source_of(record, labels)
+        if wanted is not None and source != wanted:
             continue
         value = record.value
         total += 1
@@ -704,7 +829,7 @@ def main() -> int:
             seen.add(value)
             rows.append(
                 (
-                    peer,
+                    source,
                     record.direction,
                     record.opcode,
                     record.attribute_handle,
@@ -714,22 +839,25 @@ def main() -> int:
                 )
             )
         elif opts.all and value:
-            rows.append((peer, record.direction, record.opcode, record.attribute_handle, value, "(non-govee)", True))
+            rows.append((source, record.direction, record.opcode, record.attribute_handle, value, "(non-govee)", True))
 
     print(f"# {opts.capture}")
     print(f"# ATT writes/notifications: {total}   Govee packets: {govee}   unique Govee: {len(seen)}")
     # Always printed, and always before the rows, because "this capture holds two lights"
     # is a fact that invalidates every reading below it and must not have to be noticed.
-    print(f"# Govee peers: {_render_peers(peers) or 'none'}")
+    print(f"# Govee sources: {_render_sources(sources) or 'none'}")
     if wanted is not None:
-        print(f"# filtered to peer {wanted}")
-    elif len(peers) > 1:
+        print(f"# filtered to source {wanted}")
+    elif len(sources) > 1:
         print("# WARNING: more than one Govee source here; this capture is not evidence about one model")
-    print(f"# {'peer':<17} {'dir':<3} {'op':<12} {'hdl':<6} {'payload (hex)':<41} label")
-    for peer, direction, opcode, handle, value, lab, first in rows:
+    if wanted is None or is_unattributed(wanted):
+        for source in unattributed if wanted is None else [wanted]:
+            print(f"# WARNING: {source} was never named; this capture cannot say which device it was")
+    print(f"# {'source':<17} {'dir':<3} {'op':<12} {'hdl':<6} {'payload (hex)':<41} label")
+    for source, direction, opcode, handle, value, lab, first in rows:
         mark = " " if first else "."
         print(
-            f"{mark} {peer:<17} {direction:<3} {WRITE_OPCODES[opcode]:<12} {handle:#06x} "
+            f"{mark} {source:<17} {direction:<3} {WRITE_OPCODES[opcode]:<12} {handle:#06x} "
             f"{render_payload(value, show_secrets=opts.show_secrets):<41} {lab}"
         )
     if not opts.all:
@@ -737,8 +865,8 @@ def main() -> int:
     return 0
 
 
-def _render_peers(peers: dict[str, int]) -> str:
-    return "  ".join(f"{peer}={count}" for peer, count in sorted(peers.items(), key=lambda kv: (-kv[1], kv[0])))
+def _render_sources(sources: dict[str, int]) -> str:
+    return "  ".join(f"{source}={count}" for source, count in sorted(sources.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
 if __name__ == "__main__":

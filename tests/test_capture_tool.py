@@ -5,6 +5,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from tests.hci_capture import POWER_ON, STATUS, notify, pcap, two_unnamed_connections, write
+
 _REPO = Path(__file__).parents[1]
 _SCRIPT = _REPO / "tools" / "ble" / "govee-capture.sh"
 _PCAP_FIXTURE = _REPO / "tests" / "fixtures" / "govee_hci.pcap"
@@ -278,9 +280,11 @@ _FIXTURE_PEER = "D0:35:34:AA:BB:CC"
 _ABSENT_PEER = "D5:36:36:DD:EE:FF"
 
 
-def _record_session(tmp_path: Path, name: str, *, expected_peer: str | None) -> subprocess.CompletedProcess[str]:
+def _record_session(
+    tmp_path: Path, name: str, *, expected_peer: str | None, capture: bytes | None = None
+) -> subprocess.CompletedProcess[str]:
     """Start a capture over the committed fixture and stop it, returning stop's result."""
-    stub = _stub_logger(tmp_path, writes=_PCAPNG_FIXTURE.read_bytes())
+    stub = _stub_logger(tmp_path, writes=capture if capture is not None else _PCAPNG_FIXTURE.read_bytes())
     env = _capture_env(tmp_path, stub)
     if expected_peer is not None:
         env["GOVEE_EXPECTED_PEER"] = expected_peer
@@ -316,7 +320,7 @@ def test_a_session_for_a_light_that_never_appeared_is_a_failed_run(tmp_path: Pat
     # has always tolerated on the path that hands the BLE link back.
     assert result.returncode == 3
     assert "not usable as evidence" in result.stderr
-    assert "no captured peer" in result.stderr
+    assert "no captured source" in result.stderr
 
 
 def test_a_session_that_did_capture_its_light_passes_and_records_the_binding(tmp_path: Path):
@@ -326,7 +330,7 @@ def test_a_session_that_did_capture_its_light_passes_and_records_the_binding(tmp
     assert result.returncode == 0, result.stderr
     meta = json.loads((tmp_path / "captures" / "right-light.meta.json").read_text())
     assert meta["expected_peer"] == _FIXTURE_PEER
-    assert f"filtered to peer {_FIXTURE_PEER}" in result.stdout
+    assert f"filtered to source {_FIXTURE_PEER}" in result.stdout
 
 
 def test_a_capture_with_no_expected_peer_still_decodes(tmp_path: Path):
@@ -336,3 +340,36 @@ def test_a_capture_with_no_expected_peer_still_decodes(tmp_path: Path):
     assert result.returncode == 0, result.stderr
     meta = json.loads((tmp_path / "captures" / "unbound.meta.json").read_text())
     assert meta["expected_peer"] is None
+
+
+def test_a_session_that_recorded_two_bluetooth_connections_is_a_failed_run(tmp_path: Path):
+    """The quiet failure that got through on 2026-08-05, made loud.
+
+    The phone stays paired with everything in the house, so a capture can hold a second
+    device's connection alongside the light's. Both connections here predate the recording
+    and neither carries an address, which is the normal state of an app-sniff session and
+    was exactly why the old address-keyed count reported one source and stopped clean. An
+    unbound stop tolerates unnamed frames, because ad-hoc and direct-mode captures are full
+    of them, but it must not tolerate two devices being read as one.
+    """
+    result = _record_session(tmp_path, "two-devices", expected_peer=None, capture=two_unnamed_connections())
+
+    # 3, matching the other "this capture proves nothing" exit, so down.sh keeps telling it
+    # apart from "there was no capture running".
+    assert result.returncode == 3
+    assert "not usable as evidence about one device" in result.stderr
+    assert "holds 2 Govee sources" in result.stderr
+
+
+def test_an_unbound_session_still_stops_clean_when_it_holds_one_unnamed_connection(tmp_path: Path):
+    """Positive control: unnamed frames alone are not a failure, or the check above proves nothing.
+
+    An unbound stop passes --allow-unattributed for this reason. Frames on a connection
+    opened before recording started are the normal state of the sessions that never bind a
+    peer, and failing them would only teach the operator to ignore the exit status.
+    """
+    capture = pcap([write(0x004E, POWER_ON), notify(0x004E, STATUS)])
+    result = _record_session(tmp_path, "one-unnamed", expected_peer=None, capture=capture)
+
+    assert result.returncode == 0, result.stderr
+    assert "?conn-0x4e" in result.stdout
