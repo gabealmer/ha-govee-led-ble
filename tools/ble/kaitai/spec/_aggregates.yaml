@@ -458,14 +458,16 @@
 
 - id: h6199_music_mode_captures_held_sensitivity_constant
   doc: >
-    Every frame in the four-mode session carries the same sensitivity byte. It was written
-    to keep offset 4 honest while that byte had never been seen to move, and it still earns
-    its place for the opposite reason: now that sensitivity is known to vary, holding it
-    constant is what makes those four frames a controlled comparison for the MODE byte
-    rather than four samples that happened to differ in two places at once.
-  cases: h6199_command_music_*
-  collect: body.detail.sensitivity
-  distinct_at_least: 1
+    Every frame in the four-mode session carries the same sensitivity byte, which is what
+    makes those four a controlled comparison for the MODE byte rather than four samples that
+    happened to differ in two places at once. It was written as a distinct_at_least of 1
+    while sensitivity had never been seen to move, and that form cannot fail: one matched
+    case satisfies it whatever the byte holds. Sensitivity has since been shown to vary under
+    its own slider, so the claim needs a check that can. This pair is also the link between
+    the two mode differentials below, each of which only holds offset 4 still inside its own
+    pair; with it, all four frames share that byte.
+  between: [h6199_command_music_rhythm, h6199_command_music_energetic]
+  equal_at: [4]
 
 - id: h6199_music_mode_moves_alone
   doc: >
@@ -623,13 +625,15 @@
 
 - id: h6199_white_balance_manual_held_constant
   doc: >
-    The manual flag holds one value across every capture, because all of them were taken on
-    the manual strip. It is named from the vendor encoder rather than from a comparison,
-    and this aggregate records that the isolating capture - turning Auto White Balance on -
-    has not been taken.
-  cases: h6199_white_balance_*
-  collect: body.payload.manual
-  distinct_at_least: 1
+    The manual flag holds still between a marker position and the write the Reset button
+    produced, which are the two most different ways this panel was driven, and the remaining
+    two captures assert the same value fixture by fixture. It is named from the vendor
+    encoder rather than from a comparison, so this aggregate is also the record that the
+    isolating capture - turning Auto White Balance on - has not been taken. Stated as a
+    differential because the spread form it used to take, a distinct_at_least of 1, cannot
+    fail: one matched case satisfies it whatever the byte holds.
+  between: [h6199_white_balance_cool, h6199_white_balance_reset]
+  equal_at: [4]
 
 - id: h6199_white_balance_only_the_gains_move
   doc: >
@@ -730,13 +734,14 @@
 
 - id: h6199_effect_chunk_count_varies
   doc: >
-    The chunk count takes five distinct values from 3 to 10. It is redundant with the
+    The chunk count takes six distinct values from 2 to 10 across the twenty-one bodies, the
+    DIY uploads supplying the 2 and the scene bodies the rest. It is redundant with the
     transport, equalling both the number of 0xA3 frames sent and the used length divided by
-    seventeen and rounded up, and two independent routes to the same number across eight
-    bodies is the evidence for the name.
+    seventeen and rounded up, and two independent routes to the same number in every body is
+    the evidence for the name.
   cases: h6199_effect_*
   collect: chunk_count
-  distinct_at_least: 5
+  distinct_at_least: 6
 
 - id: h6199_effect_first_block_length_varies
   doc: >
