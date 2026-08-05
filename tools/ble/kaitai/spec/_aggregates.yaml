@@ -633,41 +633,67 @@
 
 - id: h6199_scene_ids_vary
   doc: >
-    The scene number takes seven distinct values across the corpus, from three of the app's
-    categories. A grammar reading those two bytes as a constant preamble is dead.
+    The scene number takes eleven distinct values across the corpus, from three categories
+    in the app's scene gallery and two more in its Effects Lab. A grammar reading those two
+    bytes as a constant preamble is dead.
   cases: h6199_scene_*
   collect: body.detail.scene_id
-  distinct_at_least: 7
+  distinct_at_least: 11
 
 - id: h6199_scene_adjacent_tiles_are_adjacent_numbers
   doc: >
     Two tiles next to each other in one row differ at exactly the low id byte and the
     checksum. Adjacency in the catalogue producing adjacency in the number is what makes
     these bytes an identifier rather than two unrelated fields, and it is the claim a
-    per-fixture assert cannot make.
+    per-fixture assert cannot make. It is not a rule about every gallery: the two Effects
+    Lab "Sandbox 3D" scenes are 22 apart and the two "Rain" ones 5 apart, so numbers are
+    not handed out densely inside a category.
   between: [h6199_scene_dracarys, h6199_scene_green_reign]
   differs_at: [3, 19]
 
 - id: h6199_scene_low_numbers_are_adjacent_too
   doc: >
     The same adjacency holds at the other end of the range, in a different category and for
-    the other kind, so it is a property of the numbering and not of one row.
+    the other kind, so it is not a quirk of one row.
   between: [h6199_scene_sunrise, h6199_scene_sunset]
   differs_at: [3, 19]
 
-- id: h6199_scene_high_byte_moves_between_categories
+- id: h6199_scene_high_byte_moves
   doc: >
     A scene from the House of the Dragon row differs from a Natural one in BOTH id bytes as
     well as the kind. That the high byte moves at all is what makes the number two bytes
-    wide rather than one; every scene captured outside that row carries a zero there.
+    wide rather than one. This pair alone cannot say more than that, because the kind moved
+    with it; the Effects Lab pair below holds the kind fixed and is the stronger statement.
   between: [h6199_scene_sunrise, h6199_scene_dracarys]
   differs_within: [3, 4, 5, 19]
+
+- id: h6199_scene_third_high_byte_with_the_kind_held
+  doc: >
+    An Effects Lab scene and a House of the Dragon one, both uploaded, differ at both id
+    bytes and the checksum and nowhere else. The high byte reaches a third value, 0x08
+    against 0x3f and 0x00, and it does so with the kind held at 2, which the older pair
+    could not manage: that pair moved the kind alongside the id, so it could not rule out
+    the high byte tracking whatever the kind tracks. A third value also leaves a one-bit
+    reading of the byte with nothing to explain.
+  between: [h6199_scene_tundra, h6199_scene_dracarys]
+  differs_at: [3, 4, 19]
+
+- id: h6199_scene_high_byte_does_not_name_the_category
+  doc: >
+    A "Sandbox 3D" scene from the Effects Lab's Gaming tab and a "Rain" one from its Harmony
+    tab differ at the low id byte and the checksum alone, so two categories on two tabs
+    share a high byte. Read with the Natural and Festival scenes, which share 0x00, this
+    kills the reading in which offset 4 names the gallery and offset 3 indexes within it:
+    on that reading these two frames would have to differ at offset 4. The high byte is the
+    top of one number that happens to be blocked, not a category tag.
+  between: [h6199_scene_tundra, h6199_scene_water_flow]
+  differs_at: [3, 19]
 
 - id: h6199_scene_kind_has_both_values
   doc: >
     The kind byte takes both of its values across the corpus. It is the byte that predicts
     whether an 0xA3 definition upload preceded the write - it did for every scene marked 2
-    and for none marked 1, over eleven scenes - which is why it is a kind and not the top
+    and for none marked 1, over fifteen scenes - which is why it is a kind and not the top
     byte of a wider number.
   cases: h6199_scene_*
   collect: body.detail.kind

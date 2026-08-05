@@ -141,26 +141,40 @@ types:
         type: u2le
         doc: |
           [CONFIRMED_LIVE] the scene number, at frame offsets 3..4. Captured 2026-08-04 by
-          applying scenes from three of the app's categories in one session. Three tiles
-          adjacent in the "House of the Dragon" row gave 16182, 16183 and 16184, differing
-          at the low byte and the checksum alone; two adjacent "Natural" tiles gave 0 and 1.
-          Consecutive numbers for adjacent tiles is what makes this an identifier rather
-          than a pair of unrelated bytes, and the high byte moving between categories -
-          0x3f for that row against 0x00 for every other scene captured - is what makes it
-          two bytes rather than one.
+          applying scenes from five of the app's categories in one session, three in the
+          scene gallery and two more under More > Effects Lab. Three tiles adjacent in the
+          "House of the Dragon" row gave 16182, 16183 and 16184, differing at the low byte
+          and the checksum alone; two adjacent "Natural" tiles gave 0 and 1. Consecutive
+          numbers for adjacent tiles is what makes this an identifier rather than a pair of
+          unrelated bytes.
+
+          The high byte takes three values across the corpus - 0x00 for the Natural and
+          Festival scenes, 0x3f for that row, and 0x08 for four Effects Lab scenes - which
+          is what makes it two bytes rather than one. A byte with three values is neither
+          padding nor a flag. It does not name the category either: Natural and Festival
+          share 0x00, and the Gaming and Harmony Lab tabs share 0x08 across two different
+          categories. What it does is block the numbering, and nothing captured says why a
+          gallery gets the block it gets.
+
+          Numbers are not dense within a category. The two "Sandbox 3D" scenes are 2178 and
+          2200 and the two "Rain" ones 2237 and 2242, so the consecutive numbering seen in
+          the gallery rows is a fact about those rows and not about the numbering
+          everywhere. Whether the Effects Lab tiles were adjacent on screen was not
+          recorded, so this does not yet contradict the adjacency argument above; a capture
+          that walks one Lab category tile by tile would settle it.
       - id: kind
         type: u1
         enum: scene_kind
         doc: |
           [CONFIRMED_LIVE] whether the light already holds this scene, at frame offset 5.
           Captured as 1 for Sunrise, Sunset and Candlelight, and as 2 for Forest,
-          Universe-A, Rustling leaves, Birthday, New Years and the three House of the Dragon
-          scenes.
+          Universe-A, Rustling leaves, Birthday, New Years, the three House of the Dragon
+          scenes and the four Effects Lab ones.
 
           What names it is not the value but what it PREDICTS: every scene written with 2
           was preceded in the same capture by a multi-frame 0xA3 upload of a definition, of
           between 51 and 170 bytes, and every scene written with 1 was preceded by no A3
-          traffic at all. Eleven scenes, no exceptions. A byte that decides whether a body
+          traffic at all. Fifteen scenes, no exceptions. A byte that decides whether a body
           has to be uploaded is a kind, not a third id byte, and reading it as the top of a
           24-bit number would leave that correlation unexplained.
 
@@ -169,7 +183,7 @@ types:
           the field. Do not assume a small number implies built-in.
       - id: opaque_tail
         size: 13
-        doc: '[CONFIRMED_LIVE] remaining H6199 scene-body bytes at frame offsets 6..18, captured as an opaque all-zero window across all eleven scenes'
+        doc: '[CONFIRMED_LIVE] remaining H6199 scene-body bytes at frame offsets 6..18, captured as an opaque all-zero window across all fifteen scenes'
   video_body:
     doc: |
       The DreamView T1's headline mode: a camera clipped to the television samples the

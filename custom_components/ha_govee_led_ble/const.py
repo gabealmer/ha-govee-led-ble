@@ -105,11 +105,11 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6199 DreamView T1",
         state_readable=True,
         # Only the three scenes the light already holds. Every H6199 scene write carries a kind
-        # byte saying whether a definition has to be uploaded first, and across eleven captured
+        # byte saying whether a definition has to be uploaded first, and across fifteen captured
         # scenes it predicted an 0xA3 upload with no exceptions: kind 1 for Sunrise, Sunset and
-        # Candlelight and nothing on the wire before them, kind 2 for the other eight and a body
+        # Candlelight and nothing on the wire before them, kind 2 for the other twelve and a body
         # of between 51 and 170 bytes each time (h6199_command_write::scene_body::kind). We hold
-        # none of those bodies, so the other eight cannot be started and are not offered.
+        # none of those bodies, so the other twelve cannot be started and are not offered.
         #
         # The three names and codes are the shared catalogue's own, which the captures confirm
         # rather than assume: 0, 1 and 9 in both. That agreement does not extend past them.
