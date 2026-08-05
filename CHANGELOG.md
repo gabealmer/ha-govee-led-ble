@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v4.7.1 (2026-08-05)
+
+### Bug Fixes
+
+- **h6199**: Align capabilities and verify composite controls
+  ([`f984b03`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f984b0307005fed98308e37011487995a1e5b463))
+
+
 ## v4.7.0 (2026-08-05)
 
 ### Features
