@@ -443,12 +443,23 @@ types:
       - id: sensitivity
         type: u1
         doc: |
-          [INFERRED] H6199 music sensitivity at frame offset 4. Captured as 0x63, decimal 99,
-          on every music write in a session whose slider sat at maximum, and the integration
-          builds the same byte from a 0..100 percent. NOT isolated: the app renders the
-          slider as an XCUIElementTypeImage, which the name-driven harness cannot drag, so
-          no capture yet varies it. Settle it by writing two sensitivities from our own radio
-          and reading back aa 05, whose reply echoes this byte.
+          [CONFIRMED_LIVE] H6199 music sensitivity at frame offset 4, as a direct 0..100
+          percent. Captured 2026-08-05 by dragging the app's Sensitivity slider with the mode
+          and the sound-pickup toggle untouched: 0x63, then 0x1a, then 0x3e, decimal 99, 26
+          and 62, each write differing from the one before at this byte and the checksum
+          alone.
+
+          It sat INFERRED for two days on the reading that the slider could not be driven,
+          which was true of the name-driven path and not of the app: the control is an
+          unnamed element and the harness had no way to drag one. The note here proposed
+          settling it by writing values from our own radio and reading back aa 05. That would
+          have worked and it was the wrong experiment, because it tests our encoder against
+          our own decoder. Teaching the harness to drag by coordinates within a named or
+          measured rect settled it against the vendor app instead.
+
+          THE SLIDER ONLY WRITES WHILE A MODE IS SELECTED. Dragging it on a freshly opened
+          music page put nothing on the wire at all, which reads as a dead control rather
+          than as a missing precondition.
       - id: opaque_tail
         size: 14
         doc: '[CONFIRMED_LIVE] remaining H6199 music-body bytes at frame offsets 5..18, captured as an opaque all-zero window across all four modes'

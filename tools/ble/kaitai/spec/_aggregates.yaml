@@ -438,12 +438,31 @@
   collect: body.detail.mode
   distinct_at_least: 4
 
-- id: h6199_music_sensitivity_held_constant
+- id: h6199_music_sensitivity_varies
   doc: >
-    Every music frame in the session carries the same sensitivity byte. This is the negative
-    that keeps offset 4 honest: it is named INFERRED in the spec precisely because it never
-    varied here, and an aggregate asserting one distinct value is what stops a later reader
-    mistaking four samples of a constant for four samples of a proven field.
+    Sensitivity takes three distinct values across the corpus, driven by the app's own
+    slider. This replaces an aggregate that recorded the OPPOSITE - that the byte had never
+    been seen to move - which was true only because the harness could not drag an unnamed
+    control. A byte that takes three values under one slider is not padding.
+  cases: h6199_music_sensitivity_*
+  collect: body.detail.sensitivity
+  distinct_at_least: 3
+
+- id: h6199_music_sensitivity_moves_alone
+  doc: >
+    Two sensitivity levels set one after the other differ at exactly the sensitivity byte
+    and the checksum. That confinement is what pins it to offset 4 rather than to the mode
+    byte beside it, which a slider that also re-sent the mode would have moved too.
+  between: [h6199_music_sensitivity_99, h6199_music_sensitivity_26]
+  differs_at: [4, 19]
+
+- id: h6199_music_mode_captures_held_sensitivity_constant
+  doc: >
+    Every frame in the four-mode session carries the same sensitivity byte. It was written
+    to keep offset 4 honest while that byte had never been seen to move, and it still earns
+    its place for the opposite reason: now that sensitivity is known to vary, holding it
+    constant is what makes those four frames a controlled comparison for the MODE byte
+    rather than four samples that happened to differ in two places at once.
   cases: h6199_command_music_*
   collect: body.detail.sensitivity
   distinct_at_least: 1
