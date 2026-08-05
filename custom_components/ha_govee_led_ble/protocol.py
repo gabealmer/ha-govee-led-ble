@@ -34,6 +34,8 @@ HARDWARE_PACKET_TYPE = 0x07
 # H6199 registers reached from the vendor app's video sheet (h6199_command_write::command_op).
 DISPLAY_SETTING_PACKET_TYPE = 0xA9
 RELATIVE_BRIGHTNESS_PACKET_TYPE = 0xAE
+RELATIVE_BRIGHTNESS_EDGES = 4
+RELATIVE_BRIGHTNESS_HEAD = 0x01
 # Which setting a 33 a9 write addresses (h6199_command_write::display_setting).
 DISPLAY_SETTING_WHITE_BALANCE = 0x00
 DISPLAY_SETTING_BLANK_SCREEN = 0x0A
@@ -501,6 +503,9 @@ def build_custom_effect(content: EffectContent, *, segment_count: int) -> list[b
 STATE_QUERY = build_packet(STATUS_HEADER, POWER_PACKET_TYPE, [])
 BRIGHTNESS_QUERY = build_packet(STATUS_HEADER, BRIGHTNESS_PACKET_TYPE, [])
 COLOR_MODE_QUERY = build_packet(STATUS_HEADER, COLOR_PACKET_TYPE, [])
+WHITE_BALANCE_QUERY = build_packet(STATUS_HEADER, DISPLAY_SETTING_PACKET_TYPE, [DISPLAY_SETTING_WHITE_BALANCE])
+BLANK_SCREEN_QUERY = build_packet(STATUS_HEADER, DISPLAY_SETTING_PACKET_TYPE, [DISPLAY_SETTING_BLANK_SCREEN])
+RELATIVE_BRIGHTNESS_QUERY = build_packet(STATUS_HEADER, RELATIVE_BRIGHTNESS_PACKET_TYPE, [RELATIVE_BRIGHTNESS_HEAD])
 FW_QUERY = build_packet(STATUS_HEADER, FIRMWARE_PACKET_TYPE, [])
 HW_QUERY = build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [0x03])
 KEEP_ALIVE = STATE_QUERY
@@ -552,8 +557,6 @@ WHITE_BALANCE_MANUAL = 0x01
 # The bytes after the blank-screen flag, replayed verbatim: identical across both captured writes
 # (h6199_command_write::blank_screen_payload::opaque_tail).
 _BLANK_SCREEN_TAIL = (0x02, 0x0A, 0x00, 0x78, 0x00)
-RELATIVE_BRIGHTNESS_EDGES = 4
-RELATIVE_BRIGHTNESS_HEAD = 0x01
 
 
 def _build_display_setting(setting: int, payload: list[int]) -> bytes:
@@ -609,16 +612,23 @@ def build_blank_screen(enabled: bool) -> bytes:
 def build_relative_brightness(percent: int) -> bytes:
     """Build the H6199 relative-brightness write (h6199_command_write::relative_brightness_body).
 
-    Every edge is given the same percentage, which is the only form that has been captured: both
-    writes moved all four edges together. Which byte is which edge is NOT isolated, so this takes
-    one level rather than four, and no caller can address a single edge until a capture separates
-    them.
+    This compatibility form gives every edge the same percentage. Use
+    :func:`build_relative_brightness_edges` when the edges differ.
     """
     level = _clamp(percent, 0, 100)
+    return build_relative_brightness_edges(level, level, level, level)
+
+
+def build_relative_brightness_edges(left: int, top: int, right: int, bottom: int) -> bytes:
+    """Build independent H6199 edge brightness values in captured left/top/right/bottom order."""
     return build_packet(
         0x33,
         RELATIVE_BRIGHTNESS_PACKET_TYPE,
-        [RELATIVE_BRIGHTNESS_HEAD, RELATIVE_BRIGHTNESS_EDGES, *([level] * RELATIVE_BRIGHTNESS_EDGES)],
+        [
+            RELATIVE_BRIGHTNESS_HEAD,
+            RELATIVE_BRIGHTNESS_EDGES,
+            *(_clamp(value, 0, 100) for value in (left, top, right, bottom)),
+        ],
     )
 
 
@@ -725,6 +735,57 @@ class ParsedColorModeResponse:
     rgb_color: tuple[int, int, int] | None = None
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
+
+
+@dataclass(frozen=True)
+class ParsedDisplaySettingResponse:
+    """Decoded ``aa a9`` display-setting state."""
+
+    setting: int
+    reset_white_balance: tuple[int, int] | None = None
+    current_white_balance: tuple[int, int] | None = None
+    blank_screen: bool | None = None
+
+
+@dataclass(frozen=True)
+class ParsedRelativeBrightnessResponse:
+    """Decoded ``aa ae`` edge state in captured left/top/right/bottom order."""
+
+    left: int
+    top: int
+    right: int
+    bottom: int
+
+
+def parse_display_setting_response(payload: bytes) -> ParsedDisplaySettingResponse:
+    """Decode an ``aa a9`` display-setting reply."""
+    if len(payload) < 2:
+        raise ValueError("Display-setting payload is truncated")
+    setting, declared_length = payload[:2]
+    body = payload[2 : 2 + declared_length]
+    if len(body) != declared_length:
+        raise ValueError("Display-setting payload length does not match its declaration")
+    if setting == DISPLAY_SETTING_WHITE_BALANCE:
+        if len(body) != 6:
+            raise ValueError("White-balance state must contain reset and current triples")
+        return ParsedDisplaySettingResponse(
+            setting=setting,
+            reset_white_balance=(body[1], body[2]),
+            current_white_balance=(body[4], body[5]),
+        )
+    if setting == DISPLAY_SETTING_BLANK_SCREEN:
+        if len(body) != 6:
+            raise ValueError("Blank-screen state must contain its six-byte payload")
+        return ParsedDisplaySettingResponse(setting=setting, blank_screen=bool(body[0]))
+    return ParsedDisplaySettingResponse(setting=setting)
+
+
+def parse_relative_brightness_response(payload: bytes) -> ParsedRelativeBrightnessResponse:
+    """Decode an ``aa ae`` edge-state reply."""
+    if len(payload) < 6 or payload[0] != RELATIVE_BRIGHTNESS_HEAD or payload[1] != RELATIVE_BRIGHTNESS_EDGES:
+        raise ValueError("Relative-brightness state has an unsupported shape")
+    left, top, right, bottom = payload[2:6]
+    return ParsedRelativeBrightnessResponse(left, top, right, bottom)
 
 
 def parse_color_mode_response(
@@ -1116,7 +1177,12 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_relative_brightness": Evidence(
         "VALIDATED",
         "H6199 33 ae per-edge relative brightness (h6199_command_write::relative_brightness_body); "
-        "all four edges written together, the only form h6199_relbright_* captured",
+        "compatibility form writing one captured percentage to all four named edges",
+    ),
+    "build_relative_brightness_edges": Evidence(
+        "VALIDATED",
+        "H6199 33 ae independent left/top/right/bottom percentages; each byte isolated by one-edge "
+        "writes in h6199_relbright_{top,right,bottom,left}_*",
     ),
     "build_timer_schedule": Evidence("EXPERIMENTAL", "H617A §4 timer 33 23; write live, ships gated Tier-2"),
     "build_timer_sleep": Evidence("EXPERIMENTAL", "H617A §4 sleep 33 11; reply captured (OBSERVE)"),
@@ -1137,6 +1203,15 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
         "static echoes no colour and byte 1 is the 33 a3 register (status_reply::cm_static), "
         "so the mirror is opt-in per model",
     ),
+    "parse_display_setting_response": Evidence(
+        "VALIDATED",
+        "H6199 aa a9 selector+length replies; white-balance reset/current triples varied independently "
+        "across reset, mid and warm captures, blank-screen payload mirrors its write",
+    ),
+    "parse_relative_brightness_response": Evidence(
+        "VALIDATED",
+        "H6199 aa ae 01 04 left/top/right/bottom reply, captured from the device at 91% on every edge",
+    ),
     "parse_fw_version": Evidence("VALIDATED", "H617A §4 firmware aa 06 -> ASCII '3.02.24'; VAL live capture"),
     "parse_hw_version": Evidence(
         "VALIDATED", "H617A/H6199 aa 07 03 -> ASCII hardware version; iOS app-sniff 2026-07-12"
@@ -1152,6 +1227,9 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "STATE_QUERY": Evidence("VALIDATED", "H617A §4 power query aa 01; live keep-alive"),
     "BRIGHTNESS_QUERY": Evidence("VALIDATED", "H617A §4 brightness query aa 04; mirrors 33 04"),
     "COLOR_MODE_QUERY": Evidence("VALIDATED", "H617A §4 colour-mode query aa 05; live"),
+    "WHITE_BALANCE_QUERY": Evidence("VALIDATED", "H6199 aa a9 00 query; live device-page connect burst"),
+    "BLANK_SCREEN_QUERY": Evidence("VALIDATED", "H6199 aa a9 0a query; live device-page connect burst"),
+    "RELATIVE_BRIGHTNESS_QUERY": Evidence("VALIDATED", "H6199 aa ae 01 query; live device-page connect burst"),
     "FW_QUERY": Evidence("VALIDATED", "H617A §4 firmware query aa 06; VAL connect handshake"),
     "HW_QUERY": Evidence(
         "VALIDATED", "H617A/H6199 hardware query aa 07 03; replies 3.01.01/3.02.01 app-sniffed 2026-07-12"

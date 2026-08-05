@@ -581,19 +581,63 @@
     Both relative-brightness writes carry four equal percentages, and they differ at those
     four bytes and NOWHERE else - not even at the checksum, because four equal bytes XOR
     to zero whatever they are. That confinement is what makes the four bytes the payload.
-    It is deliberately NOT evidence that the four are independent edges: this pair cannot
-    tell four per-edge values from one value repeated, which is why edge_percent is
-    INFERRED and why the settling capture moves a single edge.
+    This pair alone did not prove independence; the 2026-08-05 per-edge chain below does.
   between: [h6199_relbright_100, h6199_relbright_36]
   differs_at: [4, 5, 6, 7]
 
-- id: h6199_relbright_percent_varies
+- id: h6199_relbright_left_varies
   doc: >
-    The edge percentage takes two distinct values across the corpus, so a grammar reading
-    those bytes as a constant preamble is dead.
+    The left percentage takes several values across the corpus, so a grammar reading it as
+    a constant preamble is dead.
   cases: h6199_relbright_*
-  collect: body.edge_percent[0]
+  collect: body.left_percent
   distinct_at_least: 2
+
+- id: h6199_relbright_top_moves_alone
+  doc: >
+    Restoring all four edges to 91% after the single-edge experiment differs from the
+    top-only 20% frame at exactly the top byte and the checksum. The sheet displayed only
+    the top edge selected in the 20% frame.
+  between: [h6199_relbright_top_20, h6199_relbright_all_91]
+  differs_at: [5, 19]
+
+- id: h6199_relbright_right_moves_alone
+  doc: >
+    Switching the selection from top to right and dragging only the right edge moved exactly
+    frame offset 6 and the checksum. The top stayed at 20%, while the sheet displayed the
+    right edge at 31%.
+  between: [h6199_relbright_top_20, h6199_relbright_right_31]
+  differs_at: [6, 19]
+
+- id: h6199_relbright_bottom_moves_alone
+  doc: >
+    Switching the selection from right to bottom and dragging only the bottom edge moved
+    exactly frame offset 7 and the checksum. The sheet displayed bottom at 41%.
+  between: [h6199_relbright_right_31, h6199_relbright_bottom_41]
+  differs_at: [7, 19]
+
+- id: h6199_relbright_left_moves_alone
+  doc: >
+    Switching the selection from bottom to left and dragging only the left edge moved
+    exactly frame offset 4 and the checksum. The other three values were already mutually
+    distinct, so this one frame also settles the full order as left, top, right, bottom.
+  between: [h6199_relbright_bottom_41, h6199_relbright_left_51]
+  differs_at: [4, 19]
+
+- id: h6199_white_balance_readback_reset_changes_only_current_red
+  doc: >
+    Pressing Reset changed the current red gain from 13 to 16 and nothing else in the
+    payload; the first 16/3 triple stayed fixed. This is what separates the first triple as
+    the reset reference and the second as current state.
+  between: [h6199_status_white_balance_mid, h6199_status_white_balance_reset]
+  differs_at: [8, 19]
+
+- id: h6199_white_balance_readback_warm_changes_only_current_pair
+  doc: >
+    Moving the manual strip from Reset to its warm endpoint changed only the current red and
+    blue gains, 16/3 to 21/5, plus the checksum. The reset reference stayed 16/3.
+  between: [h6199_status_white_balance_reset, h6199_status_white_balance_warm]
+  differs_at: [8, 9, 19]
 
 - id: h6199_blank_screen_one_byte
   doc: >

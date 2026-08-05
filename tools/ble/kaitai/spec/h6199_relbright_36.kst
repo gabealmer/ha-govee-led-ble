@@ -12,13 +12,13 @@ asserts:
     expected: 1
   - actual: body.edge_count
     expected: 4
-  - actual: body.edge_percent[0]
+  - actual: body.left_percent
     expected: 36
-  - actual: body.edge_percent[1]
+  - actual: body.top_percent
     expected: 36
-  - actual: body.edge_percent[2]
+  - actual: body.right_percent
     expected: 36
-  - actual: body.edge_percent[3]
+  - actual: body.bottom_percent
     expected: 36
   - actual: body.opaque_tail
     expected: "0000000000000000000000"

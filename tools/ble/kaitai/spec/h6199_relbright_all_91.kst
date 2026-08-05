@@ -1,0 +1,18 @@
+# H6199 relative-brightness write captured 2026-08-05 from the Govee Home iOS
+# app driving the DreamView T1. After the single-edge sequence, all four edges
+# were selected and restored to the 91% state reported when the page opened.
+id: h6199_relbright_all_91
+data: h6199_relbright_all_91.bin
+imports:
+  - h6199_command_write
+asserts:
+  - actual: body.edge_count
+    expected: 4
+  - actual: body.left_percent
+    expected: 91
+  - actual: body.top_percent
+    expected: 91
+  - actual: body.right_percent
+    expected: 91
+  - actual: body.bottom_percent
+    expected: 91

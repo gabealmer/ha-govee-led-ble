@@ -49,6 +49,8 @@ seq:
         'status_domain::subordinate_20': version_body
         'status_domain::subordinate_21': version_body
         'status_domain::colour_mode': colour_mode_body
+        'status_domain::display_setting': display_setting_body
+        'status_domain::relative_brightness': relative_brightness_body
     doc: '[CONFIRMED_LIVE] H6199 status body at frame offsets 2..18; unmatched registers remain raw'
   - id: checksum
     type: u1
@@ -61,12 +63,107 @@ enums:
     0x05: colour_mode
     0x20: subordinate_20
     0x21: subordinate_21
+    0xa9: display_setting
+    0xae: relative_brightness
+  display_setting:
+    0x00: white_balance
+    0x0a: blank_screen
   mode_sel:
     0x00: video
     0x04: scene
     0x13: music
     0x15: static_colour
 types:
+  display_setting_body:
+    seq:
+      - id: setting
+        type: u1
+        enum: display_setting
+        doc: '[CONFIRMED_LIVE] display-setting selector echoed at frame offset 2'
+      - id: len
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] setting payload length at frame offset 3, captured as six for both
+          white balance and blank screen and consuming exactly the bytes before zero padding.
+      - id: payload
+        size: len
+        type:
+          switch-on: setting
+          cases:
+            'display_setting::white_balance': white_balance_state
+            'display_setting::blank_screen': blank_screen_state
+        doc: '[CONFIRMED_LIVE] setting-specific state payload at frame offset 4'
+      - id: opaque_tail
+        size-eos: true
+        doc: '[CONFIRMED_LIVE] zero padding after the declared display-setting payload'
+  white_balance_state:
+    seq:
+      - id: reset_flag
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] first white-balance triple's leading byte, captured as 0x01 in
+          every reply and left unnamed because it never varied.
+      - id: reset_red
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] red gain of the device's reset reference. It stayed 16 before
+          Reset, after Reset and after moving the manual strip to warm.
+      - id: reset_blue
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] blue gain of the device's reset reference. It stayed 3 before
+          Reset, after Reset and after moving the manual strip to warm.
+      - id: current_flag
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] current white-balance triple's leading byte, captured as 0x01 in
+          every reply and left unnamed because it never varied.
+      - id: current_red
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] current red gain. It read 13 before Reset, 16 after Reset and 21
+          after moving the manual strip to its warm endpoint, while reset_red stayed 16.
+      - id: current_blue
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] current blue gain. It read 3 before and after Reset, then 5 at
+          the warm endpoint, while reset_blue stayed 3.
+  blank_screen_state:
+    seq:
+      - id: is_enabled
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] blank-screen state at frame offset 4, captured as zero while the
+          app's switch displayed off. The remaining bytes mirror the write-side payload.
+      - id: opaque_tail
+        size: 5
+        doc: '[CONFIRMED_LIVE] five state bytes mirrored from the blank-screen write, still unnamed'
+  relative_brightness_body:
+    seq:
+      - id: selector
+        contents: [0x01]
+        doc: '[CONFIRMED_LIVE] relative-brightness reply selector at frame offset 2'
+      - id: edge_count
+        contents: [0x04]
+        doc: '[CONFIRMED_LIVE] four edge values follow, at frame offset 3'
+      - id: left_percent
+        type: u1
+        doc: |
+          [INFERRED] left edge percentage at frame offset 4. The reply was captured with all
+          edges equal, so the name is carried across from the independently isolated write
+          order rather than separated on the read side.
+      - id: top_percent
+        type: u1
+        doc: '[INFERRED] top edge percentage at frame offset 5; see left_percent'
+      - id: right_percent
+        type: u1
+        doc: '[INFERRED] right edge percentage at frame offset 6; see left_percent'
+      - id: bottom_percent
+        type: u1
+        doc: '[INFERRED] bottom edge percentage at frame offset 7; see left_percent'
+      - id: opaque_tail
+        size-eos: true
+        doc: '[CONFIRMED_LIVE] remaining relative-brightness reply bytes, captured as zero'
   colour_mode_body:
     doc: |
       What the light says it is currently showing. This is the read side of the 0x05 mode

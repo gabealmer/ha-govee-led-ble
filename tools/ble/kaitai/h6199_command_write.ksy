@@ -314,31 +314,34 @@ types:
           [CONFIRMED_LIVE] how many edge values follow, at frame offset 3, captured as 4.
           Named a count rather than treated as padding because it equals both the number of
           bytes that then carry a percentage and the number of edges the sheet draws.
-      - id: edge_percent
+      - id: left_percent
         type: u1
-        repeat: expr
-        repeat-expr: edge_count
         doc: |
-          [INFERRED] one percentage per edge, from frame offset 4. Captured 2026-08-04 by
-          dragging the sheet's slider with all four edges selected: every byte read 0x64 in
-          one write and 0x24 in another, decimal 100 and 36, matching the percentages the
-          four edges displayed.
-
-          WHICH BYTE IS WHICH EDGE IS NOT ISOLATED, and neither is the claim that they are
-          independent at all: both captures moved all four together, so a single value
-          repeated four times fits the bytes equally well. The sheet can select one edge, but
-          its per-edge checkboxes do not respond to a synthetic tap, so the isolating capture
-          could not be taken.
-
-          THE VENDOR APP SAYS THE ORDER IS LEFT, TOP, RIGHT, BOTTOM - not the top, left,
-          right, bottom that reading the sheet top-down suggests, and its read path parses
-          back in the same order. That is a hint and is deliberately not written into the
-          field names, because our own bytes cannot tell that permutation from any other.
-          It does improve the experiment: set the four edges to four MUTUALLY DISTINCT
-          values in one write rather than moving one alone, which settles the whole
-          permutation in a single frame and kills the repeated-value reading at the same
-          time. If the checkboxes still refuse a synthetic tap, drive the register from our
-          own radio and read back aa ae, whose reply carries the same values.
+          [CONFIRMED_LIVE] the left edge's relative brightness percentage, at frame offset 4.
+          Captured 2026-08-05 by selecting ONLY the sheet's left edge and dragging its slider:
+          this byte moved 0x5b -> 0x33, matching 91% -> 51%, while top, right and bottom
+          stayed at their already-distinct 20%, 31% and 41%.
+      - id: top_percent
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] the top edge's relative brightness percentage, at frame offset 5.
+          Captured by deselecting every edge, selecting ONLY the top edge and dragging the
+          slider: this byte moved 0x5b -> 0x14, matching 91% -> 20%, while the other three
+          bytes remained 0x5b. Restoring all four edges to 91% moved this byte back to 0x5b.
+      - id: right_percent
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] the right edge's relative brightness percentage, at frame offset 6.
+          Captured by switching the selection from top to ONLY right and dragging the slider:
+          this byte moved 0x5b -> 0x1f, matching 91% -> 31%, while the top remained 20% and
+          left and bottom remained 91%.
+      - id: bottom_percent
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] the bottom edge's relative brightness percentage, at frame offset 7.
+          Captured by switching the selection from right to ONLY bottom and dragging the
+          slider: this byte moved 0x5b -> 0x29, matching 91% -> 41%, while the other three
+          edge values did not move.
       - id: opaque_tail
         size: 11
         doc: |

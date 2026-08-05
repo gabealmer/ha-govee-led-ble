@@ -1,0 +1,16 @@
+# H6199 relative-brightness write captured 2026-08-05 from the Govee Home iOS
+# app driving the DreamView T1. The right edge was deselected, ONLY the bottom
+# edge was selected, and its slider was dragged from 91% to 41%.
+id: h6199_relbright_bottom_41
+data: h6199_relbright_bottom_41.bin
+imports:
+  - h6199_command_write
+asserts:
+  - actual: body.left_percent
+    expected: 91
+  - actual: body.top_percent
+    expected: 20
+  - actual: body.right_percent
+    expected: 31
+  - actual: body.bottom_percent
+    expected: 41

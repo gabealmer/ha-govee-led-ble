@@ -633,7 +633,31 @@ def test_relative_brightness():
     assert proto.build_relative_brightness(36)[4] == 36
     assert proto.build_relative_brightness(200) == proto.build_relative_brightness(100)
     assert proto.build_relative_brightness(-5) == proto.build_relative_brightness(0)
+    assert proto.build_relative_brightness_edges(51, 20, 31, 41) == H("33ae010433141f29000000000000000000000089")
     _valid(proto.build_relative_brightness(50))
+
+
+def test_h6199_display_setting_and_edge_queries():
+    assert proto.WHITE_BALANCE_QUERY == H("aaa9000000000000000000000000000000000003")
+    assert proto.BLANK_SCREEN_QUERY == H("aaa90a0000000000000000000000000000000009")
+    assert proto.RELATIVE_BRIGHTNESS_QUERY == H("aaae010000000000000000000000000000000005")
+
+
+def test_h6199_display_setting_and_edge_readbacks():
+    parsed = proto.parse_display_setting_response(bytes.fromhex("0006011003011505000000000000000000"))
+    assert parsed.reset_white_balance == (16, 3)
+    assert parsed.current_white_balance == (21, 5)
+
+    blank = proto.parse_display_setting_response(bytes.fromhex("0a0600020a007800000000000000000000"))
+    assert blank.blank_screen is False
+
+    edges = proto.parse_relative_brightness_response(bytes.fromhex("010433141f290000000000000000000000"))
+    assert (edges.left, edges.top, edges.right, edges.bottom) == (51, 20, 31, 41)
+
+    with pytest.raises(ValueError):
+        proto.parse_display_setting_response(b"\x00\x06\x01")
+    with pytest.raises(ValueError):
+        proto.parse_relative_brightness_response(b"\x01\x03\x5b\x5b\x5b")
 
 
 def test_music_mode():

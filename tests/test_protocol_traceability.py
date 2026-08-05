@@ -12,7 +12,17 @@ from pathlib import Path
 
 from custom_components.ha_govee_led_ble import protocol as proto
 
-QUERY_CONSTANTS = {"STATE_QUERY", "BRIGHTNESS_QUERY", "COLOR_MODE_QUERY", "FW_QUERY", "HW_QUERY", "KEEP_ALIVE"}
+QUERY_CONSTANTS = {
+    "STATE_QUERY",
+    "BRIGHTNESS_QUERY",
+    "COLOR_MODE_QUERY",
+    "WHITE_BALANCE_QUERY",
+    "BLANK_SCREEN_QUERY",
+    "RELATIVE_BRIGHTNESS_QUERY",
+    "FW_QUERY",
+    "HW_QUERY",
+    "KEEP_ALIVE",
+}
 _MARKER = re.compile(r"#\s*EXPERIMENTAL:\s*harness=\S+\s+encoding=\S+")
 _BYTE_CALLS = {"H", "bytes", "bytearray"}
 _TEST_PROTOCOL = Path(__file__).with_name("test_protocol.py")
