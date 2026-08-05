@@ -11,6 +11,10 @@ doc: |
   firmware, hardware and two subordinate version strings. Domain 0x14 is omitted
   because its captured body contains the real device address, which is rig
   identity and does not belong in a committed fixture.
+
+  Domain 0x01 is modelled as well and is much the weakest of them, because its captured
+  reply is byte-identical to the query that drew it. See power_body for what that leaves
+  unsettled.
 seq:
   - id: header
     contents: [0xaa]
@@ -45,7 +49,17 @@ types:
     seq:
       - id: is_on
         type: u1
-        doc: '[CONFIRMED_LIVE] power state at frame offset 2; 0 is off in the paired app query and device-page observation'
+        doc: |
+          [INFERRED] power state at frame offset 2, captured as 0 while the device page
+          showed the light off.
+
+          NOTHING CAPTURED SEPARATES THIS REPLY FROM AN ECHO OF THE QUERY. The checksum is
+          the XOR of bytes 0..18, so an all-zero body and a bare repeat of the aa 01 query
+          serialise to the same twenty bytes, and h6199_status_power_off holds byte for byte
+          what h6199_query_power sent. Nothing but 0 has ever been seen here either, so
+          reading this byte as stored power state is the write side's name carried across
+          rather than something measured on a reply. Settle it by turning the light on,
+          reading aa 01 back and seeing whether the byte follows.
       - id: opaque_tail
         size: 16
         doc: '[CONFIRMED_LIVE] remaining H6199 power-reply bytes, captured as an opaque all-zero window'
