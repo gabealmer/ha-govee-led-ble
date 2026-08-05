@@ -225,8 +225,15 @@ types:
         size: 1
         doc: |
           [CONFIRMED_LIVE] one byte at block offset 8, unnamed. The Brightness Scope control
-          has an upper handle which would sit naturally here, but no capture moved it: the
-          drag was refused and the label stayed at 100%, so this byte has never varied.
+          has an upper handle which would sit naturally here, but no capture ever moved it:
+          the drag was refused and the label stayed at 100%.
+
+          IT IS NOT CONSTANT, and a doc here once said it was. It reads 0x00, 0x01, 0x02 and
+          0x03 across the committed corpus, which was true when that sentence was written and
+          contradicted it. "No controlled comparison moved it" and "it never varies" are
+          different claims, and only the first one is ours to make: every one of those values
+          came from a differently-authored effect, so the spread says nothing about what
+          drives it.
       - id: brightness_change_speed
         size: 1
         if: len >= 15
@@ -253,7 +260,19 @@ types:
           neither can be assumed for a byte that has not been driven.
       - id: opaque_gap2
         size: 1
-        doc: '[CONFIRMED_LIVE] one byte at block offset 12, unnamed and never seen to vary'
+        doc: |
+          [CONFIRMED_LIVE] one byte at block offset 12, unnamed. It takes at least nine values
+          across the corpus (0x00 through 0x03, 0x80, 0x81, 0x83, 0xcb and 0xff), so a doc
+          that called it "never seen to vary" was false against the very fixtures committed
+          beside it.
+
+          THE 0x8x CLUSTER IS A TRAP, and worth naming so it is not walked into again. Those
+          values sit on the movement fixtures, which reads as an enable bit plus a low nibble
+          and looks exactly like the packed movement byte this block really does carry. It is
+          not that byte: the movement flag was afterwards isolated at the block's END, and
+          this offset did not move when either movement switch was toggled. The resemblance
+          is a resemblance. Three different controls shift the corpus values here in the same
+          direction, so nothing here is isolated by a controlled comparison.
       - id: colour_change_speed
         size: 1
         if: len >= 15
@@ -275,16 +294,82 @@ types:
           Captured in the same session by dragging only that slider: the byte read 0x14 while
           the editor showed 20 and 0xc3 when it showed 195, matching exactly. The app prints
           it as a bare number rather than a percentage, and the wire agrees.
-      - id: opaque_tail
-        size: len - 15
-        if: len >= 15
+      - id: opaque_middle
+        size: len - 22
+        if: len >= 22
         doc: |
-          [CONFIRMED_LIVE] the rest of the block, still unnamed for the same reason as the
-          head.
+          [CONFIRMED_LIVE] the part of the block between the fixed head and the fixed trailer,
+          still unnamed for the same reason as the head. Its length is whatever is left over,
+          which is what makes the block's two ends addressable while its middle is not.
+      - id: selected_movement
+        size: 1
+        if: len >= 22
+        doc: |
+          [CONFIRMED_LIVE] the layer's "Moving Effect in the Selected Area", packed as an
+          enable flag and a direction, at block offset len - 7. Captured 2026-08-05 by turning
+          that one switch on in the Workshop editor: the byte moved 0x00 -> 0x10 and nothing
+          else in the body moved. Read back with the switch on, interval 0 and direction
+          Forward, the editor agreed with 0x10.
 
-          THE TWO NAMED OFFSETS ARE ESTABLISHED ON ONE BLOCK SHAPE ONLY, a twenty-nine byte
-          block from a single-layer effect. Blocks of 26, 32, 35, 38 and 47 bytes are also in
-          the corpus and nothing yet shows their layout is the same, so a field found at 13
-          and 14 here is positional and not proven general. Editing a multi-layer effect one
-          slider at a time is what would extend it; the route is the same one that opened
-          these two.
+          A fifth direction value exists and is NOT explained. A block captured in the same
+          session reads 0x14 here while the Overall control beside it offers only four
+          directions, so the low nibble is an index into a list this capture never enumerated
+          for the selected-area control. Settle it by opening that control's own picker.
+      - id: selected_movement_interval
+        size: 1
+        if: len >= 22
+        doc: |
+          [CONFIRMED_LIVE] the "Moving Interval" belonging to the selected-area movement, at
+          block offset len - 6, written directly. Read as 0x00 against an editor showing 0,
+          and 0x01 in the sibling block whose editor showed 1.
+      - id: selected_movement_speed
+        size: 1
+        if: len >= 22
+        doc: |
+          [CONFIRMED_LIVE] the "Moving Speed" belonging to the selected-area movement, at block
+          offset len - 5, scaled to 0..255. Read as 0x80 against an editor showing 50%, which
+          is 128 of 255.
+      - id: overall_movement
+        size: 1
+        if: len >= 22
+        doc: |
+          [CONFIRMED_LIVE] the layer's "Overall Moving Effect", packed as an enable flag and a
+          direction, at block offset len - 4. Captured by turning that one switch on, which
+          moved this byte 0x00 -> 0x10 alone, and then by changing only its direction from
+          "Forward" to "Backward and Forward", which moved it 0x10 -> 0x13. So 0x10 is the
+          enable bit and the low nibble is the direction's index into the picker: Forward 0,
+          Backward 1, Forward and Backward 2, Backward and Forward 3.
+
+          THIS IS THE BYTE THE BLOCK'S TWO ENDS WERE FOUND FROM. Its position is quoted from
+          the END of the block because that is where it is fixed: a 26-byte block carries it
+          at 22 and a 29-byte block at 25, and both were read against their own editor page in
+          one capture.
+      - id: overall_movement_interval
+        size: 1
+        if: len >= 22
+        doc: |
+          [CONFIRMED_LIVE] the "Moving Interval" belonging to the overall movement, at block
+          offset len - 3, written directly. Read as 0x00 where the editor showed 0 and 0x01
+          where it showed 1, in two blocks of different lengths in the same body.
+      - id: overall_movement_speed
+        size: 1
+        if: len >= 22
+        doc: |
+          [CONFIRMED_LIVE] the "Moving Speed" belonging to the overall movement, at block
+          offset len - 2, scaled to 0..255. Captured by dragging that one slider: 0x80 at 50%
+          became 0xf2 at 95%, and 242 of 255 is 94.9%. The sibling block read 0xb7 against an
+          editor showing 72%, and 183 of 255 is 71.8%.
+      - id: layer_priority
+        size: 1
+        if: len >= 22
+        doc: |
+          [CONFIRMED_LIVE] the layer's "Effect Layer Priority" level, at the LAST byte of the
+          block, written directly as the 1..5 the editor shows. Captured by choosing 3, which
+          moved this byte 0x00 -> 0x03 and nothing else; the sibling block read 0x01 against
+          an editor showing 1.
+
+          TURNING THE SWITCH ON WROTE NOTHING. The probe that enabled "Effect Layer Priority"
+          without choosing a level produced a byte-identical body, so this byte carries the
+          level and there is no separate enable bit for it. That is worth keeping: a switch
+          that does not reach the wire until a second control is touched is the kind of thing
+          a write-side model invents an enable flag for.

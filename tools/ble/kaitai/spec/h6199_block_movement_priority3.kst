@@ -1,0 +1,23 @@
+# H6199 effect definition uploaded over 0xA3, captured 2026-08-05 from the Govee Home iOS
+# app driving the DreamView T1. The two-layer Workshop effect "Moving Christmas" re-applied
+# after then choosing ONLY priority level 3. These six are a controlled chain: each
+# differs from the one before at a single byte, which is what named the block's trailer.
+# Block 0 is layer 1 and block 1 is layer 2, and they are 29 and 26 bytes, which is what
+# made the trailer's END anchoring visible rather than assumed.
+id: h6199_block_movement_priority3
+data: h6199_block_movement_priority3.bin
+imports:
+  - h6199_effect_upload
+asserts:
+  - actual: kind
+    expected: 2
+  - actual: content.block_count
+    expected: 2
+  - actual: content.blocks[0].len
+    expected: 29
+  - actual: content.blocks[1].len
+    expected: 26
+  - actual: content.blocks[1].layer_priority
+    expected: "03"
+  - actual: content.blocks[0].layer_priority
+    expected: "01"

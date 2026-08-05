@@ -952,3 +952,46 @@
     brightness controls are not one contiguous run and the gap between them is real.
   between: [h6199_effect_workshop_ret_darkest, h6199_effect_workshop_scope_low]
   differs_at: [12]
+
+- id: h6199_block_overall_movement_one_byte
+  doc: >
+    Turning ONLY the "Overall Moving Effect" switch on moved exactly one byte of a 68-byte
+    body, and it is the byte four back from the end of layer 2's block. One switch, one
+    byte, nothing else: that is what makes this the movement flag rather than a byte that
+    happens to correlate with movement across differently-authored effects, which is the
+    reading that had to be retired at block offset 12.
+  between: [h6199_block_movement_all_off, h6199_block_movement_overall_on]
+  differs_at: [57]
+
+- id: h6199_block_selected_movement_one_byte
+  doc: >
+    Turning ONLY "Moving Effect in the Selected Area" on moved exactly one byte, three
+    before the overall flag. The two controls are the same shape three bytes apart, which
+    is what makes the trailer two triples rather than one run of seven.
+  between: [h6199_block_movement_overall_on, h6199_block_movement_selected_on]
+  differs_at: [54]
+
+- id: h6199_block_layer_priority_one_byte
+  doc: >
+    Choosing ONLY priority level 3 moved exactly the last byte of layer 2's block. Note what
+    is NOT in this chain: enabling the priority switch beforehand produced a byte-identical
+    body, so the level is the whole encoding and there is no enable bit to look for.
+  between: [h6199_block_movement_selected_on, h6199_block_movement_priority3]
+  differs_at: [60]
+
+- id: h6199_block_overall_speed_one_byte
+  doc: >
+    Dragging ONLY the overall Moving Speed slider from 50% to 95% moved exactly the byte two
+    back from the end of layer 2's block, 0x80 to 0xf2. 242 of 255 is 94.9%, so the scaling
+    is 0..255 and not the direct percent this protocol uses for brightness and saturation.
+  between: [h6199_block_movement_priority3, h6199_block_movement_overall_speed]
+  differs_at: [59]
+
+- id: h6199_block_overall_direction_shares_the_flag_byte
+  doc: >
+    Changing ONLY the overall Moving direction moved the same byte the enable switch had
+    moved, 0x10 to 0x13, and no other. The direction is therefore packed into the flag's low
+    nibble rather than carried beside it, which is the finding that collapsed a suspected
+    seven separate fields into two triples and a level.
+  between: [h6199_block_movement_overall_speed, h6199_block_movement_overall_dir_bf]
+  differs_at: [57]
