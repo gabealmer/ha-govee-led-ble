@@ -190,20 +190,43 @@ types:
       - id: len
         type: u1
         doc: '[CONFIRMED_LIVE] the block length, not counting itself; captured between 26 and 47 across twenty-one blocks'
-      - id: opaque_body
-        size: len
+      - id: opaque_head
+        size: 13
         doc: |
-          [CONFIRMED_LIVE] the block contents, held opaque. Every byte of it moved between
-          every pair of captured bodies, because each body came from applying a different
-          catalogue scene, so nothing inside is isolated by a controlled comparison.
+          [CONFIRMED_LIVE] the first thirteen bytes of the block, still unnamed. Every one of
+          them moved between every pair of differently-authored effects, so nothing in here is
+          isolated by a controlled comparison.
+      - id: colour_change_speed
+        size: 1
+        if: len >= 15
+        doc: |
+          [CONFIRMED_LIVE] the layer's "Color Changing Speed", at block offset 13, scaled to
+          0..255 rather than written as a percent. Captured 2026-08-05 by dragging that one
+          slider in the Workshop effect editor and re-applying: the byte read 0x80 while the
+          editor showed 50% and 0xea at 92%, which is 128 and 234 against the 128 and 235 a
+          0..255 scaling predicts. The one-count difference is rounding at the app's end.
 
-          There is visible regularity, and it is recorded here as a starting point rather
-          than as fields: blocks frequently begin with three bytes, then a byte taking small
-          values such as 0x01, 0x05, 0x0a and 0x0f, then a pair that is usually 02 01. Runs
-          of RGB-looking triples appear later in most blocks. None of that is a measurement.
+          NOTE THE SCALING, because it is not this model's habit. Brightness, saturation,
+          softness and music sensitivity are all written as a direct percent elsewhere in this
+          protocol; inside a workshop block this one is not.
+      - id: retention_time
+        size: 1
+        if: len >= 15
+        doc: |
+          [CONFIRMED_LIVE] the layer's "Retention Time", at block offset 14, written directly.
+          Captured in the same session by dragging only that slider: the byte read 0x14 while
+          the editor showed 20 and 0xc3 when it showed 195, matching exactly. The app prints
+          it as a bare number rather than a percentage, and the wire agrees.
+      - id: opaque_tail
+        size: len - 15
+        if: len >= 15
+        doc: |
+          [CONFIRMED_LIVE] the rest of the block, still unnamed for the same reason as the
+          head.
 
-          THE DIY EDITOR WAS THE PROPOSED WAY IN AND IT IS NOT ONE. That experiment has since
-          been run and it opened diy_content instead: an effect built in the editor arrives
-          as parameters and a palette, not as blocks, so no amount of changing one thing at
-          a time there ever varies a block. Settling this needs two uploads of the SAME
-          catalogue scene differing in one property, and no capture has produced such a pair.
+          THE TWO NAMED OFFSETS ARE ESTABLISHED ON ONE BLOCK SHAPE ONLY, a twenty-nine byte
+          block from a single-layer effect. Blocks of 26, 32, 35, 38 and 47 bytes are also in
+          the corpus and nothing yet shows their layout is the same, so a field found at 13
+          and 14 here is positional and not proven general. Editing a multi-layer effect one
+          slider at a time is what would extend it; the route is the same one that opened
+          these two.

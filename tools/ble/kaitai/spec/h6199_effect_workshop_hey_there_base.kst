@@ -1,0 +1,19 @@
+# H6199 effect definition uploaded over 0xA3, captured 2026-08-05 from the Govee Home
+# iOS app driving the DreamView T1. The one-layer Workshop effect "Hey There" applied
+# as saved, before any slider was touched. These three are a controlled sequence: each differs from the one before at a
+# single byte, which is what opened a block interior that had been wholly opaque.
+id: h6199_effect_workshop_hey_there_base
+data: h6199_effect_workshop_hey_there_base.bin
+imports:
+  - h6199_effect_upload
+asserts:
+  - actual: kind
+    expected: 2
+  - actual: content.block_count
+    expected: 1
+  - actual: content.blocks[0].len
+    expected: 29
+  - actual: content.blocks[0].colour_change_speed
+    expected: "80"
+  - actual: content.blocks[0].retention_time
+    expected: "14"

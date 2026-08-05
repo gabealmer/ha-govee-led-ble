@@ -911,3 +911,20 @@
   cases: h6199_scene_*
   collect: body.detail.scene_class
   distinct_at_least: 3
+
+- id: h6199_workshop_retention_time_moves_alone
+  doc: >
+    Dragging only the Retention Time slider in the Workshop effect editor and re-applying
+    moves exactly one byte of the compiled block. That is what named a field inside a
+    twenty-nine byte block whose every byte had previously moved at once, because until now
+    the only way to change a block was to author a different effect.
+  between: [h6199_effect_workshop_hey_there_base, h6199_effect_workshop_hey_there_retention]
+  differs_at: [19]
+
+- id: h6199_workshop_colour_speed_moves_alone
+  doc: >
+    Dragging only the Color Changing Speed slider moves the byte beside it and nothing else.
+    Two adjacent sliders moving two adjacent bytes is what makes both assignments positional
+    rather than a coincidence of one value appearing twice.
+  between: [h6199_effect_workshop_hey_there_retention, h6199_effect_workshop_hey_there_speed]
+  differs_at: [18]
