@@ -22,7 +22,7 @@ wda tap Apply >/dev/null
 sleep 3
 
 body="$(uv run --no-sync --project "$REPO_DIR" python "$REPO_DIR/tools/ble/analyse_capture.py" \
-        "$(current_capture_name)" 2>/dev/null |
+        "$(current_capture_name)" ${DEVICE_EXPECTED_PEER:+--source "$DEVICE_EXPECTED_PEER"} 2>/dev/null |
         sed -n "/=== $label ===/,\$p" | grep -A1 'a3 body' | tail -1 | tr -d ' ')"
 
 [ -n "$body" ] || { echo "no A3 body seen for '$label'" >&2; exit 1; }

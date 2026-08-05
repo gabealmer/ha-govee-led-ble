@@ -61,10 +61,19 @@ a, b = (np.asarray(Image.open(p).convert('L'), dtype=int) for p in sys.argv[1:3]
 print('1.0' if a.shape != b.shape else '%.4f' % (np.abs(a[int(a.shape[0] * 0.06):] - b[int(a.shape[0] * 0.06):]) > 25).mean())" "$1" "$2"
 }
 
+# Narrowed to the session's bound peer, not left to whatever the capture happens to hold.
+# The phone keeps a BLE link to every Govee device in the house, so the moment the app
+# touches another light this capture gains a second source and analyse_capture refuses it.
+# Refusing is correct, but refusing HERE stops the survey loop dead mid-run, and the survey
+# is the one caller that already knows which device it is driving. resolve_device ran at the
+# top of this script, so the answer is in hand; not passing it was the whole gap.
 ble_since_mark() {
   local name; name="$(current_capture_name)"
   [ -n "$name" ] || { echo "(no capture running)"; return; }
-  uv run --project "$REPO_DIR" python "$REPO_DIR/tools/ble/analyse_capture.py" "$name" 2>&1 | sed -n "/$label/,\$p"
+  local narrow=()
+  [ -n "${DEVICE_EXPECTED_PEER:-}" ] && narrow=(--source "$DEVICE_EXPECTED_PEER")
+  uv run --project "$REPO_DIR" python "$REPO_DIR/tools/ble/analyse_capture.py" "$name" \
+    "${narrow[@]}" 2>&1 | sed -n "/$label/,\$p"
 }
 
 # Delivered by a screen change OR by BLE traffic. A screen diff alone is NOT evidence of

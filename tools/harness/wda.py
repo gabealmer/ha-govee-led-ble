@@ -56,7 +56,37 @@ class WdaError(RuntimeError):
 
 # Sessions outlive a single CLI call on purpose; see Screen.open. Kept beside the harness's
 # other run state so `down.sh` clears it with everything else.
-_SESSION_FILE = Path(os.environ.get("HARNESS_RUN_DIR") or Path(tempfile.gettempdir()) / "govee-harness") / "wda-session"
+#
+# THE RUN DIR IS DISCOVERED, NOT DEFAULTED, because the phone holds exactly one WebDriverAgent
+# session and two callers disagreeing about where it is cached is not a cache miss, it is a
+# fight. resolve_device puts the harness's run dir at /tmp/govee-harness-<device>, so a bare
+# `wda.py` call taking the plain default cached a SECOND session id in a different file. WDA
+# serves one session at a time, so each tool then found the other's id dead, posted a new
+# session, and posting a session with a bundle id ACTIVATES the app and resets it to its root
+# screen. The visible symptom is not an error: navigation silently unwinds between commands,
+# `find` reports a control that is plainly on screen as absent, and the screenshot and the
+# element tree describe different pages. That cost most of an afternoon on 2026-08-05.
+def _discover_run_dir() -> Path:
+    """Where the running harness session keeps its state, or the bare default if none is up.
+
+    Mirrors ``harness_running_session_device`` in devices.env, including its refusal to guess:
+    several sessions up means several phones or several devices, and picking one would aim
+    gestures at whichever the glob happened to sort first.
+    """
+    explicit = os.environ.get("HARNESS_RUN_DIR")
+    if explicit:
+        return Path(explicit)
+    tmp = Path(tempfile.gettempdir())
+    prefix = os.environ.get("HARNESS_STATE_PREFIX") or str(tmp / "govee-harness-state")
+    live = [p for p in Path(prefix).parent.glob(f"{Path(prefix).name}-*") if p.is_file() and p.stat().st_size]
+    if len(live) == 1:
+        device = live[0].read_text().split()[1:2]
+        if device:
+            return tmp / f"govee-harness-{device[0]}"
+    return tmp / "govee-harness"
+
+
+_SESSION_FILE = _discover_run_dir() / "wda-session"
 
 
 def _cached_session() -> str:
