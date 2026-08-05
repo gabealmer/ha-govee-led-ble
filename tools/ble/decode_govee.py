@@ -258,6 +258,25 @@ def _segment_mask(pair: bytes) -> str:
     return f"0x{bits:04x}(seg {','.join(segments) if segments else '-'})"
 
 
+def _label_display_setting(v: bytes) -> str:
+    """Render a 33 a9 write on its selector (h6199_command_write::display_setting_body).
+
+    The register is a selector, a payload length and a payload, not a flat body, and two
+    unrelated settings ride it. One label for the whole register printed a blank-screen toggle
+    as if it were white balance, which is the same misreading the simulator made and which reads
+    as a setting nobody touched rather than as an unknown frame.
+    """
+    setting, length = v[2], v[3]
+    payload = v[4 : 4 + length]
+    if setting == 0x00 and length >= 3:
+        # The two gains, not a position: the app's strip picks a table index and writes the pair
+        # it names, so the quantity the user set is not in the frame.
+        return f"white balance manual={payload[0]} gains=({payload[1]},{payload[2]})"
+    if setting == 0x0A and length >= 1:
+        return f"blank screen {'on' if payload[0] else 'off'} tail={payload[1:].hex()}"
+    return f"display setting={setting:#04x} {payload.hex()}"
+
+
 def _is_wifi_credential_frame(v: bytes) -> bool:
     """An 0xA1 multi-part upload carrying sub-opcode 0x11, the Wi-Fi credential push.
 
@@ -341,7 +360,14 @@ def label(v: bytes, direction: str, *, show_secrets: bool = False) -> str:
         return "?"
     action = v[1]
     if direction == "RX":  # device ack/echo of a 0x33 command; payload is a status, not a set value
-        names = {0x01: "power", 0x04: "brightness", 0x05: "colour", 0x09: "time/cfg", 0xA9: "calibration"}
+        names = {
+            0x01: "power",
+            0x04: "brightness",
+            0x05: "colour",
+            0x09: "time/cfg",
+            0xA9: "display setting",
+            0xAE: "relative brightness",
+        }
         return f"ack {names.get(action, f'action={action:#04x}')}"
     if action == 0x01:
         return f"power {'on' if v[2] else 'off'}"
@@ -382,7 +408,13 @@ def label(v: bytes, direction: str, *, show_secrets: bool = False) -> str:
     if action == 0x09:
         return f"time/cfg {v[2:9].hex()}"
     if action == 0xA9:
-        return "dreamview/calibration"
+        return _label_display_setting(v)
+    if action == 0xAE:
+        # h6199_command_write::relative_brightness_body. The count sits after a head byte, so the
+        # head is not it, and WHICH edge each percentage belongs to is not isolated. Printed in
+        # wire order and unnamed for that reason: a label reading "top=100" would be a claim the
+        # captures do not support.
+        return f"relative brightness edges={','.join(str(p) for p in v[4 : 4 + v[3]])}"
     return f"cmd action={action:#04x} {v[2:13].hex()}"
 
 

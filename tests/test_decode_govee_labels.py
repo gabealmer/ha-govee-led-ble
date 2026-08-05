@@ -107,6 +107,38 @@ def test_scene_label_reports_the_scene_id_that_was_encoded(scene_id):
     assert f"scene id={scene_id}" in dg.label(proto.build_scene(scene_id), "TX")
 
 
+@pytest.mark.parametrize("preset", sorted(proto.WHITE_BALANCE_PRESETS))
+def test_white_balance_label_reports_the_gains_that_were_encoded(preset):
+    red, blue = proto.WHITE_BALANCE_PRESETS[preset]
+    label = dg.label(proto.build_video_white_balance(red, blue), "TX")
+    assert f"gains=({red},{blue})" in label
+
+
+def test_the_two_display_settings_are_told_apart_by_their_selector():
+    """One label for the whole register printed a blank-screen toggle as a gain pair.
+
+    The bug is the reason this test exists: 33 a9 is a selector, a length and a payload, so a
+    decoder that reads every frame on it as white balance reports a setting nobody touched.
+    """
+    blank_on = dg.label(proto.build_blank_screen(True), "TX")
+    blank_off = dg.label(proto.build_blank_screen(False), "TX")
+    assert blank_on.startswith("blank screen on")
+    assert blank_off.startswith("blank screen off")
+    assert "white balance" not in blank_on
+    assert "blank screen" not in dg.label(proto.build_video_white_balance(21, 5), "TX")
+
+
+@pytest.mark.parametrize("percent", [12, 36, 100])
+def test_relative_brightness_label_reports_every_edge_unnamed(percent):
+    """The count sits after a head byte, and which edge is which is not isolated.
+
+    Reading the head as the count truncates the label to one edge, so all four are asserted;
+    naming them would state a permutation our own bytes cannot tell from any other.
+    """
+    label = dg.label(proto.build_relative_brightness(percent), "TX")
+    assert label == f"relative brightness edges={','.join([str(percent)] * 4)}"
+
+
 def _wifi_credential_frame() -> bytes:
     """An a1 11 fragment shaped like the app's credential push, with an obvious passphrase.
 
