@@ -22,12 +22,11 @@ from .light import (
     apply_active_video_mode,
 )
 from .protocol import (
-    WHITE_BALANCE_PRESETS,
+    WHITE_BALANCE_POSITIONS,
     build_blank_screen,
     build_poweroff_memory,
     build_relative_brightness_edges,
     build_video_white_balance,
-    white_balance_preset_name,
 )
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
@@ -111,29 +110,31 @@ class ControlSpec:
     min_value: int = 0
     max_value: int = 100
     mode: NumberMode = NumberMode.SLIDER
+    enabled_default: bool = True
 
 
 # Numbers, in the order they are added. Music sensitivity and the two video percentages ride their
-# mode's frame; relative brightness and the white-balance gains each own a register.
+# mode's frame; relative brightness owns a register and white balance is added as a dedicated slider.
 NUMBER_CONTROLS: dict[str, ControlSpec] = {
     "music_sensitivity": ControlSpec(lambda p: p.supports_music_mode, apply_active_music_mode),
     "video_saturation": ControlSpec(lambda p: p.supports_video_mode, apply_active_video_mode),
     "video_sound_effects_softness": ControlSpec(
         lambda p: p.supports_video_sound_effects, apply_active_video_mode, min_value=1
     ),
-    "relative_brightness": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
-    "relative_brightness_left": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
-    "relative_brightness_top": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
-    "relative_brightness_right": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
-    "relative_brightness_bottom": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
-    # Gains, not a position on the app's warm/cool strip: that marker picks an index into a table
-    # the app ships and only the pair it names reaches the wire, so a box that takes the gain is
-    # the honest control. The app's own neutral is 16 red, 3 blue.
-    "white_balance_red": ControlSpec(
-        lambda p: p.supports_white_balance, _apply_white_balance, max_value=255, mode=NumberMode.BOX
+    "relative_brightness": ControlSpec(
+        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
     ),
-    "white_balance_blue": ControlSpec(
-        lambda p: p.supports_white_balance, _apply_white_balance, max_value=255, mode=NumberMode.BOX
+    "relative_brightness_left": ControlSpec(
+        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
+    ),
+    "relative_brightness_top": ControlSpec(
+        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
+    ),
+    "relative_brightness_right": ControlSpec(
+        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
+    ),
+    "relative_brightness_bottom": ControlSpec(
+        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
     ),
 }
 
@@ -236,6 +237,7 @@ class H6199ParameterNumber(_RestoreLastWritten, NumberEntity):
         super().__init__(coordinator, key=key, **kwargs)
         spec = NUMBER_CONTROLS[key]
         self._attr_mode = spec.mode
+        self._attr_entity_registry_enabled_default = spec.enabled_default
         self._attr_native_min_value = (
             coordinator.profile.music_sensitivity_min if key == "music_sensitivity" else spec.min_value
         )
@@ -258,19 +260,6 @@ class H6199ParameterNumber(_RestoreLastWritten, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         next_value = int(round(value))
-        if self._key in {"white_balance_red", "white_balance_blue"}:
-            values = {
-                "white_balance_red": (
-                    next_value if self._key == "white_balance_red" else self.coordinator.white_balance_red
-                ),
-                "white_balance_blue": (
-                    next_value if self._key == "white_balance_blue" else self.coordinator.white_balance_blue
-                ),
-            }
-            if any(gain is None for gain in values.values()):
-                raise ValueError("White-balance state has not been read; select a preset first")
-            await _set_fields_with_rollback(self.coordinator, values, reapply=self._reapply)
-            return
         if self._key == "relative_brightness":
             await _set_fields_with_rollback(
                 self.coordinator,
@@ -300,6 +289,41 @@ class H6199ParameterNumber(_RestoreLastWritten, NumberEntity):
             await _set_fields_with_rollback(self.coordinator, values, reapply=self._reapply)
             return
         await _set_with_rollback(self.coordinator, key=self._key, value=next_value, reapply=self._reapply)
+
+
+class H6199WhiteBalanceNumber(_H6199ControlEntity, NumberEntity):
+    """Vendor-equivalent position on the H6199's captured 20-step balance curve."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "white_balance"
+    _attr_native_min_value = 1
+    _attr_native_max_value = len(WHITE_BALANCE_POSITIONS)
+    _attr_native_step = 1
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, coordinator: GoveeBLECoordinator) -> None:
+        super().__init__(coordinator, key="white_balance")
+
+    @property
+    def native_value(self) -> float | None:
+        red, blue = self.coordinator.white_balance_red, self.coordinator.white_balance_blue
+        if red is None or blue is None:
+            return None
+        try:
+            return float(WHITE_BALANCE_POSITIONS.index((red, blue)) + 1)
+        except ValueError:
+            return None
+
+    async def async_set_native_value(self, value: float) -> None:
+        position = int(round(value))
+        if not 1 <= position <= len(WHITE_BALANCE_POSITIONS):
+            raise ValueError(f"white-balance position must be 1..{len(WHITE_BALANCE_POSITIONS)}")
+        red, blue = WHITE_BALANCE_POSITIONS[position - 1]
+        await _set_fields_with_rollback(
+            self.coordinator,
+            {"white_balance_red": red, "white_balance_blue": blue},
+            reapply=_apply_white_balance,
+        )
 
 
 class H6199ControlSwitch(_RestoreLastWritten, SwitchEntity):
@@ -390,41 +414,6 @@ class H6199VideoCaptureSelect(_H6199ControlEntity, SelectEntity):
         )
 
 
-class H6199WhiteBalancePresetSelect(_H6199ControlEntity, SelectEntity):
-    """White balance as a position on the app's strip, offered for the positions we hold bytes for.
-
-    The marker the app draws picks an index into a twenty-entry table it ships, and the write
-    carries the gain pair that index names, so a position is what a user sets and an arbitrary
-    gain pair is not something the app can produce. Four of the twenty are captured, so four are
-    offered; the two gain numbers stay as the escape hatch for the rest.
-
-    Nothing is restored here, and nothing needs to be. The option is derived from the stored
-    gains, so whatever sets those reports through this unchanged: the numbers restoring them
-    today, or a parser for the aa a9 reply the light does send. A pair off the four reads as
-    unknown rather than as the nearest guess.
-    """
-
-    _attr_options = list(WHITE_BALANCE_PRESETS)
-
-    def __init__(self, coordinator: GoveeBLECoordinator) -> None:
-        super().__init__(coordinator, key="white_balance_preset")
-
-    @property
-    def current_option(self) -> str | None:
-        red, blue = self.coordinator.white_balance_red, self.coordinator.white_balance_blue
-        if red is None or blue is None:
-            return None
-        return white_balance_preset_name(red, blue)
-
-    async def async_select_option(self, option: str) -> None:
-        red, blue = WHITE_BALANCE_PRESETS[option]
-        await _set_fields_with_rollback(
-            self.coordinator,
-            {"white_balance_red": red, "white_balance_blue": blue},
-            reapply=_apply_white_balance,
-        )
-
-
 class _MusicParamEntity(_H6199ControlEntity):
     """Base for the EXPERIMENTAL, disabled-by-default per-mode music movement entities (§2.3)."""
 
@@ -495,6 +484,8 @@ async def async_setup_number_entry(
         for key in NUMBER_CONTROLS
         if _supports_number_param(coordinator, key)
     ]
+    if coordinator.profile.supports_white_balance:
+        entities.append(H6199WhiteBalanceNumber(coordinator))
     if coordinator.profile.supports_music_params:
         entities.extend(MusicParamNumber(coordinator, spec) for spec in MUSIC_PARAM_SPECS if spec.kind == "number")
     if entities:
@@ -514,8 +505,6 @@ async def async_setup_select_entry(
         entities.extend(MusicParamSelect(coordinator, spec) for spec in MUSIC_PARAM_SPECS if spec.kind == "select")
     if coordinator.profile.supports_video_mode:
         entities.append(H6199VideoCaptureSelect(coordinator))
-    if coordinator.profile.supports_white_balance:
-        entities.append(H6199WhiteBalancePresetSelect(coordinator))
     if entities:
         async_add_entities(entities)
 

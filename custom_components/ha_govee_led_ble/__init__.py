@@ -26,7 +26,6 @@ type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 PLATFORMS = [
-    Platform.IMAGE,
     Platform.LIGHT,
     Platform.NUMBER,
     Platform.SELECT,
@@ -35,8 +34,13 @@ PLATFORMS = [
     Platform.TIME,
 ]
 _LEGACY_ENTITY_SUFFIXES = {
+    "_effect_preview",
+    "_reduce_motion",
     "_video_brightness",
     "_white_brightness",
+    "_white_balance_blue",
+    "_white_balance_preset",
+    "_white_balance_red",
     "_music_calm",
     "_music_mode",
 }
@@ -70,9 +74,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def _async_cleanup_legacy_entities(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
     registry = er.async_get(hass)
+    replaced_white_balance: list[str] = []
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
         if entity.unique_id and any(entity.unique_id.endswith(suffix) for suffix in _LEGACY_ENTITY_SUFFIXES):
+            if entity.unique_id.endswith(("_white_balance_blue", "_white_balance_preset", "_white_balance_red")):
+                replaced_white_balance.append(entity.entity_id)
             registry.async_remove(entity.entity_id)
+    if replaced_white_balance:
+        hass.data.setdefault(DOMAIN, {})[f"{entry.entry_id}_white_balance_from"] = replaced_white_balance
 
 
 async def _async_cleanup_unsupported_entities(
@@ -150,6 +159,26 @@ def _maybe_flag_music_mode_replaced(hass: HomeAssistant, entry: GoveeBLEConfigEn
     )
 
 
+def _maybe_flag_white_balance_replaced(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
+    """Warn that three H6199 white-balance controls became one position slider."""
+    old_ids = hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_white_balance_from", None)
+    if old_ids is None:
+        return
+    new_id = er.async_get(hass).async_get_entity_id("number", DOMAIN, f"{_addr(entry)}_white_balance")
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"white_balance_controls_replaced_{entry.entry_id}",
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="white_balance_controls_replaced",
+        translation_placeholders={
+            "old": ", ".join(old_ids),
+            "new": new_id or "number.white_balance",
+        },
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
     assert entry.unique_id is not None
     raw_model = entry.data.get(CONF_MODEL)
@@ -177,6 +206,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     await _async_cleanup_unsupported_entities(hass, entry, coordinator.profile)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _maybe_flag_music_calm_replaced(hass, entry)
+    _maybe_flag_white_balance_replaced(hass, entry)
     return True
 
 

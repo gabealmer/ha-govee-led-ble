@@ -149,9 +149,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_count=15,
         # build_segment_color reproduces three captured H6199 app writes byte for byte, whole-strip
         # and per-segment alike, so painting segments is the app's own behaviour on this model
-        # rather than an H617A habit carried across. The brightness sub-register those services also
-        # reach has no H6199 capture. That existing service remains fire-and-forget and is not
-        # widened by the static read-back correction above.
+        # rather than an H617A habit carried across. Segment brightness was then driven through HA
+        # on 2026-08-05 for one segment, a disjoint pair and all fifteen; attributed aa a5 replies
+        # independently reported 17, 37 and 73 at exactly the addressed positions.
         supports_segment_writes=True,
     ),
 }

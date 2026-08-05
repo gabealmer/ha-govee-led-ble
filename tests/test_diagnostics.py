@@ -146,3 +146,15 @@ async def test_unknown_white_balance_is_not_reported_as_neutral(mock_h6199_coord
     coord.white_balance_red = coord.white_balance_blue = None
     diag = await _run(coord)
     assert diag["coordinator"]["white_balance"] is None
+    assert diag["coordinator"]["white_balance_position"] is None
+
+
+async def test_white_balance_position_is_exact_not_nearest(mock_h6199_coordinator):
+    coord = _prep(mock_h6199_coordinator)
+    coord.white_balance_red, coord.white_balance_blue = 16, 3
+    diag = await _run(coord)
+    assert diag["coordinator"]["white_balance_position"] == 17
+
+    coord.white_balance_red, coord.white_balance_blue = 17, 4
+    diag = await _run(coord)
+    assert diag["coordinator"]["white_balance_position"] is None

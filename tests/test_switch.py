@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bleak import BleakError
-from homeassistant.const import EntityCategory
 
 from custom_components.ha_govee_led_ble.coordinator_modes import MUSIC_PARAM_SPECS as _MPS
 from custom_components.ha_govee_led_ble.h6199_controls import (
@@ -14,11 +13,7 @@ from custom_components.ha_govee_led_ble.h6199_controls import (
 from custom_components.ha_govee_led_ble.h6199_controls import MusicParamSwitch as MPSwitch
 from custom_components.ha_govee_led_ble.protocol import build_blank_screen
 from custom_components.ha_govee_led_ble.protocol import build_poweroff_memory as bpm
-from custom_components.ha_govee_led_ble.switch import (
-    EffectPreviewReduceMotionSwitch,
-    SleepTimerSwitch,
-    WakeupTimerSwitch,
-)
+from custom_components.ha_govee_led_ble.switch import SleepTimerSwitch, WakeupTimerSwitch
 from custom_components.ha_govee_led_ble.switch import async_setup_entry as switch_setup
 
 
@@ -347,101 +342,3 @@ async def test_music_param_switch_stores_only_when_inactive(mock_coordinator):
     await MPSwitch(c, _gradient_spec()).async_turn_off()
     assert c.music_separation_gradient is False
     c.async_apply_music_params.assert_not_awaited()
-
-
-async def test_switch_setup_adds_reduce_motion_on_h6199(mock_h6199_coordinator):
-    added: list = []
-    await switch_setup(MagicMock(), _entry(mock_h6199_coordinator), lambda e: added.extend(e))
-    motion = [e for e in added if isinstance(e, EffectPreviewReduceMotionSwitch)]
-    assert len(motion) == 1
-
-
-async def test_switch_setup_adds_reduce_motion_on_h617a(mock_coordinator):
-    added: list = []
-    await switch_setup(MagicMock(), _entry(mock_coordinator), lambda e: added.extend(e))
-    assert sum(isinstance(e, EffectPreviewReduceMotionSwitch) for e in added) == 1
-
-
-def test_reduce_motion_is_on_reflects_coordinator(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    switch = EffectPreviewReduceMotionSwitch(c)
-    c.preview_reduce_motion = False
-    assert switch.is_on is False
-    c.preview_reduce_motion = True
-    assert switch.is_on is True
-
-
-def test_reduce_motion_metadata(mock_h6199_coordinator):
-    switch = EffectPreviewReduceMotionSwitch(mock_h6199_coordinator)
-    assert switch.unique_id == "112233445566_reduce_motion"
-    assert switch.translation_key == "effect_preview_reduce_motion"
-    assert switch._attr_entity_category == EntityCategory.CONFIG
-
-
-async def test_reduce_motion_turn_on_sets_flag_without_device_command(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    c.preview_reduce_motion = False
-    await EffectPreviewReduceMotionSwitch(c).async_turn_on()
-    assert c.preview_reduce_motion is True
-    c.send_command.assert_not_called()
-    c.async_set_updated_data.assert_called_once_with(c.data)
-
-
-async def test_reduce_motion_turn_off_sets_flag_without_device_command(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    c.preview_reduce_motion = True
-    await EffectPreviewReduceMotionSwitch(c).async_turn_off()
-    assert c.preview_reduce_motion is False
-    c.send_command.assert_not_called()
-    c.async_set_updated_data.assert_called_once_with(c.data)
-
-
-async def test_reduce_motion_restore_on(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    c.preview_reduce_motion = False
-    entity = EffectPreviewReduceMotionSwitch(c)
-    entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="on"))
-    await entity._async_restore_state()
-    assert c.preview_reduce_motion is True
-    c.send_command.assert_not_called()
-
-
-async def test_reduce_motion_restore_off(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    c.preview_reduce_motion = True
-    entity = EffectPreviewReduceMotionSwitch(c)
-    entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="off"))
-    await entity._async_restore_state()
-    assert c.preview_reduce_motion is False
-
-
-async def test_reduce_motion_restore_without_last_state(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    c.preview_reduce_motion = False
-    entity = EffectPreviewReduceMotionSwitch(c)
-    entity.async_get_last_state = AsyncMock(return_value=None)
-    await entity._async_restore_state()
-    assert c.preview_reduce_motion is False
-    c.async_set_updated_data.assert_not_called()
-
-
-async def test_reduce_motion_restore_ignores_unknown_state(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    c.preview_reduce_motion = False
-    entity = EffectPreviewReduceMotionSwitch(c)
-    entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="unknown"))
-    await entity._async_restore_state()
-    assert c.preview_reduce_motion is False
-    c.async_set_updated_data.assert_not_called()
-
-
-async def test_reduce_motion_added_to_hass_triggers_restore(mock_h6199_coordinator):
-    entity = EffectPreviewReduceMotionSwitch(mock_h6199_coordinator)
-    entity._async_restore_state = AsyncMock()
-    with patch(
-        "custom_components.ha_govee_led_ble.entity.GoveeBLEEntity.async_added_to_hass",
-        new_callable=AsyncMock,
-    ) as super_added:
-        await entity.async_added_to_hass()
-    super_added.assert_awaited_once()
-    entity._async_restore_state.assert_awaited_once()

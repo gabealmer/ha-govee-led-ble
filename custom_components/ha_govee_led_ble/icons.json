@@ -1,10 +1,5 @@
 {
   "entity": {
-    "image": {
-      "effect_preview": {
-        "default": "mdi:animation-play"
-      }
-    },
     "number": {
       "scene_speed": {
         "default": "mdi:speedometer"
@@ -51,11 +46,8 @@
       "relative_brightness_bottom": {
         "default": "mdi:arrow-down-bold"
       },
-      "white_balance_red": {
-        "default": "mdi:white-balance-incandescent"
-      },
-      "white_balance_blue": {
-        "default": "mdi:white-balance-iridescent"
+      "white_balance": {
+        "default": "mdi:white-balance-sunny"
       }
     },
     "select": {
@@ -67,9 +59,6 @@
       },
       "video_capture_region": {
         "default": "mdi:fit-to-screen"
-      },
-      "white_balance_preset": {
-        "default": "mdi:white-balance-sunny"
       }
     },
     "sensor": {
@@ -78,9 +67,6 @@
       }
     },
     "switch": {
-      "effect_preview_reduce_motion": {
-        "default": "mdi:motion-pause"
-      },
       "music_separation_gradient": {
         "default": "mdi:gradient-vertical"
       },

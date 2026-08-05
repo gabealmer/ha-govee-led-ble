@@ -51,6 +51,7 @@ seq:
         'status_domain::colour_mode': colour_mode_body
         'status_domain::display_setting': display_setting_body
         'status_domain::relative_brightness': relative_brightness_body
+        'status_domain::segments': segment_group_body
     doc: '[CONFIRMED_LIVE] H6199 status body at frame offsets 2..18; unmatched registers remain raw'
   - id: checksum
     type: u1
@@ -63,6 +64,7 @@ enums:
     0x05: colour_mode
     0x20: subordinate_20
     0x21: subordinate_21
+    0xa5: segments
     0xa9: display_setting
     0xae: relative_brightness
   display_setting:
@@ -74,6 +76,17 @@ enums:
     0x13: music
     0x15: static_colour
 types:
+  rgb:
+    seq:
+      - id: red
+        type: u1
+        doc: '[CONFIRMED_LIVE] red channel'
+      - id: green
+        type: u1
+        doc: '[CONFIRMED_LIVE] green channel'
+      - id: blue
+        type: u1
+        doc: '[CONFIRMED_LIVE] blue channel'
   display_setting_body:
     seq:
       - id: setting
@@ -133,8 +146,9 @@ types:
       - id: is_enabled
         type: u1
         doc: |
-          [CONFIRMED_LIVE] blank-screen state at frame offset 4, captured as zero while the
-          app's switch displayed off. The remaining bytes mirror the write-side payload.
+          [CONFIRMED_LIVE] blank-screen state at frame offset 4. Captured as zero while the
+          app's switch displayed off and one after it was enabled, with the remaining bytes
+          unchanged.
       - id: opaque_tail
         size: 5
         doc: '[CONFIRMED_LIVE] five state bytes mirrored from the blank-screen write, still unnamed'
@@ -149,18 +163,17 @@ types:
       - id: left_percent
         type: u1
         doc: |
-          [INFERRED] left edge percentage at frame offset 4. The reply was captured with all
-          edges equal, so the name is carried across from the independently isolated write
-          order rather than separated on the read side.
+          [CONFIRMED_LIVE] left edge percentage at frame offset 4. An asymmetric reply carried
+          51, 32, 71 and 91 after those exact values were written to left, top, right and bottom.
       - id: top_percent
         type: u1
-        doc: '[INFERRED] top edge percentage at frame offset 5; see left_percent'
+        doc: '[CONFIRMED_LIVE] top edge percentage at frame offset 5; see left_percent'
       - id: right_percent
         type: u1
-        doc: '[INFERRED] right edge percentage at frame offset 6; see left_percent'
+        doc: '[CONFIRMED_LIVE] right edge percentage at frame offset 6; see left_percent'
       - id: bottom_percent
         type: u1
-        doc: '[INFERRED] bottom edge percentage at frame offset 7; see left_percent'
+        doc: '[CONFIRMED_LIVE] bottom edge percentage at frame offset 7; see left_percent'
       - id: opaque_tail
         size-eos: true
         doc: '[CONFIRMED_LIVE] remaining relative-brightness reply bytes, captured as zero'
@@ -215,27 +228,25 @@ types:
           This is the read-back the write-side doc once proposed as the way to settle that
           byte, and it arrives from a genuinely independent direction: the light is reporting
           the value, not our encoder repeating it. The two agree.
-      - id: opaque_gap
-        size: 3
+      - id: is_calm
+        type: u1
         doc: |
-          [CONFIRMED_LIVE] three bytes at frame offsets 5..7, captured as zero. The write
-          carries a reactivity profile, a pinned-colour flag and a red channel in those same
-          three positions, all of which were zero in the session this reply came from, so
-          whether the reply mirrors them or means something else here is not established.
-      - id: opaque_flag
-        size: 1
+          [CONFIRMED_LIVE] reactivity profile at frame offset 5. Fixed-red and fixed-blue
+          replies both carried zero after Dynamic was selected, matching the write layout.
+      - id: has_fixed_colour
+        type: u1
         doc: |
-          [CONFIRMED_LIVE] one byte at frame offset 8, captured as 0xff. The write carries the
-          GREEN channel of a pinned colour in that position, and carried zero there in this
-          session because auto colour was on.
-
-          So the obvious reading is that the light is reporting the colour it chose for itself,
-          of which this is the green component. That is a reading of one sample and not an
-          isolation: a reply captured while a colour is pinned, and another while a different
-          one is, would settle it. Unnamed until then.
+          [CONFIRMED_LIVE] fixed-colour flag at frame offset 6. Captured as one in fixed-red
+          and fixed-blue replies, matching the writes that established those colours.
+      - id: fixed_colour
+        type: rgb
+        doc: |
+          [CONFIRMED_LIVE] fixed music colour at frame offsets 7..9. Captured as ff 00 00
+          after selecting red and 00 00 ff after selecting blue, then read independently
+          during a fresh connection burst.
       - id: opaque_tail
-        size: 10
-        doc: '[CONFIRMED_LIVE] remaining bytes at frame offsets 9..18, captured as an opaque all-zero window'
+        size: 9
+        doc: '[CONFIRMED_LIVE] remaining bytes at frame offsets 10..18, captured as an opaque all-zero window'
   scene_state:
     seq:
       - id: scene_id
@@ -259,19 +270,38 @@ types:
       - id: is_on
         type: u1
         doc: |
-          [INFERRED] power state at frame offset 2, captured as 0 while the device page
-          showed the light off.
-
-          NOTHING CAPTURED SEPARATES THIS REPLY FROM AN ECHO OF THE QUERY. The checksum is
-          the XOR of bytes 0..18, so an all-zero body and a bare repeat of the aa 01 query
-          serialise to the same twenty bytes, and h6199_status_power_off holds byte for byte
-          what h6199_query_power sent. Nothing but 0 has ever been seen here either, so
-          reading this byte as stored power state is the write side's name carried across
-          rather than something measured on a reply. Settle it by turning the light on,
-          reading aa 01 back and seeing whether the byte follows.
+          [CONFIRMED_LIVE] power state at frame offset 2. Captured as zero while off and one
+          from fresh device replies while on, so it is not an echo of the all-zero query.
       - id: opaque_tail
         size: 16
         doc: '[CONFIRMED_LIVE] remaining H6199 power-reply bytes, captured as an opaque all-zero window'
+  segment_record:
+    seq:
+      - id: brightness_percent
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] direct per-segment brightness. H6199 trials changed one segment
+          to 17, segments 2 and 4 to 37, and every segment to 73; each reply reported the
+          requested value at the corresponding position.
+      - id: colour
+        type: rgb
+        doc: '[CONFIRMED_LIVE] segment RGB, retained while brightness alone was changed'
+  segment_group_body:
+    seq:
+      - id: group
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] one-based group number. Groups 1 to 3 carry four segment records;
+          group 4 carries the final three records followed by a four-byte device trailer.
+      - id: segments
+        type: segment_record
+        repeat: expr
+        repeat-expr: 'group == 4 ? 3 : 4'
+        doc: '[CONFIRMED_LIVE] consecutive segment states for this group'
+      - id: group4_tail
+        size: 4
+        if: group == 4
+        doc: '[CONFIRMED_LIVE] final group trailer, left opaque because no controlled comparison isolates its fields'
   version_body:
     seq:
       - id: text

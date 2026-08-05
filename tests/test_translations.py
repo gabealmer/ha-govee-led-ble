@@ -23,11 +23,10 @@ def test_set_white_brightness_is_brightness_not_balance():
 def test_entity_translation_keys_have_names():
     entity = json.loads(_STRINGS.read_text())["entity"]
     expected = {
-        "image": {"effect_preview"},
-        "number": {"scene_speed", "sleep_timer_duration", "music_sensitivity", "music_daynight_speed"},
-        "select": {"music_style", "music_fountain_direction", "video_capture_region", "white_balance_preset"},
+        "number": {"scene_speed", "sleep_timer_duration", "music_sensitivity", "music_daynight_speed", "white_balance"},
+        "select": {"music_style", "music_fountain_direction", "video_capture_region"},
         "sensor": {"active_mode"},
-        "switch": {"effect_preview_reduce_motion", "poweroff_memory", "sleep_timer", "wakeup_timer"},
+        "switch": {"poweroff_memory", "sleep_timer", "wakeup_timer"},
         "time": {"wakeup_time"},
     }
     for platform, keys in expected.items():

@@ -1,0 +1,15 @@
+id: h6199_status_segments_all_group4
+data: h6199_status_segments_all_group4.bin
+imports:
+  - h6199_status_reply
+asserts:
+  - actual: body.group
+    expected: 4
+  - actual: body.segments.size
+    expected: 3
+  - actual: body.segments[0].brightness_percent
+    expected: 73
+  - actual: body.segments[2].brightness_percent
+    expected: 73
+  - actual: body.group4_tail
+    expected: "91494949"

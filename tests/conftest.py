@@ -77,7 +77,6 @@ def _make_coord(**ov) -> MagicMock:
         music_mode="off",
         video_mode="off",
         custom_effects={},
-        preview_reduce_motion=False,
         data={},
     )
     d |= ov

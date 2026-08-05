@@ -94,6 +94,9 @@ def test_builder_reproduces_the_captured_frame(name, built):
         ("h6199_command_colour_segment_1", lambda: proto.build_segment_color([1], 255, 0, 0)),
         ("h6199_command_colour_segment_3", lambda: proto.build_segment_color([3], 255, 0, 0)),
         ("h6199_command_colour_segment_1_3", lambda: proto.build_segment_color([1, 3], 255, 0, 0)),
+        ("h6199_segment_brightness_one", lambda: proto.build_segment_brightness([1], 17)),
+        ("h6199_segment_brightness_pair", lambda: proto.build_segment_brightness([2, 4], 37)),
+        ("h6199_segment_brightness_all", lambda: proto.build_segment_brightness(proto.ALL_SEGMENTS, 73)),
         (
             "h6199_command_schedule_slot0_0730_mwf",
             lambda: proto.build_timer_schedule(0, True, True, 7, 30, proto.parse_timer_repeat(0x95)),
@@ -209,33 +212,33 @@ def test_the_shared_catalogue_only_agrees_with_h6199_wire_for_the_scenes_we_offe
         assert fixture(f"h6199_scene_{name}")[5] == 2, name
 
 
-def test_relative_brightness_writes_every_edge_because_no_capture_separates_them():
-    """The two captures moved all four edges together, so one level is the only proven form."""
+def test_relative_brightness_compatibility_builder_writes_every_edge():
     frame = proto.build_relative_brightness(36)
     assert frame == fixture("h6199_relbright_36")
     assert set(frame[4:8]) == {36}
 
 
-def test_every_white_balance_preset_is_a_frame_the_app_actually_sent():
-    """The offered positions are the corpus, so a preset cannot be invented in the entity layer.
-
-    White balance is not a free pair of gains: the app's marker picks an index into a
-    twenty-entry table it ships and writes the pair that index names, so a pair the table
-    does not hold is a write nothing supports. Every option this integration offers therefore
-    has to be a captured frame, and this is what stops one being added from arithmetic.
-    """
-    fixtures = {"cool": "cool", "mid": "mid", "neutral": "reset", "warm": "warm"}
-    assert set(fixtures) == set(proto.WHITE_BALANCE_PRESETS), "an option has no capture behind it"
-    for option, suffix in fixtures.items():
-        red, blue = proto.WHITE_BALANCE_PRESETS[option]
-        assert proto.build_video_white_balance(red, blue) == fixture(f"h6199_white_balance_{suffix}"), option
-        assert proto.white_balance_preset_name(red, blue) == option
+def test_every_white_balance_slider_position_is_a_captured_frame():
+    assert len(proto.WHITE_BALANCE_POSITIONS) == 20
+    for position, pair in enumerate(proto.WHITE_BALANCE_POSITIONS, 1):
+        assert proto.build_video_white_balance(*pair) == fixture(f"h6199_white_balance_position_{position:02d}")
 
 
-def test_a_gain_pair_no_capture_holds_is_not_given_a_preset_name():
-    """Sixteen of the twenty table entries are not in this repo, so an unnamed pair is expected."""
-    assert proto.white_balance_preset_name(*proto.WHITE_BALANCE_RESET) == "neutral"
-    assert proto.white_balance_preset_name(9, 9) is None
+@pytest.mark.parametrize(
+    ("name", "kelvin", "captured_preview"),
+    [
+        ("h6199_colour_temp_warm", 2000, (255, 141, 11)),
+        ("h6199_colour_temp_mid", 5500, (255, 238, 222)),
+        ("h6199_colour_temp_cool", 9000, (217, 225, 255)),
+    ],
+)
+def test_h6199_colour_temperature_shape_matches_while_the_vendor_preview_curve_differs(name, kelvin, captured_preview):
+    captured = fixture(name)
+    built = proto.build_color_temp(kelvin)
+    assert built[:9] == captured[:9]
+    assert built[12:19] == captured[12:19]
+    assert tuple(captured[9:12]) == captured_preview
+    assert tuple(built[9:12]) == proto.kelvin_to_rgb(kelvin)
 
 
 def test_timer_repeat_survives_a_round_trip_through_the_weekday_set():
@@ -337,6 +340,14 @@ def test_colour_mode_replies_decode_the_same_as_the_grammar():
     assert music.music_color == (255, 0, 0)
     diy = proto.parse_color_mode_response(payload_of("status_reply_cm_diy_saved"))
     assert diy.diy_slot == 0x84
+
+
+def test_h6199_music_reply_tracks_fixed_red_and_blue():
+    red = proto.parse_color_mode_response(payload_of("h6199_status_colour_mode_music_red"))
+    blue = proto.parse_color_mode_response(payload_of("h6199_status_colour_mode_music_blue"))
+    assert red.music_mode == blue.music_mode == "rhythm"
+    assert red.music_color == (255, 0, 0)
+    assert blue.music_color == (0, 0, 255)
 
 
 def test_the_style_byte_is_only_read_as_calm_for_rhythm():

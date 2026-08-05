@@ -217,8 +217,6 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self._store_lock = asyncio.Lock()
         self._effect_store: EffectStore | None = None
         self.segment_colors: list[tuple[int, int, int]] = [self.rgb_color] * profile.segment_count
-        # Backend-only preview flag (never a device command); the reduce-motion switch restores it.
-        self.preview_reduce_motion = False
         self.video_saturation = self.white_brightness = 100
         self.music_sensitivity = 99
         self.music_calm = False

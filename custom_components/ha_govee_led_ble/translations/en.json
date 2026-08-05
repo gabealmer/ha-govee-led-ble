@@ -24,11 +24,6 @@
     }
   },
   "entity": {
-    "image": {
-      "effect_preview": {
-        "name": "Effect preview"
-      }
-    },
     "number": {
       "scene_speed": {
         "name": "Scene speed"
@@ -75,11 +70,8 @@
       "relative_brightness_bottom": {
         "name": "Relative brightness bottom"
       },
-      "white_balance_red": {
-        "name": "White balance red gain"
-      },
-      "white_balance_blue": {
-        "name": "White balance blue gain"
+      "white_balance": {
+        "name": "White balance"
       }
     },
     "select": {
@@ -104,15 +96,6 @@
           "full": "All",
           "part": "Part"
         }
-      },
-      "white_balance_preset": {
-        "name": "White balance",
-        "state": {
-          "cool": "Cool",
-          "mid": "Mid",
-          "neutral": "Neutral",
-          "warm": "Warm"
-        }
       }
     },
     "sensor": {
@@ -129,9 +112,6 @@
       }
     },
     "switch": {
-      "effect_preview_reduce_motion": {
-        "name": "Reduce preview motion"
-      },
       "music_separation_gradient": {
         "name": "Music separation gradient"
       },
@@ -275,6 +255,10 @@
     "music_mode_replaced": {
       "title": "Music mode select replaced",
       "description": "The select {old} has been removed. Choose a music mode from the light's effect list instead, and update any automations or scripts that used the old select."
+    },
+    "white_balance_controls_replaced": {
+      "title": "White balance controls replaced",
+      "description": "The controls {old} have been replaced by {new}. Update any dashboards, automations or scripts to use the new 20-position white balance slider."
     },
     "custom_effect_scene_shadow": {
       "title": "Custom effect hides a built-in scene",

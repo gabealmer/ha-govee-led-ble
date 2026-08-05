@@ -75,6 +75,9 @@ enums:
     0x04: spectrum
     0x05: energetic
     0x06: rolling
+  static_operation:
+    0x01: colour
+    0x02: brightness
 types:
   rgb:
     seq:
@@ -397,7 +400,7 @@ types:
         type: u1
         doc: |
           [INFERRED] set while white balance is being driven by hand, at frame offset
-          4. Captured as 0x01 in all seven white-balance writes.
+          4. Captured as 0x01 across the complete twenty-position strip and the Reset write.
 
           It was first modelled as an unnamed constant on exactly that evidence, which was a
           sampling artefact: every capture was taken with the manual strip, so the byte had
@@ -410,16 +413,14 @@ types:
       - id: red
         type: u1
         doc: |
-          [CONFIRMED_LIVE] red gain, at frame offset 5. Captured as 7 at the cool end of the
-          strip, then 13 and 15, then 16 from the app's Reset button, and 21 at the warm
-          end. Only the 16 came from Reset. Four of the five are committed as fixtures; the
-          15 is the one position with no bytes under src/.
+          [CONFIRMED_LIVE] red gain, at frame offset 5. Every one of the app strip's twenty
+          positions is committed, spanning 7 at the cool end to 21 at the warm end.
       - id: blue
         type: u1
         doc: |
-          [CONFIRMED_LIVE] blue gain, at frame offset 6. Captured as 10, 3, 3, 3 and 5 for
-          those same five positions, moving with the strip but NOT monotonically, which is
-          the fact that a single 16-bit reading of these two bytes could not explain.
+          [CONFIRMED_LIVE] blue gain, at frame offset 6. Across all twenty positions it
+          varies non-monotonically between 3 and 10, which a single 16-bit level could not
+          explain.
 
           THESE TWO BYTES WERE BRIEFLY MODELLED AS ONE BIG-ENDIAN NUMBER, and the reasoning
           is worth keeping because it was wrong in an instructive way. The argument was that
@@ -430,10 +431,12 @@ types:
           reading the spec itself recorded - a value in the first byte and something else in
           the second - was the correct one.
 
-          What settles it is that all five captured pairs are exact entries in that table,
-          including both of ours landing on both of its endpoints, and that the strip has
-          twenty steps. The marker chooses an INDEX; the two bytes are the gains that index
-          names. So the quantity the user sets does not appear in the frame at all.
+          The app marker chooses an INDEX and writes the pair that index names; all twenty
+          positions now match the table exactly. The firmware is less restrictive than the
+          app: Home Assistant trials wrote (17,3), (17,4) and (16,4), and fresh aa a9
+          replies returned each exact off-table or independently changed pair. The gains are
+          therefore independent protocol fields even though the normal vendor UI follows a
+          calibrated curve.
 
           It is still not colour temperature, but not for the reason first recorded: cool is
           (7, 10), blue-heavy, and warm is (21, 5), red-heavy, which is a gain pair.
@@ -551,28 +554,42 @@ types:
           about the captures, not about the protocol.
   static_colour_body:
     seq:
-      - id: opaque_head
-        size: 1
+      - id: operation
+        type: u1
+        enum: static_operation
         doc: |
-          [CONFIRMED_LIVE] one H6199 static-colour byte at frame offset 3, captured as 0x01 on
-          every static-colour write and never seen to vary. Unnamed because no capture
-          isolates it. It is at least NOT a whole-strip flag, which was the obvious guess:
-          writes addressing one segment carry the same value as writes addressing all
-          fifteen, so whatever selects the scope is the mask below and not this byte.
+          [CONFIRMED_LIVE] static-operation selector at frame offset 3. App colour and colour-
+          temperature writes carry 0x01. Home Assistant trials on the H6199 carried 0x02 for
+          masked segment brightness, and attributed aa a5 replies independently confirmed the
+          requested percentages on one segment, a disjoint pair and all fifteen.
       - id: red
         type: u1
+        if: operation == static_operation::colour
         doc: '[CONFIRMED_LIVE] H6199 red channel at frame offset 4; captured as 0xff for the Basic Colors red swatch and 0x00 for green and blue, in one session with nothing else touched'
       - id: green
         type: u1
+        if: operation == static_operation::colour
         doc: '[CONFIRMED_LIVE] H6199 green channel at frame offset 5; captured as 0xff for the green swatch alone in the same session'
       - id: blue
         type: u1
+        if: operation == static_operation::colour
         doc: '[CONFIRMED_LIVE] H6199 blue channel at frame offset 6; captured as 0xff for the blue swatch alone in the same session'
-      - id: opaque_gap
-        size: 5
-        doc: '[CONFIRMED_LIVE] H6199 colour-body bytes at frame offsets 7..11, captured as an opaque all-zero window across whole-strip and single-segment writes alike'
+      - id: kelvin
+        type: u2be
+        if: operation == static_operation::colour
+        doc: |
+          [CONFIRMED_LIVE] colour temperature at frame offsets 7..8, big-endian. Captured on
+          the H6199 as 2000, 5500 and 9000 K while dragging the app slider to its warm, middle
+          and cool positions. Direct RGB writes carry zero.
+      - id: preview
+        type: rgb
+        if: operation == static_operation::colour
+        doc: |
+          [CONFIRMED_LIVE] preview RGB at frame offsets 9..11. It varied with each captured
+          colour-temperature position and is zero on direct RGB writes.
       - id: segment_mask
         type: u2
+        if: operation == static_operation::colour
         doc: |
           [CONFIRMED_LIVE] H6199 segment selection at frame offsets 12..13, little-endian,
           bit 0 being the segment the app draws first. Captured 2026-08-03 by colouring one
@@ -583,7 +600,24 @@ types:
           matches the fifteen segments the app draws.
       - id: opaque_tail
         size: 5
+        if: operation == static_operation::colour
         doc: '[CONFIRMED_LIVE] remaining H6199 colour-body bytes at frame offsets 14..18, captured as an opaque all-zero window'
+      - id: brightness_percent
+        type: u1
+        if: operation == static_operation::brightness
+        doc: |
+          [CONFIRMED_LIVE] direct segment-brightness percentage at frame offset 4. H6199
+          trials used 17, 37 and 73, and aa a5 read-back reported the same values.
+      - id: brightness_segment_mask
+        type: u2
+        if: operation == static_operation::brightness
+        doc: |
+          [CONFIRMED_LIVE] little-endian target mask at frame offsets 5..6. Trials addressed
+          segment 1 (0x0001), segments 2 and 4 (0x000a), and all fifteen (0x7fff).
+      - id: brightness_tail
+        size: 12
+        if: operation == static_operation::brightness
+        doc: '[CONFIRMED_LIVE] remaining brightness-body bytes at frame offsets 7..18, captured as zero'
   clock_body:
     seq:
       - id: hour

@@ -6,6 +6,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
+from .protocol import WHITE_BALANCE_POSITIONS
 
 REDACT_KEYS = {"address", "unique_id"}
 
@@ -27,6 +28,11 @@ async def async_get_config_entry_diagnostics(
     client = coordinator._client
     lock = coordinator._lock
     expected_brightness = coordinator._expected_state.get("brightness_pct")
+    white_balance = (
+        (coordinator.white_balance_red, coordinator.white_balance_blue)
+        if coordinator.white_balance_red is not None and coordinator.white_balance_blue is not None
+        else None
+    )
     coordinator_data = {
         "address": coordinator.address,
         "model": coordinator.model,
@@ -74,9 +80,10 @@ async def async_get_config_entry_diagnostics(
         "music_color": coordinator.music_color,
         "white_brightness": coordinator.white_brightness,
         "video_full_screen": coordinator.video_full_screen,
-        "white_balance": (
-            (coordinator.white_balance_red, coordinator.white_balance_blue)
-            if coordinator.white_balance_red is not None and coordinator.white_balance_blue is not None
+        "white_balance": white_balance,
+        "white_balance_position": (
+            WHITE_BALANCE_POSITIONS.index(white_balance) + 1
+            if white_balance is not None and white_balance in WHITE_BALANCE_POSITIONS
             else None
         ),
         "relative_brightness": coordinator.relative_brightness,

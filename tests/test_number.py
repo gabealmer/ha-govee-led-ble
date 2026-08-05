@@ -9,15 +9,17 @@ from homeassistant.const import EntityCategory
 
 from custom_components.ha_govee_led_ble.coordinator_modes import MUSIC_PARAM_SPECS
 from custom_components.ha_govee_led_ble.h6199_controls import H6199ParameterNumber as N
-from custom_components.ha_govee_led_ble.h6199_controls import MusicParamNumber as MPNumber
 from custom_components.ha_govee_led_ble.h6199_controls import (
+    H6199WhiteBalanceNumber,
     _set_with_rollback,
     _supports_number_param,
     async_setup_number_entry,
 )
+from custom_components.ha_govee_led_ble.h6199_controls import MusicParamNumber as MPNumber
 from custom_components.ha_govee_led_ble.number import SceneSpeedNumber
 from custom_components.ha_govee_led_ble.number import async_setup_entry as async_setup_number_platform
 from custom_components.ha_govee_led_ble.protocol import (
+    WHITE_BALANCE_POSITIONS,
     WHITE_BALANCE_RESET,
     build_relative_brightness,
     build_relative_brightness_edges,
@@ -160,7 +162,8 @@ async def test_number_platform_adds_scene_speed_only_for_h617a(mock_coordinator,
 async def test_setup_number_entry_h6199(mock_h6199_coordinator):
     add = MagicMock()
     await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=mock_h6199_coordinator), add)
-    keys = [entity._key for entity in add.call_args.args[0]]
+    entities = add.call_args.args[0]
+    keys = [entity._key for entity in entities]
     assert keys == [
         "music_sensitivity",
         "video_saturation",
@@ -170,9 +173,14 @@ async def test_setup_number_entry_h6199(mock_h6199_coordinator):
         "relative_brightness_top",
         "relative_brightness_right",
         "relative_brightness_bottom",
-        "white_balance_red",
-        "white_balance_blue",
+        "white_balance",
     ]
+    assert all(
+        entity.entity_registry_enabled_default is False
+        for entity in entities
+        if entity._key == "relative_brightness" or entity._key.startswith("relative_brightness_")
+    )
+    assert next(entity for entity in entities if entity._key == "white_balance").entity_registry_enabled_default is True
 
 
 async def test_setup_number_entry_without_supported_params(mock_h6199_coordinator):
@@ -195,34 +203,30 @@ async def test_h617a_gets_no_h6199_display_controls(mock_coordinator):
     add = MagicMock()
     await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=mock_coordinator), add)
     keys = [entity._key for entity in add.call_args.args[0]]
-    assert not {"video_saturation", "relative_brightness", "white_balance_red"} & set(keys)
+    assert not {"video_saturation", "relative_brightness", "white_balance"} & set(keys)
 
 
-def test_white_balance_numbers_are_boxes_over_the_full_gain_range(mock_h6199_coordinator):
-    """A slider would suggest a 0..100 percent; these are raw gains and the neutral is 16 and 3."""
-    red = N(mock_h6199_coordinator, key="white_balance_red")
-    assert (red.native_min_value, red.native_max_value) == (0, 255)
-    assert red.mode is NumberMode.BOX
-    assert red.native_value is None
+def test_white_balance_slider_maps_the_complete_captured_curve(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    entity = H6199WhiteBalanceNumber(c)
+    assert (entity.native_min_value, entity.native_max_value, entity.native_step) == (1, 20, 1)
+    assert entity.mode is NumberMode.SLIDER
+    assert entity.unique_id == "112233445566_white_balance"
+    assert entity.native_value is None
+    c.white_balance_red, c.white_balance_blue = WHITE_BALANCE_RESET
+    assert entity.native_value == 17
 
 
-async def test_white_balance_writes_both_live_axes(mock_h6199_coordinator):
+async def test_white_balance_slider_writes_the_selected_pair(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.white_balance_red, c.white_balance_blue = WHITE_BALANCE_RESET
-    c.white_balance = (WHITE_BALANCE_RESET[0], 9)
+    selected = WHITE_BALANCE_POSITIONS[9]
+    c.white_balance = selected
     c.refresh_state = AsyncMock(return_value=True)
-    await N(c, key="white_balance_blue").async_set_native_value(9)
-    assert c.white_balance_blue == 9
-    c.send_command.assert_awaited_once_with(build_video_white_balance(WHITE_BALANCE_RESET[0], 9))
-    c.refresh_state.assert_awaited_once_with(expected_white_balance=(WHITE_BALANCE_RESET[0], 9))
-
-
-async def test_white_balance_raw_gain_requires_both_live_axes(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    c.white_balance_red = c.white_balance_blue = None
-    with pytest.raises(ValueError, match="has not been read"):
-        await N(c, key="white_balance_blue").async_set_native_value(9)
-    c.send_command.assert_not_called()
+    await H6199WhiteBalanceNumber(c).async_set_native_value(10)
+    assert (c.white_balance_red, c.white_balance_blue) == selected
+    c.send_command.assert_awaited_once_with(build_video_white_balance(*selected))
+    c.refresh_state.assert_awaited_once_with(expected_white_balance=selected)
 
 
 async def test_white_balance_rolls_back_when_the_write_fails(mock_h6199_coordinator):
@@ -230,18 +234,18 @@ async def test_white_balance_rolls_back_when_the_write_fails(mock_h6199_coordina
     c.white_balance_red, c.white_balance_blue = WHITE_BALANCE_RESET
     c.send_command = AsyncMock(side_effect=BleakError("timeout"))
     with pytest.raises(BleakError):
-        await N(c, key="white_balance_red").async_set_native_value(21)
-    assert c.white_balance_red == 16
+        await H6199WhiteBalanceNumber(c).async_set_native_value(20)
+    assert (c.white_balance_red, c.white_balance_blue) == WHITE_BALANCE_RESET
     c.async_set_updated_data.assert_not_called()
 
 
 async def test_white_balance_verification_failure_rolls_back_both_gains(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.white_balance_red, c.white_balance_blue = WHITE_BALANCE_RESET
-    c.white_balance = (21, 3)
+    c.white_balance = WHITE_BALANCE_POSITIONS[-1]
     c.refresh_state = AsyncMock(return_value=False)
     with pytest.raises(RuntimeError, match="not confirmed"):
-        await N(c, key="white_balance_red").async_set_native_value(21)
+        await H6199WhiteBalanceNumber(c).async_set_native_value(20)
     assert (c.white_balance_red, c.white_balance_blue) == WHITE_BALANCE_RESET
     assert c.send_command.await_count == 2
 
@@ -251,6 +255,7 @@ async def test_relative_brightness_writes_a_direct_percent(mock_h6199_coordinato
     c.relative_brightness = None
     entity = N(c, key="relative_brightness")
     assert (entity.native_min_value, entity.native_max_value) == (0, 100)
+    assert entity.entity_registry_enabled_default is False
     await entity.async_set_native_value(36)
     assert c.relative_brightness == 36
     assert (

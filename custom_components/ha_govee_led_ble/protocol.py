@@ -536,23 +536,35 @@ def build_video_mode(
     return build_packet(0x33, 0x05, params)
 
 
-# The white-balance positions this project holds bytes for, as the (red, blue) gain pairs the app
-# put on the wire (h6199_command_write::white_balance_payload). The strip the user drags picks an
-# INDEX into a twenty-entry table the app ships, and only a pair that table names has ever reached
-# a device, so the settable quantity is a position and not two free gains. These four are the
-# entries our captures landed on, in strip order: 0, 9, 16 and 19 of the twenty, each named for
-# where the marker sat when it was taken (tools/ble/kaitai/spec/h6199_white_balance_*.kst). The
-# other sixteen entries are not in this repo, which is why this is four positions and not twenty.
-WHITE_BALANCE_PRESETS: dict[str, tuple[int, int]] = {
-    "cool": (7, 10),
-    "mid": (13, 3),
-    "neutral": (16, 3),
-    "warm": (21, 5),
-}
+# The app's complete white-balance strip, in cool-to-warm order. Every position was captured
+# independently on the H6199 on 2026-08-05. Direct HA trials also proved the firmware accepts
+# independent off-table gains exactly, but the normal entity mirrors the vendor's calibrated curve.
+WHITE_BALANCE_POSITIONS: tuple[tuple[int, int], ...] = (
+    (7, 10),
+    (8, 8),
+    (9, 5),
+    (10, 8),
+    (10, 6),
+    (11, 6),
+    (12, 7),
+    (12, 6),
+    (13, 5),
+    (13, 3),
+    (14, 5),
+    (14, 3),
+    (15, 4),
+    (15, 3),
+    (16, 5),
+    (16, 4),
+    (16, 3),
+    (18, 6),
+    (18, 4),
+    (21, 5),
+)
 # The pair the app's own Reset button writes (h6199_white_balance_reset), which is table entry 16.
 # This is where a caller starts from, not what a device currently reports; the aa a9 read-back
 # carries the reset reference and current pair separately.
-WHITE_BALANCE_RESET: tuple[int, int] = WHITE_BALANCE_PRESETS["neutral"]
+WHITE_BALANCE_RESET: tuple[int, int] = WHITE_BALANCE_POSITIONS[16]
 WHITE_BALANCE_MANUAL = 0x01
 # The bytes after the blank-screen flag, replayed verbatim: identical across both captured writes
 # (h6199_command_write::blank_screen_payload::opaque_tail).
@@ -571,10 +583,9 @@ def _build_display_setting(setting: int, payload: list[int]) -> bytes:
 def build_video_white_balance(red: int, blue: int) -> bytes:
     """Build the H6199 white-balance write (h6199_command_write::white_balance_payload).
 
-    The two bytes are GAINS, and the quantity the user sets does not appear in the frame at all:
-    the app's marker picks an index into a twenty-entry table it ships, and the write carries the
-    pair that index names. Cool is (7, 10) and warm is (21, 5), the two ends of that table, so a
-    caller wanting a position the app itself writes should pass a ``WHITE_BALANCE_PRESETS`` pair.
+    The two bytes are independent gains. The app's normal marker picks one of
+    ``WHITE_BALANCE_POSITIONS``, while direct H6199 trials proved off-table pairs are also accepted
+    and read back exactly.
 
     ``manual`` is written as the 1 every captured write carries. It is not exposed: its name rests
     on the vendor app's encoder rather than on a capture that varied it, and no capture has yet
@@ -583,20 +594,6 @@ def build_video_white_balance(red: int, blue: int) -> bytes:
     return _build_display_setting(
         DISPLAY_SETTING_WHITE_BALANCE, [WHITE_BALANCE_MANUAL, _clamp(red, 0, 255), _clamp(blue, 0, 255)]
     )
-
-
-def white_balance_preset_name(red: int, blue: int) -> str | None:
-    """Name the strip position a gain pair is, or None for a pair no capture holds.
-
-    Gains reach the wire and positions do not, so this is the only direction the mapping runs in.
-    That also makes it the right shape for a read path: a parser for the aa a9 reply hands over
-    gains, and this turns them into something an entity can show without any of that reaching the
-    entity itself.
-
-    Answering None is meaningful rather than a failure: it says the pair is one the twenty-entry
-    table may well hold under an index we have not captured, and naming it would be a guess.
-    """
-    return next((name for name, pair in WHITE_BALANCE_PRESETS.items() if pair == (red, blue)), None)
 
 
 def build_blank_screen(enabled: bool) -> bytes:
@@ -1116,11 +1113,17 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_power": Evidence("VALIDATED", "H617A §3/§7 power 33 01; live byte-identical"),
     "build_brightness": Evidence("VALIDATED", "H617A §3/§7 brightness 33 04; live, 1:1 linear"),
     "build_segment_color": Evidence("VALIDATED", "H617A §3 colour 33 05 15 01, mask[12:14]; live"),
-    "build_segment_brightness": Evidence("VALIDATED", "H617A §3/§7 seg brightness 33 05 15 02, mask[5:7]; live"),
+    "build_segment_brightness": Evidence(
+        "VALIDATED",
+        "H617A static brightness plus H6199 h6199_command_write::static_colour_body operation 0x02; "
+        "one/pair/all masks accepted and independently echoed by aa a5 segment replies",
+    ),
     "build_segment_paint": Evidence("VALIDATED", "H617A §5 one 33 05 15 01 frame per colour group; live"),
     "build_color_rgb": Evidence("VALIDATED", "H617A §3/§5 whole-strip colour, mask 0x7FFF; live"),
     "build_color_temp": Evidence(
-        "VALIDATED", "H617A §3 colour-temp 33 05 15 01 00 00 00 <K>; live 2-9kK on H617A; H6199 parity unattributed"
+        "VALIDATED",
+        "H617A and H6199 33 05 15 01 colour temperature; H6199 warm/mid/cool captures confirm "
+        "Kelvin and mask while documenting that the vendor preview-RGB curve differs",
     ),
     "build_white_brightness": Evidence(
         "VALIDATED", "H617A §7 white brightness 33 05 15 02, mask 0x7FFF; live on H617A; H6199 reuse unattributed"
@@ -1210,7 +1213,7 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     ),
     "parse_relative_brightness_response": Evidence(
         "VALIDATED",
-        "H6199 aa ae 01 04 left/top/right/bottom reply, captured from the device at 91% on every edge",
+        "H6199 aa ae 01 04 left/top/right/bottom reply, independently isolated by an asymmetric 51/32/71/91 read-back",
     ),
     "parse_fw_version": Evidence("VALIDATED", "H617A §4 firmware aa 06 -> ASCII '3.02.24'; VAL live capture"),
     "parse_hw_version": Evidence(

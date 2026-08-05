@@ -943,6 +943,37 @@
   between: [h6199_music_sensitivity_1, h6199_music_sensitivity_100]
   differs_at: [4, 19]
 
+- id: h6199_power_reply_follows_live_state
+  between: [h6199_status_power_off, h6199_status_power_on]
+  differs_at: [2, 19]
+
+- id: h6199_blank_screen_reply_follows_switch
+  between: [h6199_status_blank_screen_off, h6199_status_blank_screen_on]
+  differs_at: [4, 19]
+
+- id: h6199_music_reply_tracks_pinned_colour
+  between: [h6199_status_colour_mode_music_red, h6199_status_colour_mode_music_blue]
+  differs_at: [7, 9]
+
+- id: h6199_rolling_sensitivity_reaches_both_ends
+  between: [h6199_music_rolling_sensitivity_1, h6199_music_rolling_sensitivity_100]
+  differs_at: [4, 19]
+
+- id: h6199_white_balance_corpus_has_every_position
+  cases: h6199_white_balance_position_*
+  collect: body.payload.red
+  count_at_least: 20
+
+- id: h6199_white_balance_red_gain_varies
+  cases: h6199_white_balance_position_*
+  collect: body.payload.red
+  distinct_at_least: 12
+
+- id: h6199_white_balance_blue_gain_varies
+  cases: h6199_white_balance_position_*
+  collect: body.payload.blue
+  distinct_at_least: 7
+
 - id: h6199_effect_diy_variant_repeats_across_families
   doc: >
     Chasing1 and Rainbow1 carry the same variant in different families, as do Chasing2 and

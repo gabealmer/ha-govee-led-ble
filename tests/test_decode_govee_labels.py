@@ -107,9 +107,9 @@ def test_scene_label_reports_the_scene_id_that_was_encoded(scene_id):
     assert f"scene id={scene_id}" in dg.label(proto.build_scene(scene_id), "TX")
 
 
-@pytest.mark.parametrize("preset", sorted(proto.WHITE_BALANCE_PRESETS))
-def test_white_balance_label_reports_the_gains_that_were_encoded(preset):
-    red, blue = proto.WHITE_BALANCE_PRESETS[preset]
+@pytest.mark.parametrize("position", [0, 9, 16, 19])
+def test_white_balance_label_reports_the_gains_that_were_encoded(position):
+    red, blue = proto.WHITE_BALANCE_POSITIONS[position]
     label = dg.label(proto.build_video_white_balance(red, blue), "TX")
     assert f"gains=({red},{blue})" in label
 

@@ -25,6 +25,7 @@ seq:
       switch-on: domain
       cases:
         'query_domain::power': zero_body
+        'query_domain::colour_mode': zero_body
         'query_domain::firmware': zero_body
         'query_domain::hardware': hardware_query_body
         'query_domain::identity': zero_body
@@ -39,6 +40,7 @@ seq:
 enums:
   query_domain:
     0x01: power
+    0x05: colour_mode
     0x06: firmware
     0x07: hardware
     0x14: identity

@@ -13,7 +13,15 @@ asserts:
     expected: 5
   - actual: body.detail.sensitivity
     expected: 99
-  - actual: body.detail.opaque_flag
-    expected: "ff"
+  - actual: body.detail.is_calm
+    expected: 0
+  - actual: body.detail.has_fixed_colour
+    expected: 0
+  - actual: body.detail.fixed_colour.red
+    expected: 0
+  - actual: body.detail.fixed_colour.green
+    expected: 255
+  - actual: body.detail.fixed_colour.blue
+    expected: 0
   - actual: body.detail.opaque_tail
-    expected: "00000000000000000000"
+    expected: "000000000000000000"
