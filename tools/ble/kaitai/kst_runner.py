@@ -359,6 +359,18 @@ def run_aggregates(parsed_by_id: dict[str, Any], data_by_id: dict[str, bytes]) -
             raise AssertUnevaluatableError(
                 f"aggregate {entry.get('id')!r}: none of {REQUIREMENTS + DIFFERENTIALS} given"
             )
+        # A THRESHOLD OF ONE CANNOT FAIL, so it is rejected rather than run. Any aggregate
+        # that matches a case at all satisfies it, whatever the bytes hold, which makes it a
+        # comment wearing a test's clothes. Two such aggregates existed to assert that a
+        # field was CONSTANT, and one of them went on passing after its field was shown to
+        # vary under its own slider, which is the exact failure a suite is meant to catch.
+        # Constancy is a differential claim: use equal_at between two cases that differ
+        # elsewhere, which fails the moment the field moves.
+        if entry[requirement] < 2:
+            raise AssertUnevaluatableError(
+                f"aggregate {entry['id']!r}: {requirement} {entry[requirement]} cannot fail. "
+                f"To assert a field is constant, use equal_at between two differing cases."
+            )
         matched = [obj for case_id, obj in parsed_by_id.items() if fnmatch(case_id, entry["cases"]) and obj]
         if not matched:
             raise AssertUnevaluatableError(f"aggregate {entry['id']!r}: pattern {entry['cases']!r} matched no case")
