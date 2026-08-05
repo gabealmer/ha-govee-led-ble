@@ -479,11 +479,23 @@ types:
       - id: sensitivity
         type: u1
         doc: |
-          [CONFIRMED_LIVE] H6199 music sensitivity at frame offset 4, as a direct 0..100
-          percent. Captured 2026-08-05 by dragging the app's Sensitivity slider with the mode
-          and the sound-pickup toggle untouched: 0x63, then 0x1a, then 0x3e, decimal 99, 26
-          and 62, each write differing from the one before at this byte and the checksum
-          alone.
+          [CONFIRMED_LIVE] H6199 music sensitivity at frame offset 4, written directly rather
+          than scaled. Captured 2026-08-05 by dragging the app's Sensitivity slider with the
+          mode and the sound-pickup toggle untouched: 99, 26 and 62, each write differing from
+          the one before at this byte and the checksum alone, and then 100 and 1 by dragging
+          hard to each end.
+
+          THE RANGE IS 1 TO 100, which is neither of the two readings that were argued for.
+          Ours said 0..100 and the vendor ANDROID app says 0..99, clamping with
+          Math.min(value, 99) on both its write and its parse path. The iOS app this device
+          is driven by writes 100 at the top, which Android cannot emit, and stops at 1 at
+          the bottom rather than 0. So the two apps genuinely differ here and neither claim
+          survived contact with the slider.
+
+          Whether the firmware ACCEPTS 0 is untested and deliberately not asserted: all that
+          is known is that this app will not send it. The same 1..100 floor appears on this
+          model's relative-brightness slider, so it looks like a house convention rather than
+          anything about this register.
 
           It sat INFERRED for two days on the reading that the slider could not be driven,
           which was true of the name-driven path and not of the app: the control is an

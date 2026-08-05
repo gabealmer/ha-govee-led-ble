@@ -446,7 +446,7 @@
     control. A byte that takes three values under one slider is not padding.
   cases: h6199_music_sensitivity_*
   collect: body.detail.sensitivity
-  distinct_at_least: 3
+  distinct_at_least: 5
 
 - id: h6199_music_sensitivity_moves_alone
   doc: >
@@ -805,7 +805,7 @@
     The family byte takes four distinct values, one per animation family the editor offers.
   cases: h6199_effect_diy_*
   collect: content.family
-  distinct_at_least: 4
+  distinct_at_least: 8
 
 - id: h6199_effect_diy_palette_length_varies
   doc: >
@@ -871,3 +871,31 @@
     byte at offset 5 would still be inside the window everything else here came out of.
   between: [h6199_music_profile_calm, h6199_music_colour_blue]
   differs_at: [5, 19]
+
+- id: h6199_music_sensitivity_reaches_both_ends
+  doc: >
+    The slider's two extremes differ at the sensitivity byte and the checksum alone, and the
+    values they carry are 1 and 100. That pair is what settled a disagreement in which both
+    proposed ranges were wrong: ours said 0..100 and the vendor Android app clamps to 0..99,
+    while this app writes 100 at the top and stops at 1 at the bottom.
+  between: [h6199_music_sensitivity_1, h6199_music_sensitivity_100]
+  differs_at: [4, 19]
+
+- id: h6199_effect_diy_variant_repeats_across_families
+  doc: >
+    Chasing1 and Rainbow1 carry the same variant in different families, as do Chasing2 and
+    Rainbow2. So the variant does not identify a style on its own: what names one is the pair,
+    and a reading that treats the variant as a global effect number is dead. Together with the
+    gaps inside a family this is why it is an identifier rather than an index.
+  between: [h6199_effect_diy_chasing1, h6199_effect_diy_rainbow1]
+  differs_at: [3]
+
+- id: h6199_effect_diy_palette_is_not_always_the_editors
+  doc: >
+    Crossing is applied with three colours where every other captured style carries the
+    editor's seven, and at a different speed. So the palette length is a property of the
+    EFFECT being applied and not of the editor's swatch row, which a corpus of one palette
+    size would have let nobody notice.
+  cases: h6199_effect_diy_*
+  collect: content.palette_len
+  distinct_at_least: 3

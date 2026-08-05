@@ -1,0 +1,19 @@
+# H6199 DIY effect uploaded over 0xA3, captured 2026-08-05 from the Govee Home iOS app
+# driving the DreamView T1. Music1, whose family number 4 sits in the run before the gap, tapped in the editor's live-apply list.
+id: h6199_effect_diy_music1
+data: h6199_effect_diy_music1.bin
+imports:
+  - h6199_effect_upload
+asserts:
+  - actual: kind
+    expected: 4
+  - actual: content.family
+    expected: 4
+  - actual: content.variant
+    expected: 8
+  - actual: content.speed
+    expected: 50
+  - actual: content.palette_len
+    expected: 21
+  - actual: content.palette.size
+    expected: 7

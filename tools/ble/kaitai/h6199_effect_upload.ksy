@@ -73,6 +73,10 @@ enums:
     0x01: jumping
     0x02: twinkle
     0x03: marquee
+    0x04: music
+    0x08: chasing
+    0x09: rainbow
+    0x0a: crossing
 types:
   scene_content:
     seq:
@@ -107,10 +111,20 @@ types:
         type: u1
         enum: effect_family
         doc: |
-          [CONFIRMED_LIVE] the animation family, at body offset 3. Captured as 0 for the
-          three Fade styles, 1 for the two Jumping, 2 for the three Twinkle and 3 for the
-          three Marquee, by tapping each style in the editor's live-apply list with the
-          palette and speed untouched, so each pair differs in this byte and the next alone.
+          [CONFIRMED_LIVE] the animation family, at body offset 3. Captured as 0 for the three
+          Fade styles, 1 for the two Jumping, 2 for the three Twinkle, 3 for the three
+          Marquee, 4 for Music, 8 for the two Chasing, 9 for the two Rainbow and 10 for
+          Crossing, by tapping each style in the editor's live-apply list with the palette and
+          speed untouched.
+
+          THE NUMBERING HAS GAPS, at 5, 6 and 7, and every family either side of them is
+          present. So this is an identifier from a list longer than one model's editor offers,
+          not a dense index over what this editor draws.
+
+          The names are the labels the iOS app prints. The vendor ANDROID app calls family 2
+          "Blinking" where iOS says "Twinkle", so these record one vendor's vocabulary rather
+          than a protocol fact. Every capture in this repository comes from the iOS app, which
+          is why its labels are the ones used.
       - id: variant
         type: u1
         doc: |
@@ -120,9 +134,10 @@ types:
           index, but Jumping1 and Jumping2 give 0 and 2, skipping 1, and Marquee1..3 give 3,
           4 and 5 rather than starting at zero.
 
-          Two independent departures from an index, in two different families, is what makes
-          it an identifier. The gaps most likely name styles the firmware knows and this
-          SKU's editor does not offer; that is a reading of the gaps and not a measurement.
+          Later captures make it plainer still. Chasing1 and Chasing2 give 9 and 10, Rainbow1
+          and Rainbow2 give the SAME 9 and 10, and Music1 gives 8. So the value is not unique
+          across families either: what identifies a style is the pair, and the number alone
+          means nothing without the family beside it.
       - id: speed
         type: u1
         doc: |
@@ -143,7 +158,19 @@ types:
         doc: '[CONFIRMED_LIVE] the colours the effect cycles, from body offset 7, in the order the editor draws them'
       - id: padding
         size-eos: true
-        doc: '[CONFIRMED_LIVE] zero padding out to the transport chunk boundary, captured as 6 bytes with seven colours and 9 with six'
+        doc: |
+          [CONFIRMED_LIVE] zero padding out to the transport chunk boundary, captured as
+          between 6 and 18 bytes and always zero, across nineteen DIY uploads spanning eight
+          families and three palette sizes.
+
+          A CLAIM THAT THIS IS ALWAYS PADDING WOULD BE TOO STRONG. The vendor Android app has
+          a DIY encoder that appends a SECOND length-prefixed block after the palette, for
+          effects carrying a direction or sub-effect list, and this field would swallow it
+          silently while still validating. No captured H6199 upload contains one: every style
+          the editor offers was applied and all nineteen end with zeros. So the field is right
+          for everything observed and the guard it lacks is recorded here rather than written
+          against bytes nobody has seen. An effect exposing a direction control is what would
+          settle it.
   rgb:
     seq:
       - id: red
