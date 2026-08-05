@@ -191,28 +191,31 @@ types:
           BYTE and repeated the whole seven-frame upload; had the byte meant what it was
           named, the second apply is precisely where it would have changed.
 
-          THE THREE READINGS STILL STANDING, and what separates them:
+          PROVENANCE IS THE READING THE EVIDENCE NOW FAVOURS, so firmware or catalogue or
+          generated, and the name still does not say so because a name is harder to retract
+          than a paragraph. What raised it above the alternatives was picking three scenes off
+          the twelve-entry built-in list the vendor Android app holds for this model, applying
+          them, and watching all three arrive with class 1 and no upload. Six scenes now carry
+          1 and their ids are 0, 1, 4, 5, 7 and 9: every one inside that list of twelve, and
+          not one of the twelve scenes carrying 2 is. Six ids landing inside a list of twelve
+          is not a coincidence the rival readings can absorb.
 
-          Provenance, so firmware or catalogue or generated. Fits all eighteen samples.
+          The two rivals, and what stands against each:
 
           The low byte of a scene's music code. The vendor Android app builds this position
-          from exactly that, and a scene with no music gives 0, which is what the AI effects
-          carry. Against it: two Light Up Your Life tiles, one drawn with a music badge and
-          one without, both carry 2.
+          from exactly that, and a scene with no music gives 0, which fits the AI effects.
+          Against it: two Light Up Your Life tiles from one row, one drawn with a music badge
+          and one without, both carry 2; and it would need every built-in scene to share a
+          music code of 1 and every catalogue scene a code of 2.
 
           Which scene protocol the effect uses. The app has two scene controllers numbered 1
-          and 2 for RGB and RGBIC, and the uploads carry a matching type. Against it: nothing
-          in the app numbers a scene protocol 0, so the AI value has no home.
+          and 2 for RGB and RGBIC. Against it: nothing in the app numbers a scene protocol 0,
+          so the AI value has no home, and the split would have to fall exactly along the
+          built-in boundary by chance.
 
-          THE CAPTURE THAT SEPARATES THEM is a catalogue scene known to carry music applied
-          beside one known not to, from the same gallery. Music code predicts they differ
-          here; the other two predict they do not. A built-in scene from the app's own list
-          other than the three already captured would also help, since it tests whether 1
-          tracks that list rather than those particular scenes.
-
-          The three scenes carrying 1 have small numbers, 0, 1 and 9, and all three appear in
-          the built-in list the vendor app holds for this model. That is suggestive and it is
-          not evidence for this field: do not read a small number as meaning built-in.
+          WHAT WOULD STILL SETTLE IT is an AI effect applied a second time after the light has
+          been given it once, which separates provenance from novelty, and a built-in scene
+          reached from somewhere other than the Scene gallery.
       - id: opaque_tail
         size: 13
         doc: '[CONFIRMED_LIVE] remaining H6199 scene-body bytes at frame offsets 6..18, captured as an opaque all-zero window across all fifteen scenes'

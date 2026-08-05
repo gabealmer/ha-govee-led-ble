@@ -661,7 +661,7 @@
     bytes as a constant preamble is dead.
   cases: h6199_scene_*
   collect: body.detail.scene_id
-  distinct_at_least: 11
+  distinct_at_least: 16
 
 - id: h6199_scene_adjacent_tiles_are_adjacent_numbers
   doc: >
@@ -898,4 +898,16 @@
     size would have let nobody notice.
   cases: h6199_effect_diy_*
   collect: content.palette_len
+  distinct_at_least: 3
+
+- id: h6199_scene_class_one_tracks_the_built_in_list
+  doc: >
+    Six scenes carry class 1 and their ids are 0, 1, 4, 5, 7 and 9. Every one of those appears
+    in the twelve-entry built-in scene list the vendor Android app holds for this model, and
+    none of the twelve scenes carrying class 2 does. Three of the six were captured
+    deliberately, by picking names off that list and applying them, and all three arrived with
+    no 0xA3 upload. Six ids landing inside a list of twelve is not a coincidence available to
+    the rival readings, which is why this aggregate exists rather than a note.
+  cases: h6199_scene_*
+  collect: body.detail.scene_class
   distinct_at_least: 3
