@@ -712,7 +712,7 @@
   between: [h6199_scene_tundra, h6199_scene_water_flow]
   differs_at: [3, 19]
 
-- id: h6199_scene_source_has_three_values
+- id: h6199_scene_class_has_three_values
   doc: >
     The source byte takes three values across the corpus. It was once named for whether
     the light already held the scene, on a correlation that held over fifteen captures: the
@@ -720,7 +720,7 @@
     generated effects broke it by being uploaded and carrying 0. This aggregate is what
     keeps the third value visible, so the falsified reading cannot quietly return.
   cases: h6199_scene_*
-  collect: body.detail.source
+  collect: body.detail.scene_class
   distinct_at_least: 3
 
 - id: h6199_effect_block_count_varies
