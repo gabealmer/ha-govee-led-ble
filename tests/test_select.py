@@ -73,7 +73,12 @@ def test_white_balance_preset_options_are_the_captured_strip_positions(mock_h619
 
 
 def test_white_balance_preset_reads_unknown_until_this_integration_writes_it(mock_h6199_coordinator):
-    """The register has no read-back, so an untouched device must not report a position."""
+    """Nothing here reads this register back yet, so an untouched device must not report one.
+
+    Setting the gains directly is also the read path in miniature. A parser for the aa a9 reply
+    would populate exactly these two fields, and the option follows without the entity changing,
+    which is the whole reason the option is derived rather than stored.
+    """
     c = mock_h6199_coordinator
     select = H6199WhiteBalancePresetSelect(c)
     assert select.current_option is None

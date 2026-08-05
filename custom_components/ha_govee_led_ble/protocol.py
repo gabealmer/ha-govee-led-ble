@@ -545,8 +545,8 @@ WHITE_BALANCE_PRESETS: dict[str, tuple[int, int]] = {
     "warm": (21, 5),
 }
 # The pair the app's own Reset button writes (h6199_white_balance_reset), which is table entry 16.
-# The register has no captured read-back, so this is what a caller starts from rather than what a
-# device reports.
+# This is where a caller starts from, not what a device reports. The light does answer aa a9, but
+# that reply is not parsed here, so nothing in this module can say what one currently holds.
 WHITE_BALANCE_RESET: tuple[int, int] = WHITE_BALANCE_PRESETS["neutral"]
 WHITE_BALANCE_MANUAL = 0x01
 # The bytes after the blank-screen flag, replayed verbatim: identical across both captured writes
@@ -586,6 +586,10 @@ def white_balance_preset_name(red: int, blue: int) -> str | None:
     """Name the strip position a gain pair is, or None for a pair no capture holds.
 
     Gains reach the wire and positions do not, so this is the only direction the mapping runs in.
+    That also makes it the right shape for a read path: a parser for the aa a9 reply hands over
+    gains, and this turns them into something an entity can show without any of that reaching the
+    entity itself.
+
     Answering None is meaningful rather than a failure: it says the pair is one the twenty-entry
     table may well hold under an index we have not captured, and naming it would be a guess.
     """

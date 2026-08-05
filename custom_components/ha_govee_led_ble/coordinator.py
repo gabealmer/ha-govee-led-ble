@@ -215,10 +215,13 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 100
         self.music_color: tuple[int, int, int] | None = None
-        # The H6199 display settings and relative brightness. None means never set here, not off:
-        # the app issues aa a9 but no reply has ever been captured, so these registers have no
-        # read-back and the panel that drives them opens on a fixed 50% whatever the device holds.
-        # The entities restore what we last wrote rather than inventing a device state.
+        # The H6199 display settings and relative brightness. None means never set here, not off.
+        # The light DOES answer aa a9 and aa ae, so these are unread rather than unreadable, and
+        # the distinction matters: _notify_callback dispatches neither domain, so nothing on the
+        # wire reaches these fields yet. The app's own panel is no substitute, because it opens on
+        # a fixed 50% whatever the device holds. Until a reply parser lands the entities restore
+        # what we last wrote rather than inventing a device state, and every one of them reads
+        # these fields and nothing else, so a parser that sets them needs no entity change.
         self.white_balance_red: int | None = None
         self.white_balance_blue: int | None = None
         self.relative_brightness: int | None = None

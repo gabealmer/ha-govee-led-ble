@@ -64,7 +64,7 @@ async def test_blank_screen_turn_on_and_off_send_the_register(mock_h6199_coordin
 
 
 async def test_blank_screen_rolls_back_when_the_write_fails(mock_h6199_coordinator):
-    """There is no read-back on 33 a9, so a failed write leaving the switch on would never correct."""
+    """Nothing here parses 33 a9 back, so a failed write leaving the switch on would never correct."""
     c = mock_h6199_coordinator
     c.blank_screen = False
     c.send_command = AsyncMock(side_effect=BleakError("timeout"))

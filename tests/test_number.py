@@ -123,7 +123,7 @@ def test_white_balance_numbers_are_boxes_over_the_full_gain_range(mock_h6199_coo
 
 
 async def test_white_balance_writes_both_axes_naming_the_untouched_one(mock_h6199_coordinator):
-    """One byte cannot be sent alone, and with no read-back the other axis has to come from us."""
+    """One byte cannot be sent alone, and nothing here reads the other back, so it comes from us."""
     c = mock_h6199_coordinator
     c.white_balance_red = c.white_balance_blue = None
     c.white_balance = (WHITE_BALANCE_RESET[0], 9)
@@ -193,6 +193,12 @@ async def test_number_restore_ignores_unusable_states(mock_h6199_coordinator, st
 
 
 async def test_number_restore_skips_when_already_known(mock_h6199_coordinator):
+    """A value already on the coordinator wins, which is what keeps the restore out of a read's way.
+
+    The light answers aa a9 and aa ae, so these fields will one day be set from the wire during
+    startup. Restoring over that would show the last thing we wrote in place of what the device
+    reported, and this is the assertion that stops it.
+    """
     c = mock_h6199_coordinator
     c.relative_brightness = 50
     entity = N(c, key="relative_brightness")

@@ -151,10 +151,14 @@ class _H6199ControlEntity(GoveeBLEEntity):
 
 
 class _RestoreLastWritten(_H6199ControlEntity, RestoreEntity):
-    """Restores what this integration last wrote, for a register the device will not read back.
+    """Restores what this integration last wrote, for a register nothing here reads back yet.
 
     Restoring is display only: nothing is sent, because the device kept its own setting across
     our restart and re-asserting a remembered one would overwrite whatever else has changed it.
+
+    It also yields to the wire rather than competing with it. The restore is skipped once the
+    coordinator field holds a value, so a reply parser that populates it during startup wins and
+    this class needs no change on the day one lands.
     """
 
     async def async_added_to_hass(self) -> None:
@@ -301,9 +305,10 @@ class H6199WhiteBalancePresetSelect(_H6199ControlEntity, SelectEntity):
     gain pair is not something the app can produce. Four of the twenty are captured, so four are
     offered; the two gain numbers stay as the escape hatch for the rest.
 
-    Nothing is restored here. The option is derived from the stored gains, which the numbers
-    restore, so the two cannot disagree and a pair off the four reads as unknown rather than as
-    the nearest guess.
+    Nothing is restored here, and nothing needs to be. The option is derived from the stored
+    gains, so whatever sets those reports through this unchanged: the numbers restoring them
+    today, or a parser for the aa a9 reply the light does send. A pair off the four reads as
+    unknown rather than as the nearest guess.
     """
 
     _attr_options = list(WHITE_BALANCE_PRESETS)
