@@ -173,6 +173,12 @@ types:
           everywhere. Whether the Effects Lab tiles were adjacent on screen was not
           recorded, so this does not yet contradict the adjacency argument above; a capture
           that walks one Lab category tile by tile would settle it.
+          AN ID DOES NOT ALWAYS IDENTIFY AN EFFECT. Four different user effects applied from
+          the app's Workshop produced this frame byte for byte, id 401 included, while
+          uploading four different bodies of 153, 187, 34 and 153 bytes. So for that id the
+          upload carries the identity and the number selects the slot it just filled. Nothing
+          in the frame distinguishes those four, and a reader treating the id as a key would
+          conflate them.
       - id: scene_class
         type: u1
         doc: |
