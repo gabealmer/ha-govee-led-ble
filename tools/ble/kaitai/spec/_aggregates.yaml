@@ -656,12 +656,12 @@
 
 - id: h6199_scene_ids_vary
   doc: >
-    The scene number takes sixteen distinct values across the corpus, from five galleries,
-    the app's built-in list and its AI generator. A grammar reading those two bytes as a
-    constant preamble is dead.
+    The scene number takes twenty-three distinct values across the committed corpus. A
+    grammar reading those two bytes as a constant preamble is dead, and removing or
+    collapsing any of the scene cases makes this spread fail.
   cases: h6199_scene_*
   collect: body.detail.scene_id
-  distinct_at_least: 16
+  distinct_at_least: 23
 
 - id: h6199_scene_adjacent_tiles_are_adjacent_numbers
   doc: >
@@ -710,6 +710,24 @@
     on that reading these two frames would have to differ at offset 4. The high byte is the
     top of one number that happens to be blocked, not a category tag.
   between: [h6199_scene_tundra, h6199_scene_water_flow]
+  differs_at: [3, 19]
+
+- id: h6199_scene_light_up_high_byte_moves_with_class_held
+  doc: >
+    Two Light Up Your Life applies, one from Daily and one from Festival, differ at both
+    scene-id bytes and the checksum while scene_class stays 2. Their high bytes are 0x27
+    and 0x2c. This extends the observed two-byte range without assigning either value a
+    category or provenance meaning.
+  between: [h6199_scene_light_up_afternoon_badged, h6199_scene_light_up_mothers_day]
+  differs_at: [3, 4, 19]
+
+- id: h6199_scene_light_up_afternoon_tiles_move_only_the_low_id
+  doc: >
+    The first and second tiles in the same Afternoon row have scene-select frames that
+    differ only at the low id byte and checksum. One tile was drawn with a music-note
+    badge and the other without, but this comparison records only the isolated byte
+    movement and assigns no protocol meaning to the decoration.
+  between: [h6199_scene_light_up_afternoon_badged, h6199_scene_light_up_afternoon_plain]
   differs_at: [3, 19]
 
 - id: h6199_scene_class_has_three_values

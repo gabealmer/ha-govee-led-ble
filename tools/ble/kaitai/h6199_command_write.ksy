@@ -151,21 +151,18 @@ types:
       - id: scene_id
         type: u2le
         doc: |
-          [CONFIRMED_LIVE] the scene number, at frame offsets 3..4. Captured 2026-08-04 by
-          applying scenes from five of the app's categories in one session, three in the
-          scene gallery and two more under More > Effects Lab. Three tiles adjacent in the
-          "House of the Dragon" row gave 16182, 16183 and 16184, differing at the low byte
-          and the checksum alone; two adjacent "Natural" tiles gave 0 and 1. Consecutive
-          numbers for adjacent tiles is what makes this an identifier rather than a pair of
-          unrelated bytes.
+          [CONFIRMED_LIVE] the scene number, at frame offsets 3..4. Captured by applying
+          scenes from the app's built-in gallery, Effects Lab, Workshop, AI generator and
+          Light Up Your Life surface. Three adjacent tiles in the "House of the Dragon" row
+          gave 16182, 16183 and 16184, differing at the low byte and the checksum alone;
+          two adjacent "Natural" tiles gave 0 and 1. Consecutive numbers for adjacent tiles
+          is what makes this an identifier rather than a pair of unrelated bytes.
 
-          The high byte takes three values across the corpus - 0x00 for the Natural and
-          Festival scenes, 0x3f for that row, and 0x08 for four Effects Lab scenes - which
-          is what makes it two bytes rather than one. A byte with three values is neither
-          padding nor a flag. It does not name the category either: Natural and Festival
-          share 0x00, and the Gaming and Harmony Lab tabs share 0x08 across two different
-          categories. What it does is block the numbering, and nothing captured says why a
-          gallery gets the block it gets.
+          The high byte takes seven values across the committed corpus: 0x00, 0x01, 0x08,
+          0x27, 0x29, 0x2c and 0x3f. Natural and Festival share 0x00, while the Gaming and
+          Harmony Lab tabs share 0x08 across different categories. Light Up Your Life adds
+          0x27 and 0x2c while scene_class remains 2. These comparisons establish the
+          two-byte width and assign no further meaning to the high byte.
 
           Numbers are not dense within a category. The two "Sandbox 3D" scenes are 2178 and
           2200 and the two "Rain" ones 2237 and 2242, so the consecutive numbering seen in
@@ -186,7 +183,7 @@ types:
         doc: |
           [CONFIRMED_LIVE] a classifier for the scene, at frame offset 5, named for what it IS
           because nothing captured establishes what it MEANS. Committed fixtures carry three
-          values: 1 on six scenes, 2 on nine, and 0 on two AI-generated effects.
+          values: 1 on seven scenes, 2 on fourteen, and 0 on two AI-generated effects.
 
           IT IS NOT WHETHER THE LIGHT ALREADY HOLDS THE SCENE, which is what it was first
           named, on a correlation that held over fifteen captures: scenes written with 2 were
@@ -218,7 +215,7 @@ types:
           predict.
       - id: opaque_tail
         size: 13
-        doc: '[CONFIRMED_LIVE] remaining H6199 scene-body bytes at frame offsets 6..18, captured as an opaque all-zero window across all seventeen scene fixtures'
+        doc: '[CONFIRMED_LIVE] remaining H6199 scene-body bytes at frame offsets 6..18, captured as an opaque all-zero window across all twenty-three scene fixtures'
   video_body:
     doc: |
       The DreamView T1's headline mode: a camera clipped to the television samples the
