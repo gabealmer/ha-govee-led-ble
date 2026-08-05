@@ -25,7 +25,7 @@ from .protocol import (
     WHITE_BALANCE_PRESETS,
     build_blank_screen,
     build_poweroff_memory,
-    build_relative_brightness,
+    build_relative_brightness_edges,
     build_video_white_balance,
     white_balance_preset_name,
 )
@@ -46,7 +46,12 @@ async def _apply_white_balance(coordinator: GoveeBLECoordinator) -> bool:
 
 
 async def _apply_relative_brightness(coordinator: GoveeBLECoordinator) -> bool:
-    await coordinator.send_command(build_relative_brightness(int(coordinator.relative_brightness or 0)))
+    values = tuple(getattr(coordinator, f"relative_brightness_{edge}") for edge in ("left", "top", "right", "bottom"))
+    if any(value is None for value in values):
+        raise ValueError("Relative-brightness edge state has not been read; set all edges first")
+    left, top, right, bottom = values
+    assert left is not None and top is not None and right is not None and bottom is not None
+    await coordinator.send_command(build_relative_brightness_edges(left, top, right, bottom))
     return True
 
 
@@ -80,6 +85,10 @@ NUMBER_CONTROLS: dict[str, ControlSpec] = {
         lambda p: p.supports_video_sound_effects, apply_active_video_mode, min_value=1
     ),
     "relative_brightness": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
+    "relative_brightness_left": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
+    "relative_brightness_top": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
+    "relative_brightness_right": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
+    "relative_brightness_bottom": ControlSpec(lambda p: p.supports_relative_brightness, _apply_relative_brightness),
     # Gains, not a position on the app's warm/cool strip: that marker picks an index into a table
     # the app ships and only the pair it names reaches the wire, so a box that takes the gain is
     # the honest control. The app's own neutral is 16 red, 3 blue.
@@ -206,6 +215,34 @@ class H6199ParameterNumber(_RestoreLastWritten, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         next_value = int(round(value))
+        if self._key == "relative_brightness":
+            await _set_fields_with_rollback(
+                self.coordinator,
+                {
+                    "relative_brightness": next_value,
+                    "relative_brightness_left": next_value,
+                    "relative_brightness_top": next_value,
+                    "relative_brightness_right": next_value,
+                    "relative_brightness_bottom": next_value,
+                },
+                reapply=self._reapply,
+            )
+            return
+        if self._key.startswith("relative_brightness_"):
+            values = {
+                f"relative_brightness_{edge}": (
+                    next_value
+                    if self._key == f"relative_brightness_{edge}"
+                    else getattr(self.coordinator, f"relative_brightness_{edge}")
+                )
+                for edge in ("left", "top", "right", "bottom")
+            }
+            if any(edge_value is None for edge_value in values.values()):
+                raise ValueError("Relative-brightness edge state has not been read; set all edges first")
+            distinct = set(values.values())
+            values["relative_brightness"] = next(iter(distinct)) if len(distinct) == 1 else None
+            await _set_fields_with_rollback(self.coordinator, values, reapply=self._reapply)
+            return
         await _set_with_rollback(self.coordinator, key=self._key, value=next_value, reapply=self._reapply)
 
 

@@ -30,6 +30,7 @@ from .coordinator_timers import _TimerWriteMixin
 from .custom_effects import CustomEffect, SegmentContent, uses_diy_slot
 from .protocol import (
     AUTHORED_DIY_SLOT,
+    BLANK_SCREEN_QUERY,
     BRIGHTNESS_PACKET_TYPE,
     BRIGHTNESS_QUERY,
     COLOR_MODE_DIY,
@@ -40,6 +41,7 @@ from .protocol import (
     COLOR_MODE_VIDEO,
     COLOR_PACKET_TYPE,
     COMMAND_HEADER,
+    DISPLAY_SETTING_PACKET_TYPE,
     FIRMWARE_PACKET_TYPE,
     FW_QUERY,
     HARDWARE_PACKET_TYPE,
@@ -48,7 +50,10 @@ from .protocol import (
     MUSIC_SLUG_BY_ID,
     POWER_PACKET_TYPE,
     READ_UUID,
+    RELATIVE_BRIGHTNESS_PACKET_TYPE,
+    RELATIVE_BRIGHTNESS_QUERY,
     SCENE_EFFECT_BY_ID,
+    WHITE_BALANCE_QUERY,
     WHITE_BALANCE_RESET,
     WRITE_UUID,
     ParsedMode,
@@ -57,9 +62,11 @@ from .protocol import (
     build_segment_paint,
     kelvin_to_rgb,
     parse_color_mode_response,
+    parse_display_setting_response,
     parse_fw_version,
     parse_hw_version,
     parse_poweroff_memory,
+    parse_relative_brightness_response,
     parse_static_write,
     parse_timer_schedule_table,
     parse_timer_sleep,
@@ -215,16 +222,14 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 100
         self.music_color: tuple[int, int, int] | None = None
-        # The H6199 display settings and relative brightness. None means never set here, not off.
-        # The light DOES answer aa a9 and aa ae, so these are unread rather than unreadable, and
-        # the distinction matters: _notify_callback dispatches neither domain, so nothing on the
-        # wire reaches these fields yet. The app's own panel is no substitute, because it opens on
-        # a fixed 50% whatever the device holds. Until a reply parser lands the entities restore
-        # what we last wrote rather than inventing a device state, and every one of them reads
-        # these fields and nothing else, so a parser that sets them needs no entity change.
+        # H6199 display settings and edge brightness. None means the first read has not landed.
         self.white_balance_red: int | None = None
         self.white_balance_blue: int | None = None
         self.relative_brightness: int | None = None
+        self.relative_brightness_left: int | None = None
+        self.relative_brightness_top: int | None = None
+        self.relative_brightness_right: int | None = None
+        self.relative_brightness_bottom: int | None = None
         self.blank_screen: bool | None = None
         # Per-mode music movement params (§2.3, EXPERIMENTAL); defaults are the capture-pinned
         # template values so an untouched entity reapplies the exact captured body.
@@ -284,10 +289,10 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
 
     @property
     def white_balance(self) -> tuple[int, int]:
-        """The gain pair to write, filling either axis never set here with the app's own neutral.
+        """The gain pair to write, filling an unknown axis with the app's own neutral.
 
-        Both bytes go out together, so setting one axis has to name the other, and there is no
-        read-back to name it from.
+        Both bytes go out together. The H6199 read-back populates both during startup; neutral is
+        retained only for the pre-read window and for models on firmware that does not answer it.
         """
         reset_red, reset_blue = WHITE_BALANCE_RESET
         return (
@@ -612,6 +617,36 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                     self.brightness_pct = payload[0]
             elif domain == COLOR_PACKET_TYPE:
                 observed = self._apply_color_mode_payload(payload)
+            elif domain == DISPLAY_SETTING_PACKET_TYPE:
+                display_setting = parse_display_setting_response(payload)
+                if display_setting.current_white_balance is not None:
+                    self.white_balance_red, self.white_balance_blue = display_setting.current_white_balance
+                    observed = ("white_balance_red", "white_balance_blue")
+                elif display_setting.blank_screen is not None:
+                    self.blank_screen = display_setting.blank_screen
+                    observed = ("blank_screen",)
+            elif domain == RELATIVE_BRIGHTNESS_PACKET_TYPE:
+                relative_brightness = parse_relative_brightness_response(payload)
+                values = (
+                    relative_brightness.left,
+                    relative_brightness.top,
+                    relative_brightness.right,
+                    relative_brightness.bottom,
+                )
+                (
+                    self.relative_brightness_left,
+                    self.relative_brightness_top,
+                    self.relative_brightness_right,
+                    self.relative_brightness_bottom,
+                ) = values
+                self.relative_brightness = values[0] if len(set(values)) == 1 else None
+                observed = (
+                    "relative_brightness",
+                    "relative_brightness_left",
+                    "relative_brightness_top",
+                    "relative_brightness_right",
+                    "relative_brightness_bottom",
+                )
             elif domain == FIRMWARE_PACKET_TYPE:
                 self._note_identity(fw_version=parse_fw_version(payload))
             elif domain == HARDWARE_PACKET_TYPE:
@@ -646,6 +681,13 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 queries.append(BRIGHTNESS_QUERY)
             if query_color_mode:
                 queries.append(COLOR_MODE_QUERY)
+            if query_power and query_brightness and query_color_mode:
+                if self.profile.supports_white_balance:
+                    queries.append(WHITE_BALANCE_QUERY)
+                if self.profile.supports_blank_screen:
+                    queries.append(BLANK_SCREEN_QUERY)
+                if self.profile.supports_relative_brightness:
+                    queries.append(RELATIVE_BRIGHTNESS_QUERY)
             for query in queries:
                 self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)

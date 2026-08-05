@@ -17,6 +17,7 @@ from custom_components.ha_govee_led_ble.h6199_controls import (
 from custom_components.ha_govee_led_ble.protocol import (
     WHITE_BALANCE_RESET,
     build_relative_brightness,
+    build_relative_brightness_edges,
     build_video_mode,
     build_video_white_balance,
 )
@@ -86,6 +87,10 @@ async def test_setup_number_entry_h6199(mock_h6199_coordinator):
         "video_saturation",
         "video_sound_effects_softness",
         "relative_brightness",
+        "relative_brightness_left",
+        "relative_brightness_top",
+        "relative_brightness_right",
+        "relative_brightness_bottom",
         "white_balance_red",
         "white_balance_blue",
     ]
@@ -149,7 +154,33 @@ async def test_relative_brightness_writes_a_direct_percent(mock_h6199_coordinato
     assert (entity.native_min_value, entity.native_max_value) == (0, 100)
     await entity.async_set_native_value(36)
     assert c.relative_brightness == 36
+    assert (
+        c.relative_brightness_left,
+        c.relative_brightness_top,
+        c.relative_brightness_right,
+        c.relative_brightness_bottom,
+    ) == (36, 36, 36, 36)
     c.send_command.assert_awaited_once_with(build_relative_brightness(36))
+
+
+async def test_relative_brightness_edge_preserves_the_other_three(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    (
+        c.relative_brightness_left,
+        c.relative_brightness_top,
+        c.relative_brightness_right,
+        c.relative_brightness_bottom,
+    ) = (51, 20, 31, 41)
+    await N(c, key="relative_brightness_top").async_set_native_value(25)
+    assert c.relative_brightness is None
+    c.send_command.assert_awaited_once_with(build_relative_brightness_edges(51, 25, 31, 41))
+
+
+async def test_relative_brightness_edge_requires_a_read_or_all_edges_write(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    with pytest.raises(ValueError, match="has not been read"):
+        await N(c, key="relative_brightness_left").async_set_native_value(50)
+    c.send_command.assert_not_called()
 
 
 async def test_video_percentages_ride_the_video_frame_only_while_video_is_live(mock_h6199_coordinator):

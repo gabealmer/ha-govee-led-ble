@@ -55,7 +55,19 @@
         "name": "Video softness"
       },
       "relative_brightness": {
-        "name": "Relative brightness"
+        "name": "Relative brightness (all edges)"
+      },
+      "relative_brightness_left": {
+        "name": "Relative brightness left"
+      },
+      "relative_brightness_top": {
+        "name": "Relative brightness top"
+      },
+      "relative_brightness_right": {
+        "name": "Relative brightness right"
+      },
+      "relative_brightness_bottom": {
+        "name": "Relative brightness bottom"
       },
       "white_balance_red": {
         "name": "White balance red gain"

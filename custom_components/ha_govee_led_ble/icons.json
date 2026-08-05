@@ -36,6 +36,18 @@
       "relative_brightness": {
         "default": "mdi:brightness-percent"
       },
+      "relative_brightness_left": {
+        "default": "mdi:arrow-left-bold"
+      },
+      "relative_brightness_top": {
+        "default": "mdi:arrow-up-bold"
+      },
+      "relative_brightness_right": {
+        "default": "mdi:arrow-right-bold"
+      },
+      "relative_brightness_bottom": {
+        "default": "mdi:arrow-down-bold"
+      },
       "white_balance_red": {
         "default": "mdi:white-balance-incandescent"
       },

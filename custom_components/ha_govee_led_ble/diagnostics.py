@@ -81,6 +81,9 @@ async def async_get_config_entry_diagnostics(
             "video_full_screen": coordinator.video_full_screen,
             "white_balance": coordinator.white_balance,
             "relative_brightness": coordinator.relative_brightness,
+            "relative_brightness_edges": {
+                edge: getattr(coordinator, f"relative_brightness_{edge}") for edge in ("left", "top", "right", "bottom")
+            },
             "blank_screen": coordinator.blank_screen,
             "expected_brightness_pct": expected_brightness[0] if expected_brightness is not None else None,
             "packet_log": packet_log,

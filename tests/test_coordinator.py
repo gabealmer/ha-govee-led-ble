@@ -140,6 +140,18 @@ def test_notify_callback(h6199):
         (1, 2, 3),
     )
     assert h6199.effect is None
+    cb(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 21, 5])))
+    assert (h6199.white_balance_red, h6199.white_balance_blue) == (21, 5)
+    cb(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 120, 0])))
+    assert h6199.blank_screen is False
+    cb(None, bytearray(proto.build_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41])))
+    assert (
+        h6199.relative_brightness,
+        h6199.relative_brightness_left,
+        h6199.relative_brightness_top,
+        h6199.relative_brightness_right,
+        h6199.relative_brightness_bottom,
+    ) == (None, 51, 20, 31, 41)
     cb(None, bytearray([0xAA, 0x05, 0x04, 0x09, 0x00]))
     assert h6199.effect == "candlelight"
     h6199.is_on = False
@@ -285,6 +297,20 @@ async def test_send_state_queries_selective(coord):
     assert await coord._send_state_queries(query_power=True, query_brightness=False, query_color_mode=True) is True
     calls = [args.args[1] for args in c.write_gatt_char.await_args_list]
     assert calls == [proto.KEEP_ALIVE, proto.COLOR_MODE_QUERY]
+
+
+async def test_send_state_queries_include_h6199_display_state(h6199):
+    c = _c(write_gatt_char=AsyncMock())
+    h6199._client = c
+    assert await h6199._send_state_queries() is True
+    assert [call.args[1] for call in c.write_gatt_char.await_args_list] == [
+        proto.KEEP_ALIVE,
+        proto.BRIGHTNESS_QUERY,
+        proto.COLOR_MODE_QUERY,
+        proto.WHITE_BALANCE_QUERY,
+        proto.BLANK_SCREEN_QUERY,
+        proto.RELATIVE_BRIGHTNESS_QUERY,
+    ]
 
 
 async def test_send_command_sets_expected_brightness(coord):
