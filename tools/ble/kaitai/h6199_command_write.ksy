@@ -76,6 +76,17 @@ enums:
     0x05: energetic
     0x06: rolling
 types:
+  rgb:
+    seq:
+      - id: red
+        type: u1
+        doc: '[CONFIRMED_LIVE] red channel; captured as 0xff for the palette swatch the app draws red'
+      - id: green
+        type: u1
+        doc: '[CONFIRMED_LIVE] green channel; captured as 0xff for the swatch the app draws green'
+      - id: blue
+        type: u1
+        doc: '[CONFIRMED_LIVE] blue channel; captured as 0xff for the swatch the app draws blue'
   power_body:
     seq:
       - id: is_on
@@ -485,9 +496,44 @@ types:
           THE SLIDER ONLY WRITES WHILE A MODE IS SELECTED. Dragging it on a freshly opened
           music page put nothing on the wire at all, which reads as a dead control rather
           than as a missing precondition.
+      - id: is_calm
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] which of the page's two reactivity profiles is chosen, at frame
+          offset 5. Captured 2026-08-05 as 0 for Dynamic and 1 for Calm, by tapping one and
+          then the other with everything else on the page untouched, so the pair differs at
+          this byte and the checksum alone.
+
+          Named for the value that is 1, because the app draws these as a two-position choice
+          and nothing has been seen to take a third value. The vendor Android app writes this
+          same position from a boolean, and separately initialises the field it comes from to
+          16, which is a contradiction inside that source rather than in these bytes.
+      - id: has_fixed_colour
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] whether the user pinned a colour instead of letting the light pick
+          one, at frame offset 6. Captured as 1 with the page's "Auto color" switch off and 0
+          with it on, toggled straight back and forth: the two writes differ at this byte and
+          the three colour bytes together, which is what makes the flag and the colour one
+          decision rather than two.
+      - id: fixed_colour
+        type: rgb
+        doc: |
+          [CONFIRMED_LIVE] the pinned colour at frame offsets 7..9, meaningful only while the
+          flag above is set. Captured as ff 00 00 and then 00 00 ff by choosing red and then
+          blue from the palette that appears when auto colour is off, the two writes differing
+          in these bytes alone. It reads 00 00 00 whenever the flag is clear.
       - id: opaque_tail
-        size: 14
-        doc: '[CONFIRMED_LIVE] remaining H6199 music-body bytes at frame offsets 5..18, captured as an opaque all-zero window across all four modes'
+        size: 9
+        doc: |
+          [CONFIRMED_LIVE] remaining H6199 music-body bytes at frame offsets 10..18, captured
+          as an opaque all-zero window across every music write.
+
+          THIS WINDOW USED TO BE FIVE BYTES LONGER and was described the same way, which is
+          worth recording because the reason it looked like padding was a sampling artefact:
+          every music capture until then had been taken with auto colour on and the profile
+          left alone, so four live fields sat at zero together. An all-zero window is evidence
+          about the captures, not about the protocol.
   static_colour_body:
     seq:
       - id: opaque_head

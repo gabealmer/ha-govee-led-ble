@@ -16,5 +16,9 @@ asserts:
     expected: 4
   - actual: body.detail.sensitivity
     expected: 99
+  - actual: body.detail.is_calm
+    expected: 0
+  - actual: body.detail.has_fixed_colour
+    expected: 0
   - actual: body.detail.opaque_tail
-    expected: "0000000000000000000000000000"
+    expected: "000000000000000000"

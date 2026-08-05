@@ -845,3 +845,29 @@
   cases: h6199_status_colour_mode_*
   collect: body.mode
   distinct_at_least: 4
+
+- id: h6199_music_fixed_colour_flag_moves_with_its_colour
+  doc: >
+    Turning the page's Auto color switch off and straight back on moves the flag and the
+    colour together and nothing else. The colour in that pair was green, so only the green
+    byte moves alongside the flag: the other two were already zero and stay there, which is
+    what a colour going to black looks like and is not evidence that they are fixed. Moving
+    as a group is what makes the flag and the colour one decision rather than two fields
+    that happen to sit together.
+  between: [h6199_music_autocolour_off, h6199_music_autocolour_on]
+  differs_at: [6, 8, 19]
+
+- id: h6199_music_fixed_colour_moves_alone
+  doc: >
+    Two colours chosen from the same palette with the flag already set differ at the colour
+    bytes alone. This is what separates the colour from the flag; the pair above cannot,
+    because there both move.
+  between: [h6199_music_colour_red, h6199_music_colour_blue]
+  differs_at: [7, 9]
+
+- id: h6199_music_profile_moves_alone
+  doc: >
+    Calm and Dynamic differ at exactly one payload byte and the checksum. Without this the
+    byte at offset 5 would still be inside the window everything else here came out of.
+  between: [h6199_music_profile_calm, h6199_music_colour_blue]
+  differs_at: [5, 19]
