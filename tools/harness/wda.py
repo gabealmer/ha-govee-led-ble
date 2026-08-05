@@ -28,6 +28,7 @@ alive, so a query is an HTTP round trip rather than a 60 second runner start.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -557,21 +558,56 @@ class Screen:
         """
         _request(self.base_url, "POST", f"/session/{self.session}/wda/keys", {"value": list(text)})
 
-    def scroll_form(self, direction: str = "down", container: str = "XCUIElementTypeTable") -> None:
+    def scroll_form(self, direction: str = "down", container: str | None = None) -> None:
         """Scroll the enclosing form by one page.
 
         WDA's `toVisible` scroll refuses on this app: it reports "Failed to find scrollable
         visible parent", because the layer panels are not a scroll view it recognises. Driving
-        the enclosing table by DIRECTION works and is still structural, naming a container
-        type rather than a pixel to drag from.
+        a container by DIRECTION works and is still structural, naming a container type rather
+        than a pixel to drag from.
+
+        WHICH container is not fixed, and assuming it was is what made this fail. It named
+        XCUIElementTypeTable outright, which the layer editor has and the device page does
+        not: every lookup that needed a scroll there died on a raw 404 for a class chain,
+        which reads as WDA being broken rather than as this function looking for furniture
+        that screen does not have. The candidates are tried in the order that puts the most
+        specific first, and only ones actually present are attempted.
+
+        The last resort is a swipe up the middle of the screen, which needs no container at
+        all. It is a coordinate, so it is genuinely last, but it is a coordinate in the one
+        place every scrollable view in this app occupies, and a scroll that lands slightly
+        wrong is self-correcting because the caller re-reads the tree and scrolls again.
         """
-        _request(
-            self.base_url,
-            "POST",
-            f"/session/{self.session}/wda/element/{self._element_id(f'**/{container}')}/scroll",
-            {"direction": direction},
+        candidates = (
+            [container]
+            if container
+            else ["XCUIElementTypeTable", "XCUIElementTypeCollectionView", "XCUIElementTypeScrollView"]
         )
+        present = {e["type"] for e in elements(self.source())}
+        for kind in candidates:
+            if kind not in present:
+                continue
+            with contextlib.suppress(WdaError):
+                _request(
+                    self.base_url,
+                    "POST",
+                    f"/session/{self.session}/wda/element/{self._element_id(f'**/{kind}')}/scroll",
+                    {"direction": direction},
+                )
+                time.sleep(0.6)
+                return
+        window = self._window()
+        mid, near, far = window["width"] // 2, window["height"] * 3 // 4, window["height"] // 4
+        self.swipe(mid, near, mid, far) if direction == "down" else self.swipe(mid, far, mid, near)
         time.sleep(0.6)
+
+    def _window(self) -> dict[str, int]:
+        """The application element's own rect, so the swipe fallback needs no fixed numbers."""
+        root = ElementTree.fromstring(self.source())
+        app = next((e for e in root.iter() if e.tag == "XCUIElementTypeApplication"), None)
+        if app is None:
+            raise WdaError("WDA returned a tree with no application element")
+        return {"width": int(app.get("width") or 0), "height": int(app.get("height") or 0)}
 
     def pick(self, value: str, wheel: int = 0) -> str:
         """Set an on-screen picker wheel to `value` by NAME, not by swiping to it.
