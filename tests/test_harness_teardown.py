@@ -57,9 +57,7 @@ def _run_down(
     rig = tmp_path / "harness"
     rig.mkdir()
     (rig / "down.sh").write_text(_DOWN_SH.read_text())
-    (rig / "phone.sh").write_text(
-        _STUB_PHONE_SH.format(capture_exit=capture_exit, entry_status=entry_status)
-    )
+    (rig / "phone.sh").write_text(_STUB_PHONE_SH.format(capture_exit=capture_exit, entry_status=entry_status))
     calls = tmp_path / "calls.log"
     state = tmp_path / "state"
     state.write_text("app tv entry-tv\n")
