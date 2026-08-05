@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v4.7.0 (2026-08-05)
+
+### Features
+
+- **h6199**: Expose live display state and four edge controls
+  ([`0161f2e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0161f2e6b6d2854f16289ba1874b4ef94bb786e3))
+
+- **protocol**: Read H6199 display state and isolate every TV edge
+  ([`1db5a97`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1db5a9762d7ae31740c26ac80a2cc038c2d37211))
+
+### Testing
+
+- **kaitai**: Fixture remaining H6199 Light Up scenes
+  ([`4dd0f53`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4dd0f5370910a1f8cd40354bdd53e023e1aecdcf))
+
+
 ## v4.6.0 (2026-08-05)
 
 ### Bug Fixes
