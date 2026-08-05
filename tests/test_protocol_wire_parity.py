@@ -216,6 +216,28 @@ def test_relative_brightness_writes_every_edge_because_no_capture_separates_them
     assert set(frame[4:8]) == {36}
 
 
+def test_every_white_balance_preset_is_a_frame_the_app_actually_sent():
+    """The offered positions are the corpus, so a preset cannot be invented in the entity layer.
+
+    White balance is not a free pair of gains: the app's marker picks an index into a
+    twenty-entry table it ships and writes the pair that index names, so a pair the table
+    does not hold is a write nothing supports. Every option this integration offers therefore
+    has to be a captured frame, and this is what stops one being added from arithmetic.
+    """
+    fixtures = {"cool": "cool", "mid": "mid", "neutral": "reset", "warm": "warm"}
+    assert set(fixtures) == set(proto.WHITE_BALANCE_PRESETS), "an option has no capture behind it"
+    for option, suffix in fixtures.items():
+        red, blue = proto.WHITE_BALANCE_PRESETS[option]
+        assert proto.build_video_white_balance(red, blue) == fixture(f"h6199_white_balance_{suffix}"), option
+        assert proto.white_balance_preset_name(red, blue) == option
+
+
+def test_a_gain_pair_no_capture_holds_is_not_given_a_preset_name():
+    """Sixteen of the twenty table entries are not in this repo, so an unnamed pair is expected."""
+    assert proto.white_balance_preset_name(*proto.WHITE_BALANCE_RESET) == "neutral"
+    assert proto.white_balance_preset_name(9, 9) is None
+
+
 def test_timer_repeat_survives_a_round_trip_through_the_weekday_set():
     """0x95 is the reading that killed "bit 0x80 means fire once": it also names three days."""
     days = proto.parse_timer_repeat(0x95)

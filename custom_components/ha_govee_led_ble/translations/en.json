@@ -86,6 +86,15 @@
           "full": "All",
           "part": "Part"
         }
+      },
+      "white_balance_preset": {
+        "name": "White balance",
+        "state": {
+          "cool": "Cool",
+          "mid": "Mid",
+          "neutral": "Neutral",
+          "warm": "Warm"
+        }
       }
     },
     "sensor": {

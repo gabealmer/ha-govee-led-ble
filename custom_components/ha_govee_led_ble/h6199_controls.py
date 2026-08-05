@@ -22,10 +22,12 @@ from .light import (
     apply_active_video_mode,
 )
 from .protocol import (
+    WHITE_BALANCE_PRESETS,
     build_blank_screen,
     build_poweroff_memory,
     build_relative_brightness,
     build_video_white_balance,
+    white_balance_preset_name,
 )
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
@@ -103,14 +105,27 @@ def _supports_number_param(coordinator: GoveeBLECoordinator, key: str) -> bool:
 async def _set_with_rollback(
     coordinator: GoveeBLECoordinator, *, key: str, value: Any, reapply: _ReapplyCallback
 ) -> None:
-    previous = getattr(coordinator, key)
-    if previous == value:
+    await _set_fields_with_rollback(coordinator, {key: value}, reapply=reapply)
+
+
+async def _set_fields_with_rollback(
+    coordinator: GoveeBLECoordinator, values: dict[str, Any], *, reapply: _ReapplyCallback
+) -> None:
+    """Store one or more coordinator fields optimistically, restoring all of them if the write fails.
+
+    White balance is why this takes a mapping: both gains go out in one frame, so rolling back one
+    of them without the other would leave a stored pair the device was never sent.
+    """
+    previous = {key: getattr(coordinator, key) for key in values}
+    if previous == values:
         return
-    setattr(coordinator, key, value)
+    for key, value in values.items():
+        setattr(coordinator, key, value)
     try:
         await reapply(coordinator)
     except Exception:
-        setattr(coordinator, key, previous)
+        for key, value in previous.items():
+            setattr(coordinator, key, value)
         raise
     coordinator.async_set_updated_data(coordinator.data or {})
 
@@ -278,6 +293,40 @@ class H6199VideoCaptureSelect(_H6199ControlEntity, SelectEntity):
         )
 
 
+class H6199WhiteBalancePresetSelect(_H6199ControlEntity, SelectEntity):
+    """White balance as a position on the app's strip, offered for the positions we hold bytes for.
+
+    The marker the app draws picks an index into a twenty-entry table it ships, and the write
+    carries the gain pair that index names, so a position is what a user sets and an arbitrary
+    gain pair is not something the app can produce. Four of the twenty are captured, so four are
+    offered; the two gain numbers stay as the escape hatch for the rest.
+
+    Nothing is restored here. The option is derived from the stored gains, which the numbers
+    restore, so the two cannot disagree and a pair off the four reads as unknown rather than as
+    the nearest guess.
+    """
+
+    _attr_options = list(WHITE_BALANCE_PRESETS)
+
+    def __init__(self, coordinator: GoveeBLECoordinator) -> None:
+        super().__init__(coordinator, key="white_balance_preset")
+
+    @property
+    def current_option(self) -> str | None:
+        red, blue = self.coordinator.white_balance_red, self.coordinator.white_balance_blue
+        if red is None or blue is None:
+            return None
+        return white_balance_preset_name(red, blue)
+
+    async def async_select_option(self, option: str) -> None:
+        red, blue = WHITE_BALANCE_PRESETS[option]
+        await _set_fields_with_rollback(
+            self.coordinator,
+            {"white_balance_red": red, "white_balance_blue": blue},
+            reapply=_apply_white_balance,
+        )
+
+
 class _MusicParamEntity(_H6199ControlEntity):
     """Base for the EXPERIMENTAL, disabled-by-default per-mode music movement entities (§2.3)."""
 
@@ -367,6 +416,8 @@ async def async_setup_select_entry(
         entities.extend(MusicParamSelect(coordinator, spec) for spec in MUSIC_PARAM_SPECS if spec.kind == "select")
     if coordinator.profile.supports_video_mode:
         entities.append(H6199VideoCaptureSelect(coordinator))
+    if coordinator.profile.supports_white_balance:
+        entities.append(H6199WhiteBalancePresetSelect(coordinator))
     if entities:
         async_add_entities(entities)
 

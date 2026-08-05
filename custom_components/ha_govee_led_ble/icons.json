@@ -52,6 +52,9 @@
       },
       "video_capture_region": {
         "default": "mdi:fit-to-screen"
+      },
+      "white_balance_preset": {
+        "default": "mdi:white-balance-sunny"
       }
     },
     "sensor": {

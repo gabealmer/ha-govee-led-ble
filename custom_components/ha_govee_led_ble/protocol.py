@@ -531,9 +531,23 @@ def build_video_mode(
     return build_packet(0x33, 0x05, params)
 
 
-# The neutral pair the app's own Reset button writes (h6199_white_balance_reset). The register has
-# no captured read-back, so this is what a caller starts from rather than what a device reports.
-WHITE_BALANCE_RESET: tuple[int, int] = (16, 3)
+# The white-balance positions this project holds bytes for, as the (red, blue) gain pairs the app
+# put on the wire (h6199_command_write::white_balance_payload). The strip the user drags picks an
+# INDEX into a twenty-entry table the app ships, and only a pair that table names has ever reached
+# a device, so the settable quantity is a position and not two free gains. These four are the
+# entries our captures landed on, in strip order: 0, 9, 16 and 19 of the twenty, each named for
+# where the marker sat when it was taken (tools/ble/kaitai/spec/h6199_white_balance_*.kst). The
+# other sixteen entries are not in this repo, which is why this is four positions and not twenty.
+WHITE_BALANCE_PRESETS: dict[str, tuple[int, int]] = {
+    "cool": (7, 10),
+    "mid": (13, 3),
+    "neutral": (16, 3),
+    "warm": (21, 5),
+}
+# The pair the app's own Reset button writes (h6199_white_balance_reset), which is table entry 16.
+# The register has no captured read-back, so this is what a caller starts from rather than what a
+# device reports.
+WHITE_BALANCE_RESET: tuple[int, int] = WHITE_BALANCE_PRESETS["neutral"]
 WHITE_BALANCE_MANUAL = 0x01
 # The bytes after the blank-screen flag, replayed verbatim: identical across both captured writes
 # (h6199_command_write::blank_screen_payload::opaque_tail).
@@ -557,7 +571,7 @@ def build_video_white_balance(red: int, blue: int) -> bytes:
     The two bytes are GAINS, and the quantity the user sets does not appear in the frame at all:
     the app's marker picks an index into a twenty-entry table it ships, and the write carries the
     pair that index names. Cool is (7, 10) and warm is (21, 5), the two ends of that table, so a
-    caller wanting the app's own neutral should write ``WHITE_BALANCE_RESET``.
+    caller wanting a position the app itself writes should pass a ``WHITE_BALANCE_PRESETS`` pair.
 
     ``manual`` is written as the 1 every captured write carries. It is not exposed: its name rests
     on the vendor app's encoder rather than on a capture that varied it, and no capture has yet
@@ -566,6 +580,16 @@ def build_video_white_balance(red: int, blue: int) -> bytes:
     return _build_display_setting(
         DISPLAY_SETTING_WHITE_BALANCE, [WHITE_BALANCE_MANUAL, _clamp(red, 0, 255), _clamp(blue, 0, 255)]
     )
+
+
+def white_balance_preset_name(red: int, blue: int) -> str | None:
+    """Name the strip position a gain pair is, or None for a pair no capture holds.
+
+    Gains reach the wire and positions do not, so this is the only direction the mapping runs in.
+    Answering None is meaningful rather than a failure: it says the pair is one the twenty-entry
+    table may well hold under an index we have not captured, and naming it would be a guess.
+    """
+    return next((name for name, pair in WHITE_BALANCE_PRESETS.items() if pair == (red, blue)), None)
 
 
 def build_blank_screen(enabled: bool) -> bytes:
