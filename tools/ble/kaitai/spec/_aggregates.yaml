@@ -712,15 +712,16 @@
   between: [h6199_scene_tundra, h6199_scene_water_flow]
   differs_at: [3, 19]
 
-- id: h6199_scene_kind_has_both_values
+- id: h6199_scene_source_has_three_values
   doc: >
-    The kind byte takes both of its values across the corpus. It is the byte that predicts
-    whether an 0xA3 definition upload preceded the write - it did for every scene marked 2
-    and for none marked 1, over fifteen scenes - which is why it is a kind and not the top
-    byte of a wider number.
+    The source byte takes three values across the corpus. It was once named for whether
+    the light already held the scene, on a correlation that held over fifteen captures: the
+    scenes written with 2 were uploaded first and those written with 1 were not. Two AI
+    generated effects broke it by being uploaded and carrying 0. This aggregate is what
+    keeps the third value visible, so the falsified reading cannot quietly return.
   cases: h6199_scene_*
-  collect: body.detail.kind
-  distinct_at_least: 2
+  collect: body.detail.source
+  distinct_at_least: 3
 
 - id: h6199_effect_block_count_varies
   doc: >
