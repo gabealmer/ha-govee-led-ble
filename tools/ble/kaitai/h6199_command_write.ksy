@@ -184,49 +184,43 @@ types:
       - id: scene_class
         type: u1
         doc: |
-          [CONFIRMED_LIVE] a classifier for the scene, at frame offset 5, and deliberately
-          named for what it IS rather than for what it means, because three readings survive
-          and the bytes do not choose between them. Captured as 1 for Sunrise, Sunset and
-          Candlelight, 2 for the twelve catalogue scenes across five galleries, and 0 for two
-          effects from the app's AI Lighting Bot.
+          [CONFIRMED_LIVE] a classifier for the scene, at frame offset 5, named for what it IS
+          because nothing captured establishes what it MEANS. Committed fixtures carry three
+          values: 1 on six scenes, 2 on nine, and 0 on two AI-generated effects.
 
           IT IS NOT WHETHER THE LIGHT ALREADY HOLDS THE SCENE, which is what it was first
-          named. That reading came from a correlation holding without exception over fifteen
-          captures: scenes written with 2 were preceded by an 0xA3 upload and scenes written
-          with 1 were not. Two things killed it. The AI effects are uploaded exactly like
-          catalogue ones, seven frames then five, yet carry 0. And applying one catalogue
-          scene twice in a row, nothing else touched, reproduced the first write BYTE FOR
-          BYTE and repeated the whole seven-frame upload; had the byte meant what it was
-          named, the second apply is precisely where it would have changed.
+          named, on a correlation that held over fifteen captures: scenes written with 2 were
+          preceded by an 0xA3 upload and scenes written with 1 were not. Two things killed
+          that. The AI effects are uploaded exactly like catalogue ones, seven frames then
+          five, yet carry 0. And applying one catalogue scene twice in a row, nothing else
+          touched, reproduced the first write BYTE FOR BYTE and repeated the whole upload;
+          had the byte meant what it was named, the second apply is where it changes.
 
-          PROVENANCE IS THE READING THE EVIDENCE NOW FAVOURS, so firmware or catalogue or
-          generated, and the name still does not say so because a name is harder to retract
-          than a paragraph. What raised it above the alternatives was picking three scenes off
-          the twelve-entry built-in list the vendor Android app holds for this model, applying
-          them, and watching all three arrive with class 1 and no upload. Six scenes now carry
-          1 and their ids are 0, 1, 4, 5, 7 and 9: every one inside that list of twelve, and
-          not one of the twelve scenes carrying 2 is. Six ids landing inside a list of twelve
-          is not a coincidence the rival readings can absorb.
+          NOTHING YET SHOWS THIS BYTE CARRIES INFORMATION OF ITS OWN. On every committed
+          fixture it is a function of the id: every class-1 id is below 10, every class-2 id
+          is 212 or above, and the two class-0 ids sit between. So "it names where the scene
+          came from" and "it is redundant with which block of the id space the scene came
+          from" fit the corpus equally, and the second is not a rival meaning so much as the
+          possibility that there is no independent field here at all. A reading was briefly
+          committed that six class-1 ids all appearing in the vendor app's twelve-entry
+          built-in list settled this. It does not: those six are also the six smallest ids in
+          the corpus, so the built-in list and the low band cannot be told apart by them.
 
-          The two rivals, and what stands against each:
+          THE CAPTURE THAT WOULD SETTLE IT moves this byte with the id HELD, or moves the id
+          within one band with this byte held. Neither exists, and no aggregate here asserts
+          one, because none can be written from the current corpus.
 
-          The low byte of a scene's music code. The vendor Android app builds this position
-          from exactly that, and a scene with no music gives 0, which fits the AI effects.
-          Against it: two Light Up Your Life tiles from one row, one drawn with a music badge
-          and one without, both carry 2; and it would need every built-in scene to share a
-          music code of 1 and every catalogue scene a code of 2.
-
-          Which scene protocol the effect uses. The app has two scene controllers numbered 1
-          and 2 for RGB and RGBIC. Against it: nothing in the app numbers a scene protocol 0,
-          so the AI value has no home, and the split would have to fall exactly along the
-          built-in boundary by chance.
-
-          WHAT WOULD STILL SETTLE IT is an AI effect applied a second time after the light has
-          been given it once, which separates provenance from novelty, and a built-in scene
-          reached from somewhere other than the Scene gallery.
+          Two further readings remain live, both from the vendor Android app and so hints
+          rather than evidence. One builds this position from the low byte of a scene's music
+          code, which is 0 for a scene without music and would fit the AI values; against it,
+          two gallery tiles from one row, one drawn with a music badge and one without, both
+          carry 2. The other reads it as a scene type, and that app numbers its types static
+          0, rgb 1, rgbic 2, graffiti 3, cube 4, diy 5, compose 6; against it, four effects
+          composed in the app's own Workshop carry 2 rather than the 6 that numbering would
+          predict.
       - id: opaque_tail
         size: 13
-        doc: '[CONFIRMED_LIVE] remaining H6199 scene-body bytes at frame offsets 6..18, captured as an opaque all-zero window across all fifteen scenes'
+        doc: '[CONFIRMED_LIVE] remaining H6199 scene-body bytes at frame offsets 6..18, captured as an opaque all-zero window across all seventeen scene fixtures'
   video_body:
     doc: |
       The DreamView T1's headline mode: a camera clipped to the television samples the

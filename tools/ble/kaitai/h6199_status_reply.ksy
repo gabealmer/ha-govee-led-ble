@@ -75,10 +75,9 @@ types:
 
       MODELLED SEPARATELY FROM THE WRITE BODIES RATHER THAN IMPORTED, even though both are
       this same model and an import would be allowed. The two are not the same shape: the
-      write's scene body carries a byte saying whether a definition was uploaded first, and
-      the reply does not echo it, which makes sense because that byte is about the transfer
-      and not about what is on the strip. Importing would assert a sameness these bytes
-      contradict, and would then be wrong silently rather than loudly.
+      write's scene body carries a classifier byte at the position where this reply carries
+      zero. Importing would assert a sameness these bytes contradict, and would then be wrong
+      silently rather than loudly.
 
       Read-side fields are named only where a write in the SAME session pins them. Where the
       layout merely resembles the write, the doc says so.
@@ -113,21 +112,30 @@ types:
         type: u1
         doc: |
           [CONFIRMED_LIVE] the music sensitivity, at frame offset 4, captured as 0x63. The
-          same session's write carried 0x63 after the slider was left at maximum.
+          same session's write carried 0x63 for a slider left near, but not at, the top of its
+          travel: the maximum was later measured at 100.
 
           This is the read-back the write-side doc once proposed as the way to settle that
           byte, and it arrives from a genuinely independent direction: the light is reporting
           the value, not our encoder repeating it. The two agree.
       - id: opaque_gap
         size: 3
-        doc: '[CONFIRMED_LIVE] three bytes at frame offsets 5..7, captured as zero'
+        doc: |
+          [CONFIRMED_LIVE] three bytes at frame offsets 5..7, captured as zero. The write
+          carries a reactivity profile, a pinned-colour flag and a red channel in those same
+          three positions, all of which were zero in the session this reply came from, so
+          whether the reply mirrors them or means something else here is not established.
       - id: opaque_flag
         size: 1
         doc: |
-          [CONFIRMED_LIVE] one byte at frame offset 8, captured as 0xff. It has no counterpart
-          in the write, which carries zero there, so it is something the light reports rather
-          than something it was told. Unnamed because one sample cannot distinguish a flag
-          from a constant.
+          [CONFIRMED_LIVE] one byte at frame offset 8, captured as 0xff. The write carries the
+          GREEN channel of a pinned colour in that position, and carried zero there in this
+          session because auto colour was on.
+
+          So the obvious reading is that the light is reporting the colour it chose for itself,
+          of which this is the green component. That is a reading of one sample and not an
+          isolation: a reply captured while a colour is pinned, and another while a different
+          one is, would settle it. Unnamed until then.
       - id: opaque_tail
         size: 10
         doc: '[CONFIRMED_LIVE] remaining bytes at frame offsets 9..18, captured as an opaque all-zero window'
@@ -140,10 +148,12 @@ types:
           two-byte little-endian form the write uses. Captured as 0x2715, which is exactly
           the id the app had written moments earlier in the same session.
 
-          THE WRITE'S THIRD BYTE IS NOT ECHOED. That write carried a 2 in the next position,
-          meaning a definition had just been uploaded; the reply carries 0 there. So the byte
-          describes the transfer rather than the state, which is what the write-side spec
-          argues from the upload correlation and what this reply independently supports.
+          THE WRITE'S CLASSIFIER BYTE IS NOT ECHOED. That write carried a 2 in the next
+          position and this reply carries 0. What that shows is only that the byte is not part
+          of what the light reports back; it does not say what the byte means, and an earlier
+          version of this doc read it as evidence for a meaning that has since been retracted.
+          See h6199_command_write::scene_body::scene_class, which now records three readings
+          and no conclusion.
       - id: opaque_tail
         size: 14
         doc: '[CONFIRMED_LIVE] remaining bytes at frame offsets 5..18, captured as an opaque all-zero window'

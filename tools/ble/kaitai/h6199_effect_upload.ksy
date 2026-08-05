@@ -6,8 +6,8 @@ doc: |
   The definition of a lighting effect, sent to the H6199 over the 0xA3 multi-frame channel
   and reassembled before it reaches this grammar. It is what the light is given when the app
   applies a scene the light does not already hold, immediately before the 33 05 04 write
-  that starts it; see h6199_command_write::scene_body, whose kind byte is exactly the
-  predictor of whether one of these was sent.
+  that starts it; see h6199_command_write::scene_body, whose scene_class byte took its first
+  reading from whether one of these had been sent, a reading since retracted.
 
   Modelled independently from the H617A effect grammars and importing nothing, per the
   charter. That is not ceremony here: this model's DIY uploads were previously believed to
@@ -24,13 +24,14 @@ doc: |
   inside a block moved at once. Naming them would mean reading the H617A grammar into a
   model that has already broken it once.
 
-  Derived from twenty-one bodies captured 2026-08-04: eight scenes from three of the app's
-  categories, and thirteen DIY uploads. The structure accounts for every byte of all
-  twenty-one with nothing left over.
+  Derived from thirty-two committed bodies captured 2026-08-04 and 2026-08-05: thirteen in
+  the scene shape, from three catalogue categories and from user effects applied through the
+  app's Workshop, and nineteen from the DIY editor. The structure accounts for every byte of
+  all thirty-two with nothing left over.
 seq:
   - id: header
     contents: [0x01]
-    doc: '[CONFIRMED_LIVE] effect-body marker at body offset 0, captured as 0x01 in all twenty-one bodies'
+    doc: '[CONFIRMED_LIVE] effect-body marker at body offset 0, captured as 0x01 in all thirty-two bodies'
   - id: chunk_count
     type: u1
     doc: |
@@ -38,7 +39,7 @@ seq:
       Captured between 2 and 10, and in every case equal BOTH to the number of 0xA3 frames
       the phone actually sent and to the number of chunks the content needs, which is the
       used length divided by seventeen and rounded up. Two independent ways of arriving at
-      the same number, across twenty-one bodies, is what names it.
+      the same number, across thirty-two bodies, is what names it.
 
       It is redundant with the transport, which is worth stating: the frame count is already
       knowable from the frames themselves, so this is the sender telling the light how much
@@ -48,7 +49,7 @@ seq:
     enum: body_kind
     doc: |
       [CONFIRMED_LIVE] which shape the rest of the body takes, at body offset 2. Captured as
-      0x02 in all eight catalogue-scene uploads and 0x04 in all thirteen DIY-editor uploads,
+      0x02 in all thirteen scene-shaped uploads and 0x04 in all nineteen from the DIY editor,
       and the two shapes are not variations on each other: a scene body continues with a
       block count and a list of length-prefixed blocks, a DIY body with four parameters and
       a palette.
@@ -184,12 +185,12 @@ types:
         doc: '[CONFIRMED_LIVE] blue channel; the fifth swatch is 00 00 ff and the app draws it blue'
   block:
     doc: |
-      One element of the effect. Eight bodies hold twenty-one blocks between them and every
-      one is a length byte followed by exactly that many bytes.
+      One element of the effect. Thirteen scene-shaped bodies hold 30 blocks between
+      them and every one is a length byte followed by exactly that many bytes.
     seq:
       - id: len
         type: u1
-        doc: '[CONFIRMED_LIVE] the block length, not counting itself; captured between 26 and 47 across twenty-one blocks'
+        doc: '[CONFIRMED_LIVE] the block length, not counting itself; captured between 26 and 47 across 30 blocks'
       - id: opaque_head
         size: 13
         doc: |

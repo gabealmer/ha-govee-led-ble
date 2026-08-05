@@ -385,7 +385,31 @@ def run_aggregates(parsed_by_id: dict[str, Any], data_by_id: dict[str, bytes]) -
     return failed
 
 
+def check_parsers_are_current() -> None:
+    """Refuse to run against a parser older than the spec it was generated from.
+
+    The generated *.py parsers are gitignored build products and go stale silently. When they
+    do, the failure surfaces as an assert naming a field that plainly exists: on 2026-08-05 a
+    stale parser reported that MusicBody has no attribute is_calm, minutes after is_calm was
+    added and compiled elsewhere. That reads as a broken fixture rather than as a missing
+    build step, and this project's own instructions tell the reader to run this script right
+    after editing a .ksy, which is exactly when it is most likely to be stale.
+    """
+    stale = [
+        spec.name
+        for spec in sorted(HERE.glob("*.ksy"))
+        if (parser := spec.with_suffix(".py")).exists() and parser.stat().st_mtime < spec.stat().st_mtime
+    ]
+    if stale:
+        raise AssertUnevaluatableError(
+            "generated parser is older than its spec for: "
+            + ", ".join(stale)
+            + ". Recompile first, e.g. node tools/ble/kaitai/compile.js tools/ble/kaitai/<spec>.ksy"
+        )
+
+
 def main() -> int:
+    check_parsers_are_current()
     specs = sorted((HERE / "spec").glob("*.kst"))
     if not specs:
         print("no .kst fixtures found under spec/", file=sys.stderr)
