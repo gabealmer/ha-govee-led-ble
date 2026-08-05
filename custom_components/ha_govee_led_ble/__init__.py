@@ -55,6 +55,13 @@ _TIMER_ENTITY_SUFFIXES = {
     "_wakeup_timer",
     "_wakeup_timer_time",
 }
+_RELATIVE_BRIGHTNESS_SUFFIXES = {
+    "_relative_brightness",
+    "_relative_brightness_left",
+    "_relative_brightness_top",
+    "_relative_brightness_right",
+    "_relative_brightness_bottom",
+}
 
 
 def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
@@ -115,6 +122,18 @@ async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -
         old_id = er.async_get(hass).async_get_entity_id("switch", DOMAIN, f"{_addr(entry)}_music_calm")
         if old_id:
             hass.data.setdefault(DOMAIN, {})[f"{entry.entry_id}_music_calm_from"] = old_id
+    if entry.version < 4:
+        enabled_relative_brightness = [
+            entity.entity_id
+            for entity in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
+            if entity.unique_id
+            and any(entity.unique_id.endswith(suffix) for suffix in _RELATIVE_BRIGHTNESS_SUFFIXES)
+            and entity.disabled_by is None
+        ]
+        if enabled_relative_brightness:
+            hass.data.setdefault(DOMAIN, {})[f"{entry.entry_id}_relative_brightness_enabled"] = (
+                enabled_relative_brightness
+            )
     data = dict(entry.data)
     raw_model = data.get(CONF_MODEL)
     model = resolve_model(raw_model) if isinstance(raw_model, str) else None
@@ -122,7 +141,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -
         model = next((candidate for candidate in MODEL_PROFILES if candidate in entry.title.upper()), None)
     if model is not None:
         data[CONF_MODEL] = model
-    hass.config_entries.async_update_entry(entry, data=data, options=options, version=3)
+    hass.config_entries.async_update_entry(entry, data=data, options=options, version=4)
     return True
 
 
@@ -179,6 +198,16 @@ def _maybe_flag_white_balance_replaced(hass: HomeAssistant, entry: GoveeBLEConfi
     )
 
 
+def _restore_relative_brightness_enablement(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
+    """Keep existing enabled entities enabled while changing the default for new registries."""
+    entity_ids = hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_relative_brightness_enabled", None)
+    if entity_ids is None:
+        return
+    registry = er.async_get(hass)
+    for entity_id in entity_ids:
+        registry.async_update_entity(entity_id, disabled_by=None)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
     assert entry.unique_id is not None
     raw_model = entry.data.get(CONF_MODEL)
@@ -205,6 +234,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     await _async_cleanup_legacy_entities(hass, entry)
     await _async_cleanup_unsupported_entities(hass, entry, coordinator.profile)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _restore_relative_brightness_enablement(hass, entry)
     _maybe_flag_music_calm_replaced(hass, entry)
     _maybe_flag_white_balance_replaced(hass, entry)
     return True

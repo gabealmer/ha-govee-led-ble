@@ -110,3 +110,5 @@ def test_parser_preserves_the_existing_entry_commands_and_adds_control_commands(
     wait = parser.parse_args(["entry", "wait", "white_balance_red", "17", "--timeout", "5"])
     assert isinstance(wait, argparse.Namespace)
     assert wait.timeout == 5
+    enabled = parser.parse_args(["entry", "entity-enable", "relative_brightness_right"])
+    assert enabled.action == "entity-enable"

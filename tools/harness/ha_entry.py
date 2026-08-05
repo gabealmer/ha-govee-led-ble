@@ -198,6 +198,17 @@ async def _run_websocket(args: argparse.Namespace) -> int:
             _print_result(result)
             return 0 if result.get("success") else 1
 
+        if args.action == "entity-enable":
+            result = await client.call(
+                {
+                    "type": "config/entity_registry/update",
+                    "entity_id": entity_id,
+                    "disabled_by": None,
+                }
+            )
+            _print_result(result)
+            return 0 if result.get("success") else 1
+
         deadline = asyncio.get_running_loop().time() + args.timeout
         while True:
             state = _state_for(await _states(client), entity_id)
@@ -222,6 +233,8 @@ def _parser() -> argparse.ArgumentParser:
     call.add_argument("domain")
     call.add_argument("service")
     call.add_argument("suffix")
+    entity_enable = actions.add_parser("entity-enable")
+    entity_enable.add_argument("suffix")
     wait = actions.add_parser("wait")
     wait.add_argument("suffix")
     wait.add_argument("expected")
