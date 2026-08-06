@@ -1,0 +1,13 @@
+# One palette colour deleted while both Brightness sub-tabs remain.
+id: h6199_effect_workshop_one_colour
+data: h6199_effect_workshop_one_colour.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].len", expected: 32}
+  - {actual: "content.blocks[0].brightness_block_count", expected: 2}
+  - {actual: "content.blocks[0].colour_count", expected: 1}
+  - {actual: "content.blocks[0].palette.size", expected: 1}
+  - {actual: "content.blocks[0].palette[0].red", expected: 255}
+  - {actual: "content.blocks[0].palette[0].green", expected: 0}
+  - {actual: "content.blocks[0].palette[0].blue", expected: 0}
+  - {actual: "content.blocks[0].excess.size", expected: 0}

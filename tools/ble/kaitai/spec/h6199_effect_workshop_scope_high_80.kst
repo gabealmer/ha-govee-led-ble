@@ -1,0 +1,7 @@
+# First Brightness block upper Scope handle moved from 100% to 80%.
+id: h6199_effect_workshop_scope_high_80
+data: h6199_effect_workshop_scope_high_80.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].brightness_blocks[0].scope_high", expected: "cd"}
+  - {actual: "content.blocks[0].brightness_blocks[0].scope_low", expected: "00"}

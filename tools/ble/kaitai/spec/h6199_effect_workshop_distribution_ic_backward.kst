@@ -4,7 +4,7 @@ data: h6199_effect_workshop_distribution_ic_backward.bin
 imports: [h6199_effect_upload]
 asserts:
   - {actual: "content.blocks[0].select_type", expected: 0}
-  - {actual: "content.blocks[0].select_count_or_minimum", expected: 2}
+  - {actual: "content.blocks[0].select_param_2", expected: 2}
   - {actual: "content.blocks[0].distribution_direction", expected: 129}
   - {actual: "content.blocks[0].distribution_method", expected: 1}
   - {actual: "content.blocks[0].direction_is_backward", expected: true}

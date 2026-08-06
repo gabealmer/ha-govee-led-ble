@@ -1,0 +1,11 @@
+# Select Type changed to Customize Segment with its displayed default parameters.
+id: h6199_effect_workshop_customize_segment
+data: h6199_effect_workshop_customize_segment.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].select_type", expected: 3}
+  - {actual: "content.blocks[0].select_param_1", expected: 1}
+  - {actual: "content.blocks[0].select_param_2", expected: 0}
+  - {actual: "content.blocks[0].brightness_block_count", expected: 2}
+  - {actual: "content.blocks[0].colour_count", expected: 1}
+  - {actual: "content.blocks[0].excess.size", expected: 0}

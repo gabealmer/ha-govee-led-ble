@@ -4,5 +4,5 @@ data: h6199_effect_workshop_select_continuous.bin
 imports: [h6199_effect_upload]
 asserts:
   - {actual: "content.blocks[0].select_type", expected: 1}
-  - {actual: "content.blocks[0].select_upper", expected: 0}
-  - {actual: "content.blocks[0].select_count_or_minimum", expected: 2}
+  - {actual: "content.blocks[0].select_param_1", expected: 0}
+  - {actual: "content.blocks[0].select_param_2", expected: 2}

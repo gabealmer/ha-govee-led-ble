@@ -1,0 +1,10 @@
+# Applied Area upper handle moved from 40% to 50%.
+id: h6199_effect_workshop_applied_area_50
+data: h6199_effect_workshop_applied_area_50.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].len", expected: 29}
+  - {actual: "content.blocks[0].applied_area", expected: 80}
+  - {actual: "content.blocks[0].applied_area_width_tenths", expected: 5}
+  - {actual: "content.blocks[0].applied_area_start_tenths", expected: 0}
+  - {actual: "content.blocks[0].excess.size", expected: 0}

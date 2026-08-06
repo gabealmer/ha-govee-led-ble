@@ -1,0 +1,8 @@
+# Brightness changed from Gradient to Unified.
+id: h6199_effect_workshop_brightness_unified_final
+data: h6199_effect_workshop_brightness_unified_final.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].layer_flags", expected: 16}
+  - {actual: "content.blocks[0].brightness_is_gradient", expected: false}
+  - {actual: "content.blocks[0].brightness_block_count", expected: 1}

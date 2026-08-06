@@ -1209,3 +1209,69 @@
   cases: h6199_wifi_*header
   collect: data_frame_count
   distinct_at_least: 3
+
+- id: h6199_workshop_applied_area_upper_moves_alone
+  doc: >
+    Moving only the Applied Area upper handle from 40% to 50% changes block offset 0 from
+    0x40 to 0x50.
+  between: [h6199_effect_workshop_distribution_ic_backward, h6199_effect_workshop_applied_area_50]
+  differs_at: [5]
+
+- id: h6199_workshop_applied_area_lower_moves_alone
+  doc: >
+    With the upper handle held at 50%, moving the lower handle from 0% to 10% changes the
+    same byte from 0x50 to 0x41.
+  between: [h6199_effect_workshop_applied_area_50, h6199_effect_workshop_applied_area_41]
+  differs_at: [5]
+
+- id: h6199_workshop_random_maximum_moves_alone
+  doc: >
+    Under Select IC Randomly with Minimum IC held at 2, moving Maximum ICs from 2 to 3 changes
+    only block offset 2.
+  between: [h6199_effect_workshop_random_max2, h6199_effect_workshop_random_max3]
+  differs_at: [7]
+
+- id: h6199_workshop_brightness_mode_is_bit_02
+  doc: >
+    Switching only the Brightness section from Gradient to Unified clears bit 0x02 in the
+    layer-flags byte.
+  between: [h6199_effect_workshop_random_max3, h6199_effect_workshop_brightness_unified_final]
+  differs_at: [9]
+
+- id: h6199_workshop_scope_upper_moves_alone
+  doc: >
+    Moving only the first Brightness block upper Scope handle from 100% to 80% changes ff to
+    cd at block offset 6.
+  between: [h6199_effect_workshop_brightness_unified_final, h6199_effect_workshop_scope_high_80]
+  differs_at: [11]
+
+- id: h6199_workshop_brightness_order_moves_alone
+  doc: >
+    Changing only Brightness Order from Brightest-Darkest to Darkest-Brightest moves block
+    offset 8 from 0 to 2.
+  between: [h6199_effect_workshop_scope_high_80, h6199_effect_workshop_order_darkest_brightest]
+  differs_at: [13]
+
+- id: h6199_workshop_brightness_block_count_varies
+  doc: >
+    Workshop bodies now exercise one and two numbered six-byte Brightness sub-tabs, with the
+    record length increasing by exactly six when the second is added.
+  cases: h6199_effect_workshop_*
+  collect: content.blocks[0].brightness_block_count
+  distinct_at_least: 2
+
+- id: h6199_workshop_colour_count_varies
+  doc: >
+    Deleting one palette colour changes the count from two to one and shortens the record by
+    exactly one RGB triplet.
+  cases: h6199_effect_workshop_*
+  collect: content.blocks[0].colour_count
+  distinct_at_least: 2
+
+- id: h6199_workshop_select_type_has_all_four_values
+  doc: >
+    The H6199 editor produced Segment, Select IC Continuously, Select IC Randomly and
+    Customize Segment as values 0 through 3.
+  cases: h6199_effect_workshop_*
+  collect: content.blocks[0].select_type
+  distinct_at_least: 4

@@ -1,0 +1,14 @@
+# A second numbered Brightness sub-tab added to layer 1.
+id: h6199_effect_workshop_two_brightness_blocks
+data: h6199_effect_workshop_two_brightness_blocks.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].len", expected: 35}
+  - {actual: "content.blocks[0].brightness_block_count", expected: 2}
+  - {actual: "content.blocks[0].brightness_blocks.size", expected: 2}
+  - {actual: "content.blocks[0].brightness_blocks[0].scope_high", expected: "cd"}
+  - {actual: "content.blocks[0].brightness_blocks[0].order", expected: 2}
+  - {actual: "content.blocks[0].brightness_blocks[1].scope_high", expected: "ff"}
+  - {actual: "content.blocks[0].brightness_blocks[1].order", expected: 0}
+  - {actual: "content.blocks[0].colour_count", expected: 2}
+  - {actual: "content.blocks[0].excess.size", expected: 0}

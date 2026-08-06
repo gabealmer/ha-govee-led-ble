@@ -1,0 +1,7 @@
+# First Brightness block order changed to Darkest-Brightest.
+id: h6199_effect_workshop_order_darkest_brightest
+data: h6199_effect_workshop_order_darkest_brightest.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].brightness_blocks[0].order", expected: 2}
+  - {actual: "content.blocks[0].brightness_blocks[0].scope_high", expected: "cd"}

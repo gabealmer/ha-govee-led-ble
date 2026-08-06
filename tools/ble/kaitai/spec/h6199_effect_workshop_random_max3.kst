@@ -1,0 +1,8 @@
+# The same random selection after moving Maximum ICs from 2 to 3.
+id: h6199_effect_workshop_random_max3
+data: h6199_effect_workshop_random_max3.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].select_type", expected: 2}
+  - {actual: "content.blocks[0].select_param_1", expected: 3}
+  - {actual: "content.blocks[0].select_param_2", expected: 2}

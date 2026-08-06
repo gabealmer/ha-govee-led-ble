@@ -19,17 +19,17 @@ doc: |
   editor arrives as parameters - family, variant, speed and a palette. The two shipped
   builtin-parameter scenes carry a third body kind whose interior remains unmodelled.
 
-  Workshop controls now isolate both ends of a scene block, including selection, brightness,
-  colour timing, movement and priority. The colour-dependent middle stays opaque because no
-  H6199 capture has yet moved one of its fields alone.
+  Workshop controls now account for the complete scene block: Applied Area, all four
+  selection types and parameters, repeated Brightness sub-tabs, distribution, colour timing,
+  counted RGB palette, movement and priority.
 
   The committed corpus spans catalogue scenes, Workshop layers, all nineteen DIY styles,
   repeated builtin-parameter scenes and repeated AI applications. The grammar accounts for
-  every byte while retaining opaque windows where the captures do not isolate structure.
+  every byte; only the non-adjustable builtin-parameter interior remains intentionally raw.
 seq:
   - id: header
     contents: [0x01]
-    doc: '[CONFIRMED_LIVE] effect-body marker at body offset 0, captured as 0x01 in all thirty-two bodies'
+    doc: '[CONFIRMED_LIVE] effect-body marker at body offset 0, captured as 0x01 throughout the committed corpus'
   - id: chunk_count
     type: u1
     doc: |
@@ -37,7 +37,7 @@ seq:
       Captured between 2 and 10, and in every case equal BOTH to the number of 0xA3 frames
       the phone actually sent and to the number of chunks the content needs, which is the
       used length divided by seventeen and rounded up. Two independent ways of arriving at
-      the same number, across thirty-two bodies, is what names it.
+      the same number throughout the corpus is what names it.
 
       It is redundant with the transport, which is worth stating: the frame count is already
       knowable from the frames themselves, so this is the sender telling the light how much
@@ -47,8 +47,8 @@ seq:
     enum: body_kind
     doc: |
       [CONFIRMED_LIVE] which shape the rest of the body takes, at body offset 2. Captured as
-      0x02 in all thirteen scene-shaped uploads and 0x04 in all nineteen from the DIY editor,
-      and the two shapes are not variations on each other: a scene body continues with a
+      0x02 for scene-shaped uploads and 0x04 for the DIY editor, and the two shapes are not
+      variations on each other: a scene body continues with a
       block count and a list of length-prefixed blocks, a DIY body with four parameters and
       a palette.
 
@@ -87,6 +87,12 @@ enums:
     0x00: segment
     0x01: select_ic_continuously
     0x02: select_ic_randomly
+    0x03: customize_segment
+  brightness_order:
+    0x00: brightest_darkest
+    0x01: brightest_darkest_brightest
+    0x02: darkest_brightest
+    0x03: darkest_brightest_darkest
 types:
   unmodelled_content:
     doc: |
@@ -103,11 +109,9 @@ types:
       - id: block_count
         type: u1
         doc: |
-          [CONFIRMED_LIVE] how many blocks follow, at body offset 3. Captured as 1, 1, 2, 2,
-          3, 3, 4 and 5, and in every case exactly that many length-prefixed blocks are
-          present and consume the body up to its padding. A count that predicts where the
-          padding starts, in eight bodies of five different sizes, is not a coincidence of
-          small numbers.
+          [CONFIRMED_LIVE] how many blocks follow, at body offset 3. Captured from 1 through
+          5, and in every case exactly that many length-prefixed blocks are present and
+          consume the body up to its padding.
       - id: blocks
         type: block
         repeat: expr
@@ -117,15 +121,12 @@ types:
         size-eos: true
         doc: |
           [CONFIRMED_LIVE] zero padding out to the transport chunk boundary. Captured as 1 to
-          16 bytes, always zero, in all eight scene bodies. Its length is whatever is left of
-          the last seventeen-byte chunk, which is why the reassembled length is always a
-          multiple of seventeen and cannot be used as the content length.
+          16 bytes and always zero. Its length is whatever is left of the last seventeen-byte
+          chunk, so the reassembled length cannot be used as the content length.
   diy_content:
     doc: |
       An effect the user built in the app's DIY editor, sent as parameters rather than as
-      compiled blocks. Every field here is isolated: the editor changes one thing at a time
-      and thirteen uploads were taken that way, so consecutive pairs are controlled
-      comparisons.
+      compiled blocks. Every field here is isolated through controlled editor comparisons.
     seq:
       - id: family
         type: u1
@@ -201,200 +202,157 @@ types:
       - id: blue
         type: u1
         doc: '[CONFIRMED_LIVE] blue channel; the fifth swatch is 00 00 ff and the app draws it blue'
+  brightness_block:
+    doc: |
+      One numbered Brightness sub-tab, six bytes in the order the editor displays its
+      controls. Adding sub-tab 2 changed the parent count 1 to 2 and inserted exactly one
+      further six-byte block before the distribution field.
+    seq:
+      - id: scope_high
+        size: 1
+        doc: '[CONFIRMED_LIVE] Brightness Scope upper handle, scaled to 0..255; moving 100% to 80% changed ff to cd alone'
+      - id: scope_low
+        size: 1
+        doc: '[CONFIRMED_LIVE] Brightness Scope lower handle, scaled to 0..255; moving 0% to 35% changed 00 to 5b alone'
+      - id: order
+        type: u1
+        enum: brightness_order
+        doc: '[CONFIRMED_LIVE] Brightness Order: 0 Brightest-Darkest, 1 Brightest-Darkest-Brightest, 2 Darkest-Brightest, 3 Darkest-Brightest-Darkest'
+      - id: change_speed
+        size: 1
+        doc: '[CONFIRMED_LIVE] Brightness Changing Speed, scaled to 0..255; 50% is 80 and 93% is ed'
+      - id: retention_brightest
+        size: 1
+        doc: '[CONFIRMED_LIVE] Retention Time of the Brightest Light, written directly'
+      - id: retention_darkest
+        size: 1
+        doc: '[CONFIRMED_LIVE] Retention Time of the Darkest Light, written directly'
   block:
     doc: |
-      One element of the effect. Thirteen scene-shaped bodies hold 30 blocks between
-      them and every one is a length byte followed by exactly that many bytes.
+      One scene or Workshop layer. The record length is fully accounted for by the
+      selection header, repeated Brightness blocks, colour palette and fixed movement
+      trailer. Captured record lengths 26 through 47 all consume without residue.
     seq:
       - id: len
         type: u1
-        doc: '[CONFIRMED_LIVE] the block length, not counting itself; captured between 26 and 47 across 30 blocks'
+        doc: '[CONFIRMED_LIVE] the block length, not counting itself; captured between 26 and 47'
       - id: applied_area
         type: u1
         doc: |
-          [CONFIRMED_LIVE] the layer's Applied Area byte at block offset 0, still raw. Captured
-          as 0x40 for the selected window in the controlled Workshop chain; its internal
-          encoding has not yet been isolated on H6199.
+          [CONFIRMED_LIVE] Applied Area at block offset 0. The high nibble is the width in
+          tenths and the low nibble is the start: moving [0,4] to [0,5] changed 40 to 50,
+          then moving the lower handle to 1 changed 50 to 41.
       - id: select_type
         type: u1
         enum: workshop_select_type
         doc: |
-          [CONFIRMED_LIVE] the Workshop "Select Type" at block offset 1. With both displayed
-          counts held at 2, switching Segment to Select IC Continuously moved this byte alone
-          from 0 to 1. Select IC Randomly then carried 2.
-      - id: select_upper
+          [CONFIRMED_LIVE] Select Type at block offset 1: Segment 0, Select IC Continuously
+          1, Select IC Randomly 2 and Customize Segment 3.
+      - id: select_param_1
         type: u1
         doc: |
-          [CONFIRMED_LIVE] selection parameter at block offset 2. It is zero for Segment and
-          continuous selection and reads 2 while the random selector shows Maximum ICs 2.
-          The maximum itself has not yet been varied under an otherwise fixed random setup,
-          so the byte keeps a structural rather than semantic name.
-      - id: select_count_or_minimum
+          [CONFIRMED_LIVE] first Select Type parameter at block offset 2. It is the random
+          Maximum ICs, isolated 2 to 3; Customize Segment displayed 1 here.
+      - id: select_param_2
         type: u1
         doc: |
-          [CONFIRMED_LIVE] selection parameter at block offset 3. It follows Number of Segment
-          and Number of IC directly, and under Select IC Randomly moving Minimum IC from 1 to 2
-          moved this byte alone from 1 to 2.
-      - id: opaque_head_tail
-        size: 3
+          [CONFIRMED_LIVE] second Select Type parameter at block offset 3. It follows Number
+          of Segment/IC and random Minimum IC; Customize Segment displayed 0 here.
+      - id: layer_flags
+        type: u1
         doc: |
-          [CONFIRMED_LIVE] block offsets 4 through 6, still unnamed. No single H6199 control
-          has isolated these three bytes.
-      - id: brightness_scope_low
-        size: 1
-        if: len >= 15
+          [CONFIRMED_LIVE] layer flags at block offset 4. Bit 0x02 selects Brightness
+          Gradient rather than Unified, isolated by changing 0x12 to 0x10 alone. Other bits
+          remain raw.
+      - id: brightness_block_count
+        type: u1
         doc: |
-          [CONFIRMED_LIVE] the bottom of the layer's "Brightness Scope" range, at block offset
-          7, scaled to 0..255. Captured 2026-08-05 by dragging that range slider's lower handle
-          alone: the byte went from 0 to 0x5b while the editor's label went from 0% to 35%,
-          and 91 of 255 is 35.7%.
-      - id: opaque_gap
-        size: 1
-        doc: |
-          [CONFIRMED_LIVE] one byte at block offset 8, unnamed. The Brightness Scope control
-          has an upper handle which would sit naturally here, but no capture ever moved it:
-          the drag was refused and the label stayed at 100%.
-
-          IT IS NOT CONSTANT, and a doc here once said it was. It reads 0x00, 0x01, 0x02 and
-          0x03 across the committed corpus, which was true when that sentence was written and
-          contradicted it. "No controlled comparison moved it" and "it never varies" are
-          different claims, and only the first one is ours to make: every one of those values
-          came from a differently-authored effect, so the spread says nothing about what
-          drives it.
-      - id: brightness_change_speed
-        size: 1
-        if: len >= 15
-        doc: |
-          [CONFIRMED_LIVE] the layer's "Brightness Changing Speed", at block offset 9, scaled to
-          0..255. Captured by dragging that slider alone: 0x80 at 50% became 0xed, and 237 of
-          255 is 93%.
-      - id: retention_time_brightest
-        size: 1
-        if: len >= 15
-        doc: |
-          [CONFIRMED_LIVE] the layer's "Retention Time of the Brightest Light", at block offset
-          10, written directly. Captured by dragging that slider alone, 20 becoming 154, which
-          is what the editor then displayed.
-      - id: retention_time_darkest
-        size: 1
-        if: len >= 15
-        doc: |
-          [CONFIRMED_LIVE] the layer's "Retention Time of the Darkest Light", at block offset
-          11, written directly. Captured the same way, 20 becoming 195.
-
-          THE TWO RETENTION TIMES SIT TOGETHER AND ARE WRITTEN DIRECTLY, while the two speeds
-          around them are scaled to 0..255. Both conventions appear inside one block, so
-          neither can be assumed for a byte that has not been driven.
+          [CONFIRMED_LIVE] number of six-byte Brightness sub-tabs. Adding tab 2 changed this
+          byte from 1 to 2 and increased the record length from 29 to 35.
+      - id: brightness_blocks
+        type: brightness_block
+        repeat: expr
+        repeat-expr: brightness_block_count
+        doc: '[CONFIRMED_LIVE] brightness_block_count six-byte Brightness sub-tabs'
       - id: distribution_direction
         type: u1
         doc: |
-          [CONFIRMED_LIVE] packed Distribution Method and general Direction at block offset 12.
-          With Based on Number of IC held constant, changing Backward to Forward moved 0x81
-          to 0x01. With Forward held constant, changing the method moved this byte alone:
-          Unified Colour 0, Based on Number of IC 1, Based on Segment 2. Bit 0x80 therefore
-          means Backward and the remaining value selects the distribution method.
+          [CONFIRMED_LIVE] packed Distribution Method and general Direction. Bit 0x80 means
+          Backward. With Forward held constant, Unified Colour is 0, Based on Number of IC
+          is 1 and Based on Segment is 2.
       - id: colour_change_speed
         size: 1
-        if: len >= 15
-        doc: |
-          [CONFIRMED_LIVE] the layer's "Color Changing Speed", at block offset 13, scaled to
-          0..255 rather than written as a percent. Captured 2026-08-05 by dragging that one
-          slider in the Workshop effect editor and re-applying: the byte read 0x80 while the
-          editor showed 50% and 0xea at 92%, which is 128 and 234 against the 128 and 235 a
-          0..255 scaling predicts. The one-count difference is rounding at the app's end.
-
-          NOTE THE SCALING, because it is not this model's habit. Brightness, saturation,
-          softness and music sensitivity are all written as a direct percent elsewhere in this
-          protocol; inside a workshop block this one is not.
+        doc: '[CONFIRMED_LIVE] Color Changing Speed, scaled to 0..255; 50% is 80 and 92% is ea'
       - id: retention_time
         size: 1
-        if: len >= 15
+        doc: '[CONFIRMED_LIVE] colour Retention Time, written directly'
+      - id: colour_count
+        type: u1
         doc: |
-          [CONFIRMED_LIVE] the layer's "Retention Time", at block offset 14, written directly.
-          Captured in the same session by dragging only that slider: the byte read 0x14 while
-          the editor showed 20 and 0xc3 when it showed 195, matching exactly. The app prints
-          it as a bare number rather than a percentage, and the wire agrees.
-      - id: opaque_middle
-        size: len - 22
-        if: len >= 22
-        doc: |
-          [CONFIRMED_LIVE] the part of the block between the fixed head and the fixed trailer,
-          still unnamed for the same reason as the head. Its length is whatever is left over,
-          which is what makes the block's two ends addressable while its middle is not.
+          [CONFIRMED_LIVE] number of RGB palette entries. Deleting one of two colours changed
+          this byte from 2 to 1 and shortened the record by exactly three bytes.
+      - id: palette
+        type: rgb
+        repeat: expr
+        repeat-expr: colour_count
+        doc: '[CONFIRMED_LIVE] colour_count ordered RGB triplets from the Workshop palette'
       - id: selected_movement
         type: u1
-        if: len >= 22
         doc: |
-          [CONFIRMED_LIVE] packed selected-area movement byte at block offset len - 7. Bit
-          0x10 enables movement. The direction values are Forward 0, Forward and Backward 1,
-          Backward 2 and Backward and Forward 3. Bit 0x04 independently enables "Enter and
-          Exit Effect": toggling it off moved 0x14 to 0x10 alone while the displayed direction
-          remained Forward. The former "fifth direction" was this separate switch.
+          [CONFIRMED_LIVE] packed selected-area movement byte. Bit 0x10 enables movement,
+          bit 0x04 enables Enter and Exit Effect, and direction values are Forward 0,
+          Forward and Backward 1, Backward 2 and Backward and Forward 3.
       - id: selected_movement_interval
         size: 1
-        if: len >= 22
-        doc: |
-          [CONFIRMED_LIVE] the "Moving Interval" belonging to the selected-area movement, at
-          block offset len - 6, written directly. Read as 0x00 against an editor showing 0,
-          and 0x01 in the sibling block whose editor showed 1.
+        doc: '[CONFIRMED_LIVE] selected-area Moving Interval, written directly'
       - id: selected_movement_speed
         size: 1
-        if: len >= 22
-        doc: |
-          [CONFIRMED_LIVE] the "Moving Speed" belonging to the selected-area movement, at block
-          offset len - 5, scaled to 0..255. Read as 0x80 against an editor showing 50%, which
-          is 128 of 255.
+        doc: '[CONFIRMED_LIVE] selected-area Moving Speed, scaled to 0..255'
       - id: overall_movement
         size: 1
-        if: len >= 22
         doc: |
-          [CONFIRMED_LIVE] the layer's "Overall Moving Effect", packed as an enable flag and a
-          direction, at block offset len - 4. Captured by turning that one switch on, which
-          moved this byte 0x00 -> 0x10 alone, and then by changing only its direction from
-          "Forward" to "Backward and Forward", which moved it 0x10 -> 0x13. So 0x10 is the
-          enable bit and the low nibble is the direction's index into the picker: Forward 0,
-          Backward 1, Forward and Backward 2, Backward and Forward 3.
-
-          THIS IS THE BYTE THE BLOCK'S TWO ENDS WERE FOUND FROM. Its position is quoted from
-          the END of the block because that is where it is fixed: a 26-byte block carries it
-          at 22 and a 29-byte block at 25, and both were read against their own editor page in
-          one capture.
+          [CONFIRMED_LIVE] packed Overall Moving Effect enable and direction, fixed four
+          bytes from the record end
       - id: overall_movement_interval
         size: 1
-        if: len >= 22
-        doc: |
-          [CONFIRMED_LIVE] the "Moving Interval" belonging to the overall movement, at block
-          offset len - 3, written directly. Read as 0x00 where the editor showed 0 and 0x01
-          where it showed 1, in two blocks of different lengths in the same body.
+        doc: '[CONFIRMED_LIVE] overall Moving Interval, written directly'
       - id: overall_movement_speed
         size: 1
-        if: len >= 22
-        doc: |
-          [CONFIRMED_LIVE] the "Moving Speed" belonging to the overall movement, at block
-          offset len - 2, scaled to 0..255. Captured by dragging that one slider: 0x80 at 50%
-          became 0xf2 at 95%, and 242 of 255 is 94.9%. The sibling block read 0xb7 against an
-          editor showing 72%, and 183 of 255 is 71.8%.
+        doc: '[CONFIRMED_LIVE] overall Moving Speed, scaled to 0..255'
       - id: layer_priority
         size: 1
-        if: len >= 22
-        doc: |
-          [CONFIRMED_LIVE] the layer's "Effect Layer Priority" level, at the LAST byte of the
-          block, written directly as the 1..5 the editor shows. Captured by choosing 3, which
-          moved this byte 0x00 -> 0x03 and nothing else; the sibling block read 0x01 against
-          an editor showing 1.
-
-          TURNING THE SWITCH ON WROTE NOTHING. The probe that enabled "Effect Layer Priority"
-          without choosing a level produced a byte-identical body, so this byte carries the
-          level and there is no separate enable bit for it. That is worth keeping: a switch
-          that does not reach the wire until a second control is touched is the kind of thing
-          a write-side model invents an enable flag for.
+        doc: '[CONFIRMED_LIVE] Effect Layer Priority at the final record byte, 0 or levels 1 through 5'
+      - id: excess
+        size: 'len - 17 - brightness_block_count * 6 - colour_count * 3'
+        doc: '[CONFIRMED_LIVE] bytes not consumed by the complete record grammar; empty in every fixture'
     instances:
+      applied_area_width_tenths:
+        value: '(applied_area & 0xf0) >> 4'
+        doc: '[CONFIRMED_LIVE] Applied Area width in tenths'
+      applied_area_start_tenths:
+        value: 'applied_area & 0x0f'
+        doc: '[CONFIRMED_LIVE] Applied Area start in tenths'
+      brightness_is_gradient:
+        value: '(layer_flags & 0x02) != 0'
+        doc: '[CONFIRMED_LIVE] Brightness is Gradient when layer_flags bit 0x02 is set'
+      brightness_scope_low:
+        value: 'brightness_blocks[0].scope_low'
+        doc: '[CONFIRMED_LIVE] compatibility view of the first Brightness block lower scope'
+      brightness_change_speed:
+        value: 'brightness_blocks[0].change_speed'
+        doc: '[CONFIRMED_LIVE] compatibility view of the first Brightness block changing speed'
+      retention_time_brightest:
+        value: 'brightness_blocks[0].retention_brightest'
+        doc: '[CONFIRMED_LIVE] compatibility view of the first Brightness block brightest retention'
+      retention_time_darkest:
+        value: 'brightness_blocks[0].retention_darkest'
+        doc: '[CONFIRMED_LIVE] compatibility view of the first Brightness block darkest retention'
       distribution_method:
         value: 'distribution_direction & 0x7f'
-        doc: '[CONFIRMED_LIVE] Distribution Method value: 0 Unified Colour, 1 Based on Number of IC, 2 Based on Segment'
+        doc: '[CONFIRMED_LIVE] Distribution Method value'
       direction_is_backward:
         value: '(distribution_direction & 0x80) != 0'
-        doc: '[CONFIRMED_LIVE] general Direction is Backward when bit 0x80 is set and Forward when clear'
+        doc: '[CONFIRMED_LIVE] general Direction is Backward when bit 0x80 is set'
       selected_movement_enabled:
         value: '(selected_movement & 0x10) != 0'
         doc: '[CONFIRMED_LIVE] selected-area movement is enabled when bit 0x10 is set'
@@ -403,4 +361,4 @@ types:
         doc: '[CONFIRMED_LIVE] Enter and Exit Effect is enabled when bit 0x04 is set'
       selected_direction:
         value: 'selected_movement & 0x03'
-        doc: '[CONFIRMED_LIVE] selected-area direction value: 0 Forward, 1 Forward and Backward, 2 Backward, 3 Backward and Forward'
+        doc: '[CONFIRMED_LIVE] selected-area direction value'

@@ -1,0 +1,8 @@
+# Random selection with Maximum ICs 2 and Minimum IC 2.
+id: h6199_effect_workshop_random_max2
+data: h6199_effect_workshop_random_max2.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].select_type", expected: 2}
+  - {actual: "content.blocks[0].select_param_1", expected: 2}
+  - {actual: "content.blocks[0].select_param_2", expected: 2}
