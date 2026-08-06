@@ -1,0 +1,8 @@
+# Select IC Continuously with Number of IC held at 2.
+id: h6199_effect_workshop_select_continuous
+data: h6199_effect_workshop_select_continuous.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].select_type", expected: 1}
+  - {actual: "content.blocks[0].select_upper", expected: 0}
+  - {actual: "content.blocks[0].select_count_or_minimum", expected: 2}

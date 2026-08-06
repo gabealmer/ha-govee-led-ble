@@ -18,7 +18,7 @@ asserts:
   - actual: content.blocks[1].len
     expected: 26
   - actual: content.blocks[1].selected_movement
-    expected: "10"
+    expected: 16
   - actual: content.blocks[1].selected_movement_interval
     expected: "00"
   - actual: content.blocks[1].selected_movement_speed

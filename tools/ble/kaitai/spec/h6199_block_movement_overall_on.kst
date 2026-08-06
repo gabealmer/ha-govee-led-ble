@@ -20,4 +20,4 @@ asserts:
   - actual: content.blocks[1].overall_movement
     expected: "10"
   - actual: content.blocks[1].selected_movement
-    expected: "00"
+    expected: 0

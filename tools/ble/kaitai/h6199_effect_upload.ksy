@@ -14,20 +14,18 @@ doc: |
   use 0xA1 "in place of 0xA3", and every H6199 upload captured has used 0xA3, so the shared
   reading was already wrong about this family once.
 
-  TWO SHAPES SHARE THIS ENVELOPE, chosen by the kind byte. A catalogue scene arrives as a
-  count and a list of length-prefixed blocks whose interior is left opaque. An effect built
-  in the app's DIY editor arrives as parameters - family, variant, speed and a palette -
-  every one of which is isolated, because the editor changes one thing at a time.
+  THREE SHAPES SHARE THIS ENVELOPE, chosen by the kind byte. A catalogue or Workshop scene
+  arrives as a count and a list of length-prefixed blocks. An effect built in the app's DIY
+  editor arrives as parameters - family, variant, speed and a palette. The two shipped
+  builtin-parameter scenes carry a third body kind whose interior remains unmodelled.
 
-  The scene blocks stay opaque because no capture varies one under a known control: the
-  eight scene bodies came from applying eight different catalogue scenes, so every byte
-  inside a block moved at once. Naming them would mean reading the H617A grammar into a
-  model that has already broken it once.
+  Workshop controls now isolate both ends of a scene block, including selection, brightness,
+  colour timing, movement and priority. The colour-dependent middle stays opaque because no
+  H6199 capture has yet moved one of its fields alone.
 
-  Derived from thirty-two committed bodies captured 2026-08-04 and 2026-08-05: thirteen in
-  the scene shape, from three catalogue categories and from user effects applied through the
-  app's Workshop, and nineteen from the DIY editor. The structure accounts for every byte of
-  all thirty-two with nothing left over.
+  The committed corpus spans catalogue scenes, Workshop layers, all nineteen DIY styles,
+  repeated builtin-parameter scenes and repeated AI applications. The grammar accounts for
+  every byte while retaining opaque windows where the captures do not isolate structure.
 seq:
   - id: header
     contents: [0x01]
@@ -59,10 +57,10 @@ seq:
       that is not a scene is what would separate a version from a body type. That capture
       was then taken, and it did.
 
-      A THIRD VALUE, 0x01, arrived later still, from applying the gallery's "Sweet". Its
-      content is not modelled: one body cannot be told from padding, and this grammar leaves
-      it raw rather than guessing a layout from a single sample. It is named in the enum so
-      that meeting one is recognised rather than mistaken for a corrupt scene body.
+      A THIRD VALUE, 0x01, arrived from the gallery's "Sweet" and "Halloween-A". Both were
+      reapplied and produced byte-identical uploads. Their bodies have different lengths and
+      internal values, but two non-adjustable catalogue samples cannot isolate their fields,
+      so this grammar recognises the shape without copying another model's layout into it.
   - id: content
     type:
       switch-on: kind
@@ -85,16 +83,21 @@ enums:
     0x08: chasing
     0x09: rainbow
     0x0a: crossing
+  workshop_select_type:
+    0x00: segment
+    0x01: select_ic_continuously
+    0x02: select_ic_randomly
 types:
   unmodelled_content:
     doc: |
-      A body shape with exactly one sample, held whole. Naming anything inside it would be
-      reading a layout off a single body, which is the mistake this grammar's other types were
-      each written to avoid; the bytes are kept so a second sample can be diffed against them.
+      The builtin-parameter body shape, held whole. Sweet and Halloween-A are the complete
+      shipped H6199 type-1 catalogue set and have different lengths, but neither is adjustable.
+      Their repeat applications are byte-identical, so no controlled comparison can isolate
+      an interior field without importing another model's grammar.
     seq:
       - id: opaque_body
         size-eos: true
-        doc: '[CONFIRMED_LIVE] the entire body after the kind byte, captured once and not varied'
+        doc: '[CONFIRMED_LIVE] the entire body after the kind byte, captured from both shipped samples and their byte-identical repeats'
   scene_content:
     seq:
       - id: block_count
@@ -152,7 +155,7 @@ types:
           4 and 5 rather than starting at zero.
 
           Later captures make it plainer still. Chasing1 and Chasing2 give 9 and 10, Rainbow1
-          and Rainbow2 give the SAME 9 and 10, and Music1 gives 8. So the value is not unique
+          and Rainbow2 give the SAME 9 and 10, and           Music1 gives 8, Music2 gives 6 and Music3 gives 7. So the value is not unique
           across families either: what identifies a style is the pair, and the number alone
           means nothing without the family beside it.
       - id: speed
@@ -177,17 +180,16 @@ types:
         size-eos: true
         doc: |
           [CONFIRMED_LIVE] zero padding out to the transport chunk boundary, captured as
-          between 6 and 18 bytes and always zero, across nineteen DIY uploads spanning eight
-          families and three palette sizes.
+          between 6 and 18 bytes and always zero, across twenty-two DIY uploads spanning all
+          nineteen styles, eight families and three palette sizes.
 
           A CLAIM THAT THIS IS ALWAYS PADDING WOULD BE TOO STRONG. The vendor Android app has
           a DIY encoder that appends a SECOND length-prefixed block after the palette, for
           effects carrying a direction or sub-effect list, and this field would swallow it
-          silently while still validating. No captured H6199 upload contains one: every style
-          the editor offers was applied and all nineteen end with zeros. So the field is right
-          for everything observed and the guard it lacks is recorded here rather than written
-          against bytes nobody has seen. An effect exposing a direction control is what would
-          settle it.
+          silently while still validating. No captured H6199 upload contains one: Music2 and
+          Music3 complete the editor's style list, and Music3 was also applied after shortening
+          its palette. Every resulting tail is zero. So the field is right for everything this
+          editor exposes, while a future firmware or editor surface could still add structure.
   rgb:
     seq:
       - id: red
@@ -207,12 +209,37 @@ types:
       - id: len
         type: u1
         doc: '[CONFIRMED_LIVE] the block length, not counting itself; captured between 26 and 47 across 30 blocks'
-      - id: opaque_head
-        size: 7
+      - id: applied_area
+        type: u1
         doc: |
-          [CONFIRMED_LIVE] the first seven bytes of the block, still unnamed. Every one of them
-          moved between every pair of differently-authored effects, so nothing in here is
-          isolated by a controlled comparison.
+          [CONFIRMED_LIVE] the layer's Applied Area byte at block offset 0, still raw. Captured
+          as 0x40 for the selected window in the controlled Workshop chain; its internal
+          encoding has not yet been isolated on H6199.
+      - id: select_type
+        type: u1
+        enum: workshop_select_type
+        doc: |
+          [CONFIRMED_LIVE] the Workshop "Select Type" at block offset 1. With both displayed
+          counts held at 2, switching Segment to Select IC Continuously moved this byte alone
+          from 0 to 1. Select IC Randomly then carried 2.
+      - id: select_upper
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] selection parameter at block offset 2. It is zero for Segment and
+          continuous selection and reads 2 while the random selector shows Maximum ICs 2.
+          The maximum itself has not yet been varied under an otherwise fixed random setup,
+          so the byte keeps a structural rather than semantic name.
+      - id: select_count_or_minimum
+        type: u1
+        doc: |
+          [CONFIRMED_LIVE] selection parameter at block offset 3. It follows Number of Segment
+          and Number of IC directly, and under Select IC Randomly moving Minimum IC from 1 to 2
+          moved this byte alone from 1 to 2.
+      - id: opaque_head_tail
+        size: 3
+        doc: |
+          [CONFIRMED_LIVE] block offsets 4 through 6, still unnamed. No single H6199 control
+          has isolated these three bytes.
       - id: brightness_scope_low
         size: 1
         if: len >= 15
@@ -258,21 +285,14 @@ types:
           THE TWO RETENTION TIMES SIT TOGETHER AND ARE WRITTEN DIRECTLY, while the two speeds
           around them are scaled to 0..255. Both conventions appear inside one block, so
           neither can be assumed for a byte that has not been driven.
-      - id: opaque_gap2
-        size: 1
+      - id: distribution_direction
+        type: u1
         doc: |
-          [CONFIRMED_LIVE] one byte at block offset 12, unnamed. It takes at least nine values
-          across the corpus (0x00 through 0x03, 0x80, 0x81, 0x83, 0xcb and 0xff), so a doc
-          that called it "never seen to vary" was false against the very fixtures committed
-          beside it.
-
-          THE 0x8x CLUSTER IS A TRAP, and worth naming so it is not walked into again. Those
-          values sit on the movement fixtures, which reads as an enable bit plus a low nibble
-          and looks exactly like the packed movement byte this block really does carry. It is
-          not that byte: the movement flag was afterwards isolated at the block's END, and
-          this offset did not move when either movement switch was toggled. The resemblance
-          is a resemblance. Three different controls shift the corpus values here in the same
-          direction, so nothing here is isolated by a controlled comparison.
+          [CONFIRMED_LIVE] packed Distribution Method and general Direction at block offset 12.
+          With Based on Number of IC held constant, changing Backward to Forward moved 0x81
+          to 0x01. With Forward held constant, changing the method moved this byte alone:
+          Unified Colour 0, Based on Number of IC 1, Based on Segment 2. Bit 0x80 therefore
+          means Backward and the remaining value selects the distribution method.
       - id: colour_change_speed
         size: 1
         if: len >= 15
@@ -302,19 +322,14 @@ types:
           still unnamed for the same reason as the head. Its length is whatever is left over,
           which is what makes the block's two ends addressable while its middle is not.
       - id: selected_movement
-        size: 1
+        type: u1
         if: len >= 22
         doc: |
-          [CONFIRMED_LIVE] the layer's "Moving Effect in the Selected Area", packed as an
-          enable flag and a direction, at block offset len - 7. Captured 2026-08-05 by turning
-          that one switch on in the Workshop editor: the byte moved 0x00 -> 0x10 and nothing
-          else in the body moved. Read back with the switch on, interval 0 and direction
-          Forward, the editor agreed with 0x10.
-
-          A fifth direction value exists and is NOT explained. A block captured in the same
-          session reads 0x14 here while the Overall control beside it offers only four
-          directions, so the low nibble is an index into a list this capture never enumerated
-          for the selected-area control. Settle it by opening that control's own picker.
+          [CONFIRMED_LIVE] packed selected-area movement byte at block offset len - 7. Bit
+          0x10 enables movement. The direction values are Forward 0, Forward and Backward 1,
+          Backward 2 and Backward and Forward 3. Bit 0x04 independently enables "Enter and
+          Exit Effect": toggling it off moved 0x14 to 0x10 alone while the displayed direction
+          remained Forward. The former "fifth direction" was this separate switch.
       - id: selected_movement_interval
         size: 1
         if: len >= 22
@@ -373,3 +388,19 @@ types:
           level and there is no separate enable bit for it. That is worth keeping: a switch
           that does not reach the wire until a second control is touched is the kind of thing
           a write-side model invents an enable flag for.
+    instances:
+      distribution_method:
+        value: 'distribution_direction & 0x7f'
+        doc: '[CONFIRMED_LIVE] Distribution Method value: 0 Unified Colour, 1 Based on Number of IC, 2 Based on Segment'
+      direction_is_backward:
+        value: '(distribution_direction & 0x80) != 0'
+        doc: '[CONFIRMED_LIVE] general Direction is Backward when bit 0x80 is set and Forward when clear'
+      selected_movement_enabled:
+        value: '(selected_movement & 0x10) != 0'
+        doc: '[CONFIRMED_LIVE] selected-area movement is enabled when bit 0x10 is set'
+      selected_enter_exit_enabled:
+        value: '(selected_movement & 0x04) != 0'
+        doc: '[CONFIRMED_LIVE] Enter and Exit Effect is enabled when bit 0x04 is set'
+      selected_direction:
+        value: 'selected_movement & 0x03'
+        doc: '[CONFIRMED_LIVE] selected-area direction value: 0 Forward, 1 Forward and Backward, 2 Backward, 3 Backward and Forward'

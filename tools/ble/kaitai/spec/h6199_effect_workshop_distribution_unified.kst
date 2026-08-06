@@ -1,0 +1,9 @@
+# Forward direction with Distribution Method changed to Unified Colour.
+id: h6199_effect_workshop_distribution_unified
+data: h6199_effect_workshop_distribution_unified.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].select_type", expected: 0}
+  - {actual: "content.blocks[0].select_count_or_minimum", expected: 2}
+  - {actual: "content.blocks[0].distribution_direction", expected: 0}
+  - {actual: "content.blocks[0].distribution_method", expected: 0}

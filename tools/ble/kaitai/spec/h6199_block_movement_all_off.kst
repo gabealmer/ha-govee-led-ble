@@ -18,7 +18,7 @@ asserts:
   - actual: content.blocks[1].len
     expected: 26
   - actual: content.blocks[1].selected_movement
-    expected: "00"
+    expected: 0
   - actual: content.blocks[1].overall_movement
     expected: "00"
   - actual: content.blocks[1].layer_priority

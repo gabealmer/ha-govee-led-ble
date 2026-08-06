@@ -1088,3 +1088,115 @@
     seven separate fields into two triples and a level.
   between: [h6199_block_movement_overall_speed, h6199_block_movement_overall_dir_bf]
   differs_at: [57]
+
+- id: h6199_diy_music_variants_move_only_the_variant
+  doc: >
+    Music1, Music2 and Music3 share family, speed, palette and zero tail. Consecutive styles
+    move only body offset 4, confirming APK variants 8, 6 and 7 without inventing a second
+    post-palette structure.
+  between: [h6199_effect_diy_music2, h6199_effect_diy_music3]
+  differs_at: [4]
+
+- id: h6199_builtin_sweet_replay_is_identical
+  doc: >
+    Reapplying the same Sweet tile uploads the same complete 34-byte body.
+  between: [h6199_effect_builtin_sweet, h6199_effect_builtin_sweet_repeat]
+  equal_at: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]
+
+- id: h6199_builtin_halloween_replay_is_identical
+  doc: >
+    Reapplying the same Halloween-A tile uploads the same complete 51-byte body.
+  between: [h6199_effect_builtin_halloween, h6199_effect_builtin_halloween_repeat]
+  equal_at: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
+
+- id: h6199_ai_saved_body_replays_identically
+  doc: >
+    Two immediate applications of the same saved AI response upload an identical complete
+    body even though the following activation identifiers differ.
+  between: [h6199_effect_ai_ocean_apply1, h6199_effect_ai_ocean_apply2]
+  equal_at: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84]
+
+- id: h6199_ai_saved_replay_changes_only_activation_id
+  doc: >
+    The same byte-identical AI body is followed by activation writes that differ only in
+    the low scene-id byte and checksum. The app allocates a new activation identifier on
+    replay rather than reusing the prior one.
+  between: [h6199_scene_ai_ocean_apply1, h6199_scene_ai_ocean_apply2]
+  differs_at: [3, 19]
+
+- id: h6199_ai_regenerated_body_replays_identically
+  doc: >
+    Regeneration produced a different body shape, and a later replay of that new response
+    uploaded the same complete 68-byte body.
+  between: [h6199_effect_ai_regenerated_apply, h6199_effect_ai_regenerated_replay]
+  equal_at: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67]
+
+- id: h6199_ai_regenerated_replay_changes_only_activation_id
+  doc: >
+    The regenerated response also receives a new activation identifier on replay while its
+    body remains byte-identical.
+  between: [h6199_scene_ai_regenerated_apply, h6199_scene_ai_regenerated_replay]
+  differs_at: [3, 19]
+
+- id: h6199_workshop_general_direction_is_bit_80
+  doc: >
+    With Based on Number of IC held constant, changing only the general Direction from
+    Backward to Forward clears bit 0x80 at block offset 12.
+  between: [h6199_effect_workshop_distribution_ic_backward, h6199_effect_workshop_distribution_ic_forward]
+  differs_at: [17]
+
+- id: h6199_workshop_distribution_moves_alone
+  doc: >
+    With general Direction held Forward, changing Based on Number of IC to Based on Segment
+    moves only the packed distribution byte.
+  between: [h6199_effect_workshop_distribution_ic_forward, h6199_effect_workshop_distribution_segment]
+  differs_at: [17]
+
+- id: h6199_workshop_distribution_unified_moves_alone
+  doc: >
+    Changing Based on Segment to Unified Colour likewise moves only the packed distribution
+    byte, completing observed values 0, 1 and 2.
+  between: [h6199_effect_workshop_distribution_segment, h6199_effect_workshop_distribution_unified]
+  differs_at: [17]
+
+- id: h6199_workshop_select_type_moves_alone
+  doc: >
+    With the displayed count held at 2 and every later control unchanged, switching Segment
+    to Select IC Continuously moves only block offset 1.
+  between: [h6199_effect_workshop_distribution_unified, h6199_effect_workshop_select_continuous]
+  differs_at: [6]
+
+- id: h6199_workshop_random_minimum_moves_alone
+  doc: >
+    Under Select IC Randomly with Maximum ICs held at 2, changing Minimum IC from 1 to 2
+    moves only block offset 3.
+  between: [h6199_effect_workshop_select_random_min1, h6199_effect_workshop_select_random_min2]
+  differs_at: [8]
+
+- id: h6199_workshop_enter_exit_is_bit_04
+  doc: >
+    With selected-area movement enabled and direction Forward, turning only Enter and Exit
+    Effect off changes 0x14 to 0x10 at the selected movement byte.
+  between: [h6199_effect_workshop_select_random_min2, h6199_effect_workshop_enter_exit_off]
+  differs_at: [27]
+
+- id: h6199_workshop_selected_direction_fb
+  doc: >
+    Changing selected-area direction Forward to Forward and Backward moves only its packed
+    byte from 0x10 to 0x11.
+  between: [h6199_effect_workshop_enter_exit_off, h6199_effect_workshop_selected_fb]
+  differs_at: [27]
+
+- id: h6199_workshop_selected_direction_backward
+  doc: >
+    Changing selected-area direction Forward and Backward to Backward moves only its packed
+    byte from 0x11 to 0x12.
+  between: [h6199_effect_workshop_selected_fb, h6199_effect_workshop_selected_backward]
+  differs_at: [27]
+
+- id: h6199_workshop_selected_direction_bf
+  doc: >
+    Changing selected-area direction Backward to Backward and Forward moves only its packed
+    byte from 0x12 to 0x13.
+  between: [h6199_effect_workshop_selected_backward, h6199_effect_workshop_selected_bf]
+  differs_at: [27]

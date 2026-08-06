@@ -1,0 +1,9 @@
+# The same random selection after changing only Minimum IC from 1 to 2.
+id: h6199_effect_workshop_select_random_min2
+data: h6199_effect_workshop_select_random_min2.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].select_type", expected: 2}
+  - {actual: "content.blocks[0].select_upper", expected: 2}
+  - {actual: "content.blocks[0].select_count_or_minimum", expected: 2}
+  - {actual: "content.blocks[0].selected_enter_exit_enabled", expected: true}

@@ -1,0 +1,9 @@
+# Enter and Exit Effect disabled while selected-area direction remains Forward.
+id: h6199_effect_workshop_enter_exit_off
+data: h6199_effect_workshop_enter_exit_off.bin
+imports: [h6199_effect_upload]
+asserts:
+  - {actual: "content.blocks[0].selected_movement", expected: 16}
+  - {actual: "content.blocks[0].selected_movement_enabled", expected: true}
+  - {actual: "content.blocks[0].selected_enter_exit_enabled", expected: false}
+  - {actual: "content.blocks[0].selected_direction", expected: 0}
