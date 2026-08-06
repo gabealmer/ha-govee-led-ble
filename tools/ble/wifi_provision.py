@@ -13,10 +13,11 @@ each one byte for byte. A new push must match the field lengths of one captured 
 that only field contents differ. Run ``compare`` before sending anything to hardware.
 
 NEVER PASS A PASSPHRASE AS AN ARGUMENT. argv is world-readable through /proc for the life of
-the process. ``build`` reads the network from stdin as two lines, ssid then passphrase, and
-``govee_send.py send -`` reads the frames it produces the same way::
+the process. ``build`` reads stdin as SSID, passphrase and an optional API URL. The API
+defaults to the captured production value. ``govee_send.py send -`` reads the frames from
+stdin too::
 
-    printf '%s\n%s\n' "$SSID" "$PASSPHRASE" |
+    printf '%s\n%s\n%s\n' "$SSID" "$PASSPHRASE" "$API" |
       python tools/ble/wifi_provision.py build |
       python tools/ble/govee_send.py send - --address <addr> --gap 0.3 --listen 40
 """
@@ -181,32 +182,33 @@ def reference_for(ssid: str, password: str, api: str = DEFAULT_API) -> AcceptedS
     return next((case for case in KNOWN_ACCEPTED_CASES if case.field_lengths == lengths), None)
 
 
-def _read_network() -> tuple[str, str]:
+def _read_network() -> tuple[str, str, str]:
     lines = sys.stdin.read().splitlines()
     if len(lines) < 2:
-        raise SystemExit("stdin must hold two lines: ssid then passphrase")
-    return lines[0].strip(), lines[1].strip()
+        raise SystemExit("stdin must hold SSID and passphrase lines, with an optional API URL")
+    api = lines[2].strip() if len(lines) > 2 and lines[2].strip() else DEFAULT_API
+    return lines[0].strip(), lines[1].strip(), api
 
 
 def cmd_build(_: argparse.Namespace) -> int:
-    ssid, password = _read_network()
+    ssid, password, api = _read_network()
     if not verify_against_known_accepted():
         raise SystemExit("refusing to build: the encoder no longer reproduces every captured accepted sequence")
-    if reference_for(ssid, password) is None:
+    if reference_for(ssid, password, api) is None:
         raise SystemExit("refusing to build: no captured sequence has these SSID, passphrase and API lengths")
-    for frame in build(ssid, password):
+    for frame in build(ssid, password, api):
         print(frame.hex())
     return 0
 
 
 def cmd_compare(_: argparse.Namespace) -> int:
     """Show exactly which bytes a push would differ by, against a captured sequence."""
-    ssid, password = _read_network()
-    reference = reference_for(ssid, password)
+    ssid, password, api = _read_network()
+    reference = reference_for(ssid, password, api)
     if reference is None:
         print("UNPROVEN SHAPE: no captured sequence has these SSID, passphrase and API lengths")
         return 1
-    new = build(ssid, password)
+    new = build(ssid, password, api)
     old = [bytes.fromhex(frame) for frame in reference.frames]
     print(f"encoder reproduces every captured accepted sequence: {verify_against_known_accepted()}")
     print(f"reference: {reference.name}")

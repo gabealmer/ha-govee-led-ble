@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # provision_wifi.sh [device] -- write Wi-Fi credentials to a device over our own radio.
 #
-# Reads the network from STDIN as two lines, ssid then passphrase:
+# Reads the network from STDIN as SSID, passphrase and an optional API URL:
 #
-#   printf '%s\n%s\n' "$SSID" "$PASSPHRASE" | bash tools/harness/provision_wifi.sh dreamtv
+#   printf '%s\n%s\n%s\n' "$SSID" "$PASSPHRASE" "$API" |
+#     bash tools/harness/provision_wifi.sh dreamtv
 #
 # STDIN rather than arguments because argv is world-readable through /proc for the life of
 # the process, so a passphrase on a command line leaks it to every account on the box.
@@ -21,7 +22,10 @@ set -uo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/phone.sh"
 resolve_device "${1:-$DEVICE_DEFAULT}"
 
-[ -t 0 ] && { echo "read the network from stdin: ssid on line 1, passphrase on line 2" >&2; exit 2; }
+[ -t 0 ] && {
+  echo "read SSID and passphrase from stdin; API URL is an optional third line" >&2
+  exit 2
+}
 network="$(cat)"
 
 [ -n "$DEVICE_EXPECTED_PEER" ] || { echo "$DEVICE_NAME has no address to write to" >&2; exit 1; }

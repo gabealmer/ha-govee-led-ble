@@ -73,7 +73,14 @@ seq:
       compiled-in URLs using a support level the DEVICE reports over aa ab, and ours reports
       the level that selects this one. Nothing validates it, and it is not signed, so the
       field is a lever on where the device checks in even though the app never treats it as
-      one. Whether the firmware accepts an arbitrary host is UNTESTED.
+      one.
+
+      A controlled same-length endpoint was pushed on 2026-08-06 and honoured immediately.
+      The H6199 accepted a self-signed TLS certificate and sent six empty-body POST retries
+      to /device/v1/base/config. The query carried device, SKU and Wi-Fi-version keys; their
+      values are private and not fixtures. This disproves both a compiled-host replacement
+      and certificate pinning. The production URL was restored without proxying its response
+      or handling the device credentials it may return.
   - id: matter_wifi_flag
     type: u1
     doc: |

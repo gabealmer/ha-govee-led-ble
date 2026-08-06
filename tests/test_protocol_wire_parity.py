@@ -667,6 +667,29 @@ def test_wifi_builder_refuses_unobserved_field_lengths():
     assert wifi_provision.reference_for("UNSEEN12", "12345678") is None
 
 
+def test_wifi_endpoint_override_is_limited_to_a_captured_api_width():
+    endpoint = "https://govee.ai.xaz.lol"
+    assert len(endpoint) == len(wifi_provision.DEFAULT_API)
+    assert wifi_provision.reference_for(
+        wifi_provision.KNOWN_ACCEPTED_SSID,
+        wifi_provision.KNOWN_ACCEPTED_PASSWORD,
+        endpoint,
+    )
+    assert not wifi_provision.reference_for(
+        wifi_provision.KNOWN_ACCEPTED_SSID,
+        wifi_provision.KNOWN_ACCEPTED_PASSWORD,
+        f"{endpoint}/longer",
+    )
+    assert wifi_provision.build(
+        wifi_provision.KNOWN_ACCEPTED_SSID,
+        wifi_provision.KNOWN_ACCEPTED_PASSWORD,
+        endpoint,
+    ) != wifi_provision.build(
+        wifi_provision.KNOWN_ACCEPTED_SSID,
+        wifi_provision.KNOWN_ACCEPTED_PASSWORD,
+    )
+
+
 def test_an_open_network_sends_a_zero_length_passphrase():
     """password_len is why the body cannot be read as fixed-width fields."""
     body = wifi_provision.build_body("OPENNET", "")
