@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v5.2.0 (2026-08-06)
+
+### Features
+
+- **wifi**: Prove variable H6199 framing
+  ([`6029ed1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/6029ed1791b38178b68fa94815ce6893d779b9d9))
+
+
 ## v5.1.0 (2026-08-06)
 
 ### Bug Fixes
