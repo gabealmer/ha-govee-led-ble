@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# preflight.sh [app|direct] -- inspect harness prerequisites without taking a BLE link.
+# preflight.sh [app|direct] [device] -- inspect harness prerequisites without taking a BLE link.
 set -euo pipefail
 
 mode="${1:-app}"
@@ -22,6 +22,7 @@ echo "RSD backend: $HARNESS_RSD_BACKEND"
 echo "BLE backend: $HARNESS_BLE_BACKEND"
 
 if [ "$mode" = direct ]; then
+  resolve_device "${2:-$DEVICE_DEFAULT}"
   require_bluetooth_transport
   echo "bluetooth: ready"
   exit 0
