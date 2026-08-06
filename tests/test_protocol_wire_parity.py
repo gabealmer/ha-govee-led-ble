@@ -577,23 +577,62 @@ def test_type_one_scene_bodies_are_the_catalogue_param_framed(code, name):
     assert captured[0] == 0x01 and captured[2] == 0x01
 
 
-def test_wifi_encoder_reproduces_the_sequence_the_firmware_accepted():
+@pytest.mark.parametrize(
+    ("ssid", "password", "fixture_names"),
+    [
+        (
+            wifi_provision.KNOWN_ACCEPTED_SSID,
+            wifi_provision.KNOWN_ACCEPTED_PASSWORD,
+            (
+                "h6199_wifi_frame_header",
+                "h6199_wifi_frame_data1",
+                "h6199_wifi_frame_data2",
+                "h6199_wifi_frame_data3",
+                "h6199_wifi_frame_data4",
+                "h6199_wifi_frame_terminator",
+            ),
+        ),
+        (
+            wifi_provision.SHAPE3_SSID,
+            wifi_provision.SHAPE3_PASSWORD,
+            (
+                "h6199_wifi_shape3_header",
+                "h6199_wifi_shape3_data1",
+                "h6199_wifi_shape3_data2",
+                "h6199_wifi_shape3_data3",
+                "h6199_wifi_frame_terminator",
+            ),
+        ),
+        (
+            wifi_provision.SHAPE5_SSID,
+            wifi_provision.SHAPE5_PASSWORD,
+            (
+                "h6199_wifi_shape5_header",
+                "h6199_wifi_shape5_data1",
+                "h6199_wifi_shape5_data2",
+                "h6199_wifi_shape5_data3",
+                "h6199_wifi_shape5_data4",
+                "h6199_wifi_shape5_data5",
+                "h6199_wifi_frame_terminator",
+            ),
+        ),
+    ],
+)
+def test_wifi_encoder_reproduces_every_captured_shape(ssid, password, fixture_names):
     """The provisioning encoder is checked against captured bytes, not against itself.
 
     This is the one encoder in the tree whose output is written to a device's persistent
-    configuration, and we have exactly one sequence the firmware is known to have accepted.
-    So the encoder's own guard rebuilds that sequence, and this pins the guard: if the
-    fragmentation rule or the body layout drifts, both the tool's self-check and this test
-    fail together rather than the tool quietly blessing a new shape.
+    configuration. The captured corpus spans three, four and five data frames, so a boundary
+    bug can no longer hide behind the original four-frame case.
 
     The credentials are invented. A real network's must never be committed, and the tool
     reads them from stdin for the same reason.
     """
     assert wifi_provision.verify_against_known_accepted()
 
-    frames = wifi_provision.build(wifi_provision.KNOWN_ACCEPTED_SSID, wifi_provision.KNOWN_ACCEPTED_PASSWORD)
-    for label, frame in zip(["header", "data1", "data2", "data3", "data4", "terminator"], frames, strict=True):
-        assert frame == fixture(f"h6199_wifi_frame_{label}"), label
+    frames = wifi_provision.build(ssid, password)
+    for name, frame in zip(fixture_names, frames, strict=True):
+        assert frame == fixture(name), name
 
 
 def test_wifi_body_is_forty_nine_bytes_and_fragments_into_four():
@@ -607,6 +646,25 @@ def test_wifi_body_is_forty_nine_bytes_and_fragments_into_four():
     assert body == fixture("h6199_wifi_body_fakenet")
     assert len(body) == 49
     assert len(wifi_provision.build_sequence(body)) == 6  # header + 4 data + terminator
+
+
+@pytest.mark.parametrize(
+    ("ssid", "password", "fixture_name", "body_len", "data_frames"),
+    [
+        (wifi_provision.SHAPE3_SSID, wifi_provision.SHAPE3_PASSWORD, "h6199_wifi_shape3_body", 48, 3),
+        (wifi_provision.SHAPE5_SSID, wifi_provision.SHAPE5_PASSWORD, "h6199_wifi_shape5_body", 65, 5),
+    ],
+)
+def test_wifi_body_crosses_both_neighbouring_frame_boundaries(ssid, password, fixture_name, body_len, data_frames):
+    body = wifi_provision.build_body(ssid, password)
+    assert body == fixture(fixture_name)
+    assert len(body) == body_len
+    assert len(wifi_provision.build_sequence(body)) == data_frames + 2
+    assert wifi_provision.reference_for(ssid, password) is not None
+
+
+def test_wifi_builder_refuses_unobserved_field_lengths():
+    assert wifi_provision.reference_for("UNSEEN12", "12345678") is None
 
 
 def test_an_open_network_sends_a_zero_length_passphrase():

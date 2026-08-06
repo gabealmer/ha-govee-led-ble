@@ -9,12 +9,11 @@
 # the process, so a passphrase on a command line leaks it to every account on the box.
 #
 # THIS WRITES PERSISTENT CONFIGURATION TO A DEVICE. Two things make that survivable. The
-# encoder refuses to run unless it still reproduces a sequence this firmware has been
-# observed to accept, and `wifi_provision.py compare` will show which bytes a push differs
-# by beforehand: anything outside the ssid and passphrase windows means the fragmentation
-# rule is being extrapolated rather than applied. The recovery path if it goes wrong is the
-# vendor's physical reset, a ten second hold of the device's power button, because there is
-# NO software clear-Wi-Fi on this model: opcodes 0x46 and 0x17 are both firmware-absent.
+# encoder refuses to run unless it still reproduces all captured accepted shapes, and
+# `wifi_provision.py compare` requires the new SSID, passphrase and API lengths to match one
+# of them. The recovery path if it goes wrong is the vendor's physical reset, a ten second
+# hold of the device's power button, because there is NO software clear-Wi-Fi on this model:
+# opcodes 0x46 and 0x17 are both firmware-absent.
 #
 # Home Assistant owns the link by default and is released for the duration. The trap gives
 # it back on every exit path, because a light nobody owns is worse than a failed experiment.

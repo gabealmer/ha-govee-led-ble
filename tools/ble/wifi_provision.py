@@ -7,12 +7,10 @@ credential-writing encoder is not something to ship into every install of it for
 tidiness. It lives here with the other research tools instead, and the wire structure it
 produces is owned by ``kaitai/h6199_wifi_body.ksy`` and ``kaitai/h6199_wifi_provision.ksy``.
 
-THE SAFETY ARGUMENT IS THE DIFF, NOT THE CODE. We have exactly one sequence this firmware is
-known to accept, and the fragmentation rule is confirmed at that single point. So
-``verify_against`` rebuilds that known-accepted sequence and compares byte for byte, and a
-new push is chosen to have the SAME field lengths so that only the characters differ. Run
-``compare`` before sending anything to hardware; a difference outside the SSID and
-passphrase windows means the rule has been extrapolated rather than applied.
+THE SAFETY ARGUMENT IS THE DIFF, NOT THE CODE. We hold vendor-generated sequences at the
+three, four and five data-frame shapes this firmware accepted. ``verify_against`` rebuilds
+each one byte for byte. A new push must match the field lengths of one captured sequence so
+that only field contents differ. Run ``compare`` before sending anything to hardware.
 
 NEVER PASS A PASSPHRASE AS AN ARGUMENT. argv is world-readable through /proc for the life of
 the process. ``build`` reads the network from stdin as two lines, ssid then passphrase, and
@@ -28,6 +26,7 @@ from __future__ import annotations
 import argparse
 import math
 import sys
+from dataclasses import dataclass
 
 FRAME_LEN = 20
 PAYLOAD_LEN = 16
@@ -56,6 +55,54 @@ KNOWN_ACCEPTED_FRAMES = [
     "a1110400000000000000000000000000000000b4",
     "a111ff000000000000000000000000000000004f",
 ]
+
+SHAPE3_SSID = "GVS006"
+SHAPE3_PASSWORD = "B1c2D3e4"  # noqa: S105 - fabricated fixture credential
+SHAPE3_FRAMES = [
+    "a1110003000000000000000000000000000000b3",
+    "a1110106475653303036084231633244336534cf",
+    "a11102000a0000001868747470733a2f2f6465f0",
+    "a11103766963652e676f7665652e636f6d0000b5",
+    "a111ff000000000000000000000000000000004f",
+]
+
+SHAPE5_SSID = "GOVEE5FRAMEBOUNDARY0000"
+SHAPE5_PASSWORD = "C1d2E3f4"  # noqa: S105 - fabricated fixture credential
+SHAPE5_FRAMES = [
+    "a1110005000000000000000000000000000000b5",
+    "a1110117474f564545354652414d45424f554e86",
+    "a111024441525930303030084331643245336680",
+    "a1110334000a0000001868747470733a2f2f64a0",
+    "a1110465766963652e676f7665652e636f6d00d7",
+    "a1110500000000000000000000000000000000b5",
+    "a111ff000000000000000000000000000000004f",
+]
+
+
+@dataclass(frozen=True)
+class AcceptedSequence:
+    name: str
+    ssid: str
+    password: str
+    api: str
+    frames: tuple[str, ...]
+
+    @property
+    def field_lengths(self) -> tuple[int, int, int]:
+        return len(self.ssid.encode()), len(self.password.encode()), len(self.api.encode())
+
+
+KNOWN_ACCEPTED_CASES = (
+    AcceptedSequence(
+        "four-frame",
+        KNOWN_ACCEPTED_SSID,
+        KNOWN_ACCEPTED_PASSWORD,
+        DEFAULT_API,
+        tuple(KNOWN_ACCEPTED_FRAMES),
+    ),
+    AcceptedSequence("three-frame", SHAPE3_SSID, SHAPE3_PASSWORD, DEFAULT_API, tuple(SHAPE3_FRAMES)),
+    AcceptedSequence("five-frame", SHAPE5_SSID, SHAPE5_PASSWORD, DEFAULT_API, tuple(SHAPE5_FRAMES)),
+)
 
 
 def build_body(
@@ -121,9 +168,17 @@ def build(ssid: str, password: str, api: str = DEFAULT_API) -> list[bytes]:
 
 
 def verify_against_known_accepted() -> bool:
-    """Rebuild the sequence this firmware accepted and check it byte for byte."""
-    built = [frame.hex() for frame in build(KNOWN_ACCEPTED_SSID, KNOWN_ACCEPTED_PASSWORD)]
-    return built == KNOWN_ACCEPTED_FRAMES
+    """Rebuild every captured accepted sequence and check it byte for byte."""
+    return all(
+        [frame.hex() for frame in build(case.ssid, case.password, case.api)] == list(case.frames)
+        for case in KNOWN_ACCEPTED_CASES
+    )
+
+
+def reference_for(ssid: str, password: str, api: str = DEFAULT_API) -> AcceptedSequence | None:
+    """Return the captured sequence with the same length-prefixed field widths."""
+    lengths = len(ssid.encode()), len(password.encode()), len(api.encode())
+    return next((case for case in KNOWN_ACCEPTED_CASES if case.field_lengths == lengths), None)
 
 
 def _read_network() -> tuple[str, str]:
@@ -136,22 +191,26 @@ def _read_network() -> tuple[str, str]:
 def cmd_build(_: argparse.Namespace) -> int:
     ssid, password = _read_network()
     if not verify_against_known_accepted():
-        raise SystemExit("refusing to build: the encoder no longer reproduces a known-accepted sequence")
+        raise SystemExit("refusing to build: the encoder no longer reproduces every captured accepted sequence")
+    if reference_for(ssid, password) is None:
+        raise SystemExit("refusing to build: no captured sequence has these SSID, passphrase and API lengths")
     for frame in build(ssid, password):
         print(frame.hex())
     return 0
 
 
 def cmd_compare(_: argparse.Namespace) -> int:
-    """Show exactly which bytes a push would differ by, against the accepted sequence."""
+    """Show exactly which bytes a push would differ by, against a captured sequence."""
     ssid, password = _read_network()
-    new = build(ssid, password)
-    old = build(KNOWN_ACCEPTED_SSID, KNOWN_ACCEPTED_PASSWORD)
-    print(f"encoder reproduces the known-accepted sequence: {verify_against_known_accepted()}")
-    print(f"writes: {len(new)} vs {len(old)}")
-    if len(new) != len(old):
-        print("DIFFERENT SHAPE: the fragmentation rule is being extrapolated, not applied")
+    reference = reference_for(ssid, password)
+    if reference is None:
+        print("UNPROVEN SHAPE: no captured sequence has these SSID, passphrase and API lengths")
         return 1
+    new = build(ssid, password)
+    old = [bytes.fromhex(frame) for frame in reference.frames]
+    print(f"encoder reproduces every captured accepted sequence: {verify_against_known_accepted()}")
+    print(f"reference: {reference.name}")
+    print(f"writes: {len(new)} vs {len(old)}")
     for position, (a, b) in enumerate(zip(new, old, strict=True)):
         differing = [i for i in range(FRAME_LEN) if a[i] != b[i]]
         where = (

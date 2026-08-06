@@ -14,10 +14,11 @@ doc: |
   captures the whole time. A filter keyed on what you already recognise hides exactly the
   traffic that would teach you something.
 
-  Both status values have now been produced deliberately on our own hardware, which is what
-  moves this from a guess to a reading: a network invented to be impossible gave 0x01, and
-  credentials for a network that existed gave 0x00 with an independent observer confirming
-  the light had joined it. Nothing here is inferred from the vendor app.
+  Both status values have now been produced deliberately on our own hardware. A network
+  invented to be impossible gave 0x01. Several fabricated networks that existed gave 0x00,
+  with UniFi independently confirming 2.4 GHz association even though the client had no IP
+  on that VLAN and retained only its previous-subnet address as history. The result therefore
+  does not require DHCP, routed connectivity or cloud reach.
 seq:
   - id: header
     contents: [0xee]
@@ -32,10 +33,9 @@ seq:
       [CONFIRMED_LIVE] association outcome at frame offset 2. Captured as 0x01 after pushing
       a deliberately non-existent SSID, and as 0x00 after pushing working credentials.
 
-      What 0x00 requires is NOT settled. The successful push was to a network that had a
-      route to the internet at the time, so this does not yet distinguish "associated" from
-      "associated and reached the cloud". Settle it by provisioning a network that exists but
-      is deliberately unrouted, and reading this byte.
+      UniFi later observed 0x00 attempts associated to the intended SSID without obtaining a
+      VLAN IP. That rules out DHCP, internet and cloud reach as prerequisites. The strongest
+      supported reading is successful Wi-Fi association.
   - id: opaque_tail
     size: 16
     doc: '[CONFIRMED_LIVE] remaining bytes at frame offsets 3..18, captured as an opaque all-zero window in both the success and failure cases'
@@ -44,5 +44,5 @@ seq:
     doc: '[CONFIRMED_LIVE] raw XOR checksum byte at frame offset 19; validated by the fixture runner'
 enums:
   outcome:
-    0x00: connected
+    0x00: associated
     0x01: not_connected

@@ -4,8 +4,8 @@ meta:
   endian: be
 doc: |
   One 20-byte write of the H6199's Wi-Fi provisioning sequence, modelled from captures of
-  the Govee Home iOS app driving a DreamView T1, and confirmed by writing the same shape
-  from our own radio.
+  the Govee Home iOS app driving a DreamView T1. Vendor-generated 48-, 49- and 65-byte
+  bodies exercise three, four and five data frames respectively.
 
   A provisioning push is a SEQUENCE, not a frame: a header frame carrying the number of data
   frames, then that many data frames each holding 16 bytes of the body, then an empty frame
@@ -58,6 +58,6 @@ instances:
     value: payload[0]
     if: index == 0
     doc: |
-      [CONFIRMED_LIVE] number of data frames the header announces. Captured as 4 for a
-      49-byte body, which is ceil(49 / 16); the app derives the announced count and the
-      number of frames it then sends from one value, so the two cannot disagree.
+      [CONFIRMED_LIVE] number of data frames the header announces. Captured as 3, 4 and 5
+      for 48-, 49- and 65-byte bodies, exactly ceil(body_length / 16). Each sequence then
+      carried precisely that many indexed data frames before the empty terminator.

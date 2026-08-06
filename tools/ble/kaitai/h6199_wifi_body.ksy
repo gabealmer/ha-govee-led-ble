@@ -7,10 +7,9 @@ doc: |
   a1 11 sequence are concatenated in index order. See h6199_wifi_provision for the framing.
 
   The layout was first read out of the vendor Android app and then confirmed against wire
-  bytes: every field below was checked against a capture, and the two trailing bytes were
-  found on the wire BEFORE they were understood, having been mistaken for padding. That
-  mistake is why the body is 49 bytes rather than 47, and it is what makes the frame count
-  ceil(49 / 16) = 4 rather than 3.
+  bytes. The original 49-byte body exposed two trailing bytes that had been mistaken for
+  padding. Later vendor captures vary only fabricated SSID length and prove the same layout
+  at 48 and 65 bytes, crossing both neighbouring 16-byte frame-count boundaries.
 
   The bytes are UNSIGNED AND UNAUTHENTICATED. There is no MAC, hash or key anywhere in this
   body; the only transform applied to the endpoint URL is its length prefix. That was read

@@ -1,0 +1,9 @@
+# Vendor-generated 48-byte provisioning body: three data frames.
+id: h6199_wifi_shape3_header
+data: h6199_wifi_shape3_header.bin
+imports: [h6199_wifi_provision]
+asserts:
+  - {actual: sub_opcode, expected: 17}
+  - {actual: index, expected: 0}
+  - {actual: is_header, expected: true}
+  - {actual: data_frame_count, expected: 3}

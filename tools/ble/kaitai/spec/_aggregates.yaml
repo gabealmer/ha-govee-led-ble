@@ -1200,3 +1200,12 @@
     byte from 0x12 to 0x13.
   between: [h6199_effect_workshop_selected_backward, h6199_effect_workshop_selected_bf]
   differs_at: [27]
+
+- id: h6199_wifi_header_count_crosses_boundaries
+  doc: >
+    Vendor-generated headers announce three, four and five data frames for reassembled body
+    lengths 48, 49 and 65. Each sequence then carried exactly that many indexed frames and
+    the same empty terminator.
+  cases: h6199_wifi_*header
+  collect: data_frame_count
+  distinct_at_least: 3

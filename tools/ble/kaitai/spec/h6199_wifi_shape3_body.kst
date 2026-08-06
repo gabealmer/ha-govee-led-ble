@@ -1,0 +1,16 @@
+# Reassembled exact-boundary 48-byte body using fabricated credentials.
+id: h6199_wifi_shape3_body
+data: h6199_wifi_shape3_body.bin
+imports: [h6199_wifi_body]
+asserts:
+  - {actual: ssid_len, expected: 6}
+  - {actual: ssid, expected: "GVS006"}
+  - {actual: password_len, expected: 8}
+  - {actual: run_mode, expected: 0}
+  - {actual: tz_hour, expected: 10}
+  - {actual: iot_version, expected: 0}
+  - {actual: tz_minute, expected: 0}
+  - {actual: api_len, expected: 24}
+  - {actual: api, expected: "https://device.govee.com"}
+  - {actual: matter_wifi_flag, expected: 0}
+  - {actual: security_type, expected: 0}

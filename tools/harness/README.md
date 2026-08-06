@@ -102,12 +102,10 @@ of the power button, and that is also the recovery path that makes everything he
 non-bricking. Plan around overwriting the credentials, not clearing them.
 
 Because a push is persistent and largely one-way, the safety argument is a **diff, not a
-review**. We hold one sequence the firmware has been observed to accept; the encoder refuses
-to run unless it still reproduces that sequence byte for byte, and `wifi_provision.py compare`
-shows which bytes a new push would differ by. Choose the new network so the field lengths
-match the accepted one, and the only differences are the characters themselves. A difference
-anywhere else means the fragmentation rule is being extrapolated rather than applied, and the
-push should not be sent.
+review**. We hold vendor-generated sequences at three, four and five data frames. The encoder
+refuses to run unless it reproduces all three byte for byte, and `wifi_provision.py compare`
+requires a new network's length-prefixed fields to match one captured case. A shape outside
+that set is an extrapolation and is refused.
 
 The device answers twice and the two mean different things. An acknowledgement arrives within
 milliseconds and says only that the frames were structurally accepted; the outcome arrives
