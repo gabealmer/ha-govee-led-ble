@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v5.1.0 (2026-08-06)
+
+### Bug Fixes
+
+- **harness**: Resolve direct preflight backend
+  ([`92300c4`](https://github.com/teh-hippo/ha-govee-led-ble/commit/92300c4f35229862b7bef58974ebd25403277cb6))
+
+### Chores
+
+- **deps**: Lock file maintenance
+  ([`a95945f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a95945feaac9a92695549fcfef09d5bfdddb3975))
+
+### Features
+
+- **kaitai**: Close remaining H6199 effect gaps
+  ([`8a5fccc`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8a5fccc0b7754cfc8bf466ffc09e6cb9116d113f))
+
+
 ## v5.0.1 (2026-08-05)
 
 ### Bug Fixes
