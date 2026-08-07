@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v6.0.0 (2026-08-07)
+
+### Features
+
+- Document the native v6 surface
+  ([`d83a0c8`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d83a0c8b8eb2cc185ef8bb6af8e847458282da2f))
+
+### Breaking Changes
+
+- Version 6 removes timers, saved custom effects, the custom frontend, active-mode sensor, parallel
+  mode controls and retired mode services.
+
+
 ## v5.3.0 (2026-08-07)
 
 ### Bug Fixes
