@@ -1,6 +1,96 @@
 # CHANGELOG
 
 
+## v5.3.0 (2026-08-07)
+
+### Bug Fixes
+
+- **protocol**: Align integration with Kaitai evidence
+  ([`a5630cd`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a5630cd9deadd9fe3d0b0c80e68700b0d4f981bc))
+
+- **security**: Permanently redact captured secrets
+  ([`27b53ac`](https://github.com/teh-hippo/ha-govee-led-ble/commit/27b53acea804a22da37b9af060d2ba9d768228f2))
+
+### Build System
+
+- **kaitai**: Generate runtime with official compiler
+  ([`913a57d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/913a57dd5c1782b75f0d1574c4113adbd7aa57c2))
+
+### Chores
+
+- **deps**: Lock file maintenance
+  ([`161f739`](https://github.com/teh-hippo/ha-govee-led-ble/commit/161f7397027f54cfda5ded7dbffe5893d9b41fdd))
+
+- **deps**: Update dependency pipx:pymobiledevice3 to v10.3.1
+  ([`1e64e76`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1e64e7656ac5f0d5136c2b5621d6a96024e175fd))
+
+- **wifi**: Support guarded endpoint probes
+  ([`5cb4b79`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5cb4b79c53072a24f01f602acae6be3b00016b86))
+
+### Features
+
+- **ha**: Add configurable native effects
+  ([`5437a34`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5437a34e9a09161f4ea51b13984c5b0e2883c2a8))
+
+### Refactoring
+
+- **ha**: Remove retired control surfaces
+  ([`1c1c838`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1c1c83849bdfa01abd079d7ed95a790b42a65733))
+
+- **kaitai**: Consolidate schemas and evidence corpus
+  ([`87007d3`](https://github.com/teh-hippo/ha-govee-led-ble/commit/87007d342930ab1cd12929142ed4f389254fd53e))
+
+- **kaitai**: Drop evidence metadata and empty tails
+  ([`64f0230`](https://github.com/teh-hippo/ha-govee-led-ble/commit/64f02303cb33c495bbc2d5977be02e6347ef6334))
+
+- **kaitai**: Remove retired clock and timer formats
+  ([`3bf2d5e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3bf2d5e2abaa92e5e6ad24cd8464cf7dde9b071d))
+
+- **protocol**: Consume generated colour modes
+  ([`f2ace66`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f2ace6686e7f5fe17fca094dc41f6e09f8c13413))
+
+- **protocol**: Consume generated status fields
+  ([`66d4c13`](https://github.com/teh-hippo/ha-govee-led-ble/commit/66d4c137235fcec47a481ba9a256248bff3cbc2c))
+
+- **protocol**: Generate blank-screen commands
+  ([`8c5876f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8c5876f0c89e0836e0847fcea242d1faffb98a1e))
+
+- **protocol**: Generate H6199 control commands
+  ([`620e85c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/620e85c3983dfd275652b754061177fa21930436))
+
+- **protocol**: Generate power and brightness commands
+  ([`f48d003`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f48d003108212c97e936538505d7b14178f3a1c5))
+
+- **protocol**: Generate scene activation commands
+  ([`0e48144`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0e481441cfc5126a8e53e288700d8583dcb0538f))
+
+- **protocol**: Generate static colour commands
+  ([`66cff1d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/66cff1df9bbc738fd72f995200e2de9258fcfb65))
+
+- **protocol**: Generate status queries
+  ([`ff0b615`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ff0b61504e6a2618dc0baac25bf2205873e0b0f3))
+
+- **protocol**: Parse status envelopes with Kaitai
+  ([`7d001f9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7d001f9d60a41b6f727d3c2e925543f622492067))
+
+- **protocol**: Remove handwritten command readers
+  ([`1a206f6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1a206f6ed030b688b9f75f186fb58e9a480fd5a1))
+
+- **protocol**: Require generated status readers
+  ([`2345554`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2345554a781f281e76b2f4d46d13a1a586613fbc))
+
+- **scenes**: Load per-model snapshots
+  ([`7c22e1e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7c22e1ec3eb82639b9616e871cd20f9605bbb725))
+
+- **tools**: Decode protocol with Kaitai
+  ([`55383f2`](https://github.com/teh-hippo/ha-govee-led-ble/commit/55383f20ae6bce486e89157c6a88dc42cab5ce75))
+
+### Testing
+
+- **kaitai**: Fully model H6199 Workshop blocks
+  ([`10de6c7`](https://github.com/teh-hippo/ha-govee-led-ble/commit/10de6c750e57cc21d6ff5d9838e0113f8fa5a34d))
+
+
 ## v5.2.0 (2026-08-06)
 
 ### Features
