@@ -47,5 +47,5 @@
         "bleak-retry-connector>=3.0.0",
         "kaitaistruct==0.11"
     ],
-    "version": "6.0.1"
+    "version": "6.0.2"
 }
