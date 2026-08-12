@@ -3,6 +3,10 @@ from unittest.mock import MagicMock
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.coordinator import (
+    PACKET_LOG_LIMIT,
+    PACKET_LOG_RAW_BYTES_LIMIT,
+)
 from custom_components.ha_govee_led_ble.diagnostics import async_get_config_entry_diagnostics
 
 
@@ -144,6 +148,43 @@ async def test_full_diagnostics_contains_no_ble_address(mock_h6199_coordinator):
     blob = str(diag)
     assert "11:22:33:44:55:66" not in blob
     assert "AA:BB:CC:DD:EE:FF" not in blob
+
+
+async def test_diagnostics_defensively_bound_and_redact_packet_history(
+    mock_h6199_coordinator,
+) -> None:
+    log = [
+        {
+            "dir": "rx",
+            "raw": f"aa05{index:04x}",
+            "address": "11:22:33:44:55:66",
+        }
+        for index in range(PACKET_LOG_LIMIT + 10)
+    ]
+
+    diag = await _run(_prep(mock_h6199_coordinator, packet_log=log))
+    packet_log = diag["coordinator"]["packet_log"]
+
+    assert len(packet_log) == PACKET_LOG_LIMIT
+    assert packet_log[0]["raw"] == "aa05000a"
+    assert all(packet["address"] == "**REDACTED**" for packet in packet_log)
+
+
+async def test_diagnostics_truncate_oversized_raw_packet_data(
+    mock_h6199_coordinator,
+) -> None:
+    raw = "aa" * (PACKET_LOG_RAW_BYTES_LIMIT + 1)
+
+    diag = await _run(
+        _prep(
+            mock_h6199_coordinator,
+            packet_log=[{"dir": "rx", "raw": raw}],
+        )
+    )
+    packet = diag["coordinator"]["packet_log"][0]
+
+    assert len(packet["raw"]) == PACKET_LOG_RAW_BYTES_LIMIT * 2
+    assert packet["truncated"] is True
 
 
 async def test_unknown_white_balance_is_not_reported_as_neutral(mock_h6199_coordinator):

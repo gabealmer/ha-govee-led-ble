@@ -58,6 +58,7 @@ IDENTITY_RETRY_TICKS = 6
 RETRY_BACKOFF_SECONDS = 2
 DEVICE_DISCOVERY_ATTEMPTS = 4
 PACKET_LOG_LIMIT = 50
+PACKET_LOG_RAW_BYTES_LIMIT = 512
 EXPECTED_STATE_TTL = 2.0
 
 _CORE_STATE_FIELDS = (
@@ -986,7 +987,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 "dir": direction,
                 "header": f"0x{header:02x}",
                 "action": f"0x{action:02x}" if action is not None else None,
-                "raw": data.hex(),
+                "raw": data[:PACKET_LOG_RAW_BYTES_LIMIT].hex(),
+                "truncated": len(data) > PACKET_LOG_RAW_BYTES_LIMIT,
             }
         )
         if len(self.packet_log) > PACKET_LOG_LIMIT:
