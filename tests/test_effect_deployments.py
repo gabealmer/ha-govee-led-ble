@@ -51,6 +51,7 @@ from custom_components.ha_govee_led_ble.effect_user_state import (
     EffectUserState,
     EffectUserStateRepository,
 )
+from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
 def _item() -> LibraryItem:
@@ -69,6 +70,71 @@ def _deployment(phase: DeploymentPhase = DeploymentPhase.PENDING) -> DeploymentR
         item_id=_item().id,
         item_revision=1,
     )
+
+
+async def test_personal_repositories_use_injected_stores_without_home_assistant() -> None:
+    draft_store = InMemoryVersionedDocumentStore()
+    drafts = EffectDraftRepository(draft_store)
+    await drafts.async_load()
+    draft = EffectDraft(
+        id=uuid4(),
+        owner_id="user-a",
+        revision=1,
+        item=_item(),
+        updated_at="2026-08-11T00:00:00Z",
+    )
+    await drafts.async_put(draft, expected_revision=None)
+
+    user_store = InMemoryVersionedDocumentStore()
+    user_state = EffectUserStateRepository(user_store)
+    await user_state.async_load()
+    state = EffectUserState("user-a", preferences={"pane": "scenes"})
+    user_state.set(state)
+
+    assert (await EffectDraftRepository(draft_store).async_load()) == (draft,)
+    assert user_store.data is None
+    assert user_store.delayed_seconds == 5
+
+    await user_store.async_fire_delayed_save()
+    reloaded_user_state = EffectUserStateRepository(user_store)
+    await reloaded_user_state.async_load()
+    assert reloaded_user_state.get("user-a") == state
+
+
+async def test_deployment_repositories_use_injected_stores_without_home_assistant() -> None:
+    deployment_store = InMemoryVersionedDocumentStore()
+    deployments = EffectDeploymentRepository(deployment_store)
+    await deployments.async_load()
+    pending = _deployment()
+    await deployments.async_put(pending, expected_revision=0)
+
+    reloaded_deployments = EffectDeploymentRepository(deployment_store)
+    snapshot = await reloaded_deployments.async_load()
+
+    assert snapshot.revision == 2
+    assert reloaded_deployments.get(pending.operation_id).phase is DeploymentPhase.INTERRUPTED
+    assert deployment_store.save_count == 2
+
+    cache_store = InMemoryVersionedDocumentStore()
+    cache = EffectDeviceCache(cache_store)
+    await cache.async_load()
+    observed = ObservedDeviceState(
+        config_entry_id="entry-a",
+        mode="diy",
+        observed_at="2026-08-11T00:00:00Z",
+        confidence=ObservationConfidence.EXACT_SESSION,
+        matched_operation_id=pending.operation_id,
+    )
+    cache.set(observed)
+
+    assert cache_store.data is None
+    assert cache_store.delayed_seconds == 5
+
+    await cache_store.async_fire_delayed_save()
+    reloaded_cache = EffectDeviceCache(cache_store)
+    states = await reloaded_cache.async_load()
+    assert states[0].confidence is ObservationConfidence.UNKNOWN
+    assert states[0].matched_operation_id is None
 
 
 async def test_deployment_transitions_are_durable(hass: HomeAssistant) -> None:

@@ -11,7 +11,6 @@ from typing import Any, Final, cast
 from uuid import UUID
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
 from .effect_domain import EffectValidationError, LibraryItem
@@ -23,6 +22,7 @@ from .effect_limits import (
     MAX_STORE_JSON_NODES,
     validate_json_document,
 )
+from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 LIBRARY_STORE_VERSION: Final = 1
 LIBRARY_STORE_MINOR_VERSION: Final = 1
@@ -51,18 +51,6 @@ class EffectLimitError(EffectStorageError):
     """A bounded Effect Studio collection cannot accept more data."""
 
 
-class _EffectStore(Store[dict[str, Any]]):
-    async def _async_migrate_func(
-        self,
-        old_major_version: int,
-        old_minor_version: int,
-        old_data: dict[str, Any],
-    ) -> dict[str, Any]:
-        if old_major_version == LIBRARY_STORE_VERSION and old_minor_version <= LIBRARY_STORE_MINOR_VERSION:
-            return old_data
-        raise EffectStorageError(f"cannot migrate effect store version {old_major_version}.{old_minor_version}")
-
-
 @dataclass(frozen=True, slots=True)
 class LibrarySnapshot:
     library_revision: int
@@ -70,17 +58,10 @@ class LibrarySnapshot:
 
 
 class EffectLibraryRepository:
-    """Atomic immutable-revision library over one Home Assistant Store."""
+    """Atomic immutable-revision library over one versioned document store."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store = _EffectStore(
-            hass,
-            LIBRARY_STORE_VERSION,
-            LIBRARY_STORE_KEY,
-            private=True,
-            atomic_writes=True,
-            minor_version=LIBRARY_STORE_MINOR_VERSION,
-        )
+    def __init__(self, hass: HomeAssistant | VersionedDocumentStore) -> None:
+        self._store = _library_store(hass) if isinstance(hass, HomeAssistant) else hass
         self._lock = asyncio.Lock()
         self._data: dict[str, Any] | None = None
         self._listeners: set[Callable[[LibrarySnapshot], None]] = set()
@@ -221,6 +202,26 @@ class EffectLibraryRepository:
         if self._data is None:
             raise EffectStorageError("effect library has not been loaded")
         return self._data
+
+
+def _library_store(hass: HomeAssistant) -> VersionedDocumentStore:
+    return HomeAssistantVersionedDocumentStore(
+        hass,
+        LIBRARY_STORE_VERSION,
+        LIBRARY_STORE_KEY,
+        minor_version=LIBRARY_STORE_MINOR_VERSION,
+        migrate=_async_migrate_library,
+    )
+
+
+async def _async_migrate_library(
+    old_major_version: int,
+    old_minor_version: int,
+    old_data: dict[str, Any],
+) -> dict[str, Any]:
+    if old_major_version == LIBRARY_STORE_VERSION and old_minor_version <= LIBRARY_STORE_MINOR_VERSION:
+        return old_data
+    raise EffectStorageError(f"cannot migrate effect store version {old_major_version}.{old_minor_version}")
 
 
 def _empty_library() -> dict[str, Any]:
