@@ -1,0 +1,2636 @@
+schema_version: 1
+purpose: Observed visual behaviour from calibrated camera captures. This evidence does not describe BLE wire semantics.
+primitive_values:
+- static
+- global_pulse
+- abrupt_global_transition
+- directional_sweep
+- local_variation
+- unknown
+primitive_definitions:
+  static: No measured temporal variation above the camera-noise threshold.
+  global_pulse: Periodic, spatially synchronous brightness variation.
+  abrupt_global_transition: Short, high-magnitude aggregate lane-colour transition. It does not claim a strobe or flash effect.
+  directional_sweep: Coherent adjacent-lane phase progression.
+  local_variation: Spatially non-uniform variation without coherent direction.
+  unknown: The strongest measured candidate did not meet the primitive evidence threshold.
+review_schema_version: 1
+review_states:
+  pending_human_review: Automated classification only.  Never usable for a motion preview.
+  reviewed: A reviewer inspected the recorded evidence listed under review.inspected and accepted the primitive for preview use.
+preview_primitives:
+- static
+- global_pulse
+- directional_sweep
+minimum_review_confidence: 0.85
+review:
+  id: 20260812-h617a-preview-curation
+  basis: recorded_evidence
+  statement: Review means a reviewer inspected the recorded artefacts for a candidate and judged what they support.  Nobody re-observed the strip while reviewing, so nothing here is
+    a direct human observation of a device.
+  identity_basis: Immutable sku, scene_id and effect_id from the capture manifest.  Scene names were not used as evidence.
+  inspected:
+  - The per-scene contact sheet, which samples twelve times across the capture.
+  - The per-segment RGB time series and the derived features in the analysis results.
+  - The lane calibration diagnostic, which shows the traced ridge and the fifteen numbered lanes on the strip.
+  diagnostic:
+    file: diagnostics/calibration-lanes.png
+    sha256: aef162e9301f8089e99c087d644d598ac5896e686e1f0005812cf99234cbe7aa
+  excluded_primitives:
+    abrupt_global_transition: The measurement is an aggregate lane-colour change rate.  It fixes neither the spatial pattern nor the colour sequence, so a preview would have to invent
+      both.  Contact sheets across this class show multi-band, multi-colour behaviour that one aggregate label does not capture.
+    local_variation: The definition withholds direction and geometry by construction, so the measurement cannot constrain a rendered animation.
+    unknown: No candidate reached the evidence threshold, so there is nothing to render.
+  corpus_limitations:
+  - Every capture runs for about 13.4 s at roughly 15 frames per second, so slow behaviour and sub-frame behaviour are both outside the evidence.
+  - Colour is uncalibrated camera sRGB.  The corpus white capture saturates its red channel, so there is no trustworthy white point and recorded hue and saturation are indicative only.
+  - Per-segment brightness carries viewing-angle and exposure falloff.  The unclipped green channel of the corpus white capture varies by about a quarter along the strip and lane 7 sits
+    on a corner.
+  - Scenes that carry a parameter were applied with the committed catalogue default, so any timing claim holds for that parameterisation only.
+  - 'One capture classified as global_pulse was rejected on review: its aggregate brightness period tracks a stepped orange to yellow to green colour progression that does not repeat
+    within the window, so a synchronous brightness pulse would misdescribe it.'
+corpus:
+  id: 20260812-h617a-scenes
+  scenes_manifest_sha256: 47821f8e0c87f942c20992742826ec62e3099cf38021b90ccf3f51079f38b130
+  capture_results_sha256: 0f62848ad40e633aafd5f10140db05373255b6d35b3464e7d3d1c9933edf381d
+  calibration_sha256: 3ee698cbe55935a55c61709317e7d0abc921bdfaa9f460282736644d9682c96c
+  analysis_results_sha256: 641e808bf26d0af1b9393cc85830edfdf83c27bf97b0e7611ec90ccf8ff8daee
+  analysis_calibration_sha256: 48abb1986e1676858984829af27e6a1722d8f084fbfffc44e40aa29691ad5eb2
+  analysis_tool_sha256: 3aaa850ddcd839c1a10268b9ee41443c96273a790ff0997af637b875e513876c
+  toolchain:
+    python: 3.14.2
+    numpy: 2.3.2
+    opencv-python-headless: 5.0.0.93
+    Pillow: 12.3.0
+    PyYAML: 6.0.3
+evidence:
+- sku: H617A
+  scene_id: 1011
+  effect_id: 1073
+  source:
+    stem: 001-sunrise
+    analysis_video_sha256: 77d4b316576179613cfb7ef23dee44bdfea0376368f3e658bb03e7dc383a7b11
+  observation:
+    primitive: static
+    automated_primitive_confidence: 0.778
+    unresolved_evidence: null
+    review_state: reviewed
+    review_confidence: 0.95
+    active_segments: []
+    direction: unknown
+    period_seconds: null
+    review:
+      decision: accepted
+      reviewed_primitive: static
+      rationale: Every segment holds its colour for the whole capture.  The largest frame-to-frame change on any segment is 2.2 of 255, aggregate hue and saturation hold at 7 degrees
+        and 59 per cent across all 203 frames, and no aggregate transition reached the analyser threshold.  No channel saturates, so the fifteen segment colours are the least distorted
+        palette evidence in the corpus.
+      limitations:
+      - The capture window is 13.4 s, so a cycle longer than the window is indistinguishable from no behaviour.
+      - The brightness fall from segment 0 to segment 14 is larger than the falloff measured on the corpus white capture, so a gradient is present, but its depth is not photometric.
+      render:
+        illuminated_segments: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        palette:
+          colour_space: uncalibrated_camera_srgb
+          clipped_sample_fraction: 0.0
+          clipped_channel_fraction: [0.0, 0.0, 0.0]
+          segment_rgb:
+          - [250, 146, 123]
+          - [240, 130, 111]
+          - [234, 125, 106]
+          - [225, 123, 106]
+          - [214, 112, 96]
+          - [205, 104, 87]
+          - [197, 98, 81]
+          - [178, 110, 100]
+          - [169, 88, 81]
+          - [178, 84, 79]
+          - [179, 72, 67]
+          - [178, 55, 45]
+          - [174, 50, 41]
+          - [162, 54, 40]
+          - [149, 59, 44]
+      evidence:
+        contact_sheet: contact-sheets/001-sunrise.jpg
+        contact_sheet_sha256: 29754d0aa2fc51e75ced394e051551797ede5a0be02b2c8bd631a302a753c2d6
+        frame_count: 203
+        duration_seconds: 13.467
+- sku: H617A
+  scene_id: 1012
+  effect_id: 1074
+  source:
+    stem: 002-sunset
+    analysis_video_sha256: f0dfbfe9fcb2af33d9a88a0cb3fec86013117dd4325cd5462f105c5a47d97651
+  observation:
+    primitive: static
+    automated_primitive_confidence: 0.722
+    unresolved_evidence: null
+    review_state: reviewed
+    review_confidence: 0.9
+    active_segments: []
+    direction: unknown
+    period_seconds: null
+    review:
+      decision: accepted
+      reviewed_primitive: static
+      rationale: Aggregate hue and saturation hold at 19 degrees and 78 per cent across all 202 frames, the largest per-segment frame-to-frame change is 3.0 of 255, and no aggregate
+        transition reached the analyser threshold.  The contact sheet shows one unchanging warm gradient at every sampled time.
+      limitations:
+      - The capture window is 13.4 s, so a cycle longer than the window is indistinguishable from no behaviour.
+      - Red saturates in 55 per cent of samples, so the palette understates saturation and compresses the segment-to-segment hue difference.  The absence of variation does not depend
+        on that channel.
+      render:
+        illuminated_segments: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        palette:
+          colour_space: uncalibrated_camera_srgb
+          clipped_sample_fraction: 0.55
+          clipped_channel_fraction: [0.55, 0.0, 0.0]
+          segment_rgb:
+          - [255, 148, 78]
+          - [254, 139, 72]
+          - [255, 136, 68]
+          - [253, 134, 67]
+          - [252, 126, 61]
+          - [249, 122, 57]
+          - [248, 117, 54]
+          - [245, 114, 64]
+          - [254, 104, 58]
+          - [255, 109, 54]
+          - [255, 106, 48]
+          - [255, 100, 34]
+          - [254, 101, 33]
+          - [254, 102, 33]
+          - [253, 103, 42]
+      evidence:
+        contact_sheet: contact-sheets/002-sunset.jpg
+        contact_sheet_sha256: a1ed2d269871174b5d2e3d255a693f29c467ce6eb394f2ff9417f0be78a0c7eb
+        frame_count: 202
+        duration_seconds: 13.4
+- sku: H617A
+  scene_id: 1013
+  effect_id: 11836
+  source:
+    stem: 003-forest
+    analysis_video_sha256: e7c8b7649a6ab6bc9e40d671193573ed2783ac4e5484a75eebaeafa12c5e7bbc
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1014
+  effect_id: 1076
+  source:
+    stem: 004-aurora
+    analysis_video_sha256: 86418eb31586e41993675e5e4b694898f9ed2929e4fe9ce74a58d3eec80b04a1
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 5.427
+- sku: H617A
+  scene_id: 1015
+  effect_id: 1077
+  source:
+    stem: 005-lightning-a
+    analysis_video_sha256: e2045fce4557b76bfdc176da15b87adb1f0315a63089baa20a9b2850a0323046
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1015
+  effect_id: 1757
+  source:
+    stem: 006-lightning-b
+    analysis_video_sha256: ddddfec599dfd0ba348221efcb22c2f1152fab76b953275416a8b76ed448fe37
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 3
+    - 6
+    - 7
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1016
+  effect_id: 1078
+  source:
+    stem: 007-starry-sky
+    analysis_video_sha256: c8a5dc7582113a8fe3f1313b233cd544ca2be4ef368f1831431eb8cc4303d51a
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1017
+  effect_id: 1079
+  source:
+    stem: 008-spring
+    analysis_video_sha256: a7d1bc3de007985aa1245ac6a949a0ce18452df7da2cb16f6f4e5df979501822
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.469
+- sku: H617A
+  scene_id: 1018
+  effect_id: 1080
+  source:
+    stem: 009-summer
+    analysis_video_sha256: b12db4a3076a87193ae6aae4d559dffb603c5b0995cb1dad26c47a30b6fbbf35
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1019
+  effect_id: 1081
+  source:
+    stem: 010-fall
+    analysis_video_sha256: 9d5f12b989c2548911cf027c0162627c6c81fbaab56132219b033c54956f6db4
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: synchronous
+    period_seconds: 6.298
+- sku: H617A
+  scene_id: 1020
+  effect_id: 1082
+  source:
+    stem: 011-winter
+    analysis_video_sha256: 323e75394ffbb55bfa8fab3bb8a01baa166a62e5fef3e4632b023799a7e1a40a
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1021
+  effect_id: 1083
+  source:
+    stem: 012-rainbow
+    analysis_video_sha256: 4a5e2137b0cf8f635feac3a7828df11270f35023eb33e171d9940706c366d56b
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: abrupt_global_transition
+      strength: 0.667
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1022
+  effect_id: 1084
+  source:
+    stem: 013-fire
+    analysis_video_sha256: 83ed38d634590b1f5860bd806e61843580d5363a878002ca108f220413d397e3
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1023
+  effect_id: 1085
+  source:
+    stem: 014-wave
+    analysis_video_sha256: ed5cd78bf87fd649b0feac994c414f5fdf439ef5cd043f7646b9acd0a0cdb2b7
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1024
+  effect_id: 1086
+  source:
+    stem: 015-deep-sea
+    analysis_video_sha256: 14147b4e074dbc7c50cb57f2da1581c620283c1875b72270e930d8313af737ba
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1025
+  effect_id: 1087
+  source:
+    stem: 016-karst-cave
+    analysis_video_sha256: f1534fd921c5424f91d9a676946350af102b8dcb0e0fc108d34eec6f68da9df9
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 0.964
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.871
+- sku: H617A
+  scene_id: 1026
+  effect_id: 1088
+  source:
+    stem: 017-glacier
+    analysis_video_sha256: e6c534fab5dc3eee6f968d4a9b8ada971a802c0031ac7835b79feb80c6ac160c
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 4.02
+- sku: H617A
+  scene_id: 1027
+  effect_id: 1089
+  source:
+    stem: 018-gobi-desert
+    analysis_video_sha256: 0ad6647636f335861e4c434a4339538201c7a025eeeeb1721344f034457a0ec9
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 3.886
+- sku: H617A
+  scene_id: 1028
+  effect_id: 1090
+  source:
+    stem: 019-moonlight
+    analysis_video_sha256: e5896a93a8bf7bbdbbdcdfd9fe04bc87dc72f19dbd0d63fb9b8f7f9893f5ceec
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 4.69
+- sku: H617A
+  scene_id: 1029
+  effect_id: 1091
+  source:
+    stem: 020-flower-field
+    analysis_video_sha256: c117e7462cbc67b52e611f84eb035fe83c08bce64c17c894f0ea678a5d36bc03
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: local_variation
+      strength: 0.578
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1030
+  effect_id: 1092
+  source:
+    stem: 021-downpour
+    analysis_video_sha256: d81662fed82f9ad4ed8fa10c1115527c4155d8c9648ac56c7e6fbb04bae11834
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1031
+  effect_id: 1093
+  source:
+    stem: 022-sunny
+    analysis_video_sha256: 04ed4133c304f51128bacd3511c7eab71ba5e6a37680cbebd0fb7e5cd0fb9203
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1032
+  effect_id: 1094
+  source:
+    stem: 023-volcano-a
+    analysis_video_sha256: 9c553fb1c434ed7046cdb487a444a404dbff8e33524376311568460974b0be64
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 4.221
+- sku: H617A
+  scene_id: 1032
+  effect_id: 1756
+  source:
+    stem: 024-volcano-b
+    analysis_video_sha256: 649de6ac58b3c025dc455458eb251f311f700f9a93435bd9a26334a49d235352
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1033
+  effect_id: 1095
+  source:
+    stem: 025-cornfield
+    analysis_video_sha256: 31f2a5a9c958803724d1700164b7d32dd9335d09907eb92572788c9cf22d2938
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 6.7
+- sku: H617A
+  scene_id: 1034
+  effect_id: 1096
+  source:
+    stem: 026-meteor-shower
+    analysis_video_sha256: ccc7ab18e36f21a67c7a0abf267a296fd900b99029fa9898153980dc62aff40a
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 3.35
+- sku: H617A
+  scene_id: 1035
+  effect_id: 1097
+  source:
+    stem: 027-flying
+    analysis_video_sha256: 939f0c79e23a2551d8652e28208c709718b5298542422e71c54db2f1adad02af
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 5.829
+- sku: H617A
+  scene_id: 1036
+  effect_id: 1098
+  source:
+    stem: 028-tree-shadow
+    analysis_video_sha256: ecb07ae70c4e6413ef409da05bb7d6b399bcd865e301860fdf3dad59d57b7eac
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1037
+  effect_id: 1099
+  source:
+    stem: 029-cherry-blossoms
+    analysis_video_sha256: 1438f3f207d46c919a2d3e66519a032acf69755784daef27dafe8fabea6056a6
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: local_variation
+      strength: 0.2
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1038
+  effect_id: 1100
+  source:
+    stem: 030-stream
+    analysis_video_sha256: dc705a02f0546ef046644ee7aeb7c72842d375fd38078c4d63ce2a12edcf9915
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 0.933
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 5.628
+- sku: H617A
+  scene_id: 1039
+  effect_id: 1101
+  source:
+    stem: 031-ripple
+    analysis_video_sha256: cd66c4751e449e9b04d6c2a873581c957c479406dd05ba79cb627f79e40bddc9
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 1.608
+- sku: H617A
+  scene_id: 1040
+  effect_id: 1102
+  source:
+    stem: 035-christmas
+    analysis_video_sha256: b93b51d9f4f2166304201060cf1938f218188a5c102e1df7c11c8354d2587d5d
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 3.618
+- sku: H617A
+  scene_id: 1041
+  effect_id: 1103
+  source:
+    stem: 036-halloween
+    analysis_video_sha256: 7e958d512ca9e81327eac5cdf435ea5623d839d599e61d74459577fa0ea7daf2
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1042
+  effect_id: 1104
+  source:
+    stem: 037-candlelight
+    analysis_video_sha256: 30224ba5c9ba1cd749bcabe917c8d9c2cd1eb607e257e3fbc693a436054e2213
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 0.817
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 6.298
+- sku: H617A
+  scene_id: 1043
+  effect_id: 1105
+  source:
+    stem: 038-birthday
+    analysis_video_sha256: fbef2712902db5c61978f69bb303412f31bf76788d43b468778511dac73bbb72
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.469
+- sku: H617A
+  scene_id: 1044
+  effect_id: 1106
+  source:
+    stem: 039-fireworks
+    analysis_video_sha256: f7e3bbc49d09724e33e383ff2d4e1478d7785ed5d79c8520616bdc869bffd7e4
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1045
+  effect_id: 1107
+  source:
+    stem: 040-party
+    analysis_video_sha256: 413cbb929b4003f4d62369878c89fd27a2c19fc1a795f83445a9bfb043fa3f59
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1046
+  effect_id: 1108
+  source:
+    stem: 041-dance-party
+    analysis_video_sha256: dc27251358c9035b31f874945a6b6c03c64ad983d9a0368650121227974abf3a
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: local_variation
+      strength: 0.47
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 6.164
+- sku: H617A
+  scene_id: 1047
+  effect_id: 1109
+  source:
+    stem: 042-mother-s-day
+    analysis_video_sha256: f8167c858521b3bdfebd802f790a4828cdc0119b1e19b5ef0eb1e9dfe58a3c45
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1048
+  effect_id: 1110
+  source:
+    stem: 043-father-s-day
+    analysis_video_sha256: 51564e19990827a78b520532c1cc525960a6476090bda25d2b5c6ca22592d879
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: synchronous
+    period_seconds: 2.211
+- sku: H617A
+  scene_id: 1049
+  effect_id: 1111
+  source:
+    stem: 045-sweet
+    analysis_video_sha256: 02dd02e06480d8f051122e24e37f40683a81b33c8d4bcb8852f4e08afbb9bc0e
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: static
+      strength: 0.333
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments: []
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1050
+  effect_id: 1112
+  source:
+    stem: 046-romantic
+    analysis_video_sha256: 85529411ff105c8ae6ae0e31fd7fff80732a43b58f2e3c5faf6b812b9443c4a7
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: abrupt_global_transition
+      strength: 0.224
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1051
+  effect_id: 1113
+  source:
+    stem: 047-movie
+    analysis_video_sha256: 34005f49d0580e8c73a6d6e7375e2dedfa21c2335af6d7753525b0c57f7fc325
+  observation:
+    primitive: static
+    automated_primitive_confidence: 0.722
+    unresolved_evidence: null
+    review_state: reviewed
+    review_confidence: 0.9
+    active_segments: []
+    direction: unknown
+    period_seconds: null
+    review:
+      decision: accepted
+      reviewed_primitive: static
+      rationale: Aggregate hue and saturation hold at 210 degrees and 92 per cent across all 202 frames, the largest per-segment frame-to-frame change is 3.3 of 255, and no aggregate
+        transition reached the analyser threshold.  The contact sheet shows one unchanging blue gradient.
+      limitations:
+      - The capture window is 13.4 s, so a cycle longer than the window is indistinguishable from no behaviour.
+      - Blue saturates in 60 per cent of samples, so the palette understates the blue channel.
+      - Red rises at segments 7 and 8, which is where lane 7 crosses a corner in the calibration diagnostic, so that part of the palette is more likely viewing geometry than emitted
+        colour.
+      render:
+        illuminated_segments: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        palette:
+          colour_space: uncalibrated_camera_srgb
+          clipped_sample_fraction: 0.602
+          clipped_channel_fraction: [0.0, 0.0, 0.602]
+          segment_rgb:
+          - [7, 183, 254]
+          - [7, 174, 254]
+          - [7, 162, 254]
+          - [4, 158, 252]
+          - [7, 154, 248]
+          - [11, 144, 248]
+          - [15, 142, 246]
+          - [36, 123, 243]
+          - [39, 104, 253]
+          - [18, 124, 255]
+          - [24, 122, 255]
+          - [29, 117, 255]
+          - [25, 115, 255]
+          - [25, 115, 255]
+          - [29, 111, 255]
+      evidence:
+        contact_sheet: contact-sheets/047-movie.jpg
+        contact_sheet_sha256: 10fcfb36e43db16d65c7f37022e1d9b9b81240748f6090629f65b7d03145be22
+        frame_count: 202
+        duration_seconds: 13.4
+- sku: H617A
+  scene_id: 1052
+  effect_id: 1114
+  source:
+    stem: 048-siren
+    analysis_video_sha256: ad23a7d39cedfa26f291e7f42f5df1d131a0b78ab6e4b0dd1f02d7d81d01e3c7
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1053
+  effect_id: 1115
+  source:
+    stem: 049-night
+    analysis_video_sha256: 0deab67e26d70bf14008e87a350ddc5985ff282f33f3fc084680ead58de6c3fe
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 0.933
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 14
+    direction: unknown
+    period_seconds: 6.767
+- sku: H617A
+  scene_id: 1054
+  effect_id: 1116
+  source:
+    stem: 050-sleep
+    analysis_video_sha256: 5adc2b8566450f3461a987e7d2ae98a00c668f3d8bc98047185fe1c98b1d2c82
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.469
+- sku: H617A
+  scene_id: 1055
+  effect_id: 1117
+  source:
+    stem: 051-morning
+    analysis_video_sha256: 5c8568c2952ae507f82f59c7a7e5461a7485624d1743210ab71468f11fd6062c
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: local_variation
+      strength: 0.438
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1056
+  effect_id: 1118
+  source:
+    stem: 052-afternoon
+    analysis_video_sha256: 16af345770bbb2293adc247210346ce4ecd380072c350659c59c2a62b2fa48c6
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1057
+  effect_id: 1119
+  source:
+    stem: 053-work
+    analysis_video_sha256: 156b620ef8f201bef076a0b332fc3747b52173420c9e66481458a7cf703a0a7d
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: local_variation
+      strength: 0.549
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1058
+  effect_id: 1120
+  source:
+    stem: 054-leisure
+    analysis_video_sha256: 8e68e3c2e9789f75a40ade3c7cd7a2b570f7feec70222e79038571c60db23a61
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: local_variation
+      strength: 0.461
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1059
+  effect_id: 1121
+  source:
+    stem: 055-meditation
+    analysis_video_sha256: 5c03acaa3df5209182f3b52814fd65f94035aa7284fd742b7323a2bf68fd4cad
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1060
+  effect_id: 1122
+  source:
+    stem: 056-colorful
+    analysis_video_sha256: 54fc7098983fb81f2c7d9e9b46542ab59144102d192bea6728494a0edab3574a
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1061
+  effect_id: 1123
+  source:
+    stem: 057-candy
+    analysis_video_sha256: 84da3e14e60de4dae95ce10a03220a6e335c39e43f1c5b3fbca6d8aafbe45bf6
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: static
+      strength: 0.639
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments: []
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1062
+  effect_id: 1124
+  source:
+    stem: 058-dreamlike
+    analysis_video_sha256: 6de117d8619a8b25e5d2990343c84dddab3682c63f203723a552157850468dbd
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1063
+  effect_id: 1125
+  source:
+    stem: 059-dreamland-a
+    analysis_video_sha256: 09d93d67c1dfadd0ac7449d8199385a6e6ee300ed17c3d6cb3cd13a986ddc7c8
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: local_variation
+      strength: 0.574
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 6.097
+- sku: H617A
+  scene_id: 1063
+  effect_id: 1758
+  source:
+    stem: 060-dreamland-b
+    analysis_video_sha256: 361eaee5c016081ef8268ed6572c168c7327fb4e797647d085126e45edf2ae83
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.469
+- sku: H617A
+  scene_id: 1064
+  effect_id: 1126
+  source:
+    stem: 061-energetic
+    analysis_video_sha256: 5a2eb79950423665dda170dbbe23ca5c13874bd8bba1bac56e93073e2ca71b51
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 4.02
+- sku: H617A
+  scene_id: 1065
+  effect_id: 1127
+  source:
+    stem: 062-profound
+    analysis_video_sha256: ab8f8f643af74e28c40e8cf6604c2cb0799be26e1703d59592b7745eb0944234
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 3.819
+- sku: H617A
+  scene_id: 1066
+  effect_id: 1128
+  source:
+    stem: 063-quiet
+    analysis_video_sha256: 43d22b739665de2731dd3659a0c294431ff355082a58e771a9fa583fb48f0a37
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.469
+- sku: H617A
+  scene_id: 1067
+  effect_id: 1129
+  source:
+    stem: 064-warm
+    analysis_video_sha256: 102a67e62ad4a9d275a37819883d1789a4ec41169b4b06319ff02a6e1250ba1f
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1068
+  effect_id: 1130
+  source:
+    stem: 065-flow
+    analysis_video_sha256: b24c8e990312729b69fc1033e8fc529928ce50815b3dc47f902e65bee5558dc5
+  observation:
+    primitive: directional_sweep
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: reviewed
+    review_confidence: 0.9
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: towards_first_segment
+    period_seconds: 3.953
+    review:
+      decision: accepted
+      reviewed_primitive: directional_sweep
+      rationale: Two bright bands travel towards segment 0.  All fourteen adjacent segment pairs agree on a negative lag with correlations from 0.823 to 0.995, the unwrapped phase of
+        the two-cycle spatial component falls monotonically at 1.583 radians per second, which is 1.89 segments per second, and the contact sheet shows the bands at successively lower
+        indexes.  Autocorrelation puts the repeat at 3.953 s with correlation 0.93 over about 3.4 cycles.  The per-segment phase step is 0.15 cycles, well inside the spatial Nyquist
+        limit, so the direction is not an aliasing artefact.
+      limitations:
+      - The scene carries a speed parameter with three options and the capture applied the committed default, so the period holds for that setting only.
+      - Blue saturates in 30 per cent of samples, so the contrast between the band colour and the base colour is a lower bound.
+      - The final thirteen frames repeat one frame.  They were excluded from the phase slope and do not affect the direction or the period.
+      render:
+        illuminated_segments: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        travelling_bands: 2
+        palette:
+          colour_space: uncalibrated_camera_srgb
+          clipped_sample_fraction: 0.301
+          clipped_channel_fraction: [0.0, 0.0, 0.301]
+          segment_rgb:
+          - [0, 129, 253]
+          - [0, 138, 248]
+          - [1, 114, 251]
+          - [1, 102, 249]
+          - [0, 96, 240]
+          - [17, 92, 214]
+          - [19, 68, 190]
+          - [44, 88, 182]
+          - [3, 74, 231]
+          - [0, 94, 246]
+          - [0, 79, 252]
+          - [0, 84, 253]
+          - [0, 64, 253]
+          - [0, 64, 248]
+          - [3, 73, 232]
+          band_rgb: [0, 142, 255]
+          base_rgb: [55, 63, 67]
+      evidence:
+        contact_sheet: contact-sheets/065-flow.jpg
+        contact_sheet_sha256: 20afc2cd51846f82b654aed731b73a009ff879b4c4d232183249a1856166c3f0
+        frame_count: 202
+        duration_seconds: 13.4
+- sku: H617A
+  scene_id: 1069
+  effect_id: 1131
+  source:
+    stem: 066-longing
+    analysis_video_sha256: 8f3b5f7c503933816a63514043e99e14c22e462193713154df465278d4182261
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.469
+- sku: H617A
+  scene_id: 1070
+  effect_id: 1132
+  source:
+    stem: 067-happy
+    analysis_video_sha256: d6e61841fd8aa6a0a34d1046fdbee32830b450f0bc4312be1ccb0195a0daab77
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1071
+  effect_id: 1133
+  source:
+    stem: 068-mysterious
+    analysis_video_sha256: 49df82ed40c2b11ea5e74217810f7a466df12ac9a44691c75b1a40a071020264
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 6.03
+- sku: H617A
+  scene_id: 1072
+  effect_id: 1134
+  source:
+    stem: 069-release
+    analysis_video_sha256: 595c3fc522c5ebcba1057eee2088c1a7c8b7383e30519b23c46cf0f1d2d24971
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 2.144
+- sku: H617A
+  scene_id: 1073
+  effect_id: 1135
+  source:
+    stem: 070-game
+    analysis_video_sha256: be42f6804b7d2db0d6ac4a74c9f7bb1cf8140152897d606e99e5b36145a0f0d5
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1074
+  effect_id: 1136
+  source:
+    stem: 071-disco
+    analysis_video_sha256: 09eb778dbace5dc9ebe1cc93f65c7757fca3887298c98770ad9d67ded4110aa0
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1075
+  effect_id: 1137
+  source:
+    stem: 072-optimistic
+    analysis_video_sha256: 057ac8c3c9da2c4e81cbaa3e769130776f383dfe5a1340489166d3e4b538e27b
+  observation:
+    primitive: unknown
+    automated_primitive_confidence: null
+    unresolved_evidence:
+      strongest_candidate: static
+      strength: 0.639
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments: []
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1076
+  effect_id: 1138
+  source:
+    stem: 073-heartbeat
+    analysis_video_sha256: a7ce10251a5442a44de2838da43e9d54a506b3995b866f1fd66dfa7f4a073f11
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 1.474
+- sku: H617A
+  scene_id: 1077
+  effect_id: 1139
+  source:
+    stem: 074-cheerful
+    analysis_video_sha256: f28f6c69795346f5f20c6669df8fe1438c47304e8ab6f51b57329e2ab0f5d486
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1078
+  effect_id: 1140
+  source:
+    stem: 075-swing
+    analysis_video_sha256: 11a59acfd808658ce81faf7de44f8db2782f0e148acbb64066a016f34e56568b
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 2.412
+- sku: H617A
+  scene_id: 1079
+  effect_id: 1141
+  source:
+    stem: 076-flash
+    analysis_video_sha256: 8f58432f157f383358f9a75f724683410c0581eeffe826d19430c1132009e823
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.737
+- sku: H617A
+  scene_id: 1080
+  effect_id: 1142
+  source:
+    stem: 077-fight
+    analysis_video_sha256: 1e31fbc80fc30c81325a8d6188a8c45d7ac8eeb5a91a7f483edcde1bfa26a14c
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: null
+- sku: H617A
+  scene_id: 1081
+  effect_id: 1143
+  source:
+    stem: 078-stacking
+    analysis_video_sha256: b8db2023c356e12c808cb3dd51e29878a18b140285c67d1c8653b32e5b3cb9a4
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.603
+- sku: H617A
+  scene_id: 1082
+  effect_id: 1144
+  source:
+    stem: 079-twinkle
+    analysis_video_sha256: b9520008394a2ba717dc6cb906a65ed60d3b8b7c3ce5052513ab4d3a8c1495ec
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 5.628
+- sku: H617A
+  scene_id: 1083
+  effect_id: 1145
+  source:
+    stem: 080-breathe
+    analysis_video_sha256: 140d3204a1f05b5442f9a3e46a71f1c10ce821c7525a93e1105d19a8d12ac4b4
+  observation:
+    primitive: global_pulse
+    automated_primitive_confidence: 0.764
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 5.226
+- sku: H617A
+  scene_id: 1084
+  effect_id: 1146
+  source:
+    stem: 081-spin
+    analysis_video_sha256: ca07b3434b04425713127a84aea059667d18b258ca17608353c7433e24d9aacc
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 1.273
+- sku: H617A
+  scene_id: 1085
+  effect_id: 1147
+  source:
+    stem: 082-rhythm
+    analysis_video_sha256: 2f23f83a6df997de77ddc844efade2cb277578c291f6d8cce2ad483edbb829a2
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 1.541
+- sku: H617A
+  scene_id: 1086
+  effect_id: 1148
+  source:
+    stem: 083-bloom
+    analysis_video_sha256: d841ebebcb9b321fd63f316307b96ad4039ea53ae5920b4d99c0f98f9b7a8ba3
+  observation:
+    primitive: abrupt_global_transition
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 1.943
+- sku: H617A
+  scene_id: 8860
+  effect_id: 13920
+  source:
+    stem: 044-white-light
+    analysis_video_sha256: 6a2511153e9053f49c1985835502235eac501f247b4edf5499792418d503866c
+  observation:
+    primitive: static
+    automated_primitive_confidence: 0.778
+    unresolved_evidence: null
+    review_state: reviewed
+    review_confidence: 0.9
+    active_segments: []
+    direction: unknown
+    period_seconds: null
+    review:
+      decision: accepted
+      reviewed_primitive: static
+      rationale: The strip holds one near-uniform low-saturation colour for all 202 frames with a largest per-segment frame-to-frame change of 2.0 of 255 and no aggregate transition
+        above the analyser threshold.  Segment-to-segment brightness is the flattest in the corpus.
+      limitations:
+      - The capture window is 13.4 s, so a cycle longer than the window is indistinguishable from no behaviour.
+      - Red saturates in 39 per cent of samples and the camera white balance is uncalibrated, so the recorded warm cast is partly the sensor.  The palette states the recorded colour,
+        not the emitted colour.
+      - This capture is also the video-space mapping reference, so its lane alignment is the best in the corpus and is not representative of the rest.
+      render:
+        illuminated_segments: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        palette:
+          colour_space: uncalibrated_camera_srgb
+          clipped_sample_fraction: 0.387
+          clipped_channel_fraction: [0.387, 0.0, 0.0]
+          segment_rgb:
+          - [255, 208, 137]
+          - [255, 205, 142]
+          - [254, 200, 147]
+          - [249, 196, 143]
+          - [245, 189, 138]
+          - [246, 182, 143]
+          - [243, 178, 136]
+          - [235, 157, 129]
+          - [248, 151, 140]
+          - [252, 165, 144]
+          - [253, 166, 144]
+          - [255, 161, 140]
+          - [255, 162, 144]
+          - [253, 164, 140]
+          - [250, 160, 138]
+      evidence:
+        contact_sheet: contact-sheets/044-white-light.jpg
+        contact_sheet_sha256: 54c18158ee1fbc527898da775581e8aa37e65ec7f1ccfbf7cbf3b0c07b401d13
+        frame_count: 202
+        duration_seconds: 13.4
+- sku: H617A
+  scene_id: 10070
+  effect_id: 16938
+  source:
+    stem: 032-desert-b
+    analysis_video_sha256: a84a519671473b318ddede2984123ee5c5c7401384c107d0a4e4f1fc82d6a1c5
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 2.278
+- sku: H617A
+  scene_id: 10071
+  effect_id: 16939
+  source:
+    stem: 033-sand-grains
+    analysis_video_sha256: c5ca2d460fb5799d1c6d6fae225ce6d511813cdeeff3bbc13099998c6b266a27
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 1.34
+- sku: H617A
+  scene_id: 28612
+  effect_id: 40316
+  source:
+    stem: 034-aurora-b
+    analysis_video_sha256: e296595208672b2f0214086aab0d174aee2480dd5156446b8975dd121277d7b6
+  observation:
+    primitive: local_variation
+    automated_primitive_confidence: 1.0
+    unresolved_evidence: null
+    review_state: pending_human_review
+    review_confidence: null
+    active_segments:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    direction: unknown
+    period_seconds: 0.469

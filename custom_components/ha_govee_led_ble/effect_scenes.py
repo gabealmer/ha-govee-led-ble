@@ -22,6 +22,7 @@ from .effect_domain import (
 )
 from .layered_scene_decoder import decode_layered_scene
 from .palette_scene_decoder import decode_palette_scene
+from .scene_preview_profiles import preview_profile_for_scene
 from .scenes import (
     MODEL_SCENE_LABELS,
     MODEL_SCENES,
@@ -91,10 +92,13 @@ def scene_detail_payload(
         )
     else:
         content = BuiltinScene(template, speed_index=speed_index)
-    return {
+    payload: dict[str, JsonValue] = {
         "scene": _scene_summary(model, resolved.entry),
         "content": effect_content_to_dict(content),
     }
+    if profile := preview_profile_for_scene(model, scene_id, effect_id):
+        payload["preview_profile"] = profile
+    return payload
 
 
 def resolve_scene(model: str, scene_id: int, effect_id: int) -> ResolvedScene:

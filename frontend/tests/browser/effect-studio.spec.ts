@@ -235,6 +235,431 @@ test("scene Type 0 remains opaque without a visual parameter preview", async ({
   await expect(preview.locator(".preview-cell, .scene-steps, .layers")).toHaveCount(0);
 });
 
+test("reviewed capture-backed profiles render all five immutable scene identities", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const studio = page.locator(studioSelector);
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const sceneBrowser = studio.locator("govee-scene-browser");
+  await sceneBrowser
+    .getByRole("button", { name: "Observed captures", exact: true })
+    .click();
+
+  for (const name of ["Sunrise", "Sunset", "Blue Lagoon", "Warm Glow"]) {
+    await sceneBrowser.getByRole("button", { name: new RegExp(`^${name}`) }).click();
+    const observed = sceneBrowser
+      .locator("govee-effect-preview")
+      .filter({ hasText: "Observed static scene" });
+    await expect(
+      sceneBrowser.getByRole("heading", { name: "Observed static scene" }),
+    ).toBeVisible();
+    await expect(
+      sceneBrowser.getByText("Capture-backed", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      sceneBrowser.getByRole("img", {
+        name: /Capture-backed abstract map of 15 sampled regions/,
+      }),
+    ).toBeVisible();
+    await expect(
+      sceneBrowser.getByRole("note").filter({
+        hasText: "The abstract regions are not physical LED geometry.",
+      }),
+    ).toBeVisible();
+    await expect(
+      observed.locator(".capture-evidence").getByText(
+        "reviewed recorded capture with spatial lane calibration",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      observed
+        .locator(".capture-evidence")
+        .getByText("Camera colour is uncalibrated.", { exact: false }),
+    ).toBeVisible();
+    await expect(observed.locator(".preview-cell")).toHaveCount(15);
+  }
+
+  await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
+  const observedSweep = sceneBrowser
+    .locator("govee-effect-preview")
+    .filter({ hasText: "Observed directional sweep" });
+  await expect(
+    observedSweep.getByText("Capture-backed", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    observedSweep.getByRole("img", {
+      name: /towards the first sampled region, with 2 phase-separated travelling bands/,
+    }),
+  ).toBeVisible();
+  await expect(observedSweep.locator(".sweep-cell")).toHaveCount(15);
+  await expect(observedSweep.locator(".sweep-band")).toHaveCount(2);
+  expect(
+    await observedSweep.locator(".sweep-band").evaluateAll((bands) =>
+      bands.map((band) =>
+        band.closest(".sweep-cell")?.getAttribute("data-logical-lane"),
+      ),
+    ),
+  ).toEqual(["6", "14"]);
+  await expect(observedSweep.locator(".directional-sweep")).toHaveAttribute(
+    "data-phase-separation",
+    "8",
+  );
+  await expect(observedSweep.locator(".directional-sweep")).toHaveAttribute(
+    "data-motion-state",
+    "default",
+  );
+  const sweepTiming = await observedSweep.locator(".directional-sweep").evaluate(
+    (sweep) => ({
+      step: Number(sweep.getAttribute("data-step-interval-ms")),
+      fullCircuit: Number(sweep.getAttribute("data-full-circuit-ms")),
+      observedRepeat: Number(sweep.getAttribute("data-observed-repeat-ms")),
+    }),
+  );
+  expect(sweepTiming.step).toBeCloseTo(527.067, 3);
+  expect(Math.abs(sweepTiming.step * 15 - sweepTiming.fullCircuit)).toBeLessThan(
+    0.01,
+  );
+  expect(
+    Math.abs(sweepTiming.fullCircuit / 2 - sweepTiming.observedRepeat),
+  ).toBeLessThan(0.01);
+  await expect(
+    sceneBrowser.getByRole("heading", { name: "Captured layered scene structure" }),
+  ).toBeVisible();
+  const speed = sceneBrowser.getByRole("group", { name: "Scene speed" });
+  await expect(speed.getByRole("button")).toHaveCount(3);
+  await expect(speed.getByRole("button", { name: "Default" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    observedSweep.getByText("reviewed visual repeat is 3.953 seconds at Default speed"),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const target = window as Window & {
+      previewSweepTimings?: number[];
+    };
+    target.previewSweepTimings = [];
+    document.addEventListener("preview-sweep-lane-change", () => {
+      target.previewSweepTimings?.push(performance.now());
+    });
+  });
+  const defaultTransitionTimings = (await page
+    .waitForFunction(
+      () => {
+        const timings = (
+          window as Window & { previewSweepTimings?: number[] }
+        ).previewSweepTimings;
+        return timings && timings.length >= 2 ? timings.slice(0, 2) : undefined;
+      },
+      undefined,
+      { timeout: 2_500 },
+    )
+    .then((handle) => handle.jsonValue())) as number[];
+  const observedStepInterval =
+    defaultTransitionTimings[1]! - defaultTransitionTimings[0]!;
+  expect(observedStepInterval).toBeGreaterThan(sweepTiming.step - 150);
+  expect(observedStepInterval).toBeLessThan(sweepTiming.step + 150);
+  await speed.getByRole("button", { name: "Slower", exact: true }).click();
+  await expect(speed.getByRole("button", { name: "Slower", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    observedSweep.getByText(
+      "Timing and motion were observed only at Default speed. This non-default Speed selection freezes a phase-separated capture snapshot.",
+    ),
+  ).toBeVisible();
+  const frozenLanes = await observedSweep
+    .locator(".directional-sweep")
+    .getAttribute("data-logical-lanes");
+  await expect(observedSweep.locator(".directional-sweep")).toHaveAttribute(
+    "data-motion-state",
+    "snapshot",
+  );
+  await page.waitForTimeout(700);
+  await expect(observedSweep.locator(".directional-sweep")).toHaveAttribute(
+    "data-logical-lanes",
+    frozenLanes ?? "",
+  );
+  await expect(observedSweep.locator(".sweep-band")).toHaveCount(2);
+  const firstSeed = await observedSweep
+    .locator(".directional-sweep")
+    .getAttribute("data-preview-seed");
+
+  await sceneBrowser.getByRole("button", { name: /^Sunrise/ }).click();
+  await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
+  await expect(
+    observedSweep.locator(".directional-sweep"),
+  ).toHaveAttribute("data-preview-seed", firstSeed ?? "");
+  await expect(
+    sceneBrowser.getByRole("heading", { name: "Captured layered scene structure" }),
+  ).toBeVisible();
+
+  const sixBandLanes = await observedSweep.evaluate(async (element) => {
+    interface PreviewElement extends HTMLElement {
+      model: {
+        travellingBands: number;
+      };
+      updateComplete: Promise<unknown>;
+    }
+    const preview = element as PreviewElement;
+    preview.model = { ...preview.model, travellingBands: 6 };
+    await preview.updateComplete;
+    return [...(preview.shadowRoot?.querySelectorAll(".sweep-band") ?? [])].map(
+      (band) => band.closest(".sweep-cell")?.getAttribute("data-logical-lane"),
+    );
+  });
+  expect(sixBandLanes).toHaveLength(6);
+  expect(new Set(sixBandLanes).size).toBe(6);
+});
+
+test("capture-backed previews respect reduced motion and retain saved template identity", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openStudio(page);
+  const studio = page.locator(studioSelector);
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const sceneBrowser = studio.locator("govee-scene-browser");
+  await sceneBrowser
+    .getByRole("button", { name: "Observed captures", exact: true })
+    .click();
+  await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
+  const reducedSweep = sceneBrowser.locator(".directional-sweep");
+  const reducedLane = await reducedSweep.getAttribute("data-logical-lane");
+  await page.waitForTimeout(700);
+  await expect(reducedSweep).toHaveAttribute(
+    "data-logical-lane",
+    reducedLane ?? "",
+  );
+  await expect(reducedSweep.locator(".sweep-band")).toHaveCount(2);
+
+  await sceneBrowser.getByRole("button", { name: /^Sunrise/ }).click();
+  await sceneBrowser.getByRole("button", { name: "Save copy" }).click();
+  await expect(
+    sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
+  ).toBeVisible();
+  await page.reload();
+  const reloadedStudio = page.locator(studioSelector);
+  await expect(
+    reloadedStudio.getByRole("heading", { name: "Effect Studio" }),
+  ).toBeVisible();
+  await reloadedStudio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const reloadedBrowser = reloadedStudio.locator("govee-scene-browser");
+  await reloadedBrowser.getByRole("button", { name: "Custom", exact: true }).click();
+  await reloadedBrowser.getByRole("button", { name: /Sunrise copy/ }).click();
+  await expect(
+    reloadedBrowser.getByRole("heading", { name: "Observed static scene" }),
+  ).toBeVisible();
+  await expect(
+    reloadedBrowser.getByRole("heading", { name: "Built-in scene identity" }),
+  ).toBeVisible();
+});
+
+for (const direction of ["ltr", "rtl"] as const) {
+  test(`directional sweep uses ordered logical lanes and wraps towards first in ${direction.toUpperCase()}`, async ({
+    page,
+  }) => {
+    await openStudio(page, direction === "rtl" ? "?rtl=1" : "");
+    const studio = page.locator(studioSelector);
+    await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+    const sceneBrowser = studio.locator("govee-scene-browser");
+    await sceneBrowser
+      .getByRole("button", { name: "Observed captures", exact: true })
+      .click();
+    await page.evaluate(() => {
+      const target = window as Window & {
+        previewSweepTransitions?: {
+          lane: number;
+          previousLane: number;
+          sequence: number;
+          lanes: number[];
+          previousLanes: number[];
+        }[];
+      };
+      target.previewSweepTransitions = [];
+      document.addEventListener("preview-sweep-lane-change", (event) => {
+        const detail = (event as CustomEvent<{
+          lane: number;
+          previousLane: number;
+          sequence: number;
+          lanes: number[];
+          previousLanes: number[];
+        }>).detail;
+        target.previewSweepTransitions?.push(detail);
+      });
+    });
+    await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
+    const sweep = sceneBrowser.locator(".directional-sweep");
+    const lanes = sweep.locator(".sweep-cell");
+
+    await expect(lanes).toHaveCount(15);
+    expect(
+      await lanes.evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("data-logical-lane")),
+      ),
+    ).toEqual(Array.from({ length: 15 }, (_, index) => String(index)));
+    const positions = await lanes.evaluateAll((elements) =>
+      elements.map((element) => element.getBoundingClientRect().left),
+    );
+    expect(positions[0]).toBeLessThan(positions[14]);
+    await expect(sweep).toHaveAttribute("data-logical-lane", "6");
+    expect(
+      await sweep.locator(".sweep-band").evaluateAll((bands) =>
+        bands.map((band) =>
+          band.closest(".sweep-cell")?.getAttribute("data-logical-lane"),
+        ),
+      ),
+    ).toEqual(["6", "14"]);
+    await expect(sweep).toHaveAttribute("data-phase-separation", "8");
+    const transitions = (await page
+      .waitForFunction(
+        () => {
+          const target = window as Window & {
+            previewSweepTransitions?: {
+              lane: number;
+              previousLane: number;
+              sequence: number;
+              lanes: number[];
+              previousLanes: number[];
+            }[];
+          };
+          const transitions = target.previewSweepTransitions ?? [];
+          const wrapIndex = transitions.findIndex(
+            (transition) =>
+              transition.previousLane === 0 && transition.lane === 14,
+          );
+          return wrapIndex < 0 ? undefined : transitions.slice(0, wrapIndex + 1);
+        },
+        undefined,
+        { timeout: 5_000 },
+      )
+      .then((handle) => handle.jsonValue())) as {
+      lane: number;
+      previousLane: number;
+      sequence: number;
+      lanes: number[];
+      previousLanes: number[];
+    }[];
+    expect(transitions.map((transition) => transition.lane)).toContain(0);
+    expect(
+      transitions.some(
+        (transition) =>
+          transition.previousLane === 0 && transition.lane === 14,
+      ),
+    ).toBe(true);
+    expect(
+      transitions.every(
+        (transition, index) =>
+          transition.sequence === index &&
+          (transition.previousLane - transition.lane + 15) % 15 === 1 &&
+          transition.lanes.length === 2 &&
+          transition.previousLanes.length === 2 &&
+          transition.previousLanes.every(
+            (previousLane, laneIndex) =>
+              (previousLane - transition.lanes[laneIndex]! + 15) % 15 === 1,
+          ) &&
+          (transition.lanes[1]! - transition.lanes[0]! + 15) % 15 === 8 &&
+          (transition.previousLanes[1]! - transition.previousLanes[0]! + 15) %
+            15 ===
+            8,
+      ),
+    ).toBe(true);
+    await expect
+      .poll(async () => sweep.getAttribute("data-logical-lane"))
+      .not.toBeNull();
+    await expect(
+      sweep.locator(
+        `.sweep-cell.current[data-logical-lane="${await sweep.getAttribute(
+          "data-logical-lane",
+        )}"]`,
+      ),
+    ).toBeVisible();
+    await expect(sweep.locator(".sweep-band")).toHaveCount(2);
+  });
+}
+
+test("scene detail validation discards malformed optional capture-backed profiles", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() => {
+    const detail = {
+      scene: {
+        scene_id: 1011,
+        effect_id: 1073,
+        category_id: 700,
+        category: "Observed captures",
+        name: "sunrise",
+        variant: "",
+        display_name: "Sunrise",
+        scene_type: 0,
+        parameter_kind: "none",
+        speed: null,
+      },
+      content: {
+        kind: "scene_builtin",
+        template: {
+          sku: "H617A",
+          scene_id: 1011,
+          effect_id: 1073,
+          catalogue_schema_version: 1,
+        },
+        speed_index: null,
+      },
+    };
+    const profile = {
+      schema_version: 1,
+      fidelity: "capture_backed",
+      sku: "H617A",
+      scene_id: 1011,
+      effect_id: 1073,
+      review_state: "reviewed",
+      minimum_review_confidence: 0.85,
+      review_confidence: 0.9,
+      primitive: "static",
+      illuminated_segments: Array.from({ length: 15 }, (_, index) => index),
+      limitations: ["Observational evidence only."],
+      evidence: {
+        corpus_id: "20260812-h617a-scenes",
+        contact_sheet_sha256:
+          "29754d0aa2fc51e75ced394e051551797ede5a0be02b2c8bd631a302a753c2d6",
+      },
+      palette: {
+        colour_space: "uncalibrated_camera_srgb",
+        segment_rgb: Array.from({ length: 15 }, () => [1, 2, 3]),
+      },
+    };
+    const decode = (value: unknown) =>
+      window.testHarness.validateSceneDetail(value) as {
+        content: { kind: string };
+        preview_profile?: unknown;
+      };
+    const malformed = [
+      { ...profile, review_state: "pending_human_review" },
+      { ...profile, primitive: "global_pulse" },
+      { ...profile, name: "Display-only" },
+      { ...profile, scene_id: 1012 },
+      "not an object",
+    ];
+    return {
+      legacy: decode(detail),
+      malformed: malformed.map((preview_profile) =>
+        decode({ ...detail, preview_profile }),
+      ),
+    };
+  });
+
+  expect(result.legacy).toMatchObject({ content: { kind: "scene_builtin" } });
+  expect(result.legacy).not.toHaveProperty("preview_profile");
+  for (const detail of result.malformed) {
+    expect(detail).toMatchObject({ content: { kind: "scene_builtin" } });
+    expect(detail).not.toHaveProperty("preview_profile");
+  }
+});
+
 test("captured layout 0 palette scenes expose lossless structure", async ({
   page,
 }) => {
@@ -383,6 +808,256 @@ test("palette scene validation enforces schema boundaries and layout rules", asy
   expect(result.boundaryStepCount).toBe(255);
   expect(result.boundaryPaletteCount).toBe(255);
   expect(result.rejected).toEqual(Array.from({ length: 11 }, () => true));
+});
+
+test("palette scene reserved config flags survive decoding and wire round trips", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() => {
+    const decode = (value: unknown) =>
+      window.testHarness.backend.validateEffectContent(value);
+    const base = {
+      kind: "scene_palette",
+      template: {
+        sku: "SYNTHETIC",
+        scene_id: 1,
+        effect_id: 2,
+        catalogue_schema_version: 1,
+      },
+      layout: 0,
+      brightness_flag: false,
+      steps: [{ value: 1, colour: [1, 2, 3], inline_colour: null }],
+      palette: [[4, 5, 6]],
+      speed_index: null,
+    };
+    const decoded = decode({ ...base, config_flags: 0x08 });
+    // A decoded scene is its own wire content, so re-decoding proves the field survives.
+    const roundTripped = decode(decoded);
+    const omitted = decode(base);
+    return {
+      decoded:
+        decoded.kind === "scene_palette" ? decoded.config_flags ?? null : null,
+      roundTripped:
+        roundTripped.kind === "scene_palette"
+          ? roundTripped.config_flags ?? null
+          : null,
+      omittedHasField:
+        omitted.kind === "scene_palette" ? "config_flags" in omitted : true,
+      rejectsNonReservedBit: (() => {
+        try {
+          decode({ ...base, config_flags: 0x01 });
+          return false;
+        } catch {
+          return true;
+        }
+      })(),
+    };
+  });
+
+  expect(result.decoded).toBe(0x08);
+  expect(result.roundTripped).toBe(0x08);
+  expect(result.omittedHasField).toBe(false);
+  expect(result.rejectsNonReservedBit).toBe(true);
+});
+
+test("palette and layered trailing padding survive decoding and wire round trips", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() => {
+    const decode = (value: unknown) =>
+      window.testHarness.backend.validateEffectContent(value);
+    const paletteBase = {
+      kind: "scene_palette",
+      template: {
+        sku: "SYNTHETIC",
+        scene_id: 1,
+        effect_id: 2,
+        catalogue_schema_version: 1,
+      },
+      layout: 0,
+      brightness_flag: false,
+      steps: [{ value: 1, colour: [1, 2, 3], inline_colour: null }],
+      palette: [[4, 5, 6]],
+      speed_index: null,
+    };
+    const layeredBase = {
+      kind: "scene_layered",
+      template: {
+        sku: "SYNTHETIC",
+        scene_id: 3,
+        effect_id: 4,
+        catalogue_schema_version: 1,
+      },
+      effect: { layers: [] },
+      speed_index: null,
+      raw_param: "00",
+    };
+    const roundTrippedPadding = (value: unknown) => {
+      const decoded = decode(value);
+      // A decoded scene is its own wire content, so re-decoding proves the field survives.
+      const roundTripped = decode(decoded) as { trailing_padding?: number };
+      return roundTripped.trailing_padding ?? null;
+    };
+    const rejects = (value: unknown) => {
+      try {
+        decode(value);
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    const oversize = 0xff * 17 + 1;
+    return {
+      palettePadding: roundTrippedPadding({
+        ...paletteBase,
+        trailing_padding: 34,
+      }),
+      paletteOmitsField: "trailing_padding" in decode(paletteBase),
+      paletteRejectsOversize: rejects({
+        ...paletteBase,
+        trailing_padding: oversize,
+      }),
+      paletteRejectsNegative: rejects({
+        ...paletteBase,
+        trailing_padding: -1,
+      }),
+      layeredPadding: roundTrippedPadding({
+        ...layeredBase,
+        trailing_padding: 34,
+      }),
+      layeredOmitsField: "trailing_padding" in decode(layeredBase),
+      layeredRejectsOversize: rejects({
+        ...layeredBase,
+        trailing_padding: oversize,
+      }),
+    };
+  });
+
+  expect(result.palettePadding).toBe(34);
+  expect(result.paletteOmitsField).toBe(false);
+  expect(result.paletteRejectsOversize).toBe(true);
+  expect(result.paletteRejectsNegative).toBe(true);
+  expect(result.layeredPadding).toBe(34);
+  expect(result.layeredOmitsField).toBe(false);
+  expect(result.layeredRejectsOversize).toBe(true);
+});
+
+test("layer and movement unknown flags reject known bits and survive round trips", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() => {
+    const decode = (value: unknown) =>
+      window.testHarness.backend.validateEffectContent(value);
+    const movement = (unknownFlags: number) => ({
+      enabled: false,
+      enter_exit: false,
+      direction: 0,
+      distance: 1,
+      speed: 128,
+      unknown_flags: unknownFlags,
+    });
+    const layer = (overrides: Record<string, unknown>) => ({
+      area: { start_tenths: 0, width_tenths: 10 },
+      selection: { type: 0, param_1: 0, param_2: 1 },
+      brightness_gradient: false,
+      brightness_patterns: [
+        {
+          scope_high: 255,
+          scope_low: 0,
+          order: 0,
+          change_speed: 128,
+          brightest_retention: 20,
+          darkest_retention: 20,
+        },
+      ],
+      distribution: { method: 1, backwards: false },
+      colour_speed: 128,
+      colour_retention: 20,
+      palette: [
+        [255, 0, 0],
+        [0, 0, 255],
+      ],
+      selected_movement: movement(0),
+      overall_movement: movement(0),
+      priority: 0,
+      unknown_flags: 0,
+      excess: "",
+      ...overrides,
+    });
+    const advanced = (singleLayer: unknown) => ({
+      kind: "advanced",
+      layers: [singleLayer],
+    });
+    const layered = (singleLayer: unknown) => ({
+      kind: "scene_layered",
+      template: {
+        sku: "SYNTHETIC",
+        scene_id: 3,
+        effect_id: 4,
+        catalogue_schema_version: 1,
+      },
+      effect: { layers: [singleLayer] },
+      speed_index: null,
+      raw_param: "00",
+    });
+    const rejects = (value: unknown) => {
+      try {
+        decode(value);
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    type DecodedLayer = {
+      unknown_flags: number;
+      selected_movement: { unknown_flags: number };
+      overall_movement: { unknown_flags: number };
+    };
+    const reservedLayer = layer({
+      unknown_flags: 0xfd,
+      selected_movement: movement(0xe8),
+      overall_movement: movement(0xe8),
+    });
+    // A decoded scene is its own wire content, so re-decoding proves the fields survive.
+    const advancedRoundTrip = decode(
+      decode(advanced(reservedLayer)),
+    ) as { layers: DecodedLayer[] };
+    const layeredRoundTrip = decode(
+      decode(layered(reservedLayer)),
+    ) as { effect: { layers: DecodedLayer[] } };
+    return {
+      advancedLayerReserved: advancedRoundTrip.layers[0].unknown_flags,
+      advancedMovementReserved:
+        advancedRoundTrip.layers[0].selected_movement.unknown_flags,
+      layeredLayerReserved: layeredRoundTrip.effect.layers[0].unknown_flags,
+      layeredMovementReserved:
+        layeredRoundTrip.effect.layers[0].overall_movement.unknown_flags,
+      advancedRejectsMovementKnownBit: rejects(
+        advanced(layer({ selected_movement: movement(0x17) })),
+      ),
+      advancedRejectsLayerBrightnessBit: rejects(
+        advanced(layer({ unknown_flags: 0x02 })),
+      ),
+      layeredRejectsMovementKnownBit: rejects(
+        layered(layer({ overall_movement: movement(0x17) })),
+      ),
+      layeredRejectsLayerBrightnessBit: rejects(
+        layered(layer({ unknown_flags: 0x02 })),
+      ),
+    };
+  });
+
+  expect(result.advancedLayerReserved).toBe(0xfd);
+  expect(result.advancedMovementReserved).toBe(0xe8);
+  expect(result.layeredLayerReserved).toBe(0xfd);
+  expect(result.layeredMovementReserved).toBe(0xe8);
+  expect(result.advancedRejectsMovementKnownBit).toBe(true);
+  expect(result.advancedRejectsLayerBrightnessBit).toBe(true);
+  expect(result.layeredRejectsMovementKnownBit).toBe(true);
+  expect(result.layeredRejectsLayerBrightnessBit).toBe(true);
 });
 
 test("schema-only layout 1 remains structural and static", async ({ page }) => {
@@ -1774,6 +2449,15 @@ for (const direction of ["ltr", "rtl"] as const) {
     ).toBeVisible();
     await expect(
       studio.getByRole("tablist", { name: "Effect layers" }),
+    ).toBeVisible();
+    await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+    const sceneBrowser = studio.locator("govee-scene-browser");
+    await sceneBrowser
+      .getByRole("button", { name: "Observed captures", exact: true })
+      .click();
+    await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
+    await expect(
+      sceneBrowser.getByRole("img", { name: /Capture-backed abstract directional sweep/ }),
     ).toBeVisible();
     const overflow = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

@@ -17,6 +17,7 @@ from .effect_limits import (
     validate_json_document,
     validate_revision,
 )
+from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES
 from .layered_scene import AppliedArea as AppliedArea
 from .layered_scene import BrightnessOrder as BrightnessOrder
 from .layered_scene import BrightnessPattern as BrightnessPattern
@@ -40,6 +41,8 @@ EFFECT_SCHEMA_VERSION = 1
 MAX_PALETTE_COLOURS = 8
 MAX_MULTI_EFFECTS = 4
 H617A_SEGMENT_COUNT = 15
+
+PALETTE_CONFIG_RESERVED_MASK = 0x08
 
 type RGB = tuple[int, int, int]
 type JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
@@ -215,6 +218,8 @@ class PaletteScene:
     steps: tuple[SceneStep, ...]
     palette: tuple[RGB, ...] = ()
     speed_index: int | None = None
+    config_flags: int = 0
+    trailing_padding: int = 0
 
     def __post_init__(self) -> None:
         if self.layout not in (0, 1):
@@ -230,6 +235,16 @@ class PaletteScene:
             raise EffectValidationError("layout 1 steps require inline colours")
         if self.speed_index is not None:
             _validate_byte(self.speed_index, "scene speed index")
+        if self.config_flags & ~PALETTE_CONFIG_RESERVED_MASK:
+            raise EffectValidationError("type-1 scene config flags must only set reserved config bits")
+        if (
+            not isinstance(self.trailing_padding, int)
+            or isinstance(self.trailing_padding, bool)
+            or not 0 <= self.trailing_padding <= MAX_SCENE_PARAM_BYTES
+        ):
+            raise EffectValidationError(
+                f"type-1 scene trailing padding must be an integer from 0 to {MAX_SCENE_PARAM_BYTES}"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -466,6 +481,8 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             ],
             "palette": [list(colour) for colour in content.palette],
             "speed_index": content.speed_index,
+            "config_flags": content.config_flags,
+            "trailing_padding": content.trailing_padding,
         }
     if isinstance(content, LayeredScene):
         return {"kind": "scene_layered", **layered_scene_to_value(content)}
@@ -518,6 +535,8 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             ),
             palette=_palette_from_value(raw.get("palette")),
             speed_index=_optional_int(raw, "speed_index"),
+            config_flags=_optional_int(raw, "config_flags") or 0,
+            trailing_padding=_optional_int(raw, "trailing_padding") or 0,
         )
     if kind == "scene_layered":
         return layered_scene_from_value(raw)
