@@ -15,6 +15,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
+from .ble_device_resolver import BLEDeviceResolver
 from .const import DOMAIN, default_effect_families, get_profile
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .protocol import (
@@ -229,6 +230,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         *,
         configuration_url: str,
         effect_families: frozenset[str] | None = None,
+        device_resolver: BLEDeviceResolver | None = None,
     ) -> None:
         profile = get_profile(model)
         super().__init__(
@@ -240,6 +242,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.address, self.model, self.profile = address, model, profile
         self.configuration_url = configuration_url
         self.effect_families = default_effect_families(model) if effect_families is None else effect_families
+        self._device_resolver = BLEDeviceResolver.from_environment() if device_resolver is None else device_resolver
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
         self._control_lock = asyncio.Lock()
@@ -423,16 +426,16 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 return self._client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
             await self.disconnect()
-        ble_device = None
+        resolution = None
         for attempt in range(DEVICE_DISCOVERY_ATTEMPTS):
-            ble_device = bluetooth.async_ble_device_from_address(self.hass, self.address, connectable=True)
-            if ble_device is not None:
+            resolution = await self._device_resolver.async_resolve(self.hass, self.address)
+            if resolution is not None:
                 break
             if attempt < DEVICE_DISCOVERY_ATTEMPTS - 1:
                 await asyncio.sleep(RETRY_BACKOFF_SECONDS)
-        if not ble_device:
+        if resolution is None:
             raise BleakError(f"Device {self.address} not found")
-        self._client = await establish_connection(BleakClient, ble_device, self.address)
+        self._client = await establish_connection(resolution.client_class, resolution.device, self.address)
         self._reset_disconnect_timer()
         if self.profile.state_readable:
             try:

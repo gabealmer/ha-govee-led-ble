@@ -22,25 +22,23 @@ H617A Painted, Single and Multi effects can be applied locally over BLE.  Advanc
 
 Recovery drafts are private to their Home Assistant user.  Deployment status does not expose unsaved effect snapshots.  The editor refuses incompatible backend, schema, compiler or frontend asset versions.
 
+Five reviewed H617A scene identities have capture-backed visual previews: four static observations and one directional sweep.  The generated runtime asset is derived from the [scene visual evidence catalogue](tools/ble/scene_visual_evidence.yaml), keyed only by SKU, scene ID and effect ID.  These are reviewed recorded captures with spatial lane calibration, not BLE protocol renderings.  Camera colour remains uncalibrated, and the editor presents each recording's limitations.  The other 78 pending profiles retain structural or opaque previews.
+
 The device configuration link retains the stable editor route.  Installing a stable build uses `frontend/editor.js` and ignores prerelease Effect Studio storage.
 
 ### Development deployment
 
-The pushed `ux` branch can be installed through HACS without creating a release:
+Use the isolated Home Assistant Container harness rather than changing the household Home Assistant instance.  It bind-mounts the current integration, automates the temporary BLE ownership handover, and restores the household config entry during teardown:
 
 ```bash
-bash tools/harness/deploy-dev.sh frontend
+bash tools/harness/container.sh frontend strip  # optional live Vite module
+bash tools/harness/container.sh up strip
+bash tools/harness/container.sh status strip
+bash tools/harness/container.sh restart strip   # reload Python changes
+bash tools/harness/container.sh down strip
 ```
 
-After the stable frontend loader has been activated once, frontend deployments need only a
-browser refresh. Python integration changes still require:
-
-```bash
-bash tools/harness/deploy-dev.sh backend
-```
-
-followed by a Home Assistant restart. The command refuses dirty or unpushed worktrees and
-verifies the manifest-selected bundle served by Home Assistant.
+See the [container harness instructions](tools/harness/README.md#isolated-home-assistant-container) for local secrets, device opt-in, dry-run checks and live frontend loading.
 
 ## Version 6 migration
 
