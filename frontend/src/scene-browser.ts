@@ -1,0 +1,1080 @@
+import { LitElement, css, html, nothing } from "lit";
+import { property, state } from "lit/decorators.js";
+
+import { cloneAdvancedContent } from "./advanced-effect-editor";
+import type { EffectStudioApi } from "./api";
+import type {
+  BuiltinSceneContent,
+  DeviceCapabilities,
+  LayeredSceneContent,
+  LibraryItem,
+  LibrarySnapshot,
+  LibrarySummary,
+  SceneCatalogue,
+  SceneSummary,
+} from "./types";
+
+type CategorySelection = "all" | "custom" | number;
+type SceneContent = BuiltinSceneContent | LayeredSceneContent;
+type SceneRequestContext = {
+  generation: number;
+  api: EffectStudioApi;
+  deviceId: string;
+  category: CategorySelection;
+  selectionIdentity?: string;
+};
+
+export class GoveeSceneBrowser extends LitElement {
+  @property({ attribute: false })
+  public api?: EffectStudioApi;
+
+  @property({ attribute: false })
+  public device?: DeviceCapabilities;
+
+  @property({ attribute: false })
+  public library: LibrarySnapshot = {
+    library_revision: 0,
+    items: [],
+  };
+
+  @property({ type: Boolean })
+  public isAdmin = false;
+
+  @state()
+  private catalogue?: SceneCatalogue;
+
+  @state()
+  private category: CategorySelection = "all";
+
+  @state()
+  private selectedScene?: SceneSummary;
+
+  @state()
+  private selectedItem?: LibraryItem;
+
+  @state()
+  private content?: SceneContent;
+
+  @state()
+  private name = "";
+
+  @state()
+  private speedIndex: number | null = null;
+
+  @state()
+  private loading = false;
+
+  @state()
+  private saving = false;
+
+  @state()
+  private applying = false;
+
+  @state()
+  private notice?: string;
+
+  @state()
+  private error?: string;
+
+  private requestGeneration = 0;
+  private activeSelectionIdentity?: string;
+
+  protected willUpdate(changed: Map<PropertyKey, unknown>): void {
+    if (changed.has("device") || changed.has("api")) {
+      this.invalidateRequests();
+      this.catalogue = undefined;
+      this.category = "all";
+      this.selectedScene = undefined;
+      this.selectedItem = undefined;
+      this.content = undefined;
+      this.notice = undefined;
+      this.error = undefined;
+      this.loading = Boolean(this.api && this.device);
+    }
+  }
+
+  protected updated(changed: Map<PropertyKey, unknown>): void {
+    if (
+      (changed.has("device") || changed.has("api")) &&
+      this.api &&
+      this.device
+    ) {
+      void this.loadCatalogue();
+    }
+  }
+
+  protected render() {
+    if (!this.device) {
+      return html`
+        <section class="empty">
+          <h2>No loaded device</h2>
+          <p>Load a Govee light before browsing its native scenes.</p>
+        </section>
+      `;
+    }
+    if (this.loading) {
+      return html`<div class="status" role="status">Loading scenes...</div>`;
+    }
+    if (this.error || !this.catalogue) {
+      return html`
+        <section class="empty">
+          <h2>Scenes are unavailable</h2>
+          <p role="alert">${this.error ?? "The scene catalogue could not be loaded."}</p>
+        </section>
+      `;
+    }
+
+    return html`
+      <aside class="categories" aria-label="Scene categories">
+        <p class="eyebrow">Scenes</p>
+        ${this.categoryButton("all", "All scenes")}
+        ${this.categoryButton("custom", "Custom")}
+        ${this.catalogue.categories.map((category) =>
+          this.categoryButton(category.id, category.name),
+        )}
+      </aside>
+
+      <aside class="scenes" aria-label="Scenes">
+        <div class="scenes-heading">
+          <p class="eyebrow">${this.categoryLabel}</p>
+          <h2>Scenes</h2>
+        </div>
+        ${this.filteredCustomScenes.map((item) =>
+          this.sceneButton(
+            `custom:${item.id}`,
+            item.name,
+            "Custom",
+            () => this.selectCustom(item),
+          ),
+        )}
+        ${this.filteredBuiltinScenes.map((scene) =>
+          this.sceneButton(
+            sceneKey(scene),
+            scene.display_name,
+            scene.parameter_kind === "none"
+              ? "Built-in"
+              : scene.parameter_kind === "palette"
+                ? "Colours"
+                : scene.parameter_kind === "layers"
+                  ? "Layers"
+                  : "Built-in",
+            () => this.selectBuiltin(scene),
+          ),
+        )}
+        ${!this.filteredCustomScenes.length &&
+        !this.filteredBuiltinScenes.length
+          ? html`<p class="empty-list">No scenes in this category.</p>`
+          : nothing}
+      </aside>
+
+      <section class="detail">
+        ${this.notice
+          ? html`<div class="notice" role="status">${this.notice}</div>`
+          : nothing}
+        ${this.selectedScene && this.content
+          ? this.renderDetail()
+          : html`
+              <div class="empty">
+                <h2>Select a scene</h2>
+                <p>
+                  Choose a built-in or custom scene to inspect its documented
+                  controls.
+                </p>
+              </div>
+            `}
+      </section>
+    `;
+  }
+
+  private get categoryLabel(): string {
+    if (this.category === "all") {
+      return "All scenes";
+    }
+    if (this.category === "custom") {
+      return "Custom";
+    }
+    return (
+      this.catalogue?.categories.find(
+        (category) => category.id === this.category,
+      )?.name ?? "Scenes"
+    );
+  }
+
+  private get compatibleCustomScenes(): LibrarySummary[] {
+    return this.library.items.filter(
+      (item) =>
+        item.kind === "scene_builtin" &&
+        item.template?.sku === this.catalogue?.sku,
+    );
+  }
+
+  private get filteredCustomScenes(): LibrarySummary[] {
+    return this.category === "all" || this.category === "custom"
+      ? this.compatibleCustomScenes
+      : [];
+  }
+
+  private get filteredBuiltinScenes(): SceneSummary[] {
+    if (!this.catalogue || this.category === "custom") {
+      return [];
+    }
+    if (this.category === "all") {
+      return this.catalogue.scenes;
+    }
+    return this.catalogue.scenes.filter(
+      (scene) => scene.category_id === this.category,
+    );
+  }
+
+  private get selectionKey(): string | undefined {
+    if (this.selectedItem) {
+      return `custom:${this.selectedItem.id}`;
+    }
+    return this.selectedScene ? sceneKey(this.selectedScene) : undefined;
+  }
+
+  private categoryButton(category: CategorySelection, label: string) {
+    const selected = this.category === category;
+    return html`
+      <button
+        class="selector ${selected ? "selected" : ""}"
+        type="button"
+        aria-current=${selected ? "page" : nothing}
+        @click=${() => this.selectCategory(category)}
+      >
+        ${label}
+      </button>
+    `;
+  }
+
+  private sceneButton(
+    key: string,
+    label: string,
+    meta: string,
+    select: () => void,
+  ) {
+    const selected = this.selectionKey === key;
+    return html`
+      <button
+        class="selector scene ${selected ? "selected" : ""}"
+        type="button"
+        aria-pressed=${selected}
+        @click=${select}
+      >
+        <span>${label}</span>
+        <small>${meta}</small>
+      </button>
+    `;
+  }
+
+  private renderDetail() {
+    const scene = this.selectedScene!;
+    const custom = this.selectedItem !== undefined;
+    return html`
+      <header class="detail-heading">
+        <div>
+          <p class="eyebrow">
+            ${custom ? "Custom scene" : scene.category}
+          </p>
+          ${custom
+            ? html`
+                <input
+                  class="name"
+                  aria-label="Scene name"
+                  maxlength="128"
+                  .value=${this.name}
+                  ?disabled=${!this.isAdmin}
+                  @input=${(event: Event) => {
+                    this.name = (event.target as HTMLInputElement).value;
+                  }}
+                />
+              `
+            : html`<h2>${scene.display_name}</h2>`}
+        </div>
+        <div class="actions">
+          <button
+            class="secondary"
+            type="button"
+            title=${this.content?.kind === "scene_layered"
+              ? "Use as template to save an editable layered copy"
+              : nothing}
+            ?disabled=${!this.isAdmin ||
+            this.saving ||
+            !this.hasCurrentSceneContent() ||
+            this.content?.kind === "scene_layered"}
+            @click=${this.save}
+          >
+            ${this.saving
+              ? "Saving..."
+              : custom
+                ? "Save"
+                : "Save copy"}
+          </button>
+          <button
+            class="primary"
+            type="button"
+            ?disabled=${!this.isAdmin ||
+            !this.catalogue?.enabled ||
+            !this.hasCurrentSceneContent() ||
+            (this.selectedItem !== undefined &&
+              this.content?.kind !== "scene_builtin") ||
+            this.applying}
+            @click=${this.apply}
+          >
+            ${this.applying ? "Applying..." : "Apply"}
+          </button>
+        </div>
+      </header>
+
+      ${!this.catalogue?.enabled
+        ? html`
+            <div class="callout" role="note">
+              Native scenes are disabled for this device in the integration
+              options. Browsing and saving copies remain available.
+            </div>
+          `
+        : nothing}
+
+      <section class="card">
+        <h3>Common settings</h3>
+        ${scene.speed
+          ? html`
+              <div class="setting">
+                <span>Speed</span>
+                <div class="segmented" role="group" aria-label="Scene speed">
+                  ${Array.from(
+                    { length: scene.speed.option_count },
+                    (_, index) => html`
+                      <button
+                        class=${this.speedIndex === index ? "selected" : ""}
+                        type="button"
+                        aria-pressed=${this.speedIndex === index}
+                        ?disabled=${!this.isAdmin}
+                        @click=${() => {
+                          this.speedIndex = index;
+                        }}
+                      >
+                        ${speedLabel(index, scene.speed!.default_index)}
+                      </button>
+                    `,
+                  )}
+                </div>
+              </div>
+            `
+          : html`
+              <p class="muted">
+                This scene has no documented adjustable speed.
+              </p>
+            `}
+      </section>
+
+      ${scene.parameter_kind === "palette"
+        ? html`
+            <section class="card">
+              <h3>Colours</h3>
+              <p class="muted">
+                The catalogue palette is preserved. Editable colour conversion
+                is not enabled until the parameter body can be round-tripped
+                losslessly.
+              </p>
+            </section>
+          `
+        : nothing}
+
+      ${scene.parameter_kind === "layers"
+        ? html`
+            <section class="card">
+              <h3>Layers</h3>
+              <p class="muted">
+                Open this decoded scene in Advanced to edit and save a layered
+                copy. Native scene Apply remains separate.
+              </p>
+              <button
+                class="secondary"
+                type="button"
+                ?disabled=${!this.isAdmin ||
+                scene.scene_type !== 2 ||
+                !this.hasCurrentSceneContent() ||
+                this.content?.kind !== "scene_layered"}
+                @click=${this.useAsTemplate}
+              >
+                Use as template
+              </button>
+            </section>
+          `
+        : nothing}
+    `;
+  }
+
+  private async loadCatalogue(): Promise<void> {
+    if (!this.api || !this.device) {
+      return;
+    }
+    const request = this.beginRequest();
+    this.loading = true;
+    this.error = undefined;
+    this.notice = undefined;
+    this.selectedScene = undefined;
+    this.selectedItem = undefined;
+    this.content = undefined;
+    try {
+      const catalogue = await request.api.sceneCatalogue(request.deviceId);
+      if (!this.requestIsCurrent(request)) {
+        return;
+      }
+      this.catalogue = catalogue;
+      this.category = "all";
+    } catch (error) {
+      if (this.requestIsCurrent(request)) {
+        this.error = errorMessage(error);
+      }
+    } finally {
+      if (this.requestIsCurrent(request)) {
+        this.loading = false;
+      }
+    }
+  }
+
+  private selectCategory(category: CategorySelection): void {
+    this.invalidateRequests();
+    this.category = category;
+    this.selectedScene = undefined;
+    this.selectedItem = undefined;
+    this.content = undefined;
+    this.notice = undefined;
+  }
+
+  private async selectBuiltin(scene: SceneSummary): Promise<void> {
+    if (!this.api || !this.device) {
+      return;
+    }
+    const identity = sceneKey(scene);
+    const request = this.beginRequest(identity);
+    this.notice = undefined;
+    this.selectedScene = scene;
+    this.selectedItem = undefined;
+    this.content = undefined;
+    this.name = scene.display_name;
+    this.speedIndex = scene.speed?.default_index ?? null;
+    try {
+      const detail = await request.api.sceneDetail(
+        request.deviceId,
+        scene.scene_id,
+        scene.effect_id,
+      );
+      if (
+        !this.requestIsCurrent(request) ||
+        sceneKey(detail.scene) !== identity
+      ) {
+        return;
+      }
+      this.selectedScene = detail.scene;
+      this.content = detail.content;
+      this.name = detail.scene.display_name;
+      this.speedIndex = detail.content.speed_index;
+    } catch (error) {
+      if (this.requestIsCurrent(request)) {
+        this.notice = errorMessage(error);
+      }
+    }
+  }
+
+  private async selectCustom(summary: LibrarySummary): Promise<void> {
+    if (!this.api || !this.device || !this.catalogue) {
+      return;
+    }
+    const catalogue = this.catalogue;
+    const request = this.beginRequest(`custom:${summary.id}`);
+    this.notice = undefined;
+    this.selectedScene = undefined;
+    this.selectedItem = undefined;
+    this.content = undefined;
+    this.name = summary.name;
+    try {
+      const item = await request.api.item(summary.id);
+      if (!this.requestIsCurrent(request)) {
+        return;
+      }
+      if (item.content.kind !== "scene_builtin") {
+        throw new Error("This custom scene uses an unsupported definition.");
+      }
+      const content = item.content;
+      if (content.template.sku !== catalogue.sku) {
+        throw new Error(
+          `This custom scene targets ${content.template.sku}, not ${catalogue.sku}.`,
+        );
+      }
+      const scene = catalogue.scenes.find(
+        (candidate) =>
+          candidate.scene_id === content.template.scene_id &&
+          candidate.effect_id === content.template.effect_id,
+      );
+      if (!scene) {
+        throw new Error("The source scene is not in this device catalogue.");
+      }
+      this.selectedScene = scene;
+      this.selectedItem = item;
+      this.content = content;
+      this.name = item.name;
+      this.speedIndex =
+        content.speed_index ?? scene.speed?.default_index ?? null;
+    } catch (error) {
+      if (this.requestIsCurrent(request)) {
+        this.notice = errorMessage(error);
+      }
+    }
+  }
+
+  private async save(): Promise<void> {
+    if (
+      !this.api ||
+      !this.device ||
+      !this.catalogue ||
+      !this.selectedScene ||
+      !this.content ||
+      !this.hasCurrentSceneContent() ||
+      this.content.kind !== "scene_builtin" ||
+      !this.isAdmin ||
+      this.saving
+    ) {
+      return;
+    }
+
+    const name = (
+      this.selectedItem
+        ? this.name.trim()
+        : `${this.selectedScene.display_name} copy`
+    ).trim();
+    if (!name) {
+      this.notice = "Give this custom scene a name before saving.";
+      return;
+    }
+    const content: BuiltinSceneContent = {
+      ...this.content,
+      speed_index: this.speedIndex,
+    };
+    const request = this.captureRequest();
+    this.saving = true;
+    this.notice = undefined;
+    try {
+      const result = this.selectedItem
+        ? await this.api.updateItem(
+            this.selectedItem,
+            name,
+            content,
+            this.library.library_revision,
+          )
+        : await this.api.createItem(
+            name,
+            content,
+            this.library.library_revision,
+          );
+      if (result.item.content.kind !== "scene_builtin") {
+        throw new Error("The saved scene returned an unsupported definition.");
+      }
+      this.dispatchEvent(
+        new CustomEvent("library-item-saved", {
+          detail: {
+            item: result.item,
+            library_revision: result.library_revision,
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      if (!this.requestIsCurrent(request)) {
+        return;
+      }
+      this.requestGeneration += 1;
+      this.activeSelectionIdentity = `custom:${result.item.id}`;
+      this.selectedItem = result.item;
+      this.content = result.item.content;
+      this.name = result.item.name;
+      this.category = "custom";
+      this.notice = "Custom scene saved.";
+    } catch (error) {
+      if (this.requestIsCurrent(request)) {
+        this.notice =
+          errorCode(error) === "conflict"
+            ? "The library changed elsewhere. Reload the scene before saving."
+            : `Save failed: ${errorMessage(error)}`;
+      }
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  private useAsTemplate(): void {
+    if (
+      !this.isAdmin ||
+      !this.selectedScene ||
+      this.selectedScene.scene_type !== 2 ||
+      this.content?.kind !== "scene_layered" ||
+      !this.hasCurrentSceneContent()
+    ) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent<{
+        content: LayeredSceneContent;
+        config_entry_id: string;
+        name: string;
+      }>("scene-template-selected", {
+        detail: {
+          content: cloneLayeredSceneContent({
+            ...this.content,
+            speed_index: this.speedIndex,
+          }),
+          config_entry_id: this.device!.config_entry_id,
+          name: `${this.selectedScene.display_name} layered`,
+        },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private async apply(): Promise<void> {
+    if (
+      !this.api ||
+      !this.device ||
+      !this.selectedScene ||
+      !this.hasCurrentSceneContent() ||
+      !this.isAdmin ||
+      !this.catalogue?.enabled ||
+      (this.selectedItem !== undefined &&
+        this.content?.kind !== "scene_builtin") ||
+      this.applying
+    ) {
+      return;
+    }
+    const request = this.captureRequest();
+    const device = this.device;
+    const scene = this.selectedScene;
+    const speedIndex = this.speedIndex;
+    this.applying = true;
+    this.notice = undefined;
+    try {
+      await request.api.applyScene(request.deviceId, scene, speedIndex);
+      if (this.requestIsCurrent(request)) {
+        this.notice = `Applied to ${device.display_name}. Scene identity can be read back; the selected speed remains optimistic.`;
+      }
+    } catch (error) {
+      if (this.requestIsCurrent(request)) {
+        this.notice = `Apply failed: ${errorMessage(error)}`;
+      }
+    } finally {
+      this.applying = false;
+    }
+  }
+
+  private beginRequest(
+    selectionIdentity?: string,
+  ): SceneRequestContext {
+    this.requestGeneration += 1;
+    this.activeSelectionIdentity = selectionIdentity;
+    return this.captureRequest();
+  }
+
+  private captureRequest(): SceneRequestContext {
+    return {
+      generation: this.requestGeneration,
+      api: this.api!,
+      deviceId: this.device!.config_entry_id,
+      category: this.category,
+      selectionIdentity: this.activeSelectionIdentity,
+    };
+  }
+
+  private invalidateRequests(): void {
+    this.requestGeneration += 1;
+    this.activeSelectionIdentity = undefined;
+  }
+
+  private requestIsCurrent(request: SceneRequestContext): boolean {
+    return (
+      request.generation === this.requestGeneration &&
+      request.api === this.api &&
+      request.deviceId === this.device?.config_entry_id &&
+      request.category === this.category &&
+      request.selectionIdentity === this.activeSelectionIdentity
+    );
+  }
+
+  private hasCurrentSceneContent(): boolean {
+    if (
+      !this.catalogue ||
+      !this.selectedScene ||
+      !this.content ||
+      this.content.template.sku !== this.catalogue.sku ||
+      this.content.template.scene_id !== this.selectedScene.scene_id ||
+      this.content.template.effect_id !== this.selectedScene.effect_id
+    ) {
+      return false;
+    }
+    return this.activeSelectionIdentity === this.selectionKey;
+  }
+
+  static styles = css`
+    :host {
+      display: contents;
+    }
+
+    :host([hidden]) {
+      display: none !important;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      min-height: 40px;
+    }
+
+    .categories,
+    .scenes {
+      overflow: auto;
+      padding: 22px 16px;
+      border-inline-end: 1px solid var(--studio-border);
+      background: var(--primary-background-color);
+    }
+
+    .categories {
+      background: var(--secondary-background-color, #f5f6f8);
+    }
+
+    .eyebrow {
+      margin: 0 10px 8px;
+      color: var(--studio-muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h2 {
+      margin-bottom: 0;
+      font-size: 20px;
+    }
+
+    h3 {
+      margin-bottom: 16px;
+      font-size: 16px;
+    }
+
+    .scenes-heading {
+      margin: 0 10px 20px;
+    }
+
+    .scenes-heading .eyebrow {
+      margin-inline: 0;
+    }
+
+    .selector {
+      width: 100%;
+      min-height: 40px;
+      padding: 9px 11px;
+      border: 0;
+      border-radius: 8px;
+      color: var(--primary-text-color);
+      background: transparent;
+      text-align: start;
+      cursor: pointer;
+    }
+
+    .selector:hover {
+      background: color-mix(
+        in srgb,
+        var(--primary-text-color) 6%,
+        transparent
+      );
+    }
+
+    .selector.selected {
+      color: var(--studio-blue);
+      background: var(--studio-blue-soft);
+      font-weight: 650;
+    }
+
+    .scene {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .scene small {
+      color: var(--studio-muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .detail {
+      min-width: 0;
+      padding: 28px;
+      background: var(--secondary-background-color, #f5f6f8);
+    }
+
+    .detail-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    .detail-heading .eyebrow {
+      margin-inline: 0;
+    }
+
+    .name {
+      width: min(460px, 100%);
+      min-height: 42px;
+      padding: 8px 0;
+      border: 0;
+      border-bottom: 1px solid var(--studio-border);
+      color: var(--primary-text-color);
+      background: transparent;
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .actions {
+      display: flex;
+      gap: 9px;
+    }
+
+    .primary,
+    .secondary {
+      padding: 8px 17px;
+      border-radius: 9px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .primary {
+      border: 1px solid var(--studio-blue);
+      color: var(--text-primary-color, #fff);
+      background: var(--studio-blue);
+    }
+
+    .secondary {
+      border: 1px solid var(--studio-border);
+      color: var(--primary-text-color);
+      background: var(--studio-card);
+    }
+
+    button:disabled,
+    input:disabled {
+      cursor: not-allowed;
+      opacity: 0.52;
+    }
+
+    .card,
+    .callout,
+    .notice,
+    .empty {
+      border: 1px solid var(--studio-border);
+      border-radius: 10px;
+      background: var(--studio-card);
+    }
+
+    .card {
+      margin-top: 18px;
+      padding: 20px;
+    }
+
+    .callout,
+    .notice {
+      margin-bottom: 18px;
+      padding: 12px 14px;
+      line-height: 1.45;
+    }
+
+    .notice {
+      border-color: color-mix(
+        in srgb,
+        var(--studio-blue) 35%,
+        var(--studio-border)
+      );
+      background: var(--studio-blue-soft);
+    }
+
+    .empty {
+      max-width: 680px;
+      padding: 28px;
+      line-height: 1.55;
+    }
+
+    .empty p,
+    .empty-list,
+    .muted {
+      margin-bottom: 0;
+      color: var(--studio-muted);
+      line-height: 1.5;
+    }
+
+    .empty-list {
+      padding: 12px 10px;
+    }
+
+    .setting {
+      display: grid;
+      gap: 12px;
+      color: var(--studio-muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .segmented {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .segmented button {
+      flex: 1 1 90px;
+      padding: 8px 12px;
+      border: 1px solid var(--studio-border);
+      border-radius: 8px;
+      color: var(--primary-text-color);
+      background: var(--studio-card);
+      cursor: pointer;
+    }
+
+    .segmented button.selected {
+      color: var(--studio-blue);
+      border-color: var(--studio-blue);
+      background: var(--studio-blue-soft);
+      font-weight: 650;
+    }
+
+    .status {
+      grid-column: 2 / -1;
+      padding: 48px 28px;
+    }
+
+    @media (max-width: 900px) {
+      :host {
+        display: block;
+      }
+
+      .categories {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 12px 16px;
+        border-inline-end: 0;
+        border-bottom: 1px solid var(--studio-border);
+      }
+
+      .categories .eyebrow {
+        display: none;
+      }
+
+      .categories .selector {
+        flex: 0 0 auto;
+        width: auto;
+        white-space: nowrap;
+      }
+
+      .scenes {
+        max-height: 340px;
+        border-inline-end: 0;
+        border-bottom: 1px solid var(--studio-border);
+      }
+
+      .detail {
+        padding: 20px 16px 32px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .detail-heading {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .actions > button {
+        flex: 1;
+      }
+    }
+  `;
+}
+
+function sceneKey(scene: SceneSummary): string {
+  return `builtin:${scene.scene_id}:${scene.effect_id}`;
+}
+
+function speedLabel(index: number, defaultIndex: number): string {
+  const offset = index - defaultIndex;
+  if (offset === 0) {
+    return "Default";
+  }
+  const magnitude = Math.abs(offset);
+  return `${offset < 0 ? "Slower" : "Faster"}${magnitude > 1 ? ` ${magnitude}` : ""}`;
+}
+
+function cloneLayeredSceneContent(
+  content: LayeredSceneContent,
+): LayeredSceneContent {
+  return {
+    ...content,
+    template: { ...content.template },
+    effect: {
+      layers: cloneAdvancedContent({
+        kind: "advanced",
+        layers: content.effect.layers,
+      }).layers,
+    },
+  };
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return "An unexpected error occurred.";
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  ) {
+    return error.code;
+  }
+  return undefined;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "govee-scene-browser": GoveeSceneBrowser;
+  }
+}
+
+if (!customElements.get("govee-scene-browser")) {
+  customElements.define("govee-scene-browser", GoveeSceneBrowser);
+}

@@ -14,6 +14,16 @@ All models support on/off, brightness, RGB color, color temperature, and state r
 - **H617A**: LED Strip · 83 scenes · 11 music modes
 - **H6199**: DreamView T1 · 240 scenes · video and music modes · advanced controls
 
+## Advanced Effect Studio prerelease
+
+The prerelease Effect Studio stores its library, recovery drafts and deployment status in the local Home Assistant instance.  Administrators can browse native scenes, author effects and manage the shared library.  Other authenticated users have read-only access to scenes and understood saved effects; unknown opaque definitions remain administrator-only.
+
+H617A Painted, Single and Multi effects can be applied locally over BLE.  Advanced layered effects are limited to editing, preview and save operations.  H6199 custom-effect writes are unavailable.
+
+Recovery drafts are private to their Home Assistant user.  Deployment status does not expose unsaved effect snapshots.  The editor refuses incompatible backend, schema, compiler or frontend asset versions.
+
+The device configuration link retains the stable editor route.  Installing a stable build uses `frontend/editor.js` and ignores prerelease Effect Studio storage.
+
 ## Version 6 migration
 
 Version 6 replaces the custom frontend and parallel mode controls with Home Assistant's native light effect selector.
