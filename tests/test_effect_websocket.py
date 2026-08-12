@@ -639,9 +639,43 @@ async def test_device_capabilities_and_apply(
         )
         applied = await client.receive_json()
 
+        await client.send_json_auto_id(
+            {
+                "type": WS_APPLY,
+                "config_entry_id": "entry-a",
+                "item_id": str(uuid4()),
+                "updated_at": "2026-08-11T00:00:00Z",
+            }
+        )
+        missing = await client.receive_json()
+
+        await client.send_json_auto_id(
+            {
+                "type": WS_APPLY,
+                "config_entry_id": "entry-a",
+                "item_id": "not-a-uuid",
+                "updated_at": "2026-08-11T00:00:00Z",
+            }
+        )
+        malformed = await client.receive_json()
+
+        apply_mock.side_effect = ValueError("H6199 custom-effect upload is not supported")
+        await client.send_json_auto_id(
+            {
+                "type": WS_APPLY,
+                "config_entry_id": "entry-a",
+                "item_id": str(item.id),
+                "updated_at": "2026-08-11T00:00:00Z",
+            }
+        )
+        unsupported = await client.receive_json()
+
     assert applied["success"] is True
     assert applied["result"]["deployment"]["phase"] == "confirmed"
-    apply_mock.assert_awaited_once()
+    assert missing["error"]["code"] == "not_found"
+    assert malformed["error"]["code"] == "invalid_format"
+    assert unsupported["error"]["code"] == "unsupported_model"
+    assert apply_mock.await_count == 2
 
 
 async def test_scene_catalogue_and_native_apply(
@@ -765,6 +799,43 @@ async def test_scene_catalogue_and_native_apply(
     assert service_calls[0][0:2] == ("light", "turn_on")
     assert service_calls[0][2]["entity_id"] == "light.cupboard"
     coordinator.async_set_scene_speed.assert_awaited_once_with(scene.speed.default_index)
+
+
+async def test_scene_apply_runtime_failure_returns_apply_failed(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain="ha_govee_led_ble",
+        state=ConfigEntryState.LOADED,
+        runtime_data=SimpleNamespace(model="H617A"),
+    )
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == "entry-a" else None,
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_websocket.async_apply_scene",
+        AsyncMock(side_effect=RuntimeError("scene speed was not confirmed")),
+    )
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_SCENE_APPLY,
+            "config_entry_id": "entry-a",
+            "scene_id": 1,
+            "effect_id": 2,
+        }
+    )
+    response = await client.receive_json()
+
+    assert response["error"]["code"] == "apply_failed"
+    assert response["error"]["message"] == "scene speed was not confirmed"
 
 
 async def test_layered_scene_get_round_trips_through_draft_and_library(

@@ -42,6 +42,22 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   await expect(
     studio.getByRole("navigation", { name: "Create" }),
   ).toBeVisible();
+  const modes = studio.getByRole("tablist", { name: "Custom effect type" });
+  await expect(modes.getByRole("tab", { name: "Painted" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await modes.getByRole("tab", { name: "Single" }).click();
+  await expect(modes.getByRole("tab", { name: "Single" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await modes.getByRole("tab", { name: "Multi" }).click();
+  await expect(modes.getByRole("tab", { name: "Multi" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await modes.getByRole("tab", { name: "Painted" }).click();
   await expect(
     studio.locator(".editor").getByRole("button", { name: "Apply" }),
   ).toBeEnabled();
@@ -69,6 +85,28 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   await expect(
     studio.getByRole("list", { name: "Colours" }),
   ).toBeVisible();
+});
+
+test("a temporarily unavailable URL device is not reported as unsupported", async ({
+  page,
+}) => {
+  const studio = await openStudio(
+    page,
+    "ha-govee-led-ble/editor/missing-entry",
+  );
+
+  await expect(
+    studio.getByRole("status").filter({
+      hasText:
+        "This device is temporarily unavailable in Home Assistant. Apply is disabled until it is loaded.",
+    }),
+  ).toBeVisible();
+  await expect(
+    studio.getByText("Painted effects cannot be applied to this device."),
+  ).toHaveCount(0);
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Apply" }),
+  ).toBeDisabled();
 });
 
 test("non-admin users receive a read-only editor", async ({ page }) => {
@@ -532,6 +570,34 @@ test("same-tab edits adopt an in-flight autosave revision without forking", asyn
   ).toHaveCount(0);
 });
 
+test("unfinished work recovers automatically without a draft manager", async ({
+  page,
+}) => {
+  let studio = await openStudio(page);
+  await studio.getByLabel("Effect name").fill("Restart recovery");
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        Object.values(window.testHarness.snapshot().state.drafts).find(
+          (draft) => draft.base_item_id === "painted-1",
+        )?.item.name,
+      ),
+    )
+    .toBe("Restart recovery");
+
+  await page.reload();
+  studio = page.locator(studioSelector);
+  await expect(studio.getByLabel("Effect name")).toHaveValue(
+    "Restart recovery",
+  );
+  await expect(
+    studio.getByRole("status").filter({
+      hasText: "Recovered an unfinished draft.",
+    }),
+  ).toBeVisible();
+  await expect(studio.getByText("Recovery drafts")).toHaveCount(0);
+});
+
 test("a delayed save cannot replace a newer dirty selection or delete its draft", async ({
   page,
 }) => {
@@ -609,9 +675,7 @@ test("a delayed save cannot replace a newer dirty selection or delete its draft"
   await expect(
     studio.locator(".editor").getByRole("button", { name: "Save" }),
   ).toBeEnabled();
-  await expect(
-    studio.getByRole("button", { name: "B dirty work" }),
-  ).toBeVisible();
+  await expect(studio.getByText("Recovery drafts")).toHaveCount(0);
   const finalState = await page.evaluate(() => window.testHarness.snapshot());
   expect(finalState.state.drafts[bDraftId!]?.item.name).toBe("B dirty work");
   const deleteCalls = finalState.calls.filter(
@@ -709,11 +773,7 @@ test("stale draft cleanup failure preserves the active notice and originating dr
   await expect(studio.getByLabel("Effect name")).toHaveValue(
     "B notice retained",
   );
-  await expect(
-    studio.getByRole("button", {
-      name: "A cleanup failure Painted draft",
-    }),
-  ).toBeVisible();
+  await expect(studio.getByText("Recovery drafts")).toHaveCount(0);
   const finalState = await page.evaluate(() => window.testHarness.snapshot());
   expect(finalState.state.drafts[aDraft!.id]).toMatchObject({
     id: aDraft!.id,
