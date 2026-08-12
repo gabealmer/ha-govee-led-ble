@@ -1,13 +1,16 @@
 import { blankAdvancedContent, cloneAdvancedContent } from "../../src/advanced-effect-editor";
+import { decodeEffectContent } from "../../src/validation";
 import type {
   CustomEffectCatalogue,
   DeploymentRecord,
   DeviceCapabilities,
   DraftSummary,
+  EffectContent,
   HomeAssistant,
   KnownEffectContent,
   LibrarySnapshot,
   LibrarySummary,
+  PaletteSceneContent,
   SceneCatalogue,
   SceneDetail,
   SceneSummary,
@@ -154,6 +157,10 @@ export class MockHomeAssistantBackend {
         },
       },
     };
+  }
+
+  public validateEffectContent(value: unknown): EffectContent {
+    return decodeEffectContent(value);
   }
 
   public failNext(command: string): void {
@@ -593,10 +600,16 @@ const CUSTOM_CATALOGUE: CustomEffectCatalogue = {
   sku: "H617A",
   effects: [
     {
-      id: "chase",
-      label: "Chase",
-      family: 1,
-      variant: 2,
+      id: "fade",
+      label: "Fade",
+      family: 0,
+      variant: 0,
+    },
+    {
+      id: "marquee",
+      label: "Marquee",
+      family: 3,
+      variant: 3,
     },
   ],
   limits: {
@@ -611,6 +624,57 @@ const CUSTOM_CATALOGUE: CustomEffectCatalogue = {
 };
 
 const SCENES: SceneSummary[] = [
+  {
+    scene_id: 100,
+    effect_id: 200,
+    category_id: 5,
+    category: "Everyday",
+    name: "reading",
+    variant: "",
+    display_name: "Reading",
+    scene_type: 0,
+    parameter_kind: "none",
+    speed: null,
+  },
+  {
+    scene_id: 1041,
+    effect_id: 1103,
+    category_id: 133,
+    category: "Festival",
+    name: "Halloween",
+    variant: "",
+    display_name: "Halloween",
+    scene_type: 1,
+    parameter_kind: "palette",
+    speed: null,
+  },
+  {
+    scene_id: 1049,
+    effect_id: 1111,
+    category_id: 136,
+    category: "Life",
+    name: "Sweet",
+    variant: "",
+    display_name: "Sweet",
+    scene_type: 1,
+    parameter_kind: "palette",
+    speed: null,
+  },
+  {
+    scene_id: 9001,
+    effect_id: 9002,
+    category_id: 999,
+    category: "Synthetic schema-only",
+    name: "layout_1_schema_fixture",
+    variant: "synthetic",
+    display_name: "Synthetic Layout 1 (schema only)",
+    scene_type: 1,
+    parameter_kind: "palette",
+    speed: {
+      option_count: 8,
+      default_index: 7,
+    },
+  },
   {
     scene_id: 1,
     effect_id: 101,
@@ -663,8 +727,12 @@ const SCENE_CATALOGUE: SceneCatalogue = {
   sku: "H617A",
   enabled: true,
   categories: [
+    { id: 5, name: "Everyday" },
     { id: 10, name: "Nature" },
     { id: 20, name: "Focus" },
+    { id: 133, name: "Festival" },
+    { id: 136, name: "Life" },
+    { id: 999, name: "Synthetic schema-only" },
   ],
   scenes: SCENES,
 };
@@ -674,6 +742,7 @@ function initialState(): BackendState {
   const rawAdvanced = cloneAdvancedContent(advanced);
   rawAdvanced.layers[0].selection.type = 0xfe;
   rawAdvanced.layers[0].brightness_patterns[0].order = 0xfd;
+  rawAdvanced.layers[0].selected_movement.unknown_flags = 0x20;
   rawAdvanced.layers[1].brightness_gradient = true;
   rawAdvanced.layers[1].brightness_patterns[0].order = 0xfd;
   return {
@@ -705,6 +774,51 @@ function initialState(): BackendState {
           },
         ],
       }),
+      "single-unknown": libraryItem(
+        "single-unknown",
+        "Unknown Type04 pair",
+        {
+          kind: "h617a_single",
+          family: 254,
+          variant: 253,
+          speed: 50,
+          palette: [
+            [255, 0, 0],
+            [0, 0, 255],
+          ],
+        },
+      ),
+      "multi-fixture": libraryItem(
+        "multi-fixture",
+        "Verified fixture-backed multi effect",
+        {
+          kind: "h617a_multi",
+          effects: [
+            { family: 0, variant: 0 },
+            { family: 254, variant: 253 },
+            { family: 3, variant: 3 },
+          ],
+          speed: 35,
+          palette: [
+            [12, 34, 56],
+            [78, 90, 123],
+          ],
+        },
+      ),
+      "single-special-unknown": libraryItem(
+        "single-special-unknown",
+        "Uncaptured special DIY pair",
+        {
+          kind: "h617a_single",
+          family: 252,
+          variant: 251,
+          speed: 65,
+          palette: [
+            [9, 8, 7],
+            [6, 5, 4],
+          ],
+        },
+      ),
       "advanced-1": libraryItem("advanced-1", "Layered library effect", advanced),
       "advanced-raw": libraryItem(
         "advanced-raw",
@@ -860,6 +974,27 @@ function requiredScene(sceneId: number, effectId: number): SceneSummary {
 }
 
 function sceneDetail(scene: SceneSummary): SceneDetail {
+  if (scene.scene_type === 0) {
+    return {
+      scene,
+      content: {
+        kind: "scene_builtin",
+        template: {
+          sku: "H617A",
+          scene_id: scene.scene_id,
+          effect_id: scene.effect_id,
+          catalogue_schema_version: 1,
+        },
+        speed_index: null,
+      },
+    };
+  }
+  if (scene.scene_type === 1) {
+    return {
+      scene,
+      content: paletteSceneFixture(scene),
+    };
+  }
   const advanced = advancedFixture();
   if (scene.scene_id === 2) {
     advanced.layers = [];
@@ -886,6 +1021,71 @@ function sceneDetail(scene: SceneSummary): SceneDetail {
           ? "aabbccddeeff001122334455"
           : "102030405060708090a0b0c0",
     },
+  };
+}
+
+function paletteSceneFixture(scene: SceneSummary): PaletteSceneContent {
+  const template = {
+    sku: "H617A",
+    scene_id: scene.scene_id,
+    effect_id: scene.effect_id,
+    catalogue_schema_version: 1,
+  };
+  if (scene.scene_id === 1041) {
+    return {
+      kind: "scene_palette",
+      template,
+      layout: 0,
+      brightness_flag: true,
+      steps: [
+        { value: 5, colour: [255, 245, 0], inline_colour: null },
+        { value: 5, colour: [255, 255, 255], inline_colour: null },
+        { value: 5, colour: [255, 233, 255], inline_colour: null },
+        { value: 5, colour: [255, 255, 255], inline_colour: null },
+        { value: 5, colour: [255, 233, 217], inline_colour: null },
+        { value: 6, colour: [255, 248, 255], inline_colour: null },
+      ],
+      palette: [
+        [255, 30, 0],
+        [255, 90, 0],
+        [255, 50, 0],
+        [255, 120, 0],
+      ],
+      speed_index: null,
+    };
+  }
+  if (scene.scene_id === 1049) {
+    return {
+      kind: "scene_palette",
+      template,
+      layout: 0,
+      brightness_flag: true,
+      steps: [
+        { value: 50, colour: [255, 180, 255], inline_colour: null },
+      ],
+      palette: [
+        [240, 0, 30],
+        [234, 0, 43],
+        [188, 0, 255],
+        [227, 0, 255],
+      ],
+      speed_index: null,
+    };
+  }
+  return {
+    kind: "scene_palette",
+    template,
+    layout: 1,
+    brightness_flag: true,
+    steps: [
+      {
+        value: 0x1234,
+        colour: [1, 2, 3],
+        inline_colour: [4, 5, 6],
+      },
+    ],
+    palette: [],
+    speed_index: 7,
   };
 }
 

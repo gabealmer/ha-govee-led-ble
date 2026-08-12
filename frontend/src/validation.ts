@@ -16,6 +16,7 @@ import type {
   LayeredSceneContent,
   LibraryItem,
   LibrarySnapshot,
+  PaletteSceneContent,
   RGB,
   SceneCatalogue,
   SceneDetail,
@@ -454,7 +455,11 @@ export function decodeSceneCatalogue(value: unknown): SceneCatalogue {
 export function decodeSceneDetail(value: unknown): SceneDetail {
   const detail = objectValue(value, "scene detail");
   const content = decodeEffectContent(detail.content);
-  if (content.kind !== "scene_builtin" && content.kind !== "scene_layered") {
+  if (
+    content.kind !== "scene_builtin" &&
+    content.kind !== "scene_palette" &&
+    content.kind !== "scene_layered"
+  ) {
     invalid("scene detail content is unsupported");
   }
   return {
@@ -540,6 +545,8 @@ export function decodeEffectContent(value: unknown): EffectContent {
           255,
         ),
       } satisfies BuiltinSceneContent;
+    case "scene_palette":
+      return paletteSceneContent(content);
     case "scene_layered": {
       const effect = objectValue(content.effect, "layered scene effect");
       return {
@@ -557,6 +564,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
         raw_param: hexString(content.raw_param, "layered scene raw parameter"),
       } satisfies LayeredSceneContent;
     }
+
     default: {
       const { kind: _kind, ...body } = content;
       return {
@@ -566,6 +574,78 @@ export function decodeEffectContent(value: unknown): EffectContent {
       };
     }
   }
+}
+
+function paletteSceneContent(
+  content: Record<string, unknown>,
+): PaletteSceneContent {
+  const layoutValue = integerValue(
+    content.layout,
+    "palette scene layout",
+    0,
+    1,
+  );
+  const layout: 0 | 1 = layoutValue === 0 ? 0 : 1;
+  const steps = arrayValue(
+    content.steps,
+    "palette scene steps",
+    255,
+  ).map((item, index) => {
+    const step = objectValue(item, `palette scene steps[${index}]`);
+    const inlineColour =
+      layout === 0
+        ? (() => {
+            if (step.inline_colour !== null) {
+              invalid(
+                `palette scene steps[${index}].inline_colour must be null for layout 0`,
+              );
+            }
+            return null;
+          })()
+        : rgbValue(
+            step.inline_colour,
+            `palette scene steps[${index}].inline_colour`,
+          );
+    return {
+      value: integerValue(
+        step.value,
+        `palette scene steps[${index}].value`,
+        0,
+        65_535,
+      ),
+      colour: rgbValue(
+        step.colour,
+        `palette scene steps[${index}].colour`,
+      ),
+      inline_colour: inlineColour,
+    };
+  });
+  const palette = paletteValue(
+    content.palette,
+    "palette scene shared palette",
+    255,
+    true,
+  );
+  if (layout === 1 && palette.length !== 0) {
+    invalid("palette scene layout 1 must not have a shared palette");
+  }
+  return {
+    kind: "scene_palette",
+    template: catalogueRef(content.template, "palette scene template"),
+    layout,
+    brightness_flag: booleanValue(
+      content.brightness_flag,
+      "palette scene brightness flag",
+    ),
+    steps,
+    palette,
+    speed_index: nullableInteger(
+      content.speed_index,
+      "palette scene speed index",
+      0,
+      255,
+    ),
+  };
 }
 
 export function effectContentToWire(

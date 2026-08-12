@@ -1,8 +1,9 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import { rgbToHex } from "./palette-editor";
+import "./effect-preview";
 import "./palette-editor";
+import { advancedPreviewModel } from "./preview-model";
 import type {
   AdvancedContent,
   BrightnessOrder,
@@ -15,7 +16,6 @@ import type {
 
 const AUTHORING_LAYER_LIMIT = 5;
 const AUTHORING_PALETTE_LIMIT = 8;
-const CELL_COUNT = 15;
 const KNOWN_SELECTION_TYPES: SelectionType[] = [1, 2, 0, 3];
 const KNOWN_BRIGHTNESS_ORDERS: BrightnessOrder[] = [0, 1, 2, 3];
 
@@ -184,7 +184,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         role="tabpanel"
         aria-labelledby="advanced-layer-tab-${this.activeLayerIndex}"
       >
-        ${this.renderPreview(layer)}
+        ${this.renderPreview()}
 
         <div class="control-grid">
           ${this.renderAppliedArea(layer)}
@@ -233,39 +233,12 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     return this.content!.layers[this.activeLayerIndex];
   }
 
-  private renderPreview(layer: EffectLayer) {
-    const cells = previewCells(layer, this.activeLayerIndex);
-    const unavailableReason = previewUnavailableReason(layer);
+  private renderPreview() {
     return html`
-      <section class="card preview-card">
-        <div>
-          <p class="section-label">Layer ${this.activeLayerIndex + 1}</p>
-          <h3>Structural preview</h3>
-        </div>
-        <div
-          class="strip-preview"
-          role="img"
-          aria-label="Static structural preview of layer ${this
-            .activeLayerIndex + 1} across 15 cells. Movement is not animated."
-        >
-          ${cells.map(
-            (cell, index) => html`
-              <span
-                class=${cell.colour ? "preview-cell active" : "preview-cell"}
-                style=${cell.colour
-                  ? `--cell-colour: ${cell.colour}`
-                  : nothing}
-                aria-hidden="true"
-                data-cell=${index}
-              ></span>
-            `,
-          )}
-        </div>
-        <p class="muted">
-          ${unavailableReason ??
-          "Movement values are saved, but this preview remains static."}
-        </p>
-      </section>
+      <govee-effect-preview
+        class="effect-preview"
+        .model=${advancedPreviewModel(this.content!, this.activeLayerIndex)}
+      ></govee-effect-preview>
     `;
   }
 
@@ -1478,52 +1451,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       margin-top: 12px;
     }
 
-    .preview-card {
+    .effect-preview {
+      display: block;
       margin-bottom: 18px;
-    }
-
-    .section-label {
-      margin-bottom: 4px;
-      color: var(--studio-muted);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-
-    .preview-card h3 {
-      margin-bottom: 14px;
-    }
-
-    .strip-preview {
-      display: grid;
-      grid-template-columns: repeat(15, minmax(0, 1fr));
-      gap: 4px;
-      padding: 5px;
-      border-radius: 8px;
-      background: color-mix(
-        in srgb,
-        var(--studio-border) 45%,
-        var(--studio-card)
-      );
-    }
-
-    .preview-cell {
-      min-height: 44px;
-      border: 1px solid var(--studio-border);
-      border-radius: 5px;
-      background: var(--secondary-background-color, #f5f6f8);
-      opacity: 0.45;
-    }
-
-    .preview-cell.active {
-      border-color: color-mix(in srgb, var(--cell-colour) 65%, #000);
-      background: var(--cell-colour);
-      opacity: 1;
-    }
-
-    .preview-card .muted {
-      margin: 12px 0 0;
     }
 
     .control-grid {
@@ -1750,14 +1680,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         padding: 16px;
       }
 
-      .preview-cell {
-        min-height: 34px;
-      }
-
-      .strip-preview {
-        gap: 3px;
-      }
-
       .layer-actions {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
@@ -1858,192 +1780,6 @@ function cloneLayer(layer: EffectLayer): EffectLayer {
     selected_movement: { ...layer.selected_movement },
     overall_movement: { ...layer.overall_movement },
   };
-}
-
-function previewCells(
-  layer: EffectLayer,
-  layerIndex: number,
-): Array<{ colour: string | null }> {
-  const cells = Array.from({ length: CELL_COUNT }, () => ({
-    colour: null as string | null,
-  }));
-  if (
-    layer.area.width_tenths === 0 ||
-    layer.brightness_patterns.length === 0 ||
-    layer.palette.length === 0
-  ) {
-    return cells;
-  }
-  const start = clamp(
-    Math.floor((layer.area.start_tenths / 10) * CELL_COUNT),
-    0,
-    CELL_COUNT - 1,
-  );
-  const end = clamp(
-    Math.ceil(
-      ((layer.area.start_tenths + layer.area.width_tenths) / 10) *
-        CELL_COUNT,
-    ),
-    start + 1,
-    CELL_COUNT,
-  );
-  const count = end - start;
-  const mask = selectionMask(layer, count, layerIndex);
-  const pattern = layer.brightness_patterns[0];
-  for (let areaIndex = 0; areaIndex < count; areaIndex += 1) {
-    if (!mask[areaIndex]) {
-      continue;
-    }
-    const sourceIndex = layer.distribution.backwards
-      ? count - areaIndex - 1
-      : areaIndex;
-    const paletteIndex =
-      layer.distribution.method === 0
-        ? 0
-        : layer.distribution.method === 2
-          ? Math.floor(
-              (sourceIndex / Math.max(1, count)) *
-                Math.max(1, layer.selection.param_2),
-            )
-          : sourceIndex;
-    const colour =
-      layer.palette[paletteIndex % layer.palette.length] ?? [80, 80, 80];
-    const factor = brightnessFactor(
-      pattern,
-      areaIndex,
-      count,
-      layer.brightness_gradient,
-    );
-    if (factor === undefined) {
-      continue;
-    }
-    cells[start + areaIndex] = {
-      colour: rgbToHex(
-        colour.map((channel) => Math.round(channel * factor)) as RGB,
-      ),
-    };
-  }
-  return cells;
-}
-
-function selectionMask(
-  layer: EffectLayer,
-  count: number,
-  layerIndex: number,
-): boolean[] {
-  const mask = Array.from({ length: count }, () => false);
-  switch (layer.selection.type) {
-    case 0:
-      return mask.fill(true);
-    case 1: {
-      const selected = Math.max(
-        1,
-        Math.round(
-          count * Math.min(1, layer.selection.param_2 / 200),
-        ),
-      );
-      for (let index = 0; index < selected; index += 1) {
-        mask[index] = true;
-      }
-      return mask;
-    }
-    case 2: {
-      const selected = Math.max(
-        1,
-        Math.round(
-          count *
-            Math.min(
-              1,
-              (layer.selection.param_1 + layer.selection.param_2) /
-                400,
-            ),
-        ),
-      );
-      const order = shuffledIndices(
-        count,
-        layerIndex * 7919 +
-          layer.selection.param_1 * 257 +
-          layer.selection.param_2,
-      );
-      for (const index of order.slice(0, selected)) {
-        mask[index] = true;
-      }
-      return mask;
-    }
-    case 3: {
-      const lit = Math.max(1, layer.selection.param_1);
-      const gap = layer.selection.param_2;
-      const cycle = lit + gap;
-      for (let index = 0; index < count; index += 1) {
-        mask[index] = cycle === 0 || index % cycle < lit;
-      }
-      return mask;
-    }
-  }
-  return mask;
-}
-
-function shuffledIndices(count: number, seed: number): number[] {
-  const values = Array.from({ length: count }, (_, index) => index);
-  let state = seed >>> 0;
-  for (let index = values.length - 1; index > 0; index -= 1) {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    const target = state % (index + 1);
-    [values[index], values[target]] = [values[target], values[index]];
-  }
-  return values;
-}
-
-function brightnessFactor(
-  pattern: BrightnessPattern,
-  index: number,
-  count: number,
-  gradient: boolean,
-): number | undefined {
-  const low = Math.min(pattern.scope_low, pattern.scope_high);
-  const high = Math.max(pattern.scope_low, pattern.scope_high);
-  if (!gradient) {
-    return high / 255;
-  }
-  const progress = count <= 1 ? 0 : index / (count - 1);
-  let level: number;
-  switch (pattern.order) {
-    case 0:
-      level = high - progress * (high - low);
-      break;
-    case 1:
-      level = high - Math.abs(0.5 - progress) * 2 * (high - low);
-      break;
-    case 2:
-      level = low + progress * (high - low);
-      break;
-    case 3:
-      level = low + Math.abs(0.5 - progress) * 2 * (high - low);
-      break;
-    default:
-      return undefined;
-  }
-  return clamp(level, 0, 255) / 255;
-}
-
-function previewUnavailableReason(layer: EffectLayer): string | undefined {
-  if (!isKnownSelectionType(layer.selection.type)) {
-    return `Selection type ${layer.selection.type} has unknown structure, so no selected cells are previewed.`;
-  }
-  const pattern = layer.brightness_patterns[0];
-  if (!pattern) {
-    return "No brightness pattern is present, so this layer is not previewed.";
-  }
-  if (layer.palette.length === 0) {
-    return "No palette colours are present, so this layer is not previewed.";
-  }
-  if (
-    layer.brightness_gradient &&
-    !isKnownBrightnessOrder(pattern.order)
-  ) {
-    return `Brightness order ${pattern.order} has unknown structure, so gradient brightness is not previewed.`;
-  }
-  return undefined;
 }
 
 function isKnownSelectionType(value: number): value is SelectionType {

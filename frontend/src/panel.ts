@@ -8,6 +8,8 @@ import {
 import "./advanced-effect-editor";
 import { EffectStudioApi } from "./api";
 import "./custom-effect-editor";
+import "./effect-preview";
+import { paintedPreviewModel } from "./preview-model";
 import "./scene-browser";
 import type {
   AdvancedContent,
@@ -109,8 +111,6 @@ export class GoveeLedEffectStudio extends LitElement {
   private draftSaveInFlight?: Promise<boolean>;
   private draftPersistPending = false;
   private editorTransitionEpoch = 0;
-  private paintingPointerId?: number;
-  private lastPaintedSegment?: number;
   private sceneTemplateHandoffInFlight = false;
   private unsubscribeLibrary?: () => void;
   private unsubscribeDeployments?: () => void;
@@ -645,7 +645,6 @@ export class GoveeLedEffectStudio extends LitElement {
     if (this.content.kind !== "h617a_painted") {
       return nothing;
     }
-    const colours = coloursForSegments(this.content);
     const deployment = this.activeDeployment;
     return html`
       <div class="editor-heading">
@@ -691,36 +690,15 @@ export class GoveeLedEffectStudio extends LitElement {
           `
         : nothing}
 
-      <div class="preview-card">
-        <div
-          class="strip"
-          aria-label="Painted segments"
-          @pointermove=${this.paintMovedSegment}
-          @pointerup=${this.finishPainting}
-          @pointercancel=${this.finishPainting}
-        >
-          ${colours.map(
-            (colour, index) => html`
-              <button
-                class="segment"
-                type="button"
-                style="--segment-colour: ${rgbToHex(colour)}"
-                aria-label="Segment ${index + 1}, ${rgbToHex(colour)}"
-                ?disabled=${!this.isAdmin}
-                data-segment=${index}
-                @pointerdown=${(event: PointerEvent) =>
-                  this.paintSegment(index, event)}
-                @keydown=${(event: KeyboardEvent) =>
-                  this.paintSegmentWithKeyboard(index, event)}
-              ></button>
-            `,
-          )}
-        </div>
-        <p>
-          Paint the strip directly. Motion previews stay static because the
-          device animation cannot be read back exactly.
-        </p>
-      </div>
+      <govee-effect-preview
+        class="painted-preview"
+        .model=${paintedPreviewModel(this.content)}
+        .interactive=${true}
+        .disabled=${!this.isAdmin}
+        @preview-cell-selected=${(
+          event: CustomEvent<{ index: number }>,
+        ) => this.setSegmentColour(event.detail.index)}
+      ></govee-effect-preview>
 
       <div class="controls">
         <section class="card">
@@ -1698,65 +1676,6 @@ export class GoveeLedEffectStudio extends LitElement {
     });
   }
 
-  private paintSegment(index: number, event: PointerEvent): void {
-    if (!this.isAdmin) {
-      return;
-    }
-    event.preventDefault();
-    this.paintingPointerId = event.pointerId;
-    this.lastPaintedSegment = index;
-    const strip = (event.currentTarget as HTMLElement).parentElement;
-    strip?.setPointerCapture(event.pointerId);
-    this.setSegmentColour(index);
-  }
-
-  private paintMovedSegment(event: PointerEvent): void {
-    if (
-      !this.isAdmin ||
-      this.paintingPointerId !== event.pointerId ||
-      !this.shadowRoot
-    ) {
-      return;
-    }
-    const target = this.shadowRoot
-      .elementFromPoint(event.clientX, event.clientY)
-      ?.closest<HTMLElement>("[data-segment]");
-    const segment = target?.dataset.segment;
-    if (segment === undefined) {
-      return;
-    }
-    const index = Number(segment);
-    if (index !== this.lastPaintedSegment) {
-      this.lastPaintedSegment = index;
-      this.setSegmentColour(index);
-    }
-  }
-
-  private finishPainting(event: PointerEvent): void {
-    if (this.paintingPointerId !== event.pointerId) {
-      return;
-    }
-    const strip = event.currentTarget as HTMLElement;
-    if (strip.hasPointerCapture(event.pointerId)) {
-      strip.releasePointerCapture(event.pointerId);
-    }
-    this.paintingPointerId = undefined;
-    this.lastPaintedSegment = undefined;
-  }
-
-  private paintSegmentWithKeyboard(
-    index: number,
-    event: KeyboardEvent,
-  ): void {
-    if (
-      this.isAdmin &&
-      (event.key === "Enter" || event.key === " ")
-    ) {
-      event.preventDefault();
-      this.setSegmentColour(index);
-    }
-  }
-
   private setSegmentColour(index: number): void {
     if (this.content.kind !== "h617a_painted") {
       return;
@@ -2565,7 +2484,6 @@ export class GoveeLedEffectStudio extends LitElement {
       color: var(--studio-muted);
     }
 
-    .preview-card,
     .card,
     .placeholder,
     .empty-editor {
@@ -2574,37 +2492,8 @@ export class GoveeLedEffectStudio extends LitElement {
       background: var(--studio-card);
     }
 
-    .preview-card {
-      padding: 24px;
-    }
-
-    .preview-card p {
-      margin: 15px 0 0;
-      color: var(--studio-muted);
-      font-size: 13px;
-      line-height: 1.45;
-    }
-
-    .strip {
-      display: grid;
-      grid-template-columns: repeat(15, minmax(22px, 1fr));
-      gap: 4px;
-      touch-action: none;
-    }
-
-    .segment {
-      min-height: 48px;
-      padding: 0;
-      border: 1px solid
-        color-mix(in srgb, var(--segment-colour) 70%, #000);
-      border-radius: 6px;
-      background: var(--segment-colour);
-      cursor: crosshair;
-    }
-
-    .segment:focus-visible {
-      outline: 3px solid var(--studio-blue);
-      outline-offset: 2px;
+    .painted-preview {
+      display: block;
     }
 
     .controls {
@@ -2811,16 +2700,6 @@ export class GoveeLedEffectStudio extends LitElement {
 
       .notice {
         padding-inline: 16px;
-      }
-
-      .strip {
-        grid-template-columns: repeat(15, minmax(0, 1fr));
-        gap: 3px;
-      }
-
-      .segment {
-        min-height: 38px;
-        border-radius: 4px;
       }
 
       .colour-row {
@@ -3146,7 +3025,8 @@ function isKnownEffectKind(kind: string): boolean {
   return (
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
-    kind === "scene_builtin"
+    kind === "scene_builtin" ||
+    kind === "scene_palette"
   );
 }
 

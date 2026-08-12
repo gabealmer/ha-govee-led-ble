@@ -1,8 +1,9 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import { rgbToHex } from "./palette-editor";
+import "./effect-preview";
 import "./palette-editor";
+import { customEffectPreviewModel } from "./preview-model";
 import type {
   CustomEffectCatalogue,
   EffectPair,
@@ -25,9 +26,6 @@ export class GoveeCustomEffectEditor extends LitElement {
 
   @state()
   private pickerIndex?: number;
-
-  @state()
-  private previewEffectIndex = 0;
 
   private draggedEffectIndex?: number;
 
@@ -59,20 +57,6 @@ export class GoveeCustomEffectEditor extends LitElement {
     }
   }
 
-  protected willUpdate(changed: Map<PropertyKey, unknown>): void {
-    if (!changed.has("content") || !this.content) {
-      return;
-    }
-    const maximum =
-      this.content.kind === "h617a_multi"
-        ? this.content.effects.length - 1
-        : 0;
-    this.previewEffectIndex = Math.max(
-      0,
-      Math.min(this.previewEffectIndex, maximum),
-    );
-  }
-
   protected render() {
     if (!this.content || !this.catalogue) {
       return nothing;
@@ -86,30 +70,10 @@ export class GoveeCustomEffectEditor extends LitElement {
           : this.renderSequence(this.content)}
       </section>
 
-      <section class="preview-card" aria-label="Effect preview">
-        ${this.content.kind === "h617a_multi"
-          ? html`
-              <div class="preview-tabs" aria-label="Preview sequence effect">
-                ${this.content.effects.map((pair, index) => {
-                  const selected = index === this.previewEffectIndex;
-                  return html`
-                    <button
-                      type="button"
-                      class=${selected ? "selected" : ""}
-                      aria-pressed=${selected}
-                      @click=${() => {
-                        this.previewEffectIndex = index;
-                      }}
-                    >
-                      ${this.effectLabel(pair)}
-                    </button>
-                  `;
-                })}
-              </div>
-            `
-          : nothing}
-        ${this.effectVisual(this.previewPair, "preview-row")}
-      </section>
+      <govee-effect-preview
+        class="effect-preview"
+        .model=${customEffectPreviewModel(this.content, this.catalogue)}
+      ></govee-effect-preview>
 
       <section class="card parameters-card">
         <h3>Parameters</h3>
@@ -140,20 +104,6 @@ export class GoveeCustomEffectEditor extends LitElement {
 
       ${this.pickerIndex === undefined ? nothing : this.renderPicker()}
     `;
-  }
-
-  private get previewPair(): EffectPair {
-    if (!this.content) {
-      return { family: 0, variant: 0 };
-    }
-    if (this.content.kind === "h617a_single") {
-      return this.content;
-    }
-    return (
-      this.content.effects[
-        Math.min(this.previewEffectIndex, this.content.effects.length - 1)
-      ] ?? this.content.effects[0]
-    );
   }
 
   private renderSequence(content: MultiContent) {
@@ -198,7 +148,6 @@ export class GoveeCustomEffectEditor extends LitElement {
           ?disabled=${this.disabled}
           @click=${() => this.openPicker(index)}
         >
-          ${this.effectVisual(pair, "effect-swatch")}
           <span class="effect-name">${this.effectLabel(pair)}</span>
           <span class="chevron" aria-hidden="true">›</span>
         </button>
@@ -315,7 +264,6 @@ export class GoveeCustomEffectEditor extends LitElement {
                   aria-pressed=${selected}
                   @click=${() => this.selectEffect(effect)}
                 >
-                  ${this.effectVisual(effect, "tile-thumb")}
                   <span>${effect.label}</span>
                 </button>
               `;
@@ -323,23 +271,6 @@ export class GoveeCustomEffectEditor extends LitElement {
           </div>
         </section>
       </div>
-    `;
-  }
-
-  private effectVisual(pair: EffectPair, className: string) {
-    return html`
-      <span class="effect-visual ${className} ${this.effectId(pair)}">
-        ${Array.from({ length: 15 }, (_, index) => {
-          const palette = this.content?.palette ?? [[255, 255, 255]];
-          return html`
-            <i
-              style="--cell-index: ${index}; --cell-colour: ${rgbToHex(
-                palette[index % palette.length],
-              )}"
-            ></i>
-          `;
-        })}
-      </span>
     `;
   }
 
@@ -357,7 +288,6 @@ export class GoveeCustomEffectEditor extends LitElement {
       const effects = this.content.effects.map((effect, index) =>
         index === this.pickerIndex ? pair : effect,
       );
-      this.previewEffectIndex = this.pickerIndex;
       this.emitContent({ ...this.content, effects });
     }
     this.closePicker();
@@ -377,7 +307,6 @@ export class GoveeCustomEffectEditor extends LitElement {
       ...this.content.effects,
       { family: next.family, variant: next.variant },
     ];
-    this.previewEffectIndex = effects.length - 1;
     this.emitContent({ ...this.content, effects });
   }
 
@@ -387,10 +316,6 @@ export class GoveeCustomEffectEditor extends LitElement {
     }
     const effects = this.content.effects.filter(
       (_effect, effectIndex) => effectIndex !== index,
-    );
-    this.previewEffectIndex = Math.min(
-      this.previewEffectIndex,
-      effects.length - 1,
     );
     this.emitContent({ ...this.content, effects });
   }
@@ -413,11 +338,6 @@ export class GoveeCustomEffectEditor extends LitElement {
     const effects = [...this.content.effects];
     const [moving] = effects.splice(from, 1);
     effects.splice(to, 0, moving);
-    this.previewEffectIndex = relocatedIndex(
-      this.previewEffectIndex,
-      from,
-      to,
-    );
     this.emitContent({ ...this.content, effects });
   }
 
@@ -484,19 +404,11 @@ export class GoveeCustomEffectEditor extends LitElement {
     }
   }
 
-  private effectId(pair: EffectPair): string {
-    return (
-      this.catalogue?.effects.find(
-        (effect) => pairKey(effect) === pairKey(pair),
-      )?.id ?? "unknown"
-    );
-  }
-
   private effectLabel(pair: EffectPair): string {
     return (
       this.catalogue?.effects.find(
         (effect) => pairKey(effect) === pairKey(pair),
-      )?.label ?? `Family ${pair.family}, style ${pair.variant}`
+      )?.label ?? "Unknown catalogue effect"
     );
   }
 
@@ -554,8 +466,7 @@ export class GoveeCustomEffectEditor extends LitElement {
       font-size: 14px;
     }
 
-    .card,
-    .preview-card {
+    .card {
       border: 1px solid var(--studio-border);
       border-radius: 10px;
       background: var(--studio-card);
@@ -565,7 +476,7 @@ export class GoveeCustomEffectEditor extends LitElement {
       padding: 18px;
     }
 
-    .preview-card,
+    .effect-preview,
     .parameters-card {
       margin-top: 16px;
     }
@@ -680,130 +591,6 @@ export class GoveeCustomEffectEditor extends LitElement {
       background: transparent;
       cursor: pointer;
       font-size: 24px;
-    }
-
-    .preview-card {
-      padding: 16px;
-    }
-
-    .preview-tabs {
-      display: flex;
-      gap: 6px;
-      overflow-x: auto;
-      margin-bottom: 10px;
-      padding-bottom: 2px;
-    }
-
-    .preview-tabs button {
-      flex: 0 0 auto;
-      min-height: 40px;
-      padding: 7px 12px;
-      border: 1px solid var(--studio-border);
-      border-radius: 999px;
-      color: var(--primary-text-color);
-      background: var(--studio-card);
-      cursor: pointer;
-    }
-
-    .preview-tabs button.selected {
-      color: var(--studio-blue);
-      border-color: var(--studio-blue);
-      background: var(--studio-blue-soft);
-      font-weight: 650;
-    }
-
-    .effect-visual {
-      display: grid;
-      grid-template-columns: repeat(15, minmax(0, 1fr));
-      gap: 3px;
-      overflow: hidden;
-      padding: 4px;
-      border-radius: 8px;
-      background: color-mix(
-        in srgb,
-        var(--studio-border) 50%,
-        var(--studio-card)
-      );
-    }
-
-    .effect-visual i {
-      display: block;
-      min-width: 0;
-      border-radius: 3px;
-      background: var(--cell-colour);
-      transform-origin: center;
-    }
-
-    .effect-swatch {
-      flex: 0 0 52px;
-      width: 52px;
-      height: 30px;
-      gap: 1px;
-      padding: 3px;
-      border-radius: 6px;
-    }
-
-    .effect-swatch i {
-      animation: none !important;
-      transform: none;
-      border-radius: 1px;
-    }
-
-    .effect-swatch.fade i {
-      opacity: 0.72;
-    }
-
-    .effect-swatch.jumping i {
-      opacity: 0.18;
-    }
-
-    .effect-swatch.jumping i:nth-child(-n + 5) {
-      opacity: 1;
-    }
-
-    .effect-swatch.marquee i {
-      opacity: 0.14;
-    }
-
-    .effect-swatch.marquee i:nth-child(-n + 3) {
-      opacity: 1;
-    }
-
-    .effect-swatch.chasing i {
-      opacity: 0.14;
-    }
-
-    .effect-swatch.chasing i:nth-child(4n + 1) {
-      opacity: 1;
-    }
-
-    .preview-row {
-      min-height: 48px;
-    }
-
-    .tile-thumb {
-      width: 100%;
-      height: 44px;
-    }
-
-    .fade i {
-      animation: fade 2.8s ease-in-out infinite alternate;
-      animation-delay: calc(var(--cell-index) * -120ms);
-    }
-
-    .jumping i {
-      animation: jumping 1.6s steps(1) infinite;
-      animation-delay: calc(var(--cell-index) * -90ms);
-    }
-
-    .marquee i {
-      animation: marquee 1.8s linear infinite;
-      animation-delay: calc(var(--cell-index) * -120ms);
-    }
-
-    .chasing i {
-      animation: chasing 1.35s linear infinite;
-      animation-delay: calc(var(--cell-index) * -90ms);
     }
 
     .parameter-group + .parameter-group {
@@ -1016,52 +803,6 @@ export class GoveeCustomEffectEditor extends LitElement {
       opacity: 1;
     }
 
-    @keyframes fade {
-      0% {
-        opacity: 0.18;
-      }
-      100% {
-        opacity: 1;
-      }
-    }
-
-    @keyframes jumping {
-      0%,
-      30% {
-        opacity: 1;
-      }
-      31%,
-      100% {
-        opacity: 0.2;
-      }
-    }
-
-    @keyframes marquee {
-      0%,
-      20% {
-        opacity: 1;
-        transform: scaleY(1);
-      }
-      21%,
-      100% {
-        opacity: 0.12;
-        transform: scaleY(0.55);
-      }
-    }
-
-    @keyframes chasing {
-      0%,
-      12% {
-        opacity: 1;
-        transform: scale(1);
-      }
-      13%,
-      100% {
-        opacity: 0.16;
-        transform: scale(0.7);
-      }
-    }
-
     @media (max-width: 600px) {
       .colour-popover {
         position: fixed;
@@ -1086,22 +827,6 @@ export class GoveeCustomEffectEditor extends LitElement {
       .modal-grid {
         grid-template-columns: 1fr;
       }
-
-      .preview-tabs {
-        gap: 4px;
-      }
-
-      .preview-tabs button {
-        min-height: 44px;
-        padding-inline: 9px;
-        font-size: 14px;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .effect-visual i {
-        animation: none !important;
-      }
     }
   `;
 }
@@ -1112,36 +837,6 @@ function pairKey(pair: EffectPair): string {
 
 function clonePalette(palette: RGB[]): RGB[] {
   return palette.map((colour) => [...colour] as RGB);
-}
-
-function relocatedIndex(
-  current: number,
-  from: number,
-  to: number,
-): number;
-function relocatedIndex(
-  current: number | undefined,
-  from: number,
-  to: number,
-): number | undefined;
-function relocatedIndex(
-  current: number | undefined,
-  from: number,
-  to: number,
-): number | undefined {
-  if (current === undefined || from === to) {
-    return current;
-  }
-  if (current === from) {
-    return to;
-  }
-  if (from < to && current > from && current <= to) {
-    return current - 1;
-  }
-  if (to < from && current >= to && current < from) {
-    return current + 1;
-  }
-  return current;
 }
 
 declare global {
