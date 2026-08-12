@@ -164,6 +164,22 @@ export interface BuiltinSceneContent {
   speed_index: number | null;
 }
 
+export interface SceneStepContent {
+  value: number;
+  colour: RGB;
+  inline_colour: RGB | null;
+}
+
+export interface PaletteSceneContent {
+  kind: "scene_palette";
+  template: CatalogueRef;
+  layout: 0 | 1;
+  brightness_flag: boolean;
+  steps: SceneStepContent[];
+  palette: RGB[];
+  speed_index: number | null;
+}
+
 export interface LayeredSceneContent {
   kind: "scene_layered";
   template: CatalogueRef;
@@ -178,6 +194,7 @@ export type KnownEffectContent =
   | CustomEffectContent
   | AdvancedContent
   | BuiltinSceneContent
+  | PaletteSceneContent
   | LayeredSceneContent;
 
 export interface OpaqueContent {
@@ -294,7 +311,7 @@ export interface SceneCatalogue {
 
 export interface SceneDetail {
   scene: SceneSummary;
-  content: BuiltinSceneContent | LayeredSceneContent;
+  content: BuiltinSceneContent | PaletteSceneContent | LayeredSceneContent;
 }
 
 export interface HomeAssistant {

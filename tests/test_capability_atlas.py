@@ -12,7 +12,9 @@ import copy
 from typing import Any
 
 import pytest
+import yaml  # type: ignore[import-untyped]
 
+from custom_components.ha_govee_led_ble.effect_catalogue import H617A_TYPE04_EFFECTS
 from tools.ble.kaitai import capability_atlas_lint as lint
 
 
@@ -164,10 +166,10 @@ def test_scene_type_zero_must_not_animate_is_documented_with_catalogue_counts(at
 
 
 def test_diy_upload_notes_deterministic_paint_map_and_palette_subset(atlas):
-    """diy_upload stays structural row-wide (workshop motion uncalibrated) but must keep the deterministic subset."""
+    """diy_upload stays structural row-wide while only the painted segment map is deterministic."""
     row = _row(atlas, "H617A", "diy_upload")
     assert row["preview_level"] == "structural"
-    assert any("deterministic" in gap and "paint map" in gap for gap in row["known_gaps"])
+    assert any("deterministic static preview" in gap and "15-segment paint map" in gap for gap in row["known_gaps"])
 
 
 def test_h6199_diy_activation_flags_must_not_animate(atlas):
@@ -379,37 +381,79 @@ def test_no_committed_row_fails_the_new_non_absent_evidence_refs_invariant(atlas
     assert problems == []
 
 
-@pytest.mark.parametrize(
-    ("model", "expected_labels"),
-    [
-        ("H617A", {"scene_type0", "scene_type1", "scene_type2"}),
-        ("H6199", {"scene_type0", "scene_type1", "scene_type2"}),
-    ],
-)
-def test_scenes_builtin_preview_variants_cover_all_scene_types(atlas, model, expected_labels):
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+def test_scenes_builtin_preview_variants_cover_all_scene_types(atlas, model):
     row = _row(atlas, model, "scenes_builtin")
     variants = row["preview_variants"]
-    assert {variant["label"] for variant in variants} == expected_labels
+    assert {variant["label"]: variant["preview_level"] for variant in variants} == {
+        "scene_type0": "opaque",
+        "scene_type1": "structural",
+        "scene_type2": "structural",
+    }
     problems = lint.check_preview_variants(row, 0, atlas)
     assert problems == []
     # The row's own aggregate preview_level must be one its variants actually carry.
     assert row["preview_level"] in {variant["preview_level"] for variant in variants}
 
 
-def test_diy_upload_h617a_preview_variants_split_static_from_motion(atlas):
+def test_scene_type1_preview_metadata_does_not_claim_layout1_hardware_evidence(atlas):
+    for model in ("H617A", "H6199"):
+        row = _row(atlas, model, "scenes_builtin")
+        variant = next(item for item in row["preview_variants"] if item["label"] == "scene_type1")
+        assert "layout 0" in variant["note"]
+        assert "Layout 1" in variant["note"]
+        assert "no hardware evidence" in variant["note"]
+
+    h617a = _row(atlas, "H617A", "scenes_builtin")
+    fixture_refs = [ref for ref in h617a["evidence_refs"] if ref.startswith("scene_type1_")]
+    assert fixture_refs
+    for ref in fixture_refs:
+        fixture = yaml.safe_load((lint.SPEC_DIR / f"{ref}.kst").read_text(encoding="utf-8"))
+        layout_assertions = [
+            assertion["expected"] for assertion in fixture["asserts"] if assertion["actual"] == "layout"
+        ]
+        assert layout_assertions == [0]
+
+
+def test_diy_upload_h617a_preview_variants_match_product_classifications(atlas):
     row = _row(atlas, "H617A", "diy_upload")
     variants = row["preview_variants"]
-    by_label = {variant["label"]: variant for variant in variants}
-    assert by_label["static_paint_and_palette"]["preview_level"] == "deterministic"
-    assert by_label["workshop_motion_timing"]["preview_level"] == "structural"
+    assert {variant["label"]: variant["preview_level"] for variant in variants} == {
+        "painted_segment_map": "deterministic",
+        "type04_fixture_catalogue": "structural",
+        "workshop_layers": "structural",
+        "uncaptured_special_templates": "opaque",
+    }
     problems = lint.check_preview_variants(row, 0, atlas)
     assert problems == []
 
 
+def test_type04_preview_claim_is_limited_to_fixture_backed_catalogue_entries(atlas):
+    row = _row(atlas, "H617A", "diy_upload")
+    variants = {variant["label"]: variant for variant in row["preview_variants"]}
+    catalogue_fixtures = {effect.source_fixture.removesuffix(".bin") for effect in H617A_TYPE04_EFFECTS}
+
+    assert len(catalogue_fixtures) == 4
+    assert catalogue_fixtures <= set(row["evidence_refs"])
+    assert "four family/variant identities" in variants["type04_fixture_catalogue"]["note"]
+    assert "no mapping" in variants["type04_fixture_catalogue"]["note"]
+    uncaptured_note = variants["uncaptured_special_templates"]["note"]
+    assert "absent from the four-entry committed authoring catalogue" in uncaptured_note
+
+
+def test_preview_pipeline_does_not_call_type04_palette_deterministic(atlas):
+    issue = next(issue for issue in atlas["pipeline_known_issues"] if issue["id"] == "preview_fidelity_ceiling")
+    summary = issue["summary"]
+
+    assert "diy_type04" in summary
+    assert "structural-only rather than deterministic" in summary
+    assert "uncaptured special DIY templates" in summary
+
+
 def test_diy_upload_h6199_has_no_preview_variants_pending_evaluation(atlas):
-    # h6199_effect_upload's deterministic-vs-structural split has not been separately
-    # evaluated (see known_gaps): asserting no preview_variants keeps that honest,
-    # rather than fabricating a breakdown the evidence does not support.
+    # h6199_effect_upload has not been evaluated against H617A's product-specific
+    # classification (see known_gaps).  No variants are more honest than a fabricated
+    # breakdown.
     row = _row(atlas, "H6199", "diy_upload")
     assert "preview_variants" not in row
 
