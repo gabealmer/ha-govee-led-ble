@@ -7,7 +7,7 @@ case "$mode" in frontend|backend) ;; *) echo "mode must be frontend or backend" 
 ref="${2:-ux}"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PLATFORM_HELPER="${PLATFORM_HELPER:-$HOME/.copilot/skills/platform/scripts/platform-bws.sh}"
+PLATFORM_HELPER="${PLATFORM_HELPER:-$HOME/.copilot/skills/platform/scripts/platform.sh}"
 
 cd "$REPO_DIR"
 git fetch --quiet origin "$ref"
