@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import ssl
+import sys
 from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -163,4 +164,8 @@ def _parser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
-    asyncio.run(deploy(_parser().parse_args()))
+    try:
+        asyncio.run(deploy(_parser().parse_args()))
+    except RuntimeError as exc:
+        print(f"deployment failed: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
