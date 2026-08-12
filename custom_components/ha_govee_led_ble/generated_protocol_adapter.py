@@ -7,7 +7,7 @@ import math
 from importlib import import_module
 from typing import Any, cast
 
-from kaitaistruct import KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
+from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
 CommandWrite = cast(
     Any,
@@ -59,6 +59,15 @@ SceneType1Body = cast(
 )
 
 _A3_CHUNK_SIZE = 17
+_U1_MAX = 0xFF
+_A3_MAX_CONTENT = _U1_MAX * _A3_CHUNK_SIZE
+# The A3 line count is a u1, so a framed scene parameter spans at most 255 lines of 17 bytes.
+MAX_SCENE_PARAM_BYTES = _A3_MAX_CONTENT
+
+
+class SceneParameterTooLargeError(ValueError):
+    """A built scene exceeds the byte limits the generated A3 fields can encode."""
+
 
 DIY_PAINTED_EFFECTS = frozenset(DiyType03.Effect.__members__)
 
@@ -86,6 +95,41 @@ def _write(value: ReadWriteKaitaiStruct, length: int) -> bytes:
     stream = KaitaiStream(io.BytesIO(bytes(length)))
     value._write(stream)
     return cast(bytes, stream.to_byte_array())
+
+
+_SERIALIZE_MEASURE_BOUND = 1 << 16
+
+
+def _serialized_length(value: ReadWriteKaitaiStruct) -> int:
+    """Return the serialized length of a checked struct from the generated writer.
+
+    Kaitai's writer needs a pre-sized buffer, so an oversized write is measured by the
+    trailing ``size-eos`` consistency check, whose ``actual`` is the unused byte count.
+    """
+    try:
+        _write(value, _SERIALIZE_MEASURE_BOUND)
+    except ConsistencyError as error:
+        return _SERIALIZE_MEASURE_BOUND - int(error.actual)
+    return _SERIALIZE_MEASURE_BOUND
+
+
+def _serialize_a3_scene_param(root: Any, *, scene_type_size: int = 1) -> bytes:
+    """Frame a built A3 scene root and return its parameter bytes without envelope padding.
+
+    ``linecount`` only sits in the stripped header, so the parameter is independent of it;
+    it is still set to the value a reassembled capture would carry.
+    """
+    root.header = _a3_header(root)
+    _check_tree(root)
+    content_size = _serialized_length(root)
+    if content_size > _A3_MAX_CONTENT:
+        raise SceneParameterTooLargeError(
+            f"scene content is {content_size} bytes but the A3 line count only encodes {_A3_MAX_CONTENT}"
+        )
+    root.header.linecount = max(2, math.ceil(content_size / _A3_CHUNK_SIZE))
+    _check_tree(root)
+    envelope = _write(root, content_size)
+    return envelope[len(root.header.marker) + 1 + scene_type_size :]
 
 
 def xor_checksum(data: bytes | bytearray) -> int:
@@ -138,8 +182,12 @@ def _command_types(model: str) -> tuple[Any, Any, Any]:
     return CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
 
 
-def _child(child_type: Any, parent: Any) -> Any:
-    return child_type(None, parent, parent._root)
+def new_child(struct_type: Any, parent: Any) -> Any:
+    """Construct a read-write child struct bound to ``parent`` and its root."""
+    return struct_type(None, parent, parent._root)
+
+
+_child = new_child
 
 
 def _build_status_query(
@@ -211,6 +259,11 @@ def _rgb(parent: Any, red: int, green: int, blue: int) -> Any:
     return colour
 
 
+def new_rgb(parent: Any, rgb: tuple[int, int, int]) -> Any:
+    """Construct a shared RGB triple bound to ``parent`` from a colour tuple."""
+    return _rgb(parent, *rgb)
+
+
 def _a3_header(parent: Any) -> Any:
     header = _child(GoveeCommon.A3Header, parent)
     header.marker = b"\x01"
@@ -218,42 +271,72 @@ def _a3_header(parent: Any) -> Any:
     return header
 
 
-def parse_scene_body_param(raw_param: bytes) -> Any:
-    """Parse a catalogue type-2 parameter through the generated SceneBody root."""
+def _parse_a3_scene(
+    root_type: Any,
+    scene_type_byte: int,
+    raw_param: bytes,
+    trailing_padding_of: Any,
+) -> tuple[Any, int]:
+    """Frame a stripped catalogue parameter and parse it through a generated A3 root.
+
+    The parameter carries the real bytes only, so an unpadded read first measures the
+    genuine trailing padding before the synthetic envelope padding a reassembled capture
+    would carry is appended for the returned tree.
+    """
     if not isinstance(raw_param, bytes):
         raise TypeError("scene parameter must be bytes")
-    synthetic = SceneBody()
+    synthetic = root_type()
     header = _a3_header(synthetic)
     header_length = len(header.marker) + 1
     header.linecount = max(header.linecount, math.ceil((header_length + 1 + len(raw_param)) / _A3_CHUNK_SIZE))
     _check_tree(header)
     header_bytes = _write(header, header_length)
-    envelope = header_bytes + bytes((int(SceneBody.SceneType.scene_v2),)) + raw_param
-    unpadded = SceneBody(KaitaiStream(io.BytesIO(envelope)))
+    envelope = header_bytes + bytes((scene_type_byte,)) + raw_param
+    unpadded = root_type(KaitaiStream(io.BytesIO(envelope)))
     unpadded._read()
+    trailing_padding = len(trailing_padding_of(unpadded))
     envelope = envelope.ljust(header.linecount * _A3_CHUNK_SIZE, b"\x00")
-    parsed = SceneBody(KaitaiStream(io.BytesIO(envelope)))
+    parsed = root_type(KaitaiStream(io.BytesIO(envelope)))
     parsed._read()
-    return parsed
+    return parsed, trailing_padding
+
+
+def parse_scene_body(raw_param: bytes) -> tuple[Any, int]:
+    """Parse a catalogue type-2 parameter, returning its tree and real trailing padding."""
+    return _parse_a3_scene(SceneBody, int(SceneBody.SceneType.scene_v2), raw_param, lambda root: root.padding)
+
+
+def parse_scene_body_param(raw_param: bytes) -> Any:
+    """Parse a catalogue type-2 parameter through the generated SceneBody root."""
+    return parse_scene_body(raw_param)[0]
+
+
+def parse_scene_type1_body(raw_param: bytes) -> tuple[Any, int]:
+    """Parse a catalogue type-1 parameter, returning its tree and real trailing padding."""
+    return _parse_a3_scene(SceneType1Body, 1, raw_param, lambda root: root.content.padding)
 
 
 def parse_scene_type1_body_param(raw_param: bytes) -> Any:
     """Parse a catalogue type-1 parameter through the generated SceneType1Body root."""
-    if not isinstance(raw_param, bytes):
-        raise TypeError("scene parameter must be bytes")
-    synthetic = SceneType1Body()
-    header = _a3_header(synthetic)
-    header_length = len(header.marker) + 1
-    header.linecount = max(header.linecount, math.ceil((header_length + 1 + len(raw_param)) / _A3_CHUNK_SIZE))
-    _check_tree(header)
-    header_bytes = _write(header, header_length)
-    envelope = header_bytes + b"\x01" + raw_param
-    unpadded = SceneType1Body(KaitaiStream(io.BytesIO(envelope)))
-    unpadded._read()
-    envelope = envelope.ljust(header.linecount * _A3_CHUNK_SIZE, b"\x00")
-    parsed = SceneType1Body(KaitaiStream(io.BytesIO(envelope)))
-    parsed._read()
-    return parsed
+    return parse_scene_type1_body(raw_param)[0]
+
+
+def serialize_scene_body_param(root: Any) -> bytes:
+    """Serialize a built type-2 SceneBody root and return its catalogue parameter bytes."""
+    for record in root.records:
+        _check_tree(record.body)
+        body_length = _serialized_length(record.body)
+        if body_length > _U1_MAX:
+            raise SceneParameterTooLargeError(
+                f"layer body is {body_length} bytes but the record length field only encodes {_U1_MAX}"
+            )
+        record.len_body = body_length
+    return _serialize_a3_scene_param(root)
+
+
+def serialize_scene_type1_body_param(root: Any) -> bytes:
+    """Serialize a built type-1 SceneType1Body root and return its catalogue parameter bytes."""
+    return _serialize_a3_scene_param(root)
 
 
 def build_h617a_diy_painted_body(

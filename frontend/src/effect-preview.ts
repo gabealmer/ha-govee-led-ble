@@ -8,6 +8,16 @@ import type {
 } from "./preview-model";
 import type { RGB } from "./types";
 
+export interface PreviewSweepLaneChange {
+  lane: number;
+  previousLane: number;
+  sequence: number;
+  lanes: number[];
+  previousLanes: number[];
+}
+
+const LOGICAL_LANE_COUNT = 15;
+
 export class GoveeEffectPreview extends LitElement {
   @property({ attribute: false })
   public model?: EffectPreviewModel;
@@ -20,6 +30,49 @@ export class GoveeEffectPreview extends LitElement {
 
   private paintingPointerId?: number;
   private lastPaintedCell?: number;
+  private previewVisible = true;
+  private visibilityObserver?: IntersectionObserver;
+  private motionQuery?: MediaQueryList;
+  private sweepElapsedMilliseconds = 0;
+  private sweepCompletedSteps = 0;
+  private sweepKey?: string;
+  private sweepLane = 0;
+  private sweepRunningSince?: number;
+  private sweepTransitionSequence = 0;
+  private sweepTimeout?: number;
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    if (typeof window !== "undefined" && "matchMedia" in window) {
+      this.motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      this.motionQuery.addEventListener("change", this.motionChanged);
+    }
+    if (typeof IntersectionObserver === "undefined") {
+      return;
+    }
+    this.visibilityObserver = new IntersectionObserver(
+      ([entry]) => {
+        this.previewVisible = entry.isIntersecting;
+        this.configureDirectionalSweep();
+        this.requestUpdate();
+      },
+      { threshold: 0.01 },
+    );
+    this.visibilityObserver.observe(this);
+  }
+
+  public disconnectedCallback(): void {
+    this.visibilityObserver?.disconnect();
+    this.visibilityObserver = undefined;
+    this.motionQuery?.removeEventListener("change", this.motionChanged);
+    this.motionQuery = undefined;
+    this.pauseDirectionalSweep();
+    super.disconnectedCallback();
+  }
+
+  protected updated(): void {
+    this.configureDirectionalSweep();
+  }
 
   protected render() {
     if (!this.model) {
@@ -39,6 +92,92 @@ export class GoveeEffectPreview extends LitElement {
 
   private renderBody(model: EffectPreviewModel) {
     switch (model.kind) {
+      case "capture-static":
+        return html`
+          <div
+            class="cell-strip capture-static"
+            role="img"
+            aria-label="Capture-backed abstract map of 15 sampled regions; ${model.illuminatedSegments.length} regions were observed illuminated"
+          >
+            ${model.cells.map(
+              (colour) => html`
+                <span
+                  class="preview-cell"
+                  style="--preview-colour: ${rgbToHex(colour)}"
+                  aria-hidden="true"
+                ></span>
+              `,
+            )}
+          </div>
+          ${this.captureEvidence(model)}
+        `;
+      case "capture-directional-sweep": {
+        const activeLane = this.directionalSweepLane(model);
+        const activeLanes = directionalSweepLanes(model, activeLane);
+        const activeBands = new Map(
+          activeLanes.map((lane, band) => [lane, band]),
+        );
+        const stepMilliseconds = directionalSweepStepMilliseconds(model);
+        const fullCircuitMilliseconds =
+          directionalSweepFullCircuitMilliseconds(model);
+        const motionDescription = model.motionUsesReviewedDefaultSpeed
+          ? `The reviewed visual repeat is ${model.periodSeconds.toFixed(
+              3,
+            )} seconds at Default speed. One band completes the logical 15-lane circuit in ${(
+              fullCircuitMilliseconds / 1000
+            ).toFixed(3)} seconds.`
+          : "Timing and motion were observed only at Default speed. This non-default Speed selection freezes a phase-separated capture snapshot.";
+        return html`
+          <div
+            class="directional-sweep"
+            role="img"
+            aria-label="Capture-backed abstract directional sweep towards the ${model.direction ===
+            "towards_first_segment"
+              ? "first"
+              : "last"} sampled region, with ${model.travellingBands} phase-separated travelling bands. ${motionDescription}"
+            data-preview-seed=${model.seed}
+            data-logical-lane=${activeLane}
+            data-logical-lanes=${activeLanes.join(",")}
+            data-phase-separation=${phaseSeparation(model)}
+            data-step-interval-ms=${stepMilliseconds.toFixed(3)}
+            data-full-circuit-ms=${fullCircuitMilliseconds.toFixed(3)}
+            data-observed-repeat-ms=${(model.periodSeconds * 1000).toFixed(3)}
+            data-motion-state=${model.motionUsesReviewedDefaultSpeed
+              ? "default"
+              : "snapshot"}
+          >
+            <div
+              class="sweep-track"
+              style="--sweep-base: ${rgbToHex(
+                model.baseColour,
+              )}; --sweep-band: ${rgbToHex(model.bandColour)}"
+              aria-hidden="true"
+            >
+              ${Array.from({ length: LOGICAL_LANE_COUNT }, (_, lane) => {
+                const band = activeBands.get(lane);
+                const current = band !== undefined;
+                return html`
+                  <span
+                    class="sweep-cell ${current ? "current" : ""}"
+                    data-logical-lane=${lane}
+                  >
+                    ${current
+                      ? html`
+                          <span
+                            class="sweep-band"
+                            data-logical-band=${band}
+                          ></span>
+                        `
+                      : nothing}
+                  </span>
+                `;
+              })}
+            </div>
+          </div>
+          <p class="motion-note" role="note">${motionDescription}</p>
+          ${this.captureEvidence(model)}
+        `;
+      }
       case "cells":
         return html`
           <div
@@ -167,6 +306,106 @@ export class GoveeEffectPreview extends LitElement {
     }
   }
 
+  private captureEvidence(
+    model:
+      | Extract<EffectPreviewModel, { fidelity: "capture_backed" }>
+      | undefined,
+  ) {
+    if (!model) {
+      return nothing;
+    }
+    return html`
+      <div class="capture-evidence" role="note">
+        <p>
+          This is a reviewed recorded capture with spatial lane calibration from
+          corpus ${model.evidence.corpusId}.  Camera colour is uncalibrated.
+          The abstract regions are not physical LED geometry.
+        </p>
+        <ul aria-label="Capture evidence limitations">
+          ${model.limitations.map((limitation) => html`<li>${limitation}</li>`)}
+        </ul>
+      </div>
+    `;
+  }
+
+  private readonly motionChanged = (): void => {
+    this.configureDirectionalSweep();
+    this.requestUpdate();
+  };
+
+  private configureDirectionalSweep(): void {
+    const model = this.model;
+    if (model?.kind !== "capture-directional-sweep") {
+      this.pauseDirectionalSweep();
+      this.sweepKey = undefined;
+      return;
+    }
+    const key = `${model.identity.sku}:${model.identity.sceneId}:${model.identity.effectId}:${model.seed}`;
+    if (this.sweepKey !== key) {
+      this.pauseDirectionalSweep();
+      this.sweepKey = key;
+      this.sweepElapsedMilliseconds = 0;
+      this.sweepCompletedSteps = 0;
+      this.sweepLane = model.initialStep;
+      this.sweepTransitionSequence = 0;
+    }
+    if (
+      !this.previewVisible ||
+      this.motionQuery?.matches ||
+      !model.motionUsesReviewedDefaultSpeed
+    ) {
+      this.pauseDirectionalSweep();
+      return;
+    }
+    if (this.sweepRunningSince === undefined) {
+      this.sweepRunningSince = performance.now();
+    }
+    const stepMilliseconds = directionalSweepStepMilliseconds(model);
+    const elapsed = this.sweepElapsedMilliseconds + (performance.now() - this.sweepRunningSince);
+    const completedSteps = Math.floor(elapsed / stepMilliseconds);
+    while (this.sweepCompletedSteps < completedSteps) {
+      const previousLane = this.sweepLane;
+      const previousLanes = directionalSweepLanes(model, previousLane);
+      this.sweepCompletedSteps += 1;
+      this.sweepLane = laneAfterSteps(model, this.sweepCompletedSteps);
+      this.dispatchEvent(
+        new CustomEvent<PreviewSweepLaneChange>("preview-sweep-lane-change", {
+          detail: {
+            lane: this.sweepLane,
+            previousLane,
+            sequence: this.sweepTransitionSequence,
+            lanes: directionalSweepLanes(model, this.sweepLane),
+            previousLanes,
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      this.sweepTransitionSequence += 1;
+    }
+    window.clearTimeout(this.sweepTimeout);
+    this.sweepTimeout = window.setTimeout(() => {
+      this.configureDirectionalSweep();
+      this.requestUpdate();
+    }, Math.max(1, stepMilliseconds - (elapsed % stepMilliseconds)));
+  }
+
+  private pauseDirectionalSweep(): void {
+    if (this.sweepRunningSince !== undefined) {
+      this.sweepElapsedMilliseconds += performance.now() - this.sweepRunningSince;
+      this.sweepRunningSince = undefined;
+    }
+    window.clearTimeout(this.sweepTimeout);
+    this.sweepTimeout = undefined;
+  }
+
+  private directionalSweepLane(
+    model: Extract<EffectPreviewModel, { kind: "capture-directional-sweep" }>,
+  ): number {
+    const key = `${model.identity.sku}:${model.identity.sceneId}:${model.identity.effectId}:${model.seed}`;
+    return this.sweepKey === key ? this.sweepLane : model.initialStep;
+  }
+
   private renderSequenceItem(item: PreviewSequenceItem, index: number) {
     return html`
       <li class=${item.fidelity === "opaque" ? "unknown" : ""}>
@@ -255,7 +494,9 @@ export class GoveeEffectPreview extends LitElement {
   private fidelityBadge(fidelity: EffectPreviewModel["fidelity"] | "opaque") {
     return html`
       <span class="fidelity ${fidelity}">
-        ${fidelity === "deterministic"
+        ${fidelity === "capture_backed"
+          ? "Capture-backed"
+          : fidelity === "deterministic"
           ? "Deterministic"
           : fidelity === "structural"
             ? "Structural"
@@ -391,6 +632,15 @@ export class GoveeEffectPreview extends LitElement {
       );
     }
 
+    .fidelity.capture_backed {
+      color: var(--primary-color, #2f6fed);
+      border-color: color-mix(
+        in srgb,
+        var(--primary-color, #2f6fed) 50%,
+        var(--preview-border)
+      );
+    }
+
     .cell-strip {
       display: grid;
       grid-template-columns: repeat(15, minmax(0, 1fr));
@@ -407,6 +657,56 @@ export class GoveeEffectPreview extends LitElement {
         color-mix(in srgb, var(--preview-colour) 70%, #000);
       border-radius: 6px;
       background: var(--preview-colour);
+    }
+
+    .directional-sweep {
+      min-width: 0;
+    }
+
+    .sweep-track {
+      display: grid;
+      grid-template-columns: repeat(15, minmax(0, 1fr));
+      gap: 4px;
+      min-height: 48px;
+      direction: ltr;
+      border-radius: 6px;
+    }
+
+    .sweep-cell {
+      position: relative;
+      display: grid;
+      place-items: stretch;
+      border: 1px solid color-mix(in srgb, var(--sweep-base) 70%, #000);
+      border-radius: 5px;
+      background: var(--sweep-base);
+    }
+
+    .sweep-cell.current {
+      border-color: color-mix(in srgb, var(--sweep-band) 70%, #000);
+    }
+
+    .sweep-band {
+      display: block;
+      min-width: 100%;
+      min-height: 100%;
+      border-radius: 2px;
+      background: var(--sweep-band);
+    }
+
+    .capture-evidence {
+      margin-top: 12px;
+      color: var(--preview-muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .capture-evidence p {
+      margin-bottom: 6px;
+    }
+
+    .capture-evidence ul {
+      margin: 0;
+      padding-inline-start: 20px;
     }
 
     button.preview-cell {
@@ -617,6 +917,11 @@ export class GoveeEffectPreview extends LitElement {
         border-radius: 4px;
       }
 
+      .sweep-track {
+        gap: 3px;
+        min-height: 38px;
+      }
+
       dl div {
         grid-template-columns: 1fr;
       }
@@ -625,6 +930,7 @@ export class GoveeEffectPreview extends LitElement {
         grid-template-columns: 1fr;
       }
     }
+
   `;
 }
 
@@ -636,6 +942,44 @@ function rgbToHex(colour: RGB): string {
   return `#${colour
     .map((channel) => channel.toString(16).padStart(2, "0"))
     .join("")}`;
+}
+
+function laneAfterSteps(
+  model: Extract<EffectPreviewModel, { kind: "capture-directional-sweep" }>,
+  completedSteps: number,
+): number {
+  const direction = model.direction === "towards_first_segment" ? -1 : 1;
+  const lane = (model.initialStep + direction * completedSteps) % LOGICAL_LANE_COUNT;
+  return lane < 0 ? lane + LOGICAL_LANE_COUNT : lane;
+}
+
+function directionalSweepLanes(
+  model: Extract<EffectPreviewModel, { kind: "capture-directional-sweep" }>,
+  leadingLane: number,
+): number[] {
+  return Array.from({ length: model.travellingBands }, (_, band) => {
+    const offset = Math.round((band * LOGICAL_LANE_COUNT) / model.travellingBands);
+    const lane = (leadingLane + offset) % LOGICAL_LANE_COUNT;
+    return lane < 0 ? lane + LOGICAL_LANE_COUNT : lane;
+  });
+}
+
+function phaseSeparation(
+  model: Extract<EffectPreviewModel, { kind: "capture-directional-sweep" }>,
+): number {
+  return Math.round(LOGICAL_LANE_COUNT / model.travellingBands);
+}
+
+function directionalSweepFullCircuitMilliseconds(
+  model: Extract<EffectPreviewModel, { kind: "capture-directional-sweep" }>,
+): number {
+  return model.periodSeconds * model.travellingBands * 1000;
+}
+
+function directionalSweepStepMilliseconds(
+  model: Extract<EffectPreviewModel, { kind: "capture-directional-sweep" }>,
+): number {
+  return directionalSweepFullCircuitMilliseconds(model) / LOGICAL_LANE_COUNT;
 }
 
 declare global {

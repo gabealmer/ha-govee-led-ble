@@ -1,6 +1,8 @@
 import type {
   AdvancedContent,
   BuiltinSceneContent,
+  CatalogueRef,
+  CaptureBackedPreviewProfile,
   CapabilityState,
   CustomEffectCatalogue,
   DeploymentRecord,
@@ -43,6 +45,14 @@ const MAX_CATALOGUE_JSON_NODES = 16_384;
 const MAX_JSON_COLLECTION_ITEMS = 1024;
 const MAX_JSON_STRING_LENGTH = 16_384;
 const MAX_SAFE_REVISION = Number.MAX_SAFE_INTEGER;
+// The backend only round trips reserved config bit 3 of a type-1 scene.
+const PALETTE_CONFIG_RESERVED_MASK = 0x08;
+// The A3 line count is a u1, so a framed scene parameter spans at most 255 lines of 17 bytes.
+const SCENE_TRAILING_PADDING_MAX = 0xff * 17;
+// The packed movement and layer-flag bytes assign these bits to explicit fields, so canonical
+// unknown_flags may only carry the complementary reserved bits the wire form masks in.
+const MOVEMENT_UNKNOWN_FLAGS_MASK = 0xe8;
+const LAYER_UNKNOWN_FLAGS_MASK = 0xfd;
 
 type WireOpaqueContent = Record<string, unknown> & { kind: string };
 export type WireEffectContent = KnownEffectContent | WireOpaqueContent;
@@ -454,6 +464,11 @@ export function decodeSceneCatalogue(value: unknown): SceneCatalogue {
 
 export function decodeSceneDetail(value: unknown): SceneDetail {
   const detail = objectValue(value, "scene detail");
+  assertBoundedJson(
+    { scene: detail.scene, content: detail.content },
+    "scene detail",
+    MAX_EFFECT_DOCUMENT_BYTES,
+  );
   const content = decodeEffectContent(detail.content);
   if (
     content.kind !== "scene_builtin" &&
@@ -462,9 +477,238 @@ export function decodeSceneDetail(value: unknown): SceneDetail {
   ) {
     invalid("scene detail content is unsupported");
   }
+  const scene = decodeSceneSummary(detail.scene);
+  const previewProfile = optionalPreviewProfile(
+    detail.preview_profile,
+    content.template,
+    scene,
+  );
   return {
-    scene: decodeSceneSummary(detail.scene),
+    scene,
     content,
+    ...(previewProfile ? { preview_profile: previewProfile } : {}),
+  };
+}
+
+function optionalPreviewProfile(
+  value: unknown,
+  template: CatalogueRef,
+  scene: SceneSummary,
+): CaptureBackedPreviewProfile | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  try {
+    const profile = decodeCaptureBackedPreviewProfile(value);
+    if (
+      profile.sku !== template.sku ||
+      profile.scene_id !== template.scene_id ||
+      profile.effect_id !== template.effect_id ||
+      profile.scene_id !== scene.scene_id ||
+      profile.effect_id !== scene.effect_id
+    ) {
+      return undefined;
+    }
+    return profile;
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeCaptureBackedPreviewProfile(
+  value: unknown,
+): CaptureBackedPreviewProfile {
+  const profile = objectValue(value, "capture-backed preview profile");
+  const commonKeys = [
+    "schema_version",
+    "fidelity",
+    "sku",
+    "scene_id",
+    "effect_id",
+    "review_state",
+    "minimum_review_confidence",
+    "review_confidence",
+    "primitive",
+    "illuminated_segments",
+    "limitations",
+    "evidence",
+    "palette",
+  ];
+  const primitive = enumString(
+    profile.primitive,
+    ["static", "directional_sweep"],
+    "capture-backed preview primitive",
+  );
+  exactObjectKeys(
+    profile,
+    primitive === "static"
+      ? commonKeys
+      : [...commonKeys, "direction", "period_seconds", "travelling_bands"],
+    "capture-backed preview profile",
+  );
+  const minimumReviewConfidence = decimalValue(
+    profile.minimum_review_confidence,
+    "capture-backed preview minimum review confidence",
+    0,
+    1,
+    false,
+  );
+  const reviewConfidence = decimalValue(
+    profile.review_confidence,
+    "capture-backed preview review confidence",
+    0,
+    1,
+    false,
+  );
+  if (reviewConfidence < minimumReviewConfidence) {
+    invalid("capture-backed preview review confidence is below its minimum");
+  }
+  const illuminatedSegments = arrayValue(
+    profile.illuminated_segments,
+    "capture-backed preview illuminated segments",
+    15,
+  ).map((segment) =>
+    integerValue(segment, "capture-backed preview illuminated segment", 0, 14),
+  );
+  if (illuminatedSegments.length === 0) {
+    invalid("capture-backed preview must name an illuminated segment");
+  }
+  requireUnique(
+    illuminatedSegments,
+    (segment) => String(segment),
+    "capture-backed preview illuminated segments",
+  );
+  const limitations = arrayValue(
+    profile.limitations,
+    "capture-backed preview limitations",
+    32,
+  ).map((limitation) =>
+    boundedString(
+      limitation,
+      "capture-backed preview limitation",
+      MAX_JSON_STRING_LENGTH,
+    ),
+  );
+  if (limitations.length === 0) {
+    invalid("capture-backed preview must include evidence limitations");
+  }
+  const evidence = objectValue(profile.evidence, "capture-backed preview evidence");
+  exactObjectKeys(
+    evidence,
+    ["corpus_id", "contact_sheet_sha256"],
+    "capture-backed preview evidence",
+  );
+  const contactSheetSha = boundedString(
+    evidence.contact_sheet_sha256,
+    "capture-backed preview contact sheet SHA-256",
+    64,
+  );
+  if (!/^[0-9a-f]{64}$/.test(contactSheetSha)) {
+    invalid("capture-backed preview contact sheet SHA-256 is invalid");
+  }
+  const base = {
+    schema_version: exactInteger(
+      profile.schema_version,
+      1,
+      "capture-backed preview schema version",
+    ) as 1,
+    fidelity: enumString(
+      profile.fidelity,
+      ["capture_backed"],
+      "capture-backed preview fidelity",
+    ) as "capture_backed",
+    sku: boundedString(profile.sku, "capture-backed preview SKU", MAX_IDENTIFIER_LENGTH),
+    scene_id: integerValue(profile.scene_id, "capture-backed preview scene ID", 0, 65_535),
+    effect_id: integerValue(profile.effect_id, "capture-backed preview effect ID", 0, 65_535),
+    review_state: enumString(
+      profile.review_state,
+      ["reviewed"],
+      "capture-backed preview review state",
+    ) as "reviewed",
+    minimum_review_confidence: minimumReviewConfidence,
+    review_confidence: reviewConfidence,
+    illuminated_segments: illuminatedSegments,
+    limitations,
+    evidence: {
+      corpus_id: boundedString(
+        evidence.corpus_id,
+        "capture-backed preview corpus ID",
+        MAX_IDENTIFIER_LENGTH,
+      ),
+      contact_sheet_sha256: contactSheetSha,
+    },
+  };
+  const palette = objectValue(profile.palette, "capture-backed preview palette");
+  if (primitive === "static") {
+    exactObjectKeys(
+      palette,
+      ["colour_space", "segment_rgb"],
+      "capture-backed static preview palette",
+    );
+    const colours = arrayValue(
+      palette.segment_rgb,
+      "capture-backed static preview palette",
+      15,
+    );
+    if (colours.length !== 15) {
+      invalid("capture-backed static preview palette must contain 15 colours");
+    }
+    return {
+      ...base,
+      primitive,
+      palette: {
+        colour_space: enumString(
+          palette.colour_space,
+          ["uncalibrated_camera_srgb"],
+          "capture-backed preview colour space",
+        ) as "uncalibrated_camera_srgb",
+        segment_rgb: colours.map((colour, index) =>
+          rgbValue(colour, `capture-backed static preview colour ${index + 1}`),
+        ),
+      },
+    };
+  }
+  exactObjectKeys(
+    palette,
+    ["colour_space", "base_rgb", "band_rgb"],
+    "capture-backed directional sweep palette",
+  );
+  return {
+    ...base,
+    primitive,
+    palette: {
+      colour_space: enumString(
+        palette.colour_space,
+        ["uncalibrated_camera_srgb"],
+        "capture-backed preview colour space",
+      ) as "uncalibrated_camera_srgb",
+      base_rgb: rgbValue(
+        palette.base_rgb,
+        "capture-backed directional sweep base colour",
+      ),
+      band_rgb: rgbValue(
+        palette.band_rgb,
+        "capture-backed directional sweep band colour",
+      ),
+    },
+    direction: enumString(
+      profile.direction,
+      ["towards_first_segment", "towards_last_segment"],
+      "capture-backed directional sweep direction",
+    ),
+    period_seconds: decimalValue(
+      profile.period_seconds,
+      "capture-backed directional sweep period",
+      0,
+      Number.MAX_VALUE,
+      false,
+    ),
+    travelling_bands: integerValue(
+      profile.travelling_bands,
+      "capture-backed directional sweep travelling bands",
+      1,
+      15,
+    ),
   };
 }
 
@@ -549,6 +793,10 @@ export function decodeEffectContent(value: unknown): EffectContent {
       return paletteSceneContent(content);
     case "scene_layered": {
       const effect = objectValue(content.effect, "layered scene effect");
+      const trailingPadding = sceneTrailingPadding(
+        content.trailing_padding,
+        "layered scene trailing padding",
+      );
       return {
         kind,
         template: catalogueRef(content.template, "layered scene template"),
@@ -562,6 +810,9 @@ export function decodeEffectContent(value: unknown): EffectContent {
           255,
         ),
         raw_param: hexString(content.raw_param, "layered scene raw parameter"),
+        ...(trailingPadding === undefined
+          ? {}
+          : { trailing_padding: trailingPadding }),
       } satisfies LayeredSceneContent;
     }
 
@@ -574,6 +825,16 @@ export function decodeEffectContent(value: unknown): EffectContent {
       };
     }
   }
+}
+
+function sceneTrailingPadding(
+  value: unknown,
+  label: string,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return integerValue(value, label, 0, SCENE_TRAILING_PADDING_MAX);
 }
 
 function paletteSceneContent(
@@ -629,6 +890,17 @@ function paletteSceneContent(
   if (layout === 1 && palette.length !== 0) {
     invalid("palette scene layout 1 must not have a shared palette");
   }
+  let configFlags: number | undefined;
+  if (content.config_flags !== undefined) {
+    configFlags = integerValue(content.config_flags, "palette scene config flags", 0, 255);
+    if (configFlags & ~PALETTE_CONFIG_RESERVED_MASK) {
+      invalid("palette scene config flags must only set reserved config bits");
+    }
+  }
+  const trailingPadding = sceneTrailingPadding(
+    content.trailing_padding,
+    "palette scene trailing padding",
+  );
   return {
     kind: "scene_palette",
     template: catalogueRef(content.template, "palette scene template"),
@@ -645,6 +917,10 @@ function paletteSceneContent(
       0,
       255,
     ),
+    ...(configFlags === undefined ? {} : { config_flags: configFlags }),
+    ...(trailingPadding === undefined
+      ? {}
+      : { trailing_padding: trailingPadding }),
   };
 }
 
@@ -814,7 +1090,11 @@ function layerValue(value: unknown, name: string): EffectLayer {
       `${name}.overall_movement`,
     ),
     priority: byteValue(layer.priority, `${name}.priority`),
-    unknown_flags: byteValue(layer.unknown_flags, `${name}.unknown_flags`),
+    unknown_flags: unknownFlagsValue(
+      layer.unknown_flags,
+      LAYER_UNKNOWN_FLAGS_MASK,
+      `${name}.unknown_flags`,
+    ),
     excess: hexString(layer.excess, `${name}.excess`),
   };
 }
@@ -827,8 +1107,9 @@ function movementValue(value: unknown, name: string) {
     direction: integerValue(movement.direction, `${name}.direction`, 0, 3),
     distance: byteValue(movement.distance, `${name}.distance`),
     speed: byteValue(movement.speed, `${name}.speed`),
-    unknown_flags: byteValue(
+    unknown_flags: unknownFlagsValue(
       movement.unknown_flags,
+      MOVEMENT_UNKNOWN_FLAGS_MASK,
       `${name}.unknown_flags`,
     ),
   };
@@ -975,6 +1256,26 @@ function integerValue(
   return value;
 }
 
+function decimalValue(
+  value: unknown,
+  name: string,
+  minimum: number,
+  maximum: number,
+  allowMinimum = true,
+): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value > maximum ||
+    (allowMinimum ? value < minimum : value <= minimum)
+  ) {
+    invalid(
+      `${name} must be a number from ${allowMinimum ? "inclusive " : "above "}${minimum} to ${maximum}`,
+    );
+  }
+  return value;
+}
+
 function revisionValue(
   value: unknown,
   name: string,
@@ -1010,6 +1311,14 @@ function byteValue(value: unknown, name: string): number {
   return integerValue(value, name, 0, 255);
 }
 
+function unknownFlagsValue(value: unknown, mask: number, name: string): number {
+  const flags = byteValue(value, name);
+  if (flags & ~mask) {
+    invalid(`${name} must only set reserved bits, not bits explicit fields carry`);
+  }
+  return flags;
+}
+
 function enumString<const Values extends readonly string[]>(
   value: unknown,
   values: Values,
@@ -1030,6 +1339,21 @@ function objectValue(
     invalid(`${name} must be an object`);
   }
   return value as Record<string, unknown>;
+}
+
+function exactObjectKeys(
+  value: Record<string, unknown>,
+  expected: string[],
+  name: string,
+): void {
+  const actual = Object.keys(value).sort();
+  const keys = [...expected].sort();
+  if (
+    actual.length !== keys.length ||
+    actual.some((key, index) => key !== keys[index])
+  ) {
+    invalid(`${name} fields are invalid`);
+  }
 }
 
 function arrayValue(

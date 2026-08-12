@@ -1,6 +1,7 @@
 import type {
   AdvancedContent,
   BuiltinSceneContent,
+  CaptureBackedPreviewProfile,
   CustomEffectCatalogue,
   EffectLayer,
   EffectPair,
@@ -12,7 +13,11 @@ import type {
   SingleContent,
 } from "./types";
 
-export type PreviewFidelity = "deterministic" | "structural" | "opaque";
+export type PreviewFidelity =
+  | "capture_backed"
+  | "deterministic"
+  | "structural"
+  | "opaque";
 
 export interface PreviewCell {
   colour: RGB;
@@ -108,7 +113,42 @@ export interface OpaquePreview extends PreviewBase {
   details: string[];
 }
 
+interface CaptureBackedPreviewBase extends PreviewBase {
+  fidelity: "capture_backed";
+  identity: {
+    sku: string;
+    sceneId: number;
+    effectId: number;
+  };
+  illuminatedSegments: number[];
+  limitations: string[];
+  evidence: {
+    corpusId: string;
+    contactSheetSha256: string;
+  };
+}
+
+export interface CaptureBackedStaticPreview extends CaptureBackedPreviewBase {
+  kind: "capture-static";
+  cells: RGB[];
+}
+
+export interface CaptureBackedDirectionalSweepPreview
+  extends CaptureBackedPreviewBase {
+  kind: "capture-directional-sweep";
+  baseColour: RGB;
+  bandColour: RGB;
+  direction: "towards_first_segment" | "towards_last_segment";
+  periodSeconds: number;
+  travellingBands: number;
+  seed: number;
+  initialStep: number;
+  motionUsesReviewedDefaultSpeed: boolean;
+}
+
 export type EffectPreviewModel =
+  | CaptureBackedStaticPreview
+  | CaptureBackedDirectionalSweepPreview
   | DeterministicPreview
   | StructuralPalettePreview
   | StructuralLayersPreview
@@ -210,6 +250,58 @@ export function builtinScenePreviewModel(
     ],
     notice:
       "Opaque preview: Scene Type 0 has no documented visual parameters, so no colour, layout, timing or motion preview is shown.",
+  };
+}
+
+export function captureBackedPreviewModel(
+  profile: CaptureBackedPreviewProfile,
+  speedContext?: {
+    selectedIndex: number | null;
+    defaultIndex: number | null;
+  },
+): CaptureBackedStaticPreview | CaptureBackedDirectionalSweepPreview {
+  const base: CaptureBackedPreviewBase = {
+    fidelity: "capture_backed",
+    title:
+      profile.primitive === "static"
+        ? "Observed static scene"
+        : "Observed directional sweep",
+    identity: {
+      sku: profile.sku,
+      sceneId: profile.scene_id,
+      effectId: profile.effect_id,
+    },
+    illuminatedSegments: [...profile.illuminated_segments],
+    limitations: [...profile.limitations],
+    evidence: {
+      corpusId: profile.evidence.corpus_id,
+      contactSheetSha256: profile.evidence.contact_sheet_sha256,
+    },
+    notice:
+      "Capture-backed preview: this is a reviewed recorded capture with spatial lane calibration. Camera colour is uncalibrated. It is not a protocol rendering and does not define device behaviour.",
+  };
+  if (profile.primitive === "static") {
+    return {
+      ...base,
+      kind: "capture-static",
+      cells: clonePalette(profile.palette.segment_rgb),
+    };
+  }
+  const seed = previewSeed(profile.sku, profile.scene_id, profile.effect_id);
+  return {
+    ...base,
+    kind: "capture-directional-sweep",
+    baseColour: cloneColour(profile.palette.base_rgb),
+    bandColour: cloneColour(profile.palette.band_rgb),
+    direction: profile.direction,
+    periodSeconds: profile.period_seconds,
+    travellingBands: profile.travelling_bands,
+    seed,
+    initialStep: seed % 15,
+    motionUsesReviewedDefaultSpeed:
+      speedContext === undefined ||
+      (speedContext.defaultIndex !== null &&
+        speedContext.selectedIndex === speedContext.defaultIndex),
   };
 }
 
@@ -461,4 +553,13 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function hexByte(value: number): string {
   return value.toString(16).padStart(2, "0").toUpperCase();
+}
+
+function previewSeed(sku: string, sceneId: number, effectId: number): number {
+  let hash = 0x811c9dc5;
+  for (const character of `${sku}:${sceneId}:${effectId}`) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
 }

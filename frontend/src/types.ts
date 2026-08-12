@@ -178,6 +178,8 @@ export interface PaletteSceneContent {
   steps: SceneStepContent[];
   palette: RGB[];
   speed_index: number | null;
+  config_flags?: number;
+  trailing_padding?: number;
 }
 
 export interface LayeredSceneContent {
@@ -188,6 +190,7 @@ export interface LayeredSceneContent {
   };
   speed_index: number | null;
   raw_param: string;
+  trailing_padding?: number;
 }
 
 export type KnownEffectContent =
@@ -309,9 +312,55 @@ export interface SceneCatalogue {
   scenes: SceneSummary[];
 }
 
+export interface CaptureEvidence {
+  corpus_id: string;
+  contact_sheet_sha256: string;
+}
+
+interface CaptureBackedPreviewProfileBase {
+  schema_version: 1;
+  fidelity: "capture_backed";
+  sku: string;
+  scene_id: number;
+  effect_id: number;
+  review_state: "reviewed";
+  minimum_review_confidence: number;
+  review_confidence: number;
+  illuminated_segments: number[];
+  limitations: string[];
+  evidence: CaptureEvidence;
+}
+
+export interface StaticCaptureBackedPreviewProfile
+  extends CaptureBackedPreviewProfileBase {
+  primitive: "static";
+  palette: {
+    colour_space: "uncalibrated_camera_srgb";
+    segment_rgb: RGB[];
+  };
+}
+
+export interface DirectionalSweepCaptureBackedPreviewProfile
+  extends CaptureBackedPreviewProfileBase {
+  primitive: "directional_sweep";
+  palette: {
+    colour_space: "uncalibrated_camera_srgb";
+    base_rgb: RGB;
+    band_rgb: RGB;
+  };
+  direction: "towards_first_segment" | "towards_last_segment";
+  period_seconds: number;
+  travelling_bands: number;
+}
+
+export type CaptureBackedPreviewProfile =
+  | StaticCaptureBackedPreviewProfile
+  | DirectionalSweepCaptureBackedPreviewProfile;
+
 export interface SceneDetail {
   scene: SceneSummary;
   content: BuiltinSceneContent | PaletteSceneContent | LayeredSceneContent;
+  preview_profile?: CaptureBackedPreviewProfile;
 }
 
 export interface HomeAssistant {

@@ -1,6 +1,7 @@
 import { blankAdvancedContent, cloneAdvancedContent } from "../../src/advanced-effect-editor";
-import { decodeEffectContent } from "../../src/validation";
+import { decodeEffectContent, decodeSceneDetail } from "../../src/validation";
 import type {
+  CaptureBackedPreviewProfile,
   CustomEffectCatalogue,
   DeploymentRecord,
   DeviceCapabilities,
@@ -161,6 +162,10 @@ export class MockHomeAssistantBackend {
 
   public validateEffectContent(value: unknown): EffectContent {
     return decodeEffectContent(value);
+  }
+
+  public validateSceneDetail(value: unknown): SceneDetail {
+    return decodeSceneDetail(value);
   }
 
   public failNext(command: string): void {
@@ -720,6 +725,69 @@ const SCENES: SceneSummary[] = [
       default_index: 1,
     },
   },
+  {
+    scene_id: 1011,
+    effect_id: 1073,
+    category_id: 700,
+    category: "Observed captures",
+    name: "sunrise",
+    variant: "",
+    display_name: "Sunrise",
+    scene_type: 0,
+    parameter_kind: "none",
+    speed: null,
+  },
+  {
+    scene_id: 1012,
+    effect_id: 1074,
+    category_id: 700,
+    category: "Observed captures",
+    name: "sunset",
+    variant: "",
+    display_name: "Sunset",
+    scene_type: 0,
+    parameter_kind: "none",
+    speed: null,
+  },
+  {
+    scene_id: 1051,
+    effect_id: 1113,
+    category_id: 700,
+    category: "Observed captures",
+    name: "blue_lagoon",
+    variant: "",
+    display_name: "Blue Lagoon",
+    scene_type: 0,
+    parameter_kind: "none",
+    speed: null,
+  },
+  {
+    scene_id: 1068,
+    effect_id: 1130,
+    category_id: 700,
+    category: "Observed captures",
+    name: "sweep",
+    variant: "",
+    display_name: "Blue Sweep",
+    scene_type: 2,
+    parameter_kind: "layers",
+    speed: {
+      option_count: 3,
+      default_index: 2,
+    },
+  },
+  {
+    scene_id: 8860,
+    effect_id: 13920,
+    category_id: 700,
+    category: "Observed captures",
+    name: "warm_glow",
+    variant: "",
+    display_name: "Warm Glow",
+    scene_type: 0,
+    parameter_kind: "none",
+    speed: null,
+  },
 ];
 
 const SCENE_CATALOGUE: SceneCatalogue = {
@@ -733,6 +801,7 @@ const SCENE_CATALOGUE: SceneCatalogue = {
     { id: 133, name: "Festival" },
     { id: 136, name: "Life" },
     { id: 999, name: "Synthetic schema-only" },
+    { id: 700, name: "Observed captures" },
   ],
   scenes: SCENES,
 };
@@ -973,27 +1042,96 @@ function requiredScene(sceneId: number, effectId: number): SceneSummary {
   return scene;
 }
 
+const ACTIVE_SEGMENTS = Array.from({ length: 15 }, (_, index) => index);
+
+const CAPTURE_PROFILES: Record<string, CaptureBackedPreviewProfile> = {
+  "1011:1073": staticCaptureProfile(1011, 1073, [
+    [250, 146, 123], [240, 130, 111], [234, 125, 106], [225, 123, 106], [214, 112, 96],
+    [205, 104, 87], [197, 98, 81], [178, 110, 100], [169, 88, 81], [178, 84, 79],
+    [179, 72, 67], [178, 55, 45], [174, 50, 41], [162, 54, 40], [149, 59, 44],
+  ]),
+  "1012:1074": staticCaptureProfile(1012, 1074, [
+    [255, 148, 78], [254, 139, 72], [255, 136, 68], [253, 134, 67], [252, 126, 61],
+    [249, 122, 57], [248, 117, 54], [245, 114, 64], [254, 104, 58], [255, 109, 54],
+    [255, 106, 48], [255, 100, 34], [254, 101, 33], [254, 102, 33], [253, 103, 42],
+  ]),
+  "1051:1113": staticCaptureProfile(1051, 1113, [
+    [7, 183, 254], [7, 174, 254], [7, 162, 254], [4, 158, 252], [7, 154, 248],
+    [11, 144, 248], [15, 142, 246], [36, 123, 243], [39, 104, 253], [18, 124, 255],
+    [24, 122, 255], [29, 117, 255], [25, 115, 255], [25, 115, 255], [29, 111, 255],
+  ]),
+  "1068:1130": {
+    ...captureProfileBase(1068, 1130),
+    primitive: "directional_sweep",
+    limitations: [
+      "The scene carries a speed parameter with three options and the capture applied the committed default, so the period holds for that setting only.",
+      "Blue saturates in 30 per cent of samples, so the contrast between the band colour and the base colour is a lower bound.",
+    ],
+    palette: {
+      colour_space: "uncalibrated_camera_srgb",
+      base_rgb: [55, 63, 67],
+      band_rgb: [0, 142, 255],
+    },
+    direction: "towards_first_segment",
+    period_seconds: 3.953,
+    travelling_bands: 2,
+  },
+  "8860:13920": staticCaptureProfile(8860, 13920, [
+    [255, 208, 137], [255, 205, 142], [254, 200, 147], [249, 196, 143], [245, 189, 138],
+    [246, 182, 143], [243, 178, 136], [235, 157, 129], [248, 151, 140], [252, 165, 144],
+    [253, 166, 144], [255, 161, 140], [255, 162, 144], [253, 164, 140], [250, 160, 138],
+  ]),
+};
+
+function staticCaptureProfile(
+  sceneId: number,
+  effectId: number,
+  segmentRgb: [number, number, number][],
+): CaptureBackedPreviewProfile {
+  return {
+    ...captureProfileBase(sceneId, effectId),
+    primitive: "static",
+    palette: {
+      colour_space: "uncalibrated_camera_srgb",
+      segment_rgb: segmentRgb,
+    },
+  };
+}
+
+function captureProfileBase(sceneId: number, effectId: number) {
+  return {
+    schema_version: 1 as const,
+    fidelity: "capture_backed" as const,
+    sku: "H617A",
+    scene_id: sceneId,
+    effect_id: effectId,
+    review_state: "reviewed" as const,
+    minimum_review_confidence: 0.85,
+    review_confidence: 0.9,
+    illuminated_segments: [...ACTIVE_SEGMENTS],
+    limitations: ["The reviewed camera capture is observational evidence only."],
+    evidence: {
+      corpus_id: "20260812-h617a-scenes",
+      contact_sheet_sha256: "29754d0aa2fc51e75ced394e051551797ede5a0be02b2c8bd631a302a753c2d6",
+    },
+  };
+}
+
 function sceneDetail(scene: SceneSummary): SceneDetail {
   if (scene.scene_type === 0) {
-    return {
-      scene,
-      content: {
-        kind: "scene_builtin",
-        template: {
-          sku: "H617A",
-          scene_id: scene.scene_id,
-          effect_id: scene.effect_id,
-          catalogue_schema_version: 1,
-        },
-        speed_index: null,
+    return sceneDetailWithProfile(scene, {
+      kind: "scene_builtin",
+      template: {
+        sku: "H617A",
+        scene_id: scene.scene_id,
+        effect_id: scene.effect_id,
+        catalogue_schema_version: 1,
       },
-    };
+      speed_index: null,
+    });
   }
   if (scene.scene_type === 1) {
-    return {
-      scene,
-      content: paletteSceneFixture(scene),
-    };
+    return sceneDetailWithProfile(scene, paletteSceneFixture(scene));
   }
   const advanced = advancedFixture();
   if (scene.scene_id === 2) {
@@ -1002,25 +1140,36 @@ function sceneDetail(scene: SceneSummary): SceneDetail {
     advanced.layers = [advanced.layers[0]];
     advanced.layers[0].brightness_patterns = [];
   }
+  return sceneDetailWithProfile(scene, {
+    kind: "scene_layered",
+    template: {
+      sku: "H617A",
+      scene_id: scene.scene_id,
+      effect_id: scene.effect_id,
+      catalogue_schema_version: 1,
+    },
+    effect: {
+      layers: cloneAdvancedContent(advanced).layers,
+    },
+    speed_index: scene.speed?.default_index ?? null,
+    raw_param:
+      scene.scene_id === 1
+        ? "aabbccddeeff001122334455"
+        : scene.scene_id === 1068
+          ? "0129000100320201ff3200ff321901fc000600ffff00a3ff0074ff00000000000000000000000000000000"
+          : "102030405060708090a0b0c0",
+  });
+}
+
+function sceneDetailWithProfile(
+  scene: SceneSummary,
+  content: SceneDetail["content"],
+): SceneDetail {
+  const profile = CAPTURE_PROFILES[`${scene.scene_id}:${scene.effect_id}`];
   return {
     scene,
-    content: {
-      kind: "scene_layered",
-      template: {
-        sku: "H617A",
-        scene_id: scene.scene_id,
-        effect_id: scene.effect_id,
-        catalogue_schema_version: 1,
-      },
-      effect: {
-        layers: cloneAdvancedContent(advanced).layers,
-      },
-      speed_index: 1,
-      raw_param:
-        scene.scene_id === 1
-          ? "aabbccddeeff001122334455"
-          : "102030405060708090a0b0c0",
-    },
+    content,
+    ...(profile ? { preview_profile: structuredClone(profile) } : {}),
   };
 }
 
