@@ -11,7 +11,6 @@ from typing import Any, Final, cast
 from uuid import UUID
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
 from .effect_domain import EffectValidationError, LibraryItem
@@ -32,6 +31,7 @@ from .effect_storage import (
     EffectRevisionConflictError,
     EffectStorageError,
 )
+from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 DRAFT_STORE_VERSION: Final = 1
 DRAFT_STORE_MINOR_VERSION: Final = 1
@@ -122,28 +122,9 @@ class EffectDraft:
         )
 
 
-class _DraftStore(Store[dict[str, Any]]):
-    async def _async_migrate_func(
-        self,
-        old_major_version: int,
-        old_minor_version: int,
-        old_data: dict[str, Any],
-    ) -> dict[str, Any]:
-        if old_major_version == DRAFT_STORE_VERSION and old_minor_version <= DRAFT_STORE_MINOR_VERSION:
-            return old_data
-        raise EffectStorageError(f"cannot migrate draft store version {old_major_version}.{old_minor_version}")
-
-
 class EffectDraftRepository:
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store = _DraftStore(
-            hass,
-            DRAFT_STORE_VERSION,
-            DRAFT_STORE_KEY,
-            private=True,
-            atomic_writes=True,
-            minor_version=DRAFT_STORE_MINOR_VERSION,
-        )
+    def __init__(self, hass: HomeAssistant | VersionedDocumentStore) -> None:
+        self._store = _draft_store(hass) if isinstance(hass, HomeAssistant) else hass
         self._lock = asyncio.Lock()
         self._data: dict[str, Any] | None = None
 
@@ -225,6 +206,26 @@ class EffectDraftRepository:
         if self._data is None:
             raise EffectStorageError("draft store has not been loaded")
         return self._data
+
+
+def _draft_store(hass: HomeAssistant) -> VersionedDocumentStore:
+    return HomeAssistantVersionedDocumentStore(
+        hass,
+        DRAFT_STORE_VERSION,
+        DRAFT_STORE_KEY,
+        minor_version=DRAFT_STORE_MINOR_VERSION,
+        migrate=_async_migrate_drafts,
+    )
+
+
+async def _async_migrate_drafts(
+    old_major_version: int,
+    old_minor_version: int,
+    old_data: dict[str, Any],
+) -> dict[str, Any]:
+    if old_major_version == DRAFT_STORE_VERSION and old_minor_version <= DRAFT_STORE_MINOR_VERSION:
+        return old_data
+    raise EffectStorageError(f"cannot migrate draft store version {old_major_version}.{old_minor_version}")
 
 
 def _validate_drafts(data: object) -> tuple[EffectDraft, ...]:

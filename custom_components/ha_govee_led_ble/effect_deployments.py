@@ -12,7 +12,6 @@ from typing import Any, Final, cast
 from uuid import UUID
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
 from .effect_domain import EffectValidationError, LibraryItem
@@ -35,6 +34,7 @@ from .effect_storage import (
     EffectRevisionConflictError,
     EffectStorageError,
 )
+from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 DEPLOYMENT_STORE_VERSION: Final = 1
 DEPLOYMENT_STORE_MINOR_VERSION: Final = 1
@@ -205,28 +205,9 @@ class DeploymentSnapshot:
     records: tuple[DeploymentRecord, ...]
 
 
-class _DeploymentStore(Store[dict[str, Any]]):
-    async def _async_migrate_func(
-        self,
-        old_major_version: int,
-        old_minor_version: int,
-        old_data: dict[str, Any],
-    ) -> dict[str, Any]:
-        if old_major_version == DEPLOYMENT_STORE_VERSION and old_minor_version <= DEPLOYMENT_STORE_MINOR_VERSION:
-            return old_data
-        raise EffectStorageError(f"cannot migrate deployment store version {old_major_version}.{old_minor_version}")
-
-
 class EffectDeploymentRepository:
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store = _DeploymentStore(
-            hass,
-            DEPLOYMENT_STORE_VERSION,
-            DEPLOYMENT_STORE_KEY,
-            private=True,
-            atomic_writes=True,
-            minor_version=DEPLOYMENT_STORE_MINOR_VERSION,
-        )
+    def __init__(self, hass: HomeAssistant | VersionedDocumentStore) -> None:
+        self._store = _deployment_store(hass) if isinstance(hass, HomeAssistant) else hass
         self._lock = asyncio.Lock()
         self._data: dict[str, Any] | None = None
         self._listeners: set[Callable[[DeploymentSnapshot], None]] = set()
@@ -311,6 +292,26 @@ class EffectDeploymentRepository:
         return self._data
 
 
+def _deployment_store(hass: HomeAssistant) -> VersionedDocumentStore:
+    return HomeAssistantVersionedDocumentStore(
+        hass,
+        DEPLOYMENT_STORE_VERSION,
+        DEPLOYMENT_STORE_KEY,
+        minor_version=DEPLOYMENT_STORE_MINOR_VERSION,
+        migrate=_async_migrate_deployments,
+    )
+
+
+async def _async_migrate_deployments(
+    old_major_version: int,
+    old_minor_version: int,
+    old_data: dict[str, Any],
+) -> dict[str, Any]:
+    if old_major_version == DEPLOYMENT_STORE_VERSION and old_minor_version <= DEPLOYMENT_STORE_MINOR_VERSION:
+        return old_data
+    raise EffectStorageError(f"cannot migrate deployment store version {old_major_version}.{old_minor_version}")
+
+
 @dataclass(frozen=True, slots=True)
 class ObservedDeviceState:
     config_entry_id: str
@@ -369,28 +370,9 @@ class ObservedDeviceState:
         )
 
 
-class _DeviceCacheStore(Store[dict[str, Any]]):
-    async def _async_migrate_func(
-        self,
-        old_major_version: int,
-        old_minor_version: int,
-        old_data: dict[str, Any],
-    ) -> dict[str, Any]:
-        if old_major_version == DEVICE_CACHE_STORE_VERSION and old_minor_version <= DEVICE_CACHE_STORE_MINOR_VERSION:
-            return old_data
-        raise EffectStorageError(f"cannot migrate device-cache store version {old_major_version}.{old_minor_version}")
-
-
 class EffectDeviceCache:
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store = _DeviceCacheStore(
-            hass,
-            DEVICE_CACHE_STORE_VERSION,
-            DEVICE_CACHE_STORE_KEY,
-            private=True,
-            atomic_writes=True,
-            minor_version=DEVICE_CACHE_STORE_MINOR_VERSION,
-        )
+    def __init__(self, hass: HomeAssistant | VersionedDocumentStore) -> None:
+        self._store = _device_cache_store(hass) if isinstance(hass, HomeAssistant) else hass
         self._data: dict[str, Any] | None = None
 
     async def async_load(self) -> tuple[ObservedDeviceState, ...]:
@@ -446,6 +428,26 @@ class EffectDeviceCache:
         if self._data is None:
             raise EffectStorageError("device cache has not been loaded")
         return self._data
+
+
+def _device_cache_store(hass: HomeAssistant) -> VersionedDocumentStore:
+    return HomeAssistantVersionedDocumentStore(
+        hass,
+        DEVICE_CACHE_STORE_VERSION,
+        DEVICE_CACHE_STORE_KEY,
+        minor_version=DEVICE_CACHE_STORE_MINOR_VERSION,
+        migrate=_async_migrate_device_cache,
+    )
+
+
+async def _async_migrate_device_cache(
+    old_major_version: int,
+    old_minor_version: int,
+    old_data: dict[str, Any],
+) -> dict[str, Any]:
+    if old_major_version == DEVICE_CACHE_STORE_VERSION and old_minor_version <= DEVICE_CACHE_STORE_MINOR_VERSION:
+        return old_data
+    raise EffectStorageError(f"cannot migrate device-cache store version {old_major_version}.{old_minor_version}")
 
 
 def _validate_deployments(data: object) -> DeploymentSnapshot:

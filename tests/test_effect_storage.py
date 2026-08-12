@@ -26,10 +26,24 @@ from custom_components.ha_govee_led_ble.effect_storage import (
     EffectRevisionConflictError,
     EffectStorageError,
 )
+from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
 def _item(name: str = "Test") -> LibraryItem:
     return LibraryItem.new(name, SingleEffect(0, 0, 50, ((255, 0, 0),)))
+
+
+async def test_library_uses_injected_document_store_without_home_assistant() -> None:
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectLibraryRepository(store)
+    await repository.async_load()
+    item = _item()
+
+    created = await repository.async_create(item, expected_library_revision=0)
+    reloaded = EffectLibraryRepository(store)
+
+    assert (await reloaded.async_load()) == created
+    assert reloaded.get(item.id) == item
 
 
 async def test_library_persists_immutable_revisions(hass: HomeAssistant) -> None:

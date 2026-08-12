@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from typing import Any, Final, cast
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
 from .effect_domain import RGB, JsonValue
@@ -23,6 +22,7 @@ from .effect_limits import (
     validate_json_document,
 )
 from .effect_storage import EffectLimitError, EffectStorageError
+from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 USER_STATE_STORE_VERSION: Final = 1
 USER_STATE_STORE_MINOR_VERSION: Final = 1
@@ -82,28 +82,9 @@ class EffectUserState:
         )
 
 
-class _UserStateStore(Store[dict[str, Any]]):
-    async def _async_migrate_func(
-        self,
-        old_major_version: int,
-        old_minor_version: int,
-        old_data: dict[str, Any],
-    ) -> dict[str, Any]:
-        if old_major_version == USER_STATE_STORE_VERSION and old_minor_version <= USER_STATE_STORE_MINOR_VERSION:
-            return old_data
-        raise EffectStorageError(f"cannot migrate user-state store version {old_major_version}.{old_minor_version}")
-
-
 class EffectUserStateRepository:
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store = _UserStateStore(
-            hass,
-            USER_STATE_STORE_VERSION,
-            USER_STATE_STORE_KEY,
-            private=True,
-            atomic_writes=True,
-            minor_version=USER_STATE_STORE_MINOR_VERSION,
-        )
+    def __init__(self, hass: HomeAssistant | VersionedDocumentStore) -> None:
+        self._store = _user_state_store(hass) if isinstance(hass, HomeAssistant) else hass
         self._data: dict[str, Any] | None = None
 
     async def async_load(self) -> tuple[EffectUserState, ...]:
@@ -151,6 +132,26 @@ class EffectUserStateRepository:
         if self._data is None:
             raise EffectStorageError("user-state store has not been loaded")
         return self._data
+
+
+def _user_state_store(hass: HomeAssistant) -> VersionedDocumentStore:
+    return HomeAssistantVersionedDocumentStore(
+        hass,
+        USER_STATE_STORE_VERSION,
+        USER_STATE_STORE_KEY,
+        minor_version=USER_STATE_STORE_MINOR_VERSION,
+        migrate=_async_migrate_user_state,
+    )
+
+
+async def _async_migrate_user_state(
+    old_major_version: int,
+    old_minor_version: int,
+    old_data: dict[str, Any],
+) -> dict[str, Any]:
+    if old_major_version == USER_STATE_STORE_VERSION and old_minor_version <= USER_STATE_STORE_MINOR_VERSION:
+        return old_data
+    raise EffectStorageError(f"cannot migrate user-state store version {old_major_version}.{old_minor_version}")
 
 
 def _validate_user_states(data: object) -> tuple[EffectUserState, ...]:
