@@ -446,6 +446,7 @@ def test_wire_sized_collections_accept_byte_count_maximums() -> None:
         lambda: replace(_layer(), brightness_patterns=_layer().brightness_patterns * 256),
         lambda: replace(_layer(), palette=((0, 0, 0),) * 256),
         lambda: LayeredEffect((_layer(),) * 256),
+        lambda: LayeredScene(CatalogueRef("H617A", 1, 1), LayeredEffect(()), speed_index=256),
     ],
 )
 def test_wire_model_rejects_unrepresentable_values(factory) -> None:

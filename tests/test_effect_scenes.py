@@ -64,8 +64,28 @@ def test_layered_scene_detail_decodes_strict_base64_template(monkeypatch) -> Non
         scene_detail_payload("H617A", entry.scene_id, entry.effect_id)
 
 
-def test_non_layered_scene_detail_remains_builtin() -> None:
-    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type != 2 or not scene.param)
+def test_palette_scene_detail_decodes_template() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 1 and scene.param)
+
+    detail = scene_detail_payload("H617A", entry.scene_id, entry.effect_id)
+    content = cast(dict[str, Any], detail["content"])
+
+    assert content["kind"] == "scene_palette"
+    assert content["template"] == {
+        "sku": "H617A",
+        "scene_id": entry.scene_id,
+        "effect_id": entry.effect_id,
+        "catalogue_schema_version": 1,
+    }
+    assert content["layout"] == 0
+    assert content["brightness_flag"] is True
+    assert content["steps"]
+    assert content["palette"]
+    assert content["speed_index"] is None
+
+
+def test_type_0_scene_detail_remains_builtin() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 0)
 
     detail = scene_detail_payload("H617A", entry.scene_id, entry.effect_id)
     content = cast(dict[str, Any], detail["content"])
