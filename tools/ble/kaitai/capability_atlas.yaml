@@ -1,0 +1,588 @@
+# Machine-readable H617A/H6199 protocol and capability atlas.
+#
+# One row per (model, capability). This is a cross-reference over evidence that already
+# exists elsewhere (Kaitai schemas, fixtures in spec/*.kst, generated_protocol/*.py, and
+# handwritten runtime modules) — it does not restate wire structure, and it is not prose
+# documentation. capability_atlas_lint.py enforces required fields, enum membership, row
+# uniqueness, and that every reference resolves to something real.
+#
+# Field meaning per row:
+#   evidence_status   Confidence in the WIRE STRUCTURE claim, independent of whether the
+#                      integration uses it. See evidence_status_values below.
+#   kaitai_schema      "file.ksy::type_name" entries the row rests on, or [] if unmodelled.
+#   evidence_refs      spec/*.kst ids this row's evidence_status rests on, or a "capture:"
+#                      label for evidence known only from an uncommitted/historical capture
+#                      (see capture-privacy note below). [] if evidence_status is absent.
+#   generated_module   path to the committed generated_protocol/*.py module this reads or
+#                      writes through, or null if no generated module is involved.
+#   runtime            {encode, decode, readback} wiring_status for handwritten runtime
+#                      code (protocol.py / coordinator*.py / h6199_controls.py / light.py),
+#                      independent of evidence_status: a domain can be fully confirmed on
+#                      the wire and still unwired at runtime, or vice versa.
+#   ha_surface         What a user can currently see/do in Home Assistant. "none" if unwired.
+#   persistence_need   How the integration keeps this value across HA/device restarts.
+#   preview_level      How faithfully an offline/simulated preview can represent this
+#                      capability. See preview_level_values below.
+#   known_gaps         Open, factual gaps. Empty list only when there is genuinely nothing
+#                      left to flag.
+#
+# Capture-privacy note: real capture files and BLE addresses are never committed (see
+# spec/*.kst provenance.source, which is always a bare session filename). evidence_refs
+# follows the same rule: "capture:<label>" is a descriptive label only, never an address
+# or a committed file.
+schema_version: 1
+
+evidence_status_values:
+  - confirmed # multiple independent fixtures, or one fixture plus an aggregate, agree
+  - corroborated # fixture evidence exists but only from one side (e.g. write, not readback)
+  - inferred # no committed fixture; derived from adjacent evidence or model symmetry
+  - raw_attributed # only ever observed live/historically; never captured in a committed fixture
+  - absent # no schema, no fixture, no runtime code
+
+preview_level_values:
+  - deterministic # exact preview computable from protocol fields alone
+  - modelled # accurate preview via a documented, evidenced algorithm
+  - structural # fields/shape known, but the rendering algorithm is not
+  - opaque # not reliably decoded; no meaningful preview possible today
+  - live # requires live hardware/signal; no offline preview possible in principle
+
+persistence_need_values:
+  - device_readback # device is the source of truth; verified via query/readback, no restore
+  - restore_required # optimistic write only; HA must restore the value on restart
+  - none # nothing to persist (stateless query, telemetry, or unwired)
+
+wiring_status_values:
+  - wired # a handwritten runtime function performs this operation
+  - decode_only # a generated parser exists and is exercised, but only by kst_runner.py,
+    # never called from handwritten runtime code
+  - encode_only # a handwritten builder exists but nothing decodes the corresponding reply
+  - tool_only # exercised by a standalone dev tool (tools/ble/*), deliberately not shipped
+    # into the runtime code path
+  - none # no runtime code performs this operation
+
+# Evidence-pipeline caveats that apply across many rows rather than to one. Referenced
+# from individual rows' known_gaps by id rather than restated per row.
+pipeline_known_issues:
+  - id: source_index_provenance_not_reproducible
+    summary: >-
+      spec/*.kst provenance.source_index records "this was frame N of session <source>",
+      but the session captures themselves are never committed (capture-privacy
+      convention), so source_index cannot be independently replayed or re-derived from
+      anything in this repository — it is trusted metadata, not a reproducible check.
+      Reproducibility also varies by provenance.kind: capture_frame fixtures carry
+      source_sha256 plus source_index; catalogue fixtures (e.g. official scene/effect
+      catalogue dumps) and retained_fixture fixtures (pre-provenance corpus, kept because
+      historically validated) carry neither, so a nonzero fraction of the corpus was
+      never reproducible even in principle, not only in practice.
+    status: open
+    affects: [evidence_pipeline]
+
+  - id: preview_fidelity_ceiling
+    summary: >-
+      Verified previewability finding covering both models' animatable capabilities.
+      Exact, deterministic preview is achievable only for static colour/brightness, the
+      DIY-03 paint map (diy_type03), the DIY-04 flat palette (diy_type04), and
+      workshop_body's applied-area geometry (which segments/LEDs a colour block covers)
+      — each defines a concrete, fully computable colour-per-position assignment.
+      Workshop-authored scenes (scene_type=2) and scene_type=1 are structural-only:
+      their retention/speed/movement-interval bytes are ordinal/unmeasured, and
+      movement interval/speed have only ever been observed to co-vary in the fixture
+      corpus, never independently calibrated, so no rendering algorithm for the motion
+      itself is evidenced even though the layer/colour shape is known. scene_type=0
+      built-ins, built-in/reactive music modes, live video (DreamView), DIY/workshop
+      codes with no committed fixture, and unexercised H6199 families (e.g.
+      diy_activation) must not be animated by a preview engine at all: for scene_type=0
+      and unfixtured codes this is an evidence gap (no shape is known, matching
+      preview_level opaque); for music and video it is a principled live-signal
+      limitation (matching preview_level live), not an evidence gap that more captures
+      could close.
+    status: open
+    affects: [scenes_builtin, music_mode, video_dreamview, diy_upload, diy_activation]
+
+capabilities:
+  # ---------------------------------------------------------------- H617A ----------
+  - model: H617A
+    capability: power
+    summary: On/off via command_write sub 0x01; confirmed by both write and status readback.
+    kaitai_schema: ["command_write.ksy::power_cmd", "status_reply.ksy::power_body"]
+    evidence_status: confirmed
+    evidence_refs: [command_write_power_on, command_write_power_off, status_reply_power]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on / light.turn_off
+    persistence_need: device_readback
+    preview_level: deterministic
+    known_gaps: []
+
+  - model: H617A
+    capability: brightness
+    summary: Brightness via command_write sub 0x04; write and query fixtures exist, no committed status-reply readback fixture exercises the brightness domain itself.
+    kaitai_schema: ["command_write.ksy::brightness_cmd", "status_query.ksy::zero_body", "status_reply.ksy::brightness_body"]
+    evidence_status: corroborated
+    evidence_refs: [command_write_brightness, status_query_brightness]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on brightness_pct
+    persistence_need: device_readback
+    preview_level: deterministic
+    known_gaps:
+      - "No committed fixture exercises aa_domain::brightness / brightness_body in status_reply.ksy at all; only the write (command_write_brightness) and query (status_query_brightness) sides are fixture-confirmed. The reply-decode path runs in production and in mocked tests, but is never pinned by a spec/*.kst fixture."
+
+  - model: H617A
+    capability: static_color
+    summary: RGB/kelvin static colour via command_write sub 0x15 (static_color fields rgb_direct, kelvin, rgb_preview, mask); confirmed via a colour-temp write and status readback fixtures.
+    kaitai_schema: ["command_write.ksy::static_color", "status_reply.ksy::colormode_body", "status_reply.ksy::cm_static"]
+    evidence_status: confirmed
+    evidence_refs: [command_write_color_temp, status_reply_cm_static, status_reply_multi_effect]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on rgb_color / color_temp_kelvin
+    persistence_need: restore_required
+    preview_level: deterministic
+    known_gaps:
+      - "The only committed static write fixture (command_write_color_temp) exercises the kelvin branch (rgb_direct all-zero); a pure RGB write (kelvin=0, rgb_direct set) is not separately witnessed by a committed fixture, only inferred by field symmetry within the same static_body type."
+
+  - model: H617A
+    capability: segments
+    summary: Per-segment brightness/colour via command_write sub 0x14 and the aa 0xa5 segment status-reply group; write side wired, status-reply decode exists only in the Kaitai/test corpus.
+    kaitai_schema: ["command_write.ksy::static_brightness", "command_write.ksy::static_brightness_all", "status_reply.ksy::segments_body", "status_reply.ksy::segment"]
+    evidence_status: confirmed
+    evidence_refs:
+      [command_write_seg_brightness, command_write_seg_brightness_all, status_reply_segments, status_reply_segments_last, status_reply_reject_segments_g06, status_reply_reject_segments_g07, status_reply_reject_segments_g0a]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/status_reply.py
+    runtime: {encode: wired, decode: decode_only, readback: none}
+    ha_surface: light.turn_on segment services (light_services.py)
+    persistence_need: restore_required
+    preview_level: structural
+    known_gaps:
+      - "Segment status-reply decode (segments_body / AaDomain::segments) is exercised only by kst_runner.py against the generated Kaitai class; no handwritten runtime module (protocol.py, coordinator.py) ever decodes a segment status reply, so segment state is optimistic-only via RestoreEntity, never verified against the device."
+
+  - model: H617A
+    capability: scenes_builtin
+    summary: Built-in scene playback via command_write sub 0x04 scene_activate (code + scene_type) plus scene_body/scene_type1_body scene-definition catalogues; activation is fixture-evidenced only for scene_type=2 (workshop-authored scenes). The H617A catalogue holds 83 scenes (9 type0, 2 type1, 72 type2), 50 of which expose an ordinal speed option.
+    kaitai_schema: ["command_write.ksy::scene_activate", "status_reply.ksy::colormode_body", "status_reply.ksy::cm_scene", "scene_body.ksy::scene_body", "scene_type1_body.ksy::scene_type1_body"]
+    evidence_status: corroborated
+    evidence_refs:
+      [command_write_scene_workshop, status_reply_cm_scene, scene_body_aurora_fast, scene_body_brightness_gradient, scene_body_brightness_order_a, scene_body_brightness_order_b, scene_body_brightness_unified, scene_body_forest, scene_type1_catalogue_cards_game, scene_type1_catalogue_dance_party, scene_type1_catalogue_dusk, scene_type1_catalogue_sweet, scene_type1_h617a_halloween]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on effect
+    persistence_need: device_readback
+    preview_level: structural
+    preview_variants:
+      - label: scene_type0
+        preview_level: opaque
+        note: "9 catalogued scenes carry only a numeric scene_id — no scene_body/scene_type1_body-shaped schema or fixture at all — so nothing can be rendered; must not be animated or otherwise previewed."
+      - label: scene_type1
+        preview_level: structural
+        note: "2 catalogued scenes have a scene_type1_body layout, but retention/speed/movement-interval bytes are ordinal/unmeasured, so only the coarse structure (which layout, which colours) is previewable, not timing/motion."
+      - label: scene_type2
+        preview_level: structural
+        note: "72 catalogued workshop-style layered scenes (50 with an ordinal speed option); movement interval/speed have only ever been observed to co-vary in the fixture corpus, never independently calibrated, so motion/timing stays structural even though layout/colour is concrete."
+    known_gaps:
+      - "The scene_activate write is only fixture-evidenced with scene_type=2 (command_write_scene_workshop); built-in scene_type values (0/1) are inferred from the enum and the read side (status_reply_cm_scene), not separately witnessed at the write side. Tracked by GitHub issue #125 (layout-1 type-1 scene body acceptance on real hardware)."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. Of the 83 catalogued scenes, the 9 scene_type=0 built-ins carry no scene_body/scene_type1_body-shaped schema or fixture at all — only a numeric scene_id is known — so they must not be animated (opaque). The 2 scene_type=1 and 72 scene_type=2 (workshop-style layered) scenes are structural-only: retention/speed/movement-interval bytes are ordinal/unmeasured, and movement interval/speed have only ever been observed to co-vary in the fixture corpus, never independently calibrated. See preview_variants for the per-scene_type breakdown."
+      - "Current scene 'customisation' is a frozen replay of the captured scene definition's exact parameters, plus — for the 50 scenes exposing an ordinal speed option — a discrete speed-byte patch; there is no continuous/parametric control over colour, layout or timing."
+
+  - model: H617A
+    capability: diy_activation
+    summary: Selecting/observing an on-device DIY definition via command_write sub 0x0a carrying one little-endian 16-bit DIY code. Type04 code 24 is evidenced as the adjacent selector after Flat edits and Flat-to-Combo changes; code 240 is evidenced for a saved upload.
+    kaitai_schema: ["command_write.ksy::multi_cmd", "govee_common.ksy::diy_selector", "status_reply.ksy::colormode_body"]
+    evidence_status: confirmed
+    evidence_refs:
+      [command_write_diy_saved, status_reply_cm_diy_saved, command_write_diy_type04_single_fade_code24, command_write_diy_type04_single_jumping_code24, command_write_diy_type04_multi_one_code24, command_write_diy_type04_multi_two_code24, command_write_diy_type04_single_saved_code240, status_reply_cm_diy_type04_code24, status_reply_cm_diy_type04_code240]
+    aggregate_refs:
+      - diy_type04_single_fade_upload_precedes_selector
+      - diy_type04_single_jumping_upload_precedes_selector
+      - diy_type04_multi_one_upload_precedes_selector
+      - diy_type04_multi_two_upload_precedes_selector
+      - diy_type04_saved_upload_precedes_selector
+      - diy_type04_code24_sequence_reaches_readback
+      - diy_type04_code240_sequence_reaches_readback
+      - diy_type04_code24_stable_across_body_edits
+      - diy_type04_code240_matches_readback
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: prerelease Painted, Single and Multi Apply plus read-only diy_code diagnostics
+    persistence_need: device_readback
+    preview_level: structural
+    known_gaps:
+      - "Selector readback confirms only the accepted 16-bit code, not the exact uploaded body identity."
+      - "Callers must supply an explicit DIY code; no automatic allocation rule or device-side overwrite/alias semantics are evidenced."
+
+  - model: H617A
+    capability: diy_upload
+    summary: Creating/uploading a new DIY pattern via the 0xA3 body family; H617A type03 Painted and type04 Flat/Combo bodies have fixture-backed runtime encoders, and complete type04 transactions link Flat edits and Flat-to-Combo changes to explicit selector codes.
+    kaitai_schema: ["diy_type03.ksy::diy_type03", "diy_type04.ksy::diy_type04", "workshop_body.ksy::workshop_body"]
+    evidence_status: confirmed
+    evidence_refs:
+      [diy_type04_flat_len_palette_0x03_1_colour_fam_0x01, diy_type04_flat_len_palette_0x09_3_colours_fam_0x08, diy_type04_flat_len_palette_0x0c_4_colours_fam_0x00, diy_type04_flat_len_palette_0x15_7_colours_fam_0x03, diy_type04_binding_single_fade_code24, diy_type04_binding_single_jumping_code24, diy_type04_binding_multi_one_code24, diy_type04_binding_multi_two_code24, diy_type04_binding_single_saved_code240, diy_type03_anchor_sketch_merged, diy_type03_anchor_sketch_nopaint, diy_type03_anchor_vibrant_15g, workshop_body_three_colour, workshop_body_two_colour_continuously]
+    aggregate_refs:
+      - diy_type04_single_fade_upload_precedes_selector
+      - diy_type04_single_jumping_upload_precedes_selector
+      - diy_type04_multi_one_upload_precedes_selector
+      - diy_type04_multi_two_upload_precedes_selector
+      - diy_type04_saved_upload_precedes_selector
+      - diy_type04_code24_stable_across_body_edits
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/diy_type04.py
+    runtime: {encode: wired, decode: none, readback: none}
+    ha_surface: prerelease Painted, Single and Multi Apply; workshop none
+    persistence_need: none
+    preview_level: structural
+    preview_variants:
+      - label: static_paint_and_palette
+        preview_level: deterministic
+        note: "diy_type03 paint-map fixtures, diy_type04 flat-palette fixtures, and workshop_body's applied-area geometry (which segments/LEDs a colour block covers) each define a concrete, fully computable colour-per-position assignment — exact preview is achievable for these, given a fixtured code."
+      - label: workshop_motion_timing
+        preview_level: structural
+        note: "workshop_body's retention, speed and movement-interval/style bytes are ordinal/unmeasured; movement interval and speed have only ever been observed to co-vary in the fixture corpus, never independently calibrated, so timing/motion cannot be rendered exactly."
+    known_gaps:
+      - "workshop_body remains decode-only and has no runtime encoder."
+      - "Type03 Painted upload is connected to the evidenced code 800. Type04 Single/Multi Apply uses an explicit caller-supplied code; no automatic allocation rule is evidenced."
+      - "Selector readback confirms the accepted code, not the exact uploaded body identity or device-side overwrite/alias semantics."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. The diy_type03 paint map and diy_type04 flat palette fixtures, plus workshop_body's applied-area geometry (which segments/LEDs a colour block covers), achieve deterministic-level exact preview, since each defines a concrete, fully computable colour-per-position assignment. workshop_body's motion/timing fields (retention, speed, movement interval/style) remain structural-only, so this row's blanket preview_level stays structural rather than deterministic. See preview_variants for the static-vs-motion breakdown. Any DIY/workshop code without committed fixture coverage falls outside this evidence entirely and must not be animated by a preview engine."
+
+  - model: H617A
+    capability: music_mode
+    summary: Reactive music modes via command_write sub 0x05 (govee_common::music_selector; also expressible as music_body.ksy's self-contained mode_set_frame) plus per-mode movement parameters (music_body.ksy's mode tails); solidly wired end-to-end, with several open semantic questions.
+    kaitai_schema: ["command_write.ksy::multi_cmd", "govee_common.ksy::music_selector", "music_body.ksy::music_body", "music_body.ksy::mode_set_frame", "status_reply.ksy::colormode_body"]
+    evidence_status: confirmed
+    evidence_refs:
+      [command_write_music, music_body_bloom, music_body_day_and_night, music_body_fountain, music_body_hopping, music_body_piano_keys, music_body_separation_a, music_body_shiny_calm, music_frame_rhythm_c0_calm, music_frame_energetic_c1, status_reply_cm_music]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/music_body.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on effect (music_*), music services in light_services.py
+    persistence_need: device_readback
+    preview_level: live
+    known_gaps:
+      - "GitHub issue #128: DIY slot/byte pairing during music mode is not fully pinned down."
+      - "GitHub issue #129: Fountain music body wanted with 30+ segments to confirm the per-segment layout at scale."
+      - "GitHub issue #130: whether the Fountain speed byte is actually rendered device-side is unconfirmed."
+      - "GitHub issue #148: cross-validating music_body.ksy against an H7025 capture is still open."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. Built-in/reactive music modes must not be animated in an offline preview: the resulting visual output depends on live ambient/phone audio, which is a live-hardware-signal limitation in principle, not merely an evidence gap — matching music_streams' own preview_level. The command/parameter side (mode selection, sensitivity, fixed colour) remains fully wired and confirmed independent of this."
+
+  - model: H617A
+    capability: music_streams
+    summary: Phone-microphone telemetry frames (music_stream.ksy, aa5283-prefixed, sum-8 checksum); well-evidenced and checksum-asserted, decoded only by standalone dev tooling — never wired into the shipped HA runtime in either direction by design (HA has no microphone access).
+    kaitai_schema: ["music_stream.ksy::music_stream"]
+    evidence_status: confirmed
+    evidence_refs: [music_stream_blue_floor, music_stream_red_decay_56, music_stream_red_decay_aa]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/music_stream.py
+    runtime: {encode: none, decode: tool_only, readback: none}
+    ha_surface: none
+    persistence_need: none
+    preview_level: live
+    known_gaps:
+      - "Deliberately unwired for encode: HA has no phone microphone to source these frames from, so there is nothing for a builder to be wired to."
+      - "Decode is real but standalone-only: tools/ble/generated_protocol_view.py's describe_generated() recognises 7-byte frames and reads them as MusicStream via the shipped generated_protocol.music_stream module (checksum=\"sum8\"), and exposes a standalone is_music_stream() helper that tools/ble/decode_govee.py imports and calls; no pytest test exercises this path directly, and the shipped HA integration's own runtime modules never call it."
+
+  - model: H617A
+    capability: timers
+    summary: Sleep/wake/scheduled timers (command_write sub 0x11/0x12/0x23-family under header 0x33, and the aa 0x23 scheduled-timer status readback) were modelled with fixtures, then entirely retracted in commit 3bf2d5e (refactor(kaitai) remove retired clock and timer formats) because every supporting capture was single-timezone, making the UTC-offset/flag2 field indistinguishable from a constant.
+    kaitai_schema: []
+    evidence_status: raw_attributed
+    evidence_refs:
+      - "capture:2026-08 live H617A session re-observing 0x33/0x23 timer and clock-sync frames; still single-timezone (Australia/Adelaide), never committed as a fixture — this is the capture the row's raw_attributed status describes."
+      - "capture:pre-2026-08-07 retracted fixture corpus (removed by commit 3bf2d5e2abaa92e5e6ad24cd8464cf7dde9b071d) — command_write_clock, command_write_reject_clock_hour, command_write_timer_schedule, command_write_timer_schedule_off_action, command_write_timer_schedule_weekdays, command_write_timer_sleep, command_write_timer_wake, status_reply_clock_group31_adelaide, status_reply_clock_group32_adelaide, status_reply_sleep_timer, status_reply_timer, status_reply_timer_stored_repeat, status_reply_unit_count, status_reply_unit_count_query, status_reply_wake_timer."
+    generated_module: null
+    runtime: {encode: none, decode: none, readback: none}
+    ha_surface: none
+    persistence_need: none
+    preview_level: opaque
+    known_gaps:
+      - "Every prior timer/clock fixture and schema fragment was removed in commit 3bf2d5e; the retraction was driven by GitHub issue #126 (closed), which found all captures shared one timezone so the offset field could not be separated from a fixed constant. Re-adding this domain needs captures from at least two distinct timezones/UTC offsets before a schema can be re-committed with confirmed evidence."
+      - "0x33/0x23 is therefore only raw_attributed: it describes bytes that were previously observed live and historically committed (see evidence_refs), not anything currently backed by a committed fixture in this repository — evidence_refs cites the historical fixture corpus and a subsequent single-timezone live re-capture, both of which are consistent with, not exceptions to, the raw_attributed definition (never captured in a *currently committed* fixture)."
+
+  - model: H617A
+    capability: firmware_hardware_metadata
+    summary: Firmware/hardware version strings via status_query/status_reply domains 0x06 (firmware) / 0x07 (hardware); fully wired into coordinator identity tracking and HA DeviceInfo, but only the hardware side has a committed status-reply fixture.
+    kaitai_schema: ["status_query.ksy::zero_body", "status_reply.ksy::version_body", "status_reply.ksy::hw_version_body"]
+    evidence_status: corroborated
+    evidence_refs: [status_reply_hw]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/status_reply.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: DeviceInfo sw_version/hw_version, diagnostics
+    persistence_need: device_readback
+    preview_level: deterministic
+    known_gaps:
+      - "No committed status_reply fixture exercises domain 0x06 (firmware); only domain 0x07 (hardware, status_reply_hw) is witnessed. The firmware decode path shares the same version_body type and code path as hardware, so evidence for it is by structural symmetry only, not independently fixture-confirmed."
+
+  - model: H617A
+    capability: ota
+    summary: Firmware over-the-air update.
+    kaitai_schema: []
+    evidence_status: absent
+    evidence_refs: []
+    generated_module: null
+    runtime: {encode: none, decode: none, readback: none}
+    ha_surface: none
+    persistence_need: none
+    preview_level: opaque
+    known_gaps:
+      - "No .ksy schema, no fixture, and no runtime code anywhere in this repository references OTA/firmware-update; this domain has never been captured or investigated. There is nothing to resolve here beyond recording the absence explicitly."
+
+  # ---------------------------------------------------------------- H6199 ----------
+  - model: H6199
+    capability: power
+    summary: On/off via h6199_command_write sub 0x01; confirmed by write and status readback.
+    kaitai_schema: ["h6199_command_write.ksy::power_body", "h6199_status_reply.ksy::power_body"]
+    evidence_status: confirmed
+    evidence_refs: [h6199_command_colour_red, h6199_status_colour_mode_static]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on / light.turn_off
+    persistence_need: device_readback
+    preview_level: deterministic
+    known_gaps: []
+
+  - model: H6199
+    capability: brightness
+    summary: Brightness via h6199_command_write sub 0x04; write and status-reply readback both evidenced.
+    kaitai_schema: ["h6199_command_write.ksy::brightness_body", "h6199_status_reply.ksy::brightness_body"]
+    evidence_status: confirmed
+    evidence_refs: [h6199_segment_brightness_pair]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on brightness_pct
+    persistence_need: device_readback
+    preview_level: deterministic
+    known_gaps: []
+
+  - model: H6199
+    capability: static_color
+    summary: RGB static colour via h6199_command_write mode 0x05 sub-mode static_colour (operation=colour); confirmed on write, but the "does status readback echo the written colour" question rests on a single non-dedicated-capture fixture.
+    kaitai_schema: ["h6199_command_write.ksy::mode_body", "h6199_command_write.ksy::static_colour_body", "h6199_status_reply.ksy::colour_mode_body"]
+    evidence_status: raw_attributed
+    evidence_refs: [h6199_command_colour_red, h6199_command_colour_green, h6199_command_colour_blue, h6199_status_colour_mode_static]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_status_reply.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on rgb_color
+    persistence_need: restore_required
+    preview_level: deterministic
+    known_gaps:
+      - "const.py sets static_readback_echoes_color=False for H6199 on the strength of a single fixture, h6199_status_colour_mode_static (bytes aa051500000000000000000000000000000000ba, all-zero colour_mode_body), whose provenance.source is dv-diy-apply.pcap, a DIY-apply session, not a capture purpose-built to test static-colour readback. This is conflicting evidence rather than settled evidence: the fixture is real and correctly decoded, but it was not captured to answer this question, so a dedicated static-colour-then-query capture could still overturn it. evidence_status is raw_attributed to reflect that the current 'no echo' conclusion is attributed to incidental capture context, not a targeted experiment, pending a purpose-built capture."
+
+  - model: H6199
+    capability: segments
+    summary: Per-segment colour/brightness via H6199's static_colour_body (same type and command_op::mode opcode as static_color, distinguished only by the segment_mask/brightness_segment_mask field addressing a subset of segments) and the status_domain::segments group readback; write side wired, status-reply decode exists only in the Kaitai/test corpus.
+    kaitai_schema: ["h6199_command_write.ksy::static_colour_body", "h6199_status_reply.ksy::segment_group_body", "h6199_status_reply.ksy::segment_record"]
+    evidence_status: confirmed
+    evidence_refs:
+      [h6199_command_colour_segment_1, h6199_command_colour_segment_3, h6199_command_colour_segment_1_3, h6199_segment_brightness_pair, h6199_status_segments_all_group4, h6199_status_segments_one_group1]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_status_reply.py
+    runtime: {encode: wired, decode: decode_only, readback: none}
+    ha_surface: light.turn_on segment services (light_services.py)
+    persistence_need: restore_required
+    preview_level: structural
+    known_gaps:
+      - "As with H617A, segment_group_body status-reply decode is exercised only by kst_runner.py; no handwritten runtime module decodes a segment status reply, so segment state is optimistic-only via RestoreEntity, never verified against the device."
+
+  - model: H6199
+    capability: scenes_builtin
+    summary: Built-in scene playback via h6199_command_write scene sub-opcode and colour_mode_body's scene branch (scene_id); confirmed by dedicated per-scene write/readback fixtures. The H6199 catalogue holds 240 scenes (12 type0, 2 type1, 226 type2); no scene speed control is wired at all.
+    kaitai_schema: ["h6199_command_write.ksy::mode_body", "h6199_command_write.ksy::scene_body", "h6199_status_reply.ksy::colour_mode_body", "h6199_status_reply.ksy::scene_state"]
+    evidence_status: confirmed
+    evidence_refs: [h6199_scene_ai_ocean, h6199_scene_candlelight, h6199_scene_dracarys, h6199_scene_sunrise, h6199_status_colour_mode_scene]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on effect
+    persistence_need: device_readback
+    preview_level: structural
+    preview_variants:
+      - label: scene_type0
+        preview_level: opaque
+        note: "12 catalogued scenes carry no scene_body-shaped schema or fixture at all — only a numeric scene_id is known — so nothing can be rendered; must not be animated or otherwise previewed."
+      - label: scene_type1
+        preview_level: structural
+        note: "2 catalogued scenes; retention/speed/movement-interval bytes are ordinal/unmeasured, so only coarse structure is previewable, not timing/motion."
+      - label: scene_type2
+        preview_level: structural
+        note: "226 catalogued workshop-style layered scenes; no scene speed control is wired at all for H6199, and movement interval/speed have only ever been observed to co-vary in the fixture corpus, never independently calibrated, so motion/timing stays structural even though layout/colour is concrete."
+    known_gaps:
+      - "See pipeline_known_issues: preview_fidelity_ceiling. Of the 240 catalogued scenes, the 12 scene_type=0 built-ins carry no scene_body-shaped schema or fixture at all — only a numeric scene_id is known — so they must not be animated (opaque). The 2 scene_type=1 and 226 scene_type=2 (workshop-style layered) scenes are structural-only, the same finding as H617A's scenes_builtin: retention/speed/movement-interval bytes are ordinal/unmeasured, and movement interval/speed have only ever been observed to co-vary, never independently calibrated. See preview_variants for the per-scene_type breakdown."
+      - "Unlike H617A, no scene speed control is wired for H6199 at all; current scene 'customisation' is a frozen replay of the captured scene definition's exact parameters with no speed or other parametric adjustment available."
+
+  - model: H6199
+    capability: diy_activation
+    summary: Selecting/observing an on-device DIY effect via colour_mode_body; unlike H617A, h6199_status_reply.ksy's mode_sel enum has no diy case at all, so this is unmodelled on the read side and there is no write-side builder either.
+    kaitai_schema: []
+    evidence_status: absent
+    evidence_refs: []
+    generated_module: null
+    runtime: {encode: none, decode: none, readback: none}
+    ha_surface: none
+    persistence_need: none
+    preview_level: opaque
+    known_gaps:
+      - "h6199_status_reply.ksy's mode_sel enum defines only video/scene/music/static_colour; there is no diy entry, and parse_generated_color_mode's H6199 branch has no COLOR_MODE_DIY case (it falls through to ParsedMode.UNKNOWN). Whether H6199 exposes DIY-slot selection through this same colour_mode domain, or through a different mechanism entirely, is an open question with no fixture evidence either way."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. Per the verified previewability finding, unexercised H6199 families such as this one must not be animated by a preview engine: there is no schema, no fixture and no runtime wiring in either direction to ground any rendering at all."
+
+  - model: H6199
+    capability: diy_upload
+    summary: Creating/uploading DIY, workshop and AI-generated effects via the 0xA3 h6199_effect_upload family; a rich, confirmed decode-only fixture corpus (DIY, workshop and scene-upload variants), compiled into the shipped runtime package but never imported by any handwritten runtime module.
+    kaitai_schema: ["h6199_effect_upload.ksy::h6199_effect_upload"]
+    evidence_status: confirmed
+    evidence_refs:
+      [h6199_effect_diy_chasing1, h6199_effect_diy_chasing2, h6199_effect_diy_crossing, h6199_effect_diy_fade1_fast, h6199_effect_diy_fade1_slow, h6199_effect_diy_jumping1, h6199_effect_diy_marquee1, h6199_effect_diy_music1, h6199_effect_diy_rainbow1, h6199_effect_diy_twinkle1, h6199_effect_workshop_one_colour, h6199_effect_workshop_customize_segment, h6199_effect_builtin_halloween, h6199_effect_reject_diy_palette_len]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_effect_upload.py
+    runtime: {encode: none, decode: none, readback: none}
+    ha_surface: none
+    persistence_need: none
+    preview_level: structural
+    known_gaps:
+      - "h6199_effect_upload.py compiles into the shipped generated_protocol package (it is listed in scripts/generate-kaitai.sh's runtime spec array) but is never imported by any handwritten runtime module (protocol.py, coordinator.py, h6199_controls.py) — it ships as dead code inside the HA integration despite having the richest fixture corpus of any DIY/workshop schema in the repository."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. Whether h6199_effect_upload's DIY/workshop/AI-scene payload shapes achieve the same deterministic-vs-structural split verified for H617A's diy_type03/diy_type04/workshop_body (paint-map and palette data deterministic, motion/timing structural) has not been separately evaluated; treat the whole family as structural-only until that breakdown is done. As with H617A, any code without committed fixture coverage falls outside this evidence and must not be animated."
+
+  - model: H6199
+    capability: music_mode
+    summary: Reactive music modes via h6199_command_write music sub-opcodes (mode, sensitivity, autocolour, fixed colour); wired end-to-end symmetrically with H617A's music_mode.
+    kaitai_schema: ["h6199_command_write.ksy::mode_body", "h6199_command_write.ksy::music_body", "h6199_status_reply.ksy::colour_mode_body", "h6199_status_reply.ksy::music_state"]
+    evidence_status: confirmed
+    evidence_refs:
+      [h6199_command_music_energetic, h6199_command_music_rhythm, h6199_command_music_rolling, h6199_command_music_spectrum, h6199_music_autocolour_off, h6199_music_autocolour_on, h6199_music_colour_blue, h6199_music_colour_red, h6199_music_profile_calm, h6199_music_sensitivity_1, h6199_music_sensitivity_26, h6199_music_sensitivity_99, h6199_music_sensitivity_100, h6199_status_colour_mode_music]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on effect (music_*), music services in light_services.py
+    persistence_need: device_readback
+    preview_level: live
+    known_gaps:
+      - "GitHub issue #148: cross-validating the shared music_body semantics against an H7025 capture is still open and applies equally to H6199's music command encoding."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. Built-in/reactive music modes must not be animated in an offline preview, the same finding as H617A's music_mode: the resulting visual output depends on live ambient/phone audio, a live-hardware-signal limitation in principle, matching music_streams' own preview_level."
+
+  - model: H6199
+    capability: music_streams
+    summary: Phone-microphone telemetry frames (h6199_music_stream.ksy); fixture-evidenced, not compiled into the shipped runtime package, never wired in either direction by design.
+    kaitai_schema: ["h6199_music_stream.ksy::h6199_music_stream"]
+    evidence_status: confirmed
+    evidence_refs: [h6199_music_stream_blue, h6199_music_stream_grey, h6199_music_stream_red]
+    generated_module: null
+    runtime: {encode: none, decode: none, readback: none}
+    ha_surface: none
+    persistence_need: none
+    preview_level: live
+    known_gaps:
+      - "Deliberately unwired for the same reason as H617A's music_streams (no phone microphone available to HA); h6199_music_stream is also absent from scripts/generate-kaitai.sh's runtime spec list, so unlike H617A's music_stream it is not even compiled into the shipped package."
+
+  - model: H6199
+    capability: timers
+    summary: Clock/scheduled-timer commands (h6199_command_clock, h6199_command_schedule_slot*) existed and were retracted alongside H617A's, in the same commit 3bf2d5e, for the same single-timezone evidence gap.
+    kaitai_schema: []
+    evidence_status: raw_attributed
+    evidence_refs:
+      - "capture:2026-08 live H6199 session re-observing clock-sync and schedule-slot frames; still single-timezone (Australia/Adelaide), never committed as a fixture — this is the capture the row's raw_attributed status describes."
+      - "capture:pre-2026-08-07 retracted fixture corpus (removed by commit 3bf2d5e2abaa92e5e6ad24cd8464cf7dde9b071d) — h6199_command_clock, h6199_command_clock_tuesday, h6199_command_schedule_slot0_0730_mwf, h6199_command_schedule_slot0_enabled, h6199_command_schedule_slot1_enabled."
+    generated_module: null
+    runtime: {encode: none, decode: none, readback: none}
+    ha_surface: none
+    persistence_need: none
+    preview_level: opaque
+    known_gaps:
+      - "Removed in commit 3bf2d5e alongside H617A's timer/clock schemas, for the same reason (GitHub issue #126: every capture shared one timezone, so the UTC-offset field could not be distinguished from a constant). Re-adding this domain needs multi-timezone captures for H6199 specifically, not only H617A."
+      - "evidence_refs cites the historical fixture corpus and a subsequent single-timezone live re-capture; neither is a currently committed fixture, which is exactly what raw_attributed means here — not a contradiction of it."
+
+  - model: H6199
+    capability: firmware_hardware_metadata
+    summary: Firmware/hardware/subordinate version strings via h6199_status_query/h6199_status_reply domains 0x06/0x07/0x20/0x21; firmware and both subordinate registers are wired into coordinator identity tracking, hardware and the 0x14 identity domain are schema-modelled but never queried.
+    kaitai_schema:
+      [
+        "h6199_status_query.ksy::hardware_query_body",
+        "h6199_status_reply.ksy::version_body",
+        "h6199_status_reply.ksy::hardware_version_body",
+      ]
+    evidence_status: corroborated
+    evidence_refs: [h6199_query_hardware, h6199_status_subordinate_21]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_status_reply.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: DeviceInfo sw_version/hw_version, diagnostics
+    persistence_need: device_readback
+    preview_level: deterministic
+    known_gaps:
+      - "subordinate_20 (domain 0x20) has schema and a generated case but no committed status-reply fixture (only subordinate_21, h6199_status_subordinate_21, is witnessed); evidence for subordinate_20 is by structural symmetry only."
+      - "The 0x14 identity query domain is modelled in h6199_status_query.ksy (query_domain::identity, zero_body) but has no counterpart case in h6199_status_reply.ksy's status_domain enum, no committed fixture, and is never queried by coordinator.py — it is schema-modelled evidence for the query direction only, with the reply shape entirely unspecced."
+
+  - model: H6199
+    capability: ota
+    summary: Firmware over-the-air update.
+    kaitai_schema: []
+    evidence_status: absent
+    evidence_refs: []
+    generated_module: null
+    runtime: {encode: none, decode: none, readback: none}
+    ha_surface: none
+    persistence_need: none
+    preview_level: opaque
+    known_gaps:
+      - "No .ksy schema, no fixture, and no runtime code anywhere in this repository references OTA/firmware-update for H6199 either; this domain has never been captured or investigated."
+
+  - model: H6199
+    capability: video_dreamview
+    summary: Video/DreamView ambient-light-from-screen mode via h6199_command_write video sub-opcodes (source, region, saturation, sound-effects/softness); fully wired end-to-end with live readback verification.
+    kaitai_schema: ["h6199_command_write.ksy::mode_body", "h6199_command_write.ksy::video_body", "h6199_status_reply.ksy::colour_mode_body", "h6199_status_reply.ksy::video_state"]
+    evidence_status: confirmed
+    evidence_refs:
+      [h6199_video_all_game, h6199_video_all_movie, h6199_video_part_game, h6199_video_part_movie, h6199_video_saturation_20, h6199_video_saturation_88, h6199_video_softness_12, h6199_video_sound_on, h6199_status_colour_mode_video]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: light.turn_on effect (video_*), video controls (h6199_controls.py)
+    persistence_need: device_readback
+    preview_level: live
+    known_gaps:
+      - "See pipeline_known_issues: preview_fidelity_ceiling. The video content itself (what the source screen is actually showing) is a live external signal, never captured or modelled; only the mode's own control fields (source, region, saturation, sound-effects) are protocol-evidenced. Like built-in/reactive music, live video requires a live signal in principle and must not be animated in an offline preview — this is a live-hardware-signal limitation, not an evidence gap that more captures could close."
+
+  - model: H6199
+    capability: white_balance
+    summary: Warm/cool white balance via h6199_command_write display_setting::white_balance sub-opcode; fully wired with live readback (device is source of truth, not restored on restart).
+    kaitai_schema: ["h6199_command_write.ksy::display_setting_body", "h6199_command_write.ksy::white_balance_payload", "h6199_status_reply.ksy::display_setting_body", "h6199_status_reply.ksy::white_balance_state"]
+    evidence_status: confirmed
+    evidence_refs:
+      [h6199_white_balance_warm, h6199_white_balance_cool, h6199_white_balance_position_01, h6199_white_balance_position_02, h6199_white_balance_position_03, h6199_query_white_balance, h6199_status_white_balance_warm]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_status_reply.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: number.white_balance_red / number.white_balance_blue (h6199_controls.py)
+    persistence_need: device_readback
+    preview_level: deterministic
+    known_gaps: []
+
+  - model: H6199
+    capability: relative_brightness
+    summary: Per-side (top/bottom/left/right/all) relative brightness via h6199_command_write relative_brightness sub-opcode; fully wired with live readback, including asymmetric multi-side status.
+    kaitai_schema: ["h6199_command_write.ksy::relative_brightness_body", "h6199_status_reply.ksy::relative_brightness_body"]
+    evidence_status: confirmed
+    evidence_refs:
+      [h6199_relbright_36, h6199_relbright_all_91, h6199_relbright_bottom_41, h6199_relbright_left_51, h6199_relbright_right_31, h6199_relbright_top_20, h6199_status_relative_brightness_asymmetric, h6199_reject_relbright_edge_count, h6199_reject_relbright_strip_left, h6199_reject_relbright_strip_right]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_status_reply.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: number.relative_brightness_* (h6199_controls.py)
+    persistence_need: device_readback
+    preview_level: deterministic
+    known_gaps: []
+
+  - model: H6199
+    capability: blank_screen
+    summary: Blank-screen toggle via h6199_command_write display_setting::blank_screen sub-opcode; fully wired with live readback.
+    kaitai_schema: ["h6199_command_write.ksy::display_setting_body", "h6199_command_write.ksy::blank_screen_payload", "h6199_status_reply.ksy::display_setting_body", "h6199_status_reply.ksy::blank_screen_state"]
+    evidence_status: confirmed
+    evidence_refs: [h6199_blank_screen_on, h6199_blank_screen_off, h6199_status_blank_screen_on]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_status_reply.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: switch.blank_screen (h6199_controls.py)
+    persistence_need: device_readback
+    preview_level: deterministic
+    known_gaps: []
+
+  - model: H6199
+    capability: wifi_provisioning
+    summary: Wi-Fi credential provisioning over BLE (h6199_wifi_provision request shapes, h6199_wifi_result reply); schema-confirmed with a broad fixture corpus and compiled into the shipped runtime package; decode is genuinely wired through the generated classes by standalone dev tooling, encode is hand-rolled bytes because Kaitai never generates encoders.
+    kaitai_schema: ["h6199_wifi_provision.ksy::h6199_wifi_provision", "h6199_wifi_result.ksy::h6199_wifi_result", "h6199_wifi_body.ksy::h6199_wifi_body"]
+    evidence_status: confirmed
+    evidence_refs:
+      [h6199_wifi_frame_header, h6199_wifi_frame_terminator, h6199_wifi_shape3_header, h6199_wifi_shape3_body, h6199_wifi_shape5_header, h6199_wifi_shape5_body, h6199_wifi_result_success, h6199_wifi_result_failure, h6199_wifi_reject_sub_opcode, h6199_wifi_result_reject_sub_opcode]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_wifi_provision.py
+    runtime: {encode: tool_only, decode: tool_only, readback: none}
+    ha_surface: none
+    persistence_need: none
+    preview_level: opaque
+    known_gaps:
+      - "By design (see tools/ble/wifi_provision.py's own docstring): Wi-Fi provisioning is deliberately kept out of the HA integration ('not something to ship into every install')."
+      - "Decode is real, not dead code: tools/ble/generated_protocol_view.py's describe_generated() reads 0xA1 frames as H6199WifiProvision and 0xEE frames as H6199WifiResult via the shipped generated_protocol.h6199_wifi_provision/h6199_wifi_result modules, and exposes a standalone is_wifi_provision() helper that tools/ble/decode_govee.py imports and calls (_is_wifi_credential_frame); no pytest test exercises this path directly, so evidence for the decode wiring is the source itself, not test coverage. This is confined to standalone dev tooling — the shipped HA integration's own runtime modules never call it — which is why runtime.decode stays tool_only rather than wired."
+      - "Encode is a separate, unrelated fact: tools/ble/wifi_provision.py hand-rolls its own request frame bytes rather than importing H6199WifiProvision to build one. This is not a gap in that tool: Kaitai is a parser generator and never emits encoder/builder code for any schema in this repository, so there is no generated encoder it could import instead (see the diy_upload known_gaps for the general form of this limitation)."
