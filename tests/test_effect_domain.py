@@ -1,0 +1,481 @@
+"""Canonical custom-effect domain and compiler contracts."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from typing import Any, cast
+from uuid import UUID
+
+import pytest
+
+from custom_components.ha_govee_led_ble import effect_domain as effect_domain_module
+from custom_components.ha_govee_led_ble import layered_scene as layered_scene_module
+from custom_components.ha_govee_led_ble import protocol
+from custom_components.ha_govee_led_ble.effect_compiler import (
+    CompatibilityState,
+    compatibility,
+    compile_h617a,
+)
+from custom_components.ha_govee_led_ble.effect_contracts import (
+    CapabilityState,
+    EditorApiInfo,
+    device_effect_capabilities,
+)
+from custom_components.ha_govee_led_ble.effect_domain import (
+    AppliedArea,
+    BrightnessOrder,
+    BrightnessPattern,
+    BuiltinScene,
+    CatalogueRef,
+    Distribution,
+    EffectLayer,
+    EffectPair,
+    EffectValidationError,
+    LayeredEffect,
+    LayeredScene,
+    LibraryItem,
+    Movement,
+    MultiEffect,
+    OpaqueContent,
+    PaintedEffect,
+    PaintGroup,
+    PaletteScene,
+    Provenance,
+    SceneStep,
+    Selection,
+    SelectionType,
+    SingleEffect,
+    SourceKind,
+    TargetHint,
+    UnsupportedEffectSchemaError,
+    effect_content_from_dict,
+    effect_content_to_dict,
+)
+from custom_components.ha_govee_led_ble.effect_limits import (
+    MAX_DEPLOYMENT_RECORDS,
+    MAX_DRAFTS_PER_OWNER,
+    MAX_EDITOR_DEVICES,
+    MAX_EFFECT_DOCUMENT_BYTES,
+    MAX_EFFECT_NAME_LENGTH,
+    MAX_LIBRARY_ITEMS,
+    MAX_SCENE_CATALOGUE_ENTRIES,
+)
+
+
+def _layered_effect() -> LayeredEffect:
+    movement = Movement(True, False, 1, 3, 50, unknown_flags=0x20)
+    layer = EffectLayer(
+        area=AppliedArea(0, 10),
+        selection=Selection(SelectionType.CUSTOM, 1, 2),
+        brightness_gradient=True,
+        brightness_patterns=(
+            BrightnessPattern(
+                100,
+                10,
+                BrightnessOrder.BRIGHTEST_DARKEST,
+                50,
+                3,
+                4,
+            ),
+        ),
+        distribution=Distribution(2, backwards=True),
+        colour_speed=60,
+        colour_retention=5,
+        palette=((255, 0, 0), (0, 0, 255)),
+        selected_movement=movement,
+        overall_movement=Movement(False, True, 2, 1, 20),
+        priority=3,
+        unknown_flags=0x01,
+        excess=b"\xaa\xbb",
+    )
+    return LayeredEffect((layer,))
+
+
+def _first_layer_document(content: LayeredEffect) -> dict[str, Any]:
+    return cast(list[dict[str, Any]], effect_content_to_dict(content)["layers"])[0]
+
+
+def test_layered_types_and_validation_error_are_re_exported() -> None:
+    for name in (
+        "BrightnessOrder",
+        "SelectionType",
+        "AppliedArea",
+        "Selection",
+        "BrightnessPattern",
+        "Movement",
+        "Distribution",
+        "EffectLayer",
+        "LayeredEffect",
+        "CatalogueRef",
+        "LayeredScene",
+    ):
+        assert getattr(effect_domain_module, name) is getattr(layered_scene_module, name)
+
+    assert EffectValidationError is layered_scene_module.LayeredSceneValidationError
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        PaintedEffect(
+            "clockwise",
+            50,
+            100,
+            (0, 0, 0),
+            (PaintGroup((255, 0, 0), (0, 1, 2)),),
+        ),
+        SingleEffect(3, 3, 50, ((255, 0, 0), (0, 0, 255))),
+        MultiEffect(
+            (EffectPair(0, 0), EffectPair(3, 3)),
+            51,
+            ((255, 0, 0), (0, 0, 255)),
+        ),
+    ],
+)
+def test_library_item_round_trips(content) -> None:
+    item = LibraryItem.new(
+        "Night light",
+        content,
+        target_hint=TargetHint("H617A", 15),
+    )
+
+    restored = LibraryItem.from_dict(item.to_dict())
+
+    assert restored == item
+    assert isinstance(restored.id, UUID)
+
+
+def test_unknown_content_round_trips_without_becoming_applicable() -> None:
+    document = LibraryItem.new(
+        "Future",
+        OpaqueContent("future_effect", {"nested": {"value": 3}}),
+    ).to_dict()
+
+    restored = LibraryItem.from_dict(document)
+
+    assert isinstance(restored.content, OpaqueContent)
+    assert restored.to_dict() == document
+    assert compatibility(restored, "H617A").state is CompatibilityState.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        _layered_effect(),
+        BuiltinScene(CatalogueRef("H617A", 1, 2), speed_index=1),
+        PaletteScene(
+            CatalogueRef("H617A", 3, 4),
+            layout=0,
+            brightness_flag=True,
+            steps=(SceneStep(10, (255, 0, 0)),),
+            palette=((255, 0, 0),),
+        ),
+        LayeredScene(CatalogueRef("H617A", 5, 6), _layered_effect(), raw_param=b"\x00\xff"),
+    ],
+)
+def test_advanced_and_scene_content_round_trips(content) -> None:
+    item = LibraryItem.new("Scene copy", content)
+
+    assert LibraryItem.from_dict(item.to_dict()) == item
+
+
+def test_advanced_effect_is_preserved_but_not_compilable_yet() -> None:
+    item = LibraryItem.new("Advanced", _layered_effect())
+
+    result = compatibility(item, "H617A")
+
+    assert result.state is CompatibilityState.UNKNOWN
+    with pytest.raises(ValueError, match="no H617A compiler"):
+        compile_h617a(item, 800)
+
+
+def test_layered_area_preserves_raw_zero_distinct_from_full_strip() -> None:
+    zero = AppliedArea(0, 0)
+    full_strip = AppliedArea(0, 10)
+
+    assert zero != full_strip
+    content = LayeredEffect((replace(_layered_effect().layers[0], area=zero),))
+    assert _first_layer_document(content)["area"] == {"start_tenths": 0, "width_tenths": 0}
+
+
+@pytest.mark.parametrize("priority", [0, 255])
+def test_layered_raw_scopes_and_priority_round_trip(priority: int) -> None:
+    base = _layered_effect().layers[0]
+    pattern = replace(base.brightness_patterns[0], scope_high=0, scope_low=255)
+    content = LayeredEffect((replace(base, brightness_patterns=(pattern,), priority=priority),))
+    document = effect_content_to_dict(content)
+
+    assert effect_content_from_dict(document) == content
+    layer = _first_layer_document(content)
+    assert layer["brightness_patterns"][0] == {
+        "scope_high": 0,
+        "scope_low": 255,
+        "order": 0,
+        "change_speed": 50,
+        "brightest_retention": 3,
+        "darkest_retention": 4,
+    }
+    assert layer["priority"] == priority
+
+
+def test_layered_json_preserves_unknown_selection_and_order_values() -> None:
+    base = _layered_effect().layers[0]
+    content = LayeredEffect(
+        (
+            replace(
+                base,
+                selection=replace(base.selection, type=0xFE),
+                brightness_patterns=(replace(base.brightness_patterns[0], order=0xFD),),
+            ),
+        )
+    )
+    document = effect_content_to_dict(content)
+
+    assert document["kind"] == "advanced"
+    assert effect_content_from_dict(document) == content
+    layer = _first_layer_document(content)
+    assert layer["selection"]["type"] == 0xFE
+    assert layer["brightness_patterns"][0]["order"] == 0xFD
+    assert type(layer["selection"]["type"]) is int
+    assert type(layer["brightness_patterns"][0]["order"]) is int
+
+
+def test_layer_palette_preserves_more_than_diy_authoring_limit() -> None:
+    palette = tuple((value, value + 1, value + 2) for value in range(11))
+    content = LayeredEffect((replace(_layered_effect().layers[0], palette=palette),))
+
+    assert effect_content_from_dict(effect_content_to_dict(content)) == content
+    with pytest.raises(EffectValidationError, match="1 to 8"):
+        SingleEffect(0, 0, 50, palette)
+
+
+def test_layered_effect_preserves_six_layer_order() -> None:
+    base = _layered_effect().layers[0]
+    content = LayeredEffect(tuple(replace(base, priority=value) for value in (5, 4, 3, 2, 1, 0)))
+    restored = effect_content_from_dict(effect_content_to_dict(content))
+
+    assert isinstance(restored, LayeredEffect)
+    assert tuple(layer.priority for layer in restored.layers) == (5, 4, 3, 2, 1, 0)
+
+
+def test_layered_json_preserves_unknown_flags_and_excess() -> None:
+    content = _layered_effect()
+    document = effect_content_to_dict(content)
+
+    assert effect_content_to_dict(effect_content_from_dict(document)) == document
+    layer = _first_layer_document(content)
+    assert layer["unknown_flags"] == 0x01
+    assert layer["selected_movement"]["unknown_flags"] == 0x20
+    assert layer["excess"] == "aabb"
+
+
+def test_painted_effect_rejects_overlapping_groups() -> None:
+    with pytest.raises(EffectValidationError, match="multiple groups"):
+        PaintedEffect(
+            "clockwise",
+            50,
+            100,
+            (0, 0, 0),
+            (
+                PaintGroup((255, 0, 0), (0, 1)),
+                PaintGroup((0, 0, 255), (1, 2)),
+            ),
+        )
+
+
+def test_newer_schema_is_not_silently_loaded() -> None:
+    item = LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+    document = item.to_dict()
+    document["schema_version"] = 2
+
+    with pytest.raises(UnsupportedEffectSchemaError):
+        LibraryItem.from_dict(document)
+
+
+def test_h617a_compiler_emits_upload_then_activation() -> None:
+    item = LibraryItem.new(
+        "Paint",
+        PaintedEffect(
+            "clockwise",
+            50,
+            100,
+            (0, 0, 0),
+            (PaintGroup((255, 0, 0), (0, 1)),),
+        ),
+    )
+
+    compiled = compile_h617a(item, 800)
+
+    assert compiled.upload_packets == tuple(
+        protocol.build_h617a_diy_painted(
+            "clockwise",
+            50,
+            100,
+            (0, 0, 0),
+            (protocol.DiyPaintGroup((255, 0, 0), (0, 1)),),
+        )
+    )
+    assert compiled.activation_packet == protocol.build_h617a_diy_activation(800)
+    assert compiled.packets[-1] == compiled.activation_packet
+    assert len(compiled.artifact_sha256) == 64
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        SingleEffect(3, 3, 50, ((255, 0, 0), (0, 0, 255))),
+        MultiEffect(
+            (EffectPair(0, 0), EffectPair(3, 3)),
+            51,
+            ((255, 0, 0), (0, 0, 255)),
+        ),
+    ],
+)
+def test_h617a_compiler_covers_palette_effects(content) -> None:
+    item = LibraryItem.new("Palette", content)
+
+    compiled = compile_h617a(item, 123)
+
+    assert compiled.diy_code == 123
+    assert compiled.activation_packet == protocol.build_h617a_diy_activation(123)
+    assert compiled.upload_packets
+
+
+def test_h6199_is_explicitly_incompatible() -> None:
+    item = LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+
+    result = compatibility(item, "H6199")
+
+    assert result.state is CompatibilityState.INCOMPATIBLE
+    assert "not supported" in result.reasons[0]
+
+
+def test_editor_contract_reports_first_slice_boundaries() -> None:
+    api = EditorApiInfo().to_dict()
+    h617a = device_effect_capabilities("entry-a", "H617A", "Cupboard", 15)
+    h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
+
+    assert api == {
+        "api_version": 1,
+        "effect_schema_version": 1,
+        "compiler_version": 1,
+        "limits": {
+            "effect_name": MAX_EFFECT_NAME_LENGTH,
+            "effect_document_bytes": MAX_EFFECT_DOCUMENT_BYTES,
+            "devices": MAX_EDITOR_DEVICES,
+            "library_items": MAX_LIBRARY_ITEMS,
+            "drafts_per_owner": MAX_DRAFTS_PER_OWNER,
+            "deployment_records": MAX_DEPLOYMENT_RECORDS,
+            "scene_catalogue_entries": MAX_SCENE_CATALOGUE_ENTRIES,
+        },
+    }
+    assert h617a.painted is CapabilityState.SUPPORTED
+    assert h617a.single is CapabilityState.SUPPORTED
+    assert h617a.multi is CapabilityState.SUPPORTED
+    assert h617a.advanced is CapabilityState.EVIDENCE_GAP
+    assert h6199.single is CapabilityState.UNSUPPORTED
+    assert h6199.to_dict()["readback"] == "mode_only"
+
+
+def test_effect_documents_reject_oversized_and_deep_opaque_content() -> None:
+    with pytest.raises(EffectValidationError, match="must not exceed"):
+        LibraryItem.new(
+            "Oversized",
+            OpaqueContent("future", {"body": "x" * MAX_EFFECT_DOCUMENT_BYTES}),
+        )
+
+    nested: Any = "leaf"
+    for _ in range(18):
+        nested = [nested]
+
+    with pytest.raises(EffectValidationError, match="nested levels"):
+        LibraryItem.new(
+            "Deep",
+            OpaqueContent("future", {"body": nested}),
+        )
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: Provenance(source_revision=0),
+        lambda: Provenance(parent_id=UUID(int=1)),
+        lambda: Provenance(parent_revision=1),
+        lambda: Provenance(parent_id=UUID(int=1), parent_revision=0),
+        lambda: TargetHint("", 15),
+        lambda: TargetHint("H617A", 0),
+        lambda: PaintGroup((255, 0, 0), ()),
+        lambda: PaintGroup((255, 0, 0), (0, 0)),
+        lambda: PaintGroup((255, 0, 0), (15,)),
+        lambda: PaintedEffect("", 50, 100, (0, 0, 0)),
+        lambda: PaintedEffect("clockwise", 101, 100, (0, 0, 0)),
+        lambda: PaintedEffect("clockwise", 50, 100, (0, 0, 256)),
+        lambda: SingleEffect(0xFF, 0, 50, ((255, 0, 0),)),
+        lambda: SingleEffect(0, 0, 50, ()),
+        lambda: MultiEffect((), 50, ((255, 0, 0),)),
+        lambda: AppliedArea(16, 1),
+        lambda: AppliedArea(0, 16),
+        lambda: Selection(SelectionType.CUSTOM, -1, 0),
+        lambda: BrightnessPattern(
+            256,
+            20,
+            BrightnessOrder.BRIGHTEST_DARKEST,
+            1,
+            2,
+            3,
+        ),
+        lambda: Movement(True, False, 4, 1, 1),
+        lambda: Distribution(128),
+        lambda: CatalogueRef("", 1, 1),
+        lambda: CatalogueRef("H617A", -1, 1),
+        lambda: BuiltinScene(CatalogueRef("H617A", 1, 1), speed_index=-1),
+        lambda: SceneStep(-1, (255, 0, 0)),
+        lambda: PaletteScene(
+            CatalogueRef("H617A", 1, 1),
+            layout=2,
+            brightness_flag=False,
+            steps=(SceneStep(1, (255, 0, 0)),),
+        ),
+    ],
+)
+def test_domain_rejects_invalid_values(factory) -> None:
+    with pytest.raises(EffectValidationError):
+        factory()
+
+
+def test_provenance_and_extensions_round_trip() -> None:
+    item = LibraryItem(
+        id=UUID(int=1),
+        revision=2,
+        name="Imported",
+        content=SingleEffect(0, 0, 50, ((255, 0, 0),)),
+        provenance=Provenance(
+            SourceKind.IMPORTED,
+            source_id="fixture",
+            source_revision=3,
+            parent_id=UUID(int=2),
+            parent_revision=1,
+        ),
+        extensions={"future": {"enabled": True}},
+    )
+
+    assert LibraryItem.from_dict(item.to_dict()) == item
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("id", "not-a-uuid", "UUID"),
+        ("revision", "one", "integer"),
+        ("extensions", [], "mapping"),
+    ],
+)
+def test_library_document_rejects_invalid_envelope(field, value, message) -> None:
+    document = LibraryItem.new(
+        "Test",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    ).to_dict()
+    document[field] = value
+
+    with pytest.raises(EffectValidationError, match=message):
+        LibraryItem.from_dict(document)
