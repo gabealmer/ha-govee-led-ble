@@ -15,9 +15,9 @@ from custom_components.ha_govee_led_ble import (
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, MODEL_PROFILES
 from custom_components.ha_govee_led_ble.editor import (
     EDITOR_ELEMENT_NAME,
-    EDITOR_MODULE_URL,
     EDITOR_PANEL_PATH,
     EDITOR_ROUTE_SEGMENT,
+    _editor_module_url,
     editor_url,
 )
 
@@ -149,9 +149,14 @@ async def test_async_setup_registers_hidden_editor_fallback():
     with (
         patch("custom_components.ha_govee_led_ble.editor.frontend.async_panel_exists", return_value=False),
         patch("custom_components.ha_govee_led_ble.editor.frontend.async_register_built_in_panel") as register,
+        patch(
+            "custom_components.ha_govee_led_ble.async_setup_effects",
+            new_callable=AsyncMock,
+        ) as setup_effects,
     ):
         assert await async_setup(hass, {}) is True
 
+    setup_effects.assert_awaited_once_with(hass)
     hass.http.async_register_static_paths.assert_awaited_once()
     (static_path,) = hass.http.async_register_static_paths.await_args.args[0]
     assert static_path.url_path == f"/{DOMAIN}_static"
@@ -165,12 +170,12 @@ async def test_async_setup_registers_hidden_editor_fallback():
             "configuration_path": f"/config/integrations/integration/{DOMAIN}",
             "_panel_custom": {
                 "name": EDITOR_ELEMENT_NAME,
-                "module_url": EDITOR_MODULE_URL,
+                "module_url": _editor_module_url(),
                 "embed_iframe": False,
                 "trust_external": False,
             },
         },
-        require_admin=True,
+        require_admin=False,
         show_in_sidebar=False,
     )
 
