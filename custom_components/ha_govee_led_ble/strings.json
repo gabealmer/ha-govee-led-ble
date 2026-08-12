@@ -134,6 +134,24 @@
           "description": "Brightness level (0-100)."
         }
       }
+    },
+    "apply_custom_effect": {
+      "name": "Apply custom effect",
+      "description": "Apply a saved custom effect to one supported Govee light.",
+      "fields": {
+        "entity_id": {
+          "name": "Light",
+          "description": "Govee BLE light to control."
+        },
+        "effect_id": {
+          "name": "Effect ID",
+          "description": "Stable ID of the saved custom effect."
+        },
+        "revision": {
+          "name": "Revision",
+          "description": "Optional immutable revision. The latest revision is used when omitted."
+        }
+      }
     }
   },
   "options": {
