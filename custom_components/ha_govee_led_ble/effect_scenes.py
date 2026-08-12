@@ -16,10 +16,12 @@ from .const import DOMAIN, EFFECT_FAMILY_SCENES
 from .effect_domain import (
     BuiltinScene,
     CatalogueRef,
+    EffectContent,
     JsonValue,
     effect_content_to_dict,
 )
 from .layered_scene_decoder import decode_layered_scene
+from .palette_scene_decoder import decode_palette_scene
 from .scenes import (
     MODEL_SCENE_LABELS,
     MODEL_SCENES,
@@ -74,15 +76,21 @@ def scene_detail_payload(
         effect_id=effect_id,
         catalogue_schema_version=CATALOGUE_SCHEMA_VERSION,
     )
-    content = (
-        decode_layered_scene(
+    content: EffectContent
+    if resolved.entry.scene_type == 1 and resolved.entry.param:
+        content = decode_palette_scene(
             template,
             base64.b64decode(resolved.entry.param, validate=True),
             speed_index=speed_index,
         )
-        if resolved.entry.scene_type == 2 and resolved.entry.param
-        else BuiltinScene(template, speed_index=speed_index)
-    )
+    elif resolved.entry.scene_type == 2 and resolved.entry.param:
+        content = decode_layered_scene(
+            template,
+            base64.b64decode(resolved.entry.param, validate=True),
+            speed_index=speed_index,
+        )
+    else:
+        content = BuiltinScene(template, speed_index=speed_index)
     return {
         "scene": _scene_summary(model, resolved.entry),
         "content": effect_content_to_dict(content),

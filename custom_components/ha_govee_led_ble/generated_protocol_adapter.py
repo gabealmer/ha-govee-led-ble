@@ -53,6 +53,10 @@ SceneBody = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_body").SceneBody,
 )
+SceneType1Body = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_type1_body").SceneType1Body,
+)
 
 _A3_CHUNK_SIZE = 17
 
@@ -229,6 +233,25 @@ def parse_scene_body_param(raw_param: bytes) -> Any:
     unpadded._read()
     envelope = envelope.ljust(header.linecount * _A3_CHUNK_SIZE, b"\x00")
     parsed = SceneBody(KaitaiStream(io.BytesIO(envelope)))
+    parsed._read()
+    return parsed
+
+
+def parse_scene_type1_body_param(raw_param: bytes) -> Any:
+    """Parse a catalogue type-1 parameter through the generated SceneType1Body root."""
+    if not isinstance(raw_param, bytes):
+        raise TypeError("scene parameter must be bytes")
+    synthetic = SceneType1Body()
+    header = _a3_header(synthetic)
+    header_length = len(header.marker) + 1
+    header.linecount = max(header.linecount, math.ceil((header_length + 1 + len(raw_param)) / _A3_CHUNK_SIZE))
+    _check_tree(header)
+    header_bytes = _write(header, header_length)
+    envelope = header_bytes + b"\x01" + raw_param
+    unpadded = SceneType1Body(KaitaiStream(io.BytesIO(envelope)))
+    unpadded._read()
+    envelope = envelope.ljust(header.linecount * _A3_CHUNK_SIZE, b"\x00")
+    parsed = SceneType1Body(KaitaiStream(io.BytesIO(envelope)))
     parsed._read()
     return parsed
 

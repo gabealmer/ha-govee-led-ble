@@ -219,7 +219,7 @@ class LayeredScene:
         _validate_instance(self.template, CatalogueRef, "scene template")
         _validate_instance(self.effect, LayeredEffect, "scene effect")
         if self.speed_index is not None:
-            _validate_non_negative(self.speed_index, "scene speed index")
+            _validate_byte(self.speed_index, "scene speed index")
         if not isinstance(self.raw_param, bytes):
             raise LayeredSceneValidationError("scene raw parameter must be bytes")
 

@@ -189,8 +189,8 @@ class BuiltinScene:
     speed_index: int | None = None
 
     def __post_init__(self) -> None:
-        if self.speed_index is not None and self.speed_index < 0:
-            raise EffectValidationError("scene speed index must not be negative")
+        if self.speed_index is not None:
+            _validate_byte(self.speed_index, "scene speed index")
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,18 +219,17 @@ class PaletteScene:
     def __post_init__(self) -> None:
         if self.layout not in (0, 1):
             raise EffectValidationError("type-1 scene layout must be 0 or 1")
-        if not self.steps:
-            raise EffectValidationError("type-1 scene must contain at least one step")
+        _validate_palette_scene_count(self.steps, "steps")
         if self.layout == 0:
-            _validate_palette(self.palette)
+            _validate_palette_scene_palette(self.palette)
             if any(step.inline_colour is not None for step in self.steps):
                 raise EffectValidationError("layout 0 steps must not have inline colours")
         elif self.palette:
             raise EffectValidationError("layout 1 scenes must not have a shared palette")
         elif any(step.inline_colour is None for step in self.steps):
             raise EffectValidationError("layout 1 steps require inline colours")
-        if self.speed_index is not None and self.speed_index < 0:
-            raise EffectValidationError("scene speed index must not be negative")
+        if self.speed_index is not None:
+            _validate_byte(self.speed_index, "scene speed index")
 
 
 @dataclass(frozen=True, slots=True)
@@ -403,6 +402,17 @@ def _validate_rgb(value: RGB, name: str) -> None:
 def _validate_palette(palette: Sequence[RGB]) -> None:
     if not 1 <= len(palette) <= MAX_PALETTE_COLOURS:
         raise EffectValidationError(f"palette must contain 1 to {MAX_PALETTE_COLOURS} colours")
+    for colour in palette:
+        _validate_rgb(colour, "palette colour")
+
+
+def _validate_palette_scene_count(values: Sequence[object], name: str) -> None:
+    if len(values) > 0xFF:
+        raise EffectValidationError(f"type-1 scene {name} must contain 0 to 255 items")
+
+
+def _validate_palette_scene_palette(palette: Sequence[RGB]) -> None:
+    _validate_palette_scene_count(palette, "palette")
     for colour in palette:
         _validate_rgb(colour, "palette colour")
 
