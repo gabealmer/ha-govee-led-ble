@@ -5,6 +5,13 @@ cd "$(dirname "$0")/.."
 
 uv sync --locked
 
+echo "=== Frontend ==="
+npm --prefix frontend ci --ignore-scripts
+npm --prefix frontend run check
+git diff --exit-code -- custom_components/ha_govee_led_ble/frontend
+npm --prefix frontend run test:browser:install
+npm --prefix frontend run test:browser
+
 echo "=== Lint ==="
 uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
