@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any, cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -25,14 +24,11 @@ from .effect_contracts import EditorApiInfo, device_effect_capabilities
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
     BuiltinScene,
-    EffectContent,
     EffectValidationError,
-    LayeredEffect,
     LayeredScene,
     LibraryItem,
     OpaqueContent,
     PaletteScene,
-    effect_content_from_dict,
     effect_content_to_dict,
 )
 from .effect_drafts import EffectDraft
@@ -61,7 +57,6 @@ from .effect_storage import (
     EffectStorageError,
     LibrarySnapshot,
 )
-from .effect_user_state import EffectUserState
 
 WS_INFO = f"{DOMAIN}/editor/info"
 WS_DEVICES = f"{DOMAIN}/editor/devices"
@@ -324,7 +319,7 @@ def ws_library_list(
     msg: dict[str, Any],
 ) -> None:
     backend = _backend(hass)
-    snapshot = backend.library.snapshot()
+    snapshot = backend.application.library_snapshot()
     connection.send_result(msg["id"], _library_snapshot_payload(snapshot))
 
 
@@ -335,15 +330,15 @@ def ws_library_subscribe(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    repository = _backend(hass).library
+    application = _backend(hass).application
 
     @callback
     def forward(snapshot: LibrarySnapshot) -> None:
         connection.send_event(msg["id"], _library_snapshot_payload(snapshot))
 
-    connection.subscriptions[msg["id"]] = repository.subscribe(forward)
+    connection.subscriptions[msg["id"]] = application.subscribe_library(forward)
     connection.send_result(msg["id"])
-    forward(repository.snapshot())
+    forward(application.library_snapshot())
 
 
 @websocket_command(
@@ -361,8 +356,8 @@ def ws_library_get(
 ) -> None:
     backend = _backend(hass)
     try:
-        item = backend.library.get(
-            UUID(msg["item_id"]),
+        item = backend.application.get_saved_effect(
+            msg["item_id"],
             msg.get("revision"),
         )
     except (ValueError, EffectNotFoundError) as exc:
@@ -393,14 +388,10 @@ async def ws_library_create(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    backend = _backend(hass)
     try:
-        item = LibraryItem.new(
-            msg["name"],
-            _authored_content_from_dict(msg["content"]),
-        )
-        snapshot = await backend.library.async_create(
-            item,
+        mutation = await _backend(hass).application.async_create_library_item(
+            name=msg["name"],
+            content=msg["content"],
             expected_library_revision=msg["expected_library_revision"],
         )
     except EffectValidationError as exc:
@@ -422,8 +413,8 @@ async def ws_library_create(
     connection.send_result(
         msg["id"],
         {
-            "item": item.to_dict(),
-            "library_revision": snapshot.library_revision,
+            "item": mutation.item.to_dict(),
+            "library_revision": mutation.snapshot.library_revision,
         },
     )
 
@@ -445,18 +436,11 @@ async def ws_library_update(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    backend = _backend(hass)
     try:
-        item_id = UUID(msg["item_id"])
-        current = backend.library.get(item_id)
-        item = replace(
-            current,
-            revision=current.revision + 1,
+        mutation = await _backend(hass).application.async_update_library_item(
+            item_id=msg["item_id"],
             name=msg["name"],
-            content=_authored_content_from_dict(msg["content"]),
-        )
-        snapshot = await backend.library.async_update(
-            item,
+            content=msg["content"],
             expected_revision=msg["expected_revision"],
             expected_library_revision=msg["expected_library_revision"],
         )
@@ -482,8 +466,8 @@ async def ws_library_update(
     connection.send_result(
         msg["id"],
         {
-            "item": item.to_dict(),
-            "library_revision": snapshot.library_revision,
+            "item": mutation.item.to_dict(),
+            "library_revision": mutation.snapshot.library_revision,
         },
     )
 
@@ -503,10 +487,9 @@ async def ws_library_delete(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    backend = _backend(hass)
     try:
-        snapshot = await backend.library.async_delete(
-            UUID(msg["item_id"]),
+        snapshot = await _backend(hass).application.async_delete_library_item(
+            item_id=msg["item_id"],
             expected_revision=msg["expected_revision"],
             expected_library_revision=msg["expected_library_revision"],
         )
@@ -534,7 +517,7 @@ def ws_draft_list(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    drafts = _backend(hass).drafts.list_for_owner(connection.user.id)
+    drafts = _backend(hass).application.list_drafts(connection.user.id)
     connection.send_result(
         msg["id"],
         {"drafts": [_draft_summary(draft) for draft in drafts]},
@@ -555,10 +538,7 @@ def ws_draft_get(
     msg: dict[str, Any],
 ) -> None:
     try:
-        draft = _backend(hass).drafts.get(
-            UUID(msg["draft_id"]),
-            connection.user.id,
-        )
+        draft = _backend(hass).application.get_draft(connection.user.id, msg["draft_id"])
     except (ValueError, EffectNotFoundError) as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
         return
@@ -583,22 +563,16 @@ async def ws_draft_create(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    base_id_raw = msg.get("base_item_id")
     try:
-        draft = EffectDraft(
-            id=uuid4(),
-            owner_id=connection.user.id,
-            revision=1,
-            item=LibraryItem.new(
-                msg["name"],
-                _authored_content_from_dict(msg["content"]),
-            ),
+        draft = await _backend(hass).application.async_create_draft(
+            connection.user.id,
+            name=msg["name"],
+            content=msg["content"],
             updated_at=msg["updated_at"],
             selected_config_entry_id=msg.get("selected_config_entry_id"),
-            base_item_id=None if base_id_raw is None else UUID(base_id_raw),
+            base_item_id=msg.get("base_item_id"),
             base_item_revision=msg.get("base_item_revision"),
         )
-        await _backend(hass).drafts.async_put(draft, expected_revision=None)
     except EffectLimitError as exc:
         connection.send_error(msg["id"], "limit_reached", str(exc))
         return
@@ -627,22 +601,14 @@ async def ws_draft_update(
     msg: dict[str, Any],
 ) -> None:
     try:
-        repository = _backend(hass).drafts
-        current = repository.get(UUID(msg["draft_id"]), connection.user.id)
-        draft = replace(
-            current,
-            revision=current.revision + 1,
-            item=replace(
-                current.item,
-                name=msg["name"],
-                content=_authored_content_from_dict(msg["content"]),
-            ),
+        draft = await _backend(hass).application.async_update_draft(
+            connection.user.id,
+            draft_id=msg["draft_id"],
+            expected_revision=msg["expected_revision"],
+            name=msg["name"],
+            content=msg["content"],
             updated_at=msg["updated_at"],
             selected_config_entry_id=msg.get("selected_config_entry_id"),
-        )
-        await repository.async_put(
-            draft,
-            expected_revision=msg["expected_revision"],
         )
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
@@ -678,9 +644,9 @@ async def ws_draft_delete(
     msg: dict[str, Any],
 ) -> None:
     try:
-        await _backend(hass).drafts.async_delete(
-            UUID(msg["draft_id"]),
+        await _backend(hass).application.async_delete_draft(
             connection.user.id,
+            draft_id=msg["draft_id"],
             expected_revision=msg["expected_revision"],
         )
     except (ValueError, EffectNotFoundError) as exc:
@@ -729,7 +695,7 @@ def ws_user_state_get(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    state = _backend(hass).user_state.get(connection.user.id)
+    state = _backend(hass).application.get_user_state(connection.user.id)
     connection.send_result(msg["id"], {"user_state": state.to_dict()})
 
 
@@ -746,12 +712,9 @@ def ws_user_state_update(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    repository = _backend(hass).user_state
-    current = repository.get(connection.user.id)
     try:
-        updated = EffectUserState(
-            current.owner_id,
-            current.recent_colours,
+        updated = _backend(hass).application.update_user_state(
+            connection.user.id,
             msg["preferences"],
         )
     except EffectStorageError as exc:
@@ -761,7 +724,6 @@ def ws_user_state_update(
             str(exc),
         )
         return
-    repository.set(updated)
     connection.send_result(msg["id"], {"user_state": updated.to_dict()})
 
 
@@ -778,21 +740,16 @@ def ws_user_state_record_colour(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    colour = msg["colour"]
-    if len(colour) != 3:
-        connection.send_error(
-            msg["id"],
-            "invalid_format",
-            "colour must contain three channels",
-        )
-        return
     try:
-        updated = _backend(hass).user_state.record_colour(
+        updated = _backend(hass).application.record_user_colour(
             connection.user.id,
-            cast(tuple[int, int, int], tuple(colour)),
+            msg["colour"],
         )
     except EffectLimitError as exc:
         connection.send_error(msg["id"], "limit_reached", str(exc))
+        return
+    except EffectStorageError as exc:
+        connection.send_error(msg["id"], "invalid_format", str(exc))
         return
     connection.send_result(msg["id"], {"user_state": updated.to_dict()})
 
@@ -819,12 +776,10 @@ async def ws_apply(
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
     try:
-        item_id = UUID(msg["item_id"])
+        item = backend.application.get_saved_effect(msg["item_id"], msg.get("revision"))
     except ValueError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
-    try:
-        item = backend.library.get(item_id, msg.get("revision"))
     except EffectNotFoundError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
         return
@@ -866,9 +821,9 @@ async def ws_apply_snapshot(
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
     try:
-        item = LibraryItem.new(
-            msg["name"],
-            _authored_content_from_dict(msg["content"]),
+        item = backend.application.new_authored_item(
+            name=msg["name"],
+            content=msg["content"],
         )
         result = await backend.engine.async_apply_snapshot(
             entry.runtime_data,
@@ -887,18 +842,6 @@ async def ws_apply_snapshot(
         connection.send_error(msg["id"], "storage_unavailable", str(exc))
         return
     connection.send_result(msg["id"], {"deployment": result.to_public_dict()})
-
-
-def _authored_content_from_dict(raw: dict[str, Any]) -> EffectContent:
-    content = effect_content_from_dict(raw)
-    if not isinstance(content, LayeredEffect):
-        return content
-    if not content.layers:
-        raise EffectValidationError("Advanced effect must contain at least one layer")
-    for index, layer in enumerate(content.layers, start=1):
-        if not layer.brightness_patterns:
-            raise EffectValidationError(f"Advanced effect layer {index} must contain at least one brightness pattern")
-    return content
 
 
 def async_register_effect_websocket(
