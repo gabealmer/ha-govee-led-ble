@@ -21,8 +21,10 @@ EDITOR_ROUTE_SEGMENT = "editor"
 EDITOR_ELEMENT_NAME = "ha-govee-led-ble-editor"
 EDITOR_STATIC_URL = f"/{DOMAIN}_static"
 EDITOR_FALLBACK_MODULE_URL = f"{EDITOR_STATIC_URL}/editor.js"
+EDITOR_LOADER_MODULE_URL = f"{EDITOR_STATIC_URL}/editor-loader.js"
 _EDITOR_STATIC_PATH = Path(__file__).parent / "frontend"
 _EDITOR_MANIFEST = _EDITOR_STATIC_PATH / "manifest.json"
+_EDITOR_LOADER = _EDITOR_STATIC_PATH / "editor-loader.js"
 
 
 def editor_url(config_entry_id: str) -> str:
@@ -83,4 +85,6 @@ def _editor_module_url(*, advanced_available: bool = True) -> str:
         or not (_EDITOR_STATIC_PATH / filename).is_file()
     ):
         return EDITOR_FALLBACK_MODULE_URL
-    return f"{EDITOR_STATIC_URL}/{filename}"
+    if not _EDITOR_LOADER.is_file():
+        return EDITOR_FALLBACK_MODULE_URL
+    return EDITOR_LOADER_MODULE_URL
