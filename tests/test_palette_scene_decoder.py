@@ -12,12 +12,15 @@ from kaitaistruct import KaitaiStructError
 
 from custom_components.ha_govee_led_ble.effect_domain import (
     CatalogueRef,
+    EffectValidationError,
     PaletteScene,
     SceneStep,
     effect_content_from_dict,
     effect_content_to_dict,
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    _A3_MAX_CONTENT,
+    MAX_SCENE_PARAM_BYTES,
     _check_tree,
     _write,
     parse_scene_type1_body_param,
@@ -25,8 +28,12 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.palette_scene_decoder import (
     decode_catalogue_palette_scene,
     decode_palette_scene,
+    encode_palette_scene,
 )
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
+
+# The parameter drops the marker, line-count and scene-type bytes the A3 header carries.
+_A3_STRIPPED_PREFIX = 3
 
 
 def _reference(entry: SceneEntry) -> CatalogueRef:
@@ -64,9 +71,26 @@ def test_all_committed_h617a_type_1_scenes_decode_losslessly() -> None:
         assert not any(envelope[parameter_start + len(raw_param) :])
         _check_tree(parsed)
         assert _write(parsed, len(envelope)) == envelope
+        assert encode_palette_scene(decoded) == raw_param
         assert effect_content_from_dict(effect_content_to_dict(decoded)) == decoded
 
     assert len(entries) == 2
+
+
+def test_encode_round_trips_every_committed_type_1_scene() -> None:
+    fixtures = 0
+
+    for sku, entries in SCENE_ENTRIES.items():
+        for entry in entries:
+            if entry.scene_type != 1:
+                continue
+            raw_param = base64.b64decode(entry.param, validate=True)
+            decoded = decode_catalogue_palette_scene(sku, entry)
+            assert decoded is not None
+            assert encode_palette_scene(decoded) == raw_param
+            fixtures += 1
+
+    assert fixtures == 4
 
 
 def test_layout_1_decoding_is_synthetic_schema_support_without_hardware_evidence() -> None:
@@ -91,6 +115,7 @@ def test_layout_1_decoding_is_synthetic_schema_support_without_hardware_evidence
         ),
         speed_index=7,
     )
+    assert encode_palette_scene(decoded) == raw_param
     assert effect_content_from_dict(effect_content_to_dict(decoded)) == decoded
 
 
@@ -114,7 +139,87 @@ def test_layout_0_preserves_full_u1_count_boundaries(
 
     assert len(decoded.steps) == expected_steps
     assert len(decoded.palette) == expected_palette
+    assert encode_palette_scene(decoded) == raw_param
     assert effect_content_from_dict(effect_content_to_dict(decoded)) == decoded
+
+
+def test_encode_preserves_reserved_config_bit_without_hardware_evidence() -> None:
+    raw_param = bytes.fromhex("8b0000")
+
+    decoded = decode_palette_scene(CatalogueRef("SYNTHETIC", 1, 1), raw_param)
+
+    assert decoded.config_flags == 0x08
+    assert encode_palette_scene(decoded) == raw_param
+    assert effect_content_from_dict(effect_content_to_dict(decoded)) == decoded
+
+
+@pytest.mark.parametrize("padding", [1, 2, 5, 17, 34])
+def test_decode_preserves_real_trailing_zero_padding(padding: int) -> None:
+    raw_param = bytes.fromhex("830000") + b"\x00" * padding
+
+    decoded = decode_palette_scene(CatalogueRef("SYNTHETIC", 1, 1), raw_param)
+
+    assert decoded.trailing_padding == padding
+    assert encode_palette_scene(decoded) == raw_param
+    assert effect_content_from_dict(effect_content_to_dict(decoded)) == decoded
+
+
+def test_construction_rejects_trailing_padding_beyond_the_framing_limit() -> None:
+    base = PaletteScene(
+        template=CatalogueRef("SYNTHETIC", 1, 1),
+        layout=0,
+        brightness_flag=False,
+        steps=(),
+        palette=(),
+    )
+
+    replace(base, trailing_padding=MAX_SCENE_PARAM_BYTES)
+
+    with pytest.raises(EffectValidationError, match="trailing padding"):
+        replace(base, trailing_padding=MAX_SCENE_PARAM_BYTES + 1)
+
+
+def test_encode_rejects_type_1_content_beyond_the_line_count() -> None:
+    base = PaletteScene(
+        template=CatalogueRef("SYNTHETIC", 1, 1),
+        layout=0,
+        brightness_flag=False,
+        steps=(),
+        palette=(),
+    )
+    largest = _A3_MAX_CONTENT - _A3_STRIPPED_PREFIX - len(encode_palette_scene(base))
+
+    encoded = encode_palette_scene(replace(base, trailing_padding=largest))
+    assert len(encoded) + _A3_STRIPPED_PREFIX == _A3_MAX_CONTENT
+
+    with pytest.raises(EffectValidationError, match="A3 line count"):
+        encode_palette_scene(replace(base, trailing_padding=largest + 1))
+
+
+@pytest.mark.parametrize(
+    "scene",
+    [
+        PaletteScene(
+            template=CatalogueRef("SYNTHETIC", 1, 1),
+            layout=0,
+            brightness_flag=False,
+            steps=(SceneStep(value=0x0102, colour=(9, 8, 7)),),
+            palette=((1, 2, 3),),
+            config_flags=0x08,
+        ),
+        PaletteScene(
+            template=CatalogueRef("SYNTHETIC", 1, 1),
+            layout=1,
+            brightness_flag=True,
+            steps=(SceneStep(value=0x1234, colour=(1, 2, 3), inline_colour=(4, 5, 6)),),
+            speed_index=7,
+        ),
+    ],
+)
+def test_encode_then_decode_round_trips_canonical_palette_values(scene: PaletteScene) -> None:
+    decoded = decode_palette_scene(scene.template, encode_palette_scene(scene), speed_index=scene.speed_index)
+
+    assert decoded == scene
 
 
 @pytest.mark.parametrize("raw_param", [bytearray(b"\x83"), memoryview(b"\x83"), "\x83"])

@@ -23,13 +23,16 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 from custom_components.ha_govee_led_ble.effect_scene_codec import (
     decode_layered_scene as compatibility_decode_layered_scene,
 )
+from custom_components.ha_govee_led_ble.effect_scene_codec import (
+    encode_layered_scene as compatibility_encode_layered_scene,
+)
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     _check_tree,
     _write,
     parse_scene_body_param,
 )
-from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene
+from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene, encode_layered_scene
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
 
 _LAYERED_SCENE_TYPE = int(SceneBody.SceneType.scene_v2)
@@ -102,6 +105,7 @@ def _assert_layer(decoded: Any, parsed: Any) -> None:
 
 def test_compatibility_import_reexports_master_decoder() -> None:
     assert compatibility_decode_layered_scene is decode_layered_scene
+    assert compatibility_encode_layered_scene is encode_layered_scene
 
 
 def test_all_committed_type_2_scenes_decode_losslessly() -> None:
@@ -134,6 +138,7 @@ def test_all_committed_type_2_scenes_decode_losslessly() -> None:
             assert isinstance(restored, LayeredScene)
             assert restored == decoded
             assert restored.raw_param == raw_param
+            assert encode_layered_scene(decoded) == raw_param
             assert len(decoded.effect.layers) == len(parsed.records)
             for layer, record in zip(decoded.effect.layers, parsed.records, strict=True):
                 _assert_layer(layer, record.body)
@@ -182,6 +187,8 @@ def test_unknown_flags_and_excess_survive_decode_and_json() -> None:
     assert restored.effect.layers[0].selection.type == 0xFE
     assert restored.effect.layers[0].brightness_patterns[0].order == 0xFD
     assert restored.effect.layers[0].excess == b"\xaa\xbb"
+    assert encode_layered_scene(decoded) == synthetic_param
+    assert decode_layered_scene(_reference("H617A", entry), encode_layered_scene(decoded)) == decoded
 
 
 def test_decoded_layered_scene_remains_non_compilable() -> None:

@@ -48,6 +48,7 @@ module = [
     "bleak",
     "bleak.*",
     "bleak_retry_connector.*",
+    "cv2",
     "homeassistant.*",
     "kaitaistruct",
     "kaitaistruct.*",

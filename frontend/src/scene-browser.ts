@@ -6,11 +6,13 @@ import type { EffectStudioApi } from "./api";
 import "./effect-preview";
 import {
   builtinScenePreviewModel,
+  captureBackedPreviewModel,
   layeredScenePreviewModel,
   paletteScenePreviewModel,
 } from "./preview-model";
 import type {
   BuiltinSceneContent,
+  CaptureBackedPreviewProfile,
   DeviceCapabilities,
   LayeredSceneContent,
   LibraryItem,
@@ -66,6 +68,9 @@ export class GoveeSceneBrowser extends LitElement {
   private content?: SceneContent;
 
   @state()
+  private previewProfile?: CaptureBackedPreviewProfile;
+
+  @state()
   private name = "";
 
   @state()
@@ -97,6 +102,7 @@ export class GoveeSceneBrowser extends LitElement {
       this.selectedScene = undefined;
       this.selectedItem = undefined;
       this.content = undefined;
+      this.previewProfile = undefined;
       this.notice = undefined;
       this.error = undefined;
       this.loading = Boolean(this.api && this.device);
@@ -280,6 +286,7 @@ export class GoveeSceneBrowser extends LitElement {
   private renderDetail() {
     const scene = this.selectedScene!;
     const custom = this.selectedItem !== undefined;
+    const captureProfile = this.capturePreviewProfile;
     return html`
       <header class="detail-heading">
         <div>
@@ -391,6 +398,18 @@ export class GoveeSceneBrowser extends LitElement {
             `}
       </section>
 
+      ${captureProfile
+        ? html`
+            <govee-effect-preview
+              class="scene-preview"
+              .model=${captureBackedPreviewModel(captureProfile, {
+                selectedIndex: this.speedIndex,
+                defaultIndex: scene.speed?.default_index ?? null,
+              })}
+            ></govee-effect-preview>
+          `
+        : nothing}
+
       ${this.content?.kind === "scene_builtin"
         ? html`
             <govee-effect-preview
@@ -450,6 +469,7 @@ export class GoveeSceneBrowser extends LitElement {
     this.selectedScene = undefined;
     this.selectedItem = undefined;
     this.content = undefined;
+    this.previewProfile = undefined;
     try {
       const catalogue = await request.api.sceneCatalogue(request.deviceId);
       if (!this.requestIsCurrent(request)) {
@@ -474,6 +494,7 @@ export class GoveeSceneBrowser extends LitElement {
     this.selectedScene = undefined;
     this.selectedItem = undefined;
     this.content = undefined;
+    this.previewProfile = undefined;
     this.notice = undefined;
   }
 
@@ -487,6 +508,7 @@ export class GoveeSceneBrowser extends LitElement {
     this.selectedScene = scene;
     this.selectedItem = undefined;
     this.content = undefined;
+    this.previewProfile = undefined;
     this.name = scene.display_name;
     this.speedIndex = scene.speed?.default_index ?? null;
     try {
@@ -503,6 +525,7 @@ export class GoveeSceneBrowser extends LitElement {
       }
       this.selectedScene = detail.scene;
       this.content = detail.content;
+      this.previewProfile = detail.preview_profile;
       this.name = detail.scene.display_name;
       this.speedIndex = detail.content.speed_index;
     } catch (error) {
@@ -522,6 +545,7 @@ export class GoveeSceneBrowser extends LitElement {
     this.selectedScene = undefined;
     this.selectedItem = undefined;
     this.content = undefined;
+    this.previewProfile = undefined;
     this.name = summary.name;
     try {
       const item = await request.api.item(summary.id);
@@ -548,9 +572,21 @@ export class GoveeSceneBrowser extends LitElement {
       if (!scene) {
         throw new Error("The source scene is not in this device catalogue.");
       }
+      const detail = await request.api.sceneDetail(
+        request.deviceId,
+        content.template.scene_id,
+        content.template.effect_id,
+      );
+      if (
+        !this.requestIsCurrent(request) ||
+        sceneKey(detail.scene) !== sceneKey(scene)
+      ) {
+        return;
+      }
       this.selectedScene = scene;
       this.selectedItem = item;
       this.content = content;
+      this.previewProfile = detail.preview_profile;
       this.name = item.name;
       this.speedIndex =
         content.speed_index ?? scene.speed?.default_index ?? null;
@@ -759,6 +795,20 @@ export class GoveeSceneBrowser extends LitElement {
       return false;
     }
     return this.activeSelectionIdentity === this.selectionKey;
+  }
+
+  private get capturePreviewProfile(): CaptureBackedPreviewProfile | undefined {
+    if (!this.previewProfile || !this.content || !this.selectedScene) {
+      return undefined;
+    }
+    const template = this.content.template;
+    return this.previewProfile.sku === template.sku &&
+      this.previewProfile.scene_id === template.scene_id &&
+      this.previewProfile.effect_id === template.effect_id &&
+      this.previewProfile.scene_id === this.selectedScene.scene_id &&
+      this.previewProfile.effect_id === this.selectedScene.effect_id
+      ? this.previewProfile
+      : undefined;
   }
 
   static styles = css`

@@ -5,6 +5,7 @@
     "scripts": {
         "build": "vite build",
         "check": "npm run typecheck && npm run build",
+        "dev": "vite --config vite.dev.config.ts",
         "test:browser": "playwright test",
         "test:browser:install": "playwright install chromium",
         "test:browser:serve": "vite --config vite.browser.config.ts --host 127.0.0.1 --port 4173",

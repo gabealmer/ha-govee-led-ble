@@ -52,6 +52,7 @@ export interface EffectStudioTestHarness {
   }>;
   reconnectEditor(): void;
   snapshot(): MockBackendSnapshot;
+  validateSceneDetail(value: unknown): unknown;
 }
 
 window.testHarness = {
@@ -125,6 +126,9 @@ window.testHarness = {
   },
   snapshot() {
     return backend.snapshot();
+  },
+  validateSceneDetail(value) {
+    return backend.validateSceneDetail(value);
   },
 };
 
