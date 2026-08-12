@@ -617,7 +617,7 @@ const SCENES: SceneSummary[] = [
     category_id: 10,
     category: "Nature",
     name: "aurora",
-    variant: "layers",
+    variant: "",
     display_name: "Aurora Layers",
     scene_type: 2,
     parameter_kind: "layers",

@@ -299,7 +299,7 @@ async def ws_scene_apply(
     except ValueError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
-    except HomeAssistantError as exc:
+    except (HomeAssistantError, RuntimeError) as exc:
         connection.send_error(msg["id"], "apply_failed", str(exc))
         return
     connection.send_result(
@@ -819,14 +819,23 @@ async def ws_apply(
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
     try:
-        item = backend.library.get(UUID(msg["item_id"]), msg.get("revision"))
+        item_id = UUID(msg["item_id"])
+    except ValueError as exc:
+        connection.send_error(msg["id"], "invalid_format", str(exc))
+        return
+    try:
+        item = backend.library.get(item_id, msg.get("revision"))
+    except EffectNotFoundError as exc:
+        connection.send_error(msg["id"], "not_found", str(exc))
+        return
+    try:
         result = await backend.engine.async_apply_saved(
             entry.runtime_data,
             item,
             config_entry_id=entry.entry_id,
             updated_at=msg["updated_at"],
         )
-    except (ValueError, EffectNotFoundError) as exc:
+    except ValueError as exc:
         connection.send_error(msg["id"], "unsupported_model", str(exc))
         return
     except EffectStorageError as exc:
