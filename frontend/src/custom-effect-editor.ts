@@ -79,19 +79,6 @@ export class GoveeCustomEffectEditor extends LitElement {
     }
 
     return html`
-      <div class="mode-tabs" role="tablist" aria-label="Custom effect type">
-        ${this.modeButton("h617a_single", "Single")}
-        ${this.modeButton("h617a_multi", "Multi")}
-      </div>
-      ${this.content.kind === "h617a_multi" &&
-      this.content.effects.length > 1
-        ? html`
-            <p class="mode-help">
-              Remove all but one effect before switching to Single.
-            </p>
-          `
-        : nothing}
-
       <section class="card effect-card">
         <h3>${this.content.kind === "h617a_multi" ? "Effects" : "Effect"}</h3>
         ${this.content.kind === "h617a_single"
@@ -167,29 +154,6 @@ export class GoveeCustomEffectEditor extends LitElement {
         Math.min(this.previewEffectIndex, this.content.effects.length - 1)
       ] ?? this.content.effects[0]
     );
-  }
-
-  private modeButton(kind: PaletteContent["kind"], label: string) {
-    const selected = this.content?.kind === kind;
-    const wouldDiscardSequence =
-      kind === "h617a_single" &&
-      this.content?.kind === "h617a_multi" &&
-      this.content.effects.length > 1;
-    return html`
-      <button
-        type="button"
-        role="tab"
-        aria-selected=${selected}
-        class=${selected ? "selected" : ""}
-        title=${wouldDiscardSequence
-          ? "Remove all but one effect before switching to Single"
-          : nothing}
-        ?disabled=${this.disabled || wouldDiscardSequence}
-        @click=${() => this.switchMode(kind)}
-      >
-        ${label}
-      </button>
-    `;
   }
 
   private renderSequence(content: MultiContent) {
@@ -377,45 +341,6 @@ export class GoveeCustomEffectEditor extends LitElement {
         })}
       </span>
     `;
-  }
-
-  private switchMode(kind: PaletteContent["kind"]): void {
-    const content = this.content;
-    if (!content || content.kind === kind) {
-      return;
-    }
-    this.previewEffectIndex = 0;
-    if (kind === "h617a_multi") {
-      if (content.kind !== "h617a_single") {
-        return;
-      }
-      this.emitContent({
-        kind,
-        effects: [
-          {
-            family: content.family,
-            variant: content.variant,
-          },
-        ],
-        speed: content.speed,
-        palette: clonePalette(content.palette),
-      });
-      return;
-    }
-    if (
-      content.kind !== "h617a_multi" ||
-      content.effects.length !== 1
-    ) {
-      return;
-    }
-    const first = content.effects[0];
-    this.emitContent({
-      kind,
-      family: first.family,
-      variant: first.variant,
-      speed: content.speed,
-      palette: clonePalette(content.palette),
-    });
   }
 
   private selectEffect(selected: EffectPair): void {
@@ -627,38 +552,6 @@ export class GoveeCustomEffectEditor extends LitElement {
     h4 {
       margin-bottom: 12px;
       font-size: 14px;
-    }
-
-    .mode-tabs {
-      display: flex;
-      width: 100%;
-      margin-bottom: 16px;
-      padding: 4px;
-      border: 1px solid var(--studio-border);
-      border-radius: 10px;
-      background: var(--studio-card);
-    }
-
-    .mode-tabs button {
-      flex: 1;
-      padding: 9px 12px;
-      border: 0;
-      border-radius: 7px;
-      color: var(--primary-text-color);
-      background: transparent;
-      cursor: pointer;
-    }
-
-    .mode-tabs button.selected {
-      color: var(--text-primary-color, #fff);
-      background: var(--studio-blue);
-      font-weight: 650;
-    }
-
-    .mode-help {
-      margin: -8px 0 16px;
-      color: var(--studio-muted);
-      font-size: 13px;
     }
 
     .card,
@@ -1118,7 +1011,6 @@ export class GoveeCustomEffectEditor extends LitElement {
     }
 
     .effect-field:disabled,
-    .mode-tabs button:disabled,
     .swatch:disabled {
       cursor: default;
       opacity: 1;

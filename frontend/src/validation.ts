@@ -629,7 +629,7 @@ export function decodeSceneSummary(value: unknown): SceneSummary {
       MAX_EFFECT_NAME_LENGTH,
     ),
     name: boundedString(scene.name, "scene name", MAX_EFFECT_NAME_LENGTH),
-    variant: boundedString(
+    variant: boundedStringAllowEmpty(
       scene.variant,
       "scene variant",
       MAX_IDENTIFIER_LENGTH,
@@ -840,6 +840,18 @@ function boundedString(
   const text = stringValue(value, name);
   if (text.length === 0 || text.length > maximum) {
     invalid(`${name} must contain 1 to ${maximum} characters`);
+  }
+  return text;
+}
+
+function boundedStringAllowEmpty(
+  value: unknown,
+  name: string,
+  maximum: number,
+): string {
+  const text = stringValue(value, name);
+  if (text.length > maximum) {
+    invalid(`${name} must not exceed ${maximum} characters`);
   }
   return text;
 }

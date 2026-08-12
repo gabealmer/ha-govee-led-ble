@@ -188,12 +188,6 @@ export class GoveeLedEffectStudio extends LitElement {
     );
   }
 
-  private get opaqueDrafts(): EffectDraft[] {
-    return this.drafts.filter(
-      (draft) => draft.item.content.kind === "opaque",
-    );
-  }
-
   private get editableDrafts(): EffectDraft[] {
     return this.drafts.filter(
       (draft) => isEditableEffectContent(draft.item.content),
@@ -253,6 +247,13 @@ export class GoveeLedEffectStudio extends LitElement {
                 </option>
               `,
             )}
+            ${this.selectedDeviceId && !this.selectedDevice
+              ? html`
+                  <option value=${this.selectedDeviceId} disabled>
+                    Device temporarily unavailable
+                  </option>
+                `
+              : nothing}
           </select>
         </label>
       </header>
@@ -334,34 +335,16 @@ export class GoveeLedEffectStudio extends LitElement {
           </div>
           ${this.isAdmin
             ? html`
-                <div class="new-actions" aria-label="Create custom effect">
-                  ${this.newEffectButton("h617a_painted", "Painted")}
-                  ${this.newEffectButton("h617a_single", "Single")}
-                  ${this.newEffectButton("h617a_multi", "Multi")}
-                </div>
+                <button
+                  class="new-kind"
+                  type="button"
+                  @click=${() => this.resumeOrCreateEffect("custom")}
+                >
+                  New effect
+                </button>
               `
             : nothing}
         </div>
-
-        ${this.customDrafts.length
-          ? html`
-              <p class="list-label">Recovery drafts</p>
-              ${this.customDrafts.map(
-                (draft) => html`
-                  <button
-                    class="selector item ${this.currentDraft?.id === draft.id
-                      ? "selected"
-                      : ""}"
-                    type="button"
-                    @click=${() => this.selectDraft(draft)}
-                  >
-                    <span>${draft.item.name}</span>
-                    <small>${customKindLabel(draft.item.content.kind)} draft</small>
-                  </button>
-                `,
-              )}
-            `
-          : nothing}
 
         ${this.renderLibraryGroup("h617a_painted", "Painted")}
         ${this.renderLibraryGroup("h617a_single", "Single")}
@@ -418,35 +401,13 @@ export class GoveeLedEffectStudio extends LitElement {
                 <button
                   class="new-kind"
                   type="button"
-                  @click=${() => this.newEffect("advanced")}
+                  @click=${() => this.resumeOrCreateEffect("advanced")}
                 >
                   New layered effect
                 </button>
               `
             : nothing}
         </div>
-
-        ${this.advancedDrafts.length
-          ? html`
-              <p class="list-label">Recovery drafts</p>
-              ${this.advancedDrafts.map(
-                (draft) => html`
-                  <button
-                    class="selector item ${this.currentDraft?.id === draft.id
-                      ? "selected"
-                      : ""}"
-                    type="button"
-                    @click=${() => this.selectDraft(draft)}
-                  >
-                    <span>${draft.item.name}</span>
-                    <small>
-                      ${advancedKindLabel(draft.item.content.kind)} draft
-                    </small>
-                  </button>
-                `,
-              )}
-            `
-          : nothing}
 
         ${advancedItems.length
           ? html`
@@ -469,29 +430,9 @@ export class GoveeLedEffectStudio extends LitElement {
             `
           : nothing}
 
-        ${opaqueItems.length || this.opaqueDrafts.length
+        ${opaqueItems.length
           ? html`
               <p class="list-label">Other</p>
-              ${this.opaqueDrafts.map(
-                (draft) =>
-                  draft.item.content.kind === "opaque"
-                    ? html`
-                        <button
-                          class="selector item ${this.currentDraft?.id ===
-                          draft.id
-                            ? "selected"
-                            : ""}"
-                          type="button"
-                          @click=${() => this.selectDraft(draft)}
-                        >
-                          <span>${draft.item.name}</span>
-                          <small
-                            >${draft.item.content.source_kind} draft</small
-                          >
-                        </button>
-                      `
-                    : nothing,
-              )}
               ${opaqueItems.map(
                 (item) => html`
                   <button
@@ -513,7 +454,7 @@ export class GoveeLedEffectStudio extends LitElement {
         ${!advancedItems.length &&
         !this.advancedDrafts.length &&
         !opaqueItems.length &&
-        !this.opaqueDrafts.length
+        !this.currentDraft
           ? html`
               <p class="empty">
                 ${this.isAdmin
@@ -672,22 +613,6 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
-  private newEffectButton(
-    kind: CustomEffectContent["kind"],
-    label: string,
-  ) {
-    return html`
-      <button
-        class="new-kind"
-        type="button"
-        title="New ${label} effect"
-        @click=${() => this.newEffect(kind)}
-      >
-        ${label}
-      </button>
-    `;
-  }
-
   private renderLibraryGroup(
     kind: CustomEffectContent["kind"],
     label: string,
@@ -754,6 +679,8 @@ export class GoveeLedEffectStudio extends LitElement {
           </button>
         </div>
       </div>
+
+      ${this.renderCustomModeTabs()}
 
       ${!this.isAdmin
         ? html`
@@ -919,6 +846,8 @@ export class GoveeLedEffectStudio extends LitElement {
         </div>
       </div>
 
+      ${this.renderCustomModeTabs()}
+
       ${!this.isAdmin
         ? html`
             <div class="read-only" role="note">
@@ -965,6 +894,46 @@ export class GoveeLedEffectStudio extends LitElement {
         />
         <output>${value}%</output>
       </label>
+    `;
+  }
+
+  private renderCustomModeTabs() {
+    if (!isCustomEffectContent(this.content)) {
+      return nothing;
+    }
+    return html`
+      <div class="custom-mode-tabs" role="tablist" aria-label="Custom effect type">
+        ${this.customModeButton("h617a_painted", "Painted")}
+        ${this.customModeButton("h617a_single", "Single")}
+        ${this.customModeButton("h617a_multi", "Multi")}
+      </div>
+    `;
+  }
+
+  private customModeButton(
+    kind: CustomEffectContent["kind"],
+    label: string,
+  ) {
+    const selected =
+      isCustomEffectContent(this.content) && this.content.kind === kind;
+    const wouldDiscardSequence =
+      kind === "h617a_single" &&
+      this.content.kind === "h617a_multi" &&
+      this.content.effects.length > 1;
+    return html`
+      <button
+        type="button"
+        role="tab"
+        aria-selected=${selected}
+        class=${selected ? "selected" : ""}
+        title=${wouldDiscardSequence
+          ? "Remove all but one effect before switching to Single"
+          : nothing}
+        ?disabled=${!this.isAdmin || wouldDiscardSequence}
+        @click=${() => this.switchCustomMode(kind)}
+      >
+        ${label}
+      </button>
     `;
   }
 
@@ -1067,6 +1036,25 @@ export class GoveeLedEffectStudio extends LitElement {
       this.currentDraft = undefined;
       this.name = "";
     }
+  }
+
+  private async resumeOrCreateEffect(
+    section: "custom" | "advanced",
+  ): Promise<void> {
+    const drafts =
+      section === "advanced" ? this.advancedDrafts : this.customDrafts;
+    const recovery = this.newestRecoveryForDevice(drafts);
+    if (recovery) {
+      const selected = await this.selectDraft(recovery);
+      if (selected) {
+        this.section = section;
+        this.notice = "Recovered an unfinished draft.";
+      }
+      return;
+    }
+    await this.newEffect(
+      section === "advanced" ? "advanced" : "h617a_painted",
+    );
   }
 
   private async load(): Promise<void> {
@@ -1376,6 +1364,94 @@ export class GoveeLedEffectStudio extends LitElement {
       "verifying",
       "interrupted",
     ])?.operation_id;
+    this.scheduleDraft();
+    this.notice = this.applyAvailabilityNotice();
+  }
+
+  private switchCustomMode(kind: CustomEffectContent["kind"]): void {
+    if (
+      !this.isAdmin ||
+      !this.customCatalogue ||
+      !isCustomEffectContent(this.content) ||
+      this.content.kind === kind
+    ) {
+      return;
+    }
+    const current = this.content;
+    if (
+      kind === "h617a_single" &&
+      current.kind === "h617a_multi" &&
+      current.effects.length > 1
+    ) {
+      return;
+    }
+    let next: CustomEffectContent;
+    if (kind === "h617a_painted") {
+      const colour: RGB =
+        current.kind === "h617a_painted"
+          ? hexToRgb(this.foreground)
+          : current.palette[0]
+            ? [...current.palette[0]]
+            : [47, 111, 237];
+      next = {
+        ...blankPainted(),
+        speed: current.speed,
+        groups: [
+          {
+            fill: [...colour],
+            segments: Array.from({ length: SEGMENT_COUNT }, (_, index) => index),
+          },
+        ],
+      };
+      this.foreground = rgbToHex(colour);
+    } else if (current.kind === "h617a_painted") {
+      const paintedPalette = uniquePaintedPalette(current);
+      if (kind === "h617a_single") {
+        const blank = blankCustomEffect(kind, this.customCatalogue);
+        next = {
+          ...blank,
+          speed: current.speed,
+          palette: paintedPalette.length ? paintedPalette : blank.palette,
+        };
+      } else {
+        const blank = blankCustomEffect("h617a_multi", this.customCatalogue);
+        next = {
+          ...blank,
+          speed: current.speed,
+          palette: paintedPalette.length ? paintedPalette : blank.palette,
+        };
+      }
+    } else if (kind === "h617a_multi" && current.kind === "h617a_single") {
+      next = {
+        kind,
+        effects: [
+          {
+            family: current.family,
+            variant: current.variant,
+          },
+        ],
+        speed: current.speed,
+        palette: current.palette.map((colour) => [...colour]),
+      };
+    } else if (
+      kind === "h617a_single" &&
+      current.kind === "h617a_multi"
+    ) {
+      const first = current.effects[0];
+      next = {
+        kind,
+        family: first.family,
+        variant: first.variant,
+        speed: current.speed,
+        palette: current.palette.map((colour) => [...colour]),
+      };
+    } else {
+      return;
+    }
+    this.content = next;
+    if (/^New (Painted|Single|Multi) effect$/.test(this.name)) {
+      this.name = `New ${customKindLabel(kind)} effect`;
+    }
     this.scheduleDraft();
     this.notice = this.applyAvailabilityNotice();
   }
@@ -2087,6 +2163,9 @@ export class GoveeLedEffectStudio extends LitElement {
     if (isAdvancedEditableContent(this.content)) {
       return undefined;
     }
+    if (this.selectedDeviceId && !this.selectedDevice) {
+      return "This device is temporarily unavailable in Home Assistant. Apply is disabled until it is loaded.";
+    }
     return this.applyCapability === "supported"
       ? undefined
       : `${customKindLabel(this.content.kind)} effects cannot be applied to this device.`;
@@ -2298,12 +2377,6 @@ export class GoveeLedEffectStudio extends LitElement {
       margin-bottom: 22px;
     }
 
-    .new-actions {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 5px;
-    }
-
     .new-kind {
       min-height: 44px;
       padding: 8px 4px;
@@ -2366,6 +2439,39 @@ export class GoveeLedEffectStudio extends LitElement {
       justify-content: space-between;
       gap: 20px;
       margin-bottom: 22px;
+    }
+
+    .custom-mode-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 22px;
+      padding: 6px;
+      border: 1px solid var(--studio-border);
+      border-radius: 12px;
+      background: var(--studio-card);
+    }
+
+    .custom-mode-tabs button {
+      min-height: 52px;
+      padding: 12px;
+      border: 0;
+      border-radius: 9px;
+      color: var(--primary-text-color);
+      background: transparent;
+      font-size: 15px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    .custom-mode-tabs button.selected {
+      color: var(--text-primary-color, #fff);
+      background: var(--studio-blue);
+    }
+
+    .custom-mode-tabs button:disabled {
+      cursor: default;
+      opacity: 0.52;
     }
 
     .back-button {
@@ -2752,6 +2858,22 @@ function blankPainted(): PaintedContent {
 }
 
 function blankCustomEffect(
+  kind: "h617a_painted",
+  catalogue: CustomEffectCatalogue,
+): PaintedContent;
+function blankCustomEffect(
+  kind: "h617a_single",
+  catalogue: CustomEffectCatalogue,
+): Extract<CustomEffectContent, { kind: "h617a_single" }>;
+function blankCustomEffect(
+  kind: "h617a_multi",
+  catalogue: CustomEffectCatalogue,
+): Extract<CustomEffectContent, { kind: "h617a_multi" }>;
+function blankCustomEffect(
+  kind: CustomEffectContent["kind"],
+  catalogue: CustomEffectCatalogue,
+): CustomEffectContent;
+function blankCustomEffect(
   kind: CustomEffectContent["kind"],
   catalogue: CustomEffectCatalogue,
 ): CustomEffectContent {
@@ -2913,6 +3035,22 @@ function groupsFromColours(colours: RGB[], background: RGB) {
     }
   });
   return [...groups.values()];
+}
+
+function uniquePaintedPalette(content: PaintedContent): RGB[] {
+  const palette: RGB[] = [];
+  for (const colour of coloursForSegments(content)) {
+    if (
+      !sameColour(colour, content.background) &&
+      !palette.some((existing) => sameColour(existing, colour))
+    ) {
+      palette.push([...colour]);
+    }
+    if (palette.length === 8) {
+      break;
+    }
+  }
+  return palette;
 }
 
 function sameColour(left: RGB, right: RGB): boolean {
