@@ -3,6 +3,12 @@ import { property, state } from "lit/decorators.js";
 
 import { cloneAdvancedContent } from "./advanced-effect-editor";
 import type { EffectStudioApi } from "./api";
+import "./effect-preview";
+import {
+  builtinScenePreviewModel,
+  layeredScenePreviewModel,
+  paletteScenePreviewModel,
+} from "./preview-model";
 import type {
   BuiltinSceneContent,
   DeviceCapabilities,
@@ -10,12 +16,16 @@ import type {
   LibraryItem,
   LibrarySnapshot,
   LibrarySummary,
+  PaletteSceneContent,
   SceneCatalogue,
   SceneSummary,
 } from "./types";
 
 type CategorySelection = "all" | "custom" | number;
-type SceneContent = BuiltinSceneContent | LayeredSceneContent;
+type SceneContent =
+  | BuiltinSceneContent
+  | PaletteSceneContent
+  | LayeredSceneContent;
 type SceneRequestContext = {
   generation: number;
   api: EffectStudioApi;
@@ -203,7 +213,7 @@ export class GoveeSceneBrowser extends LitElement {
   private get compatibleCustomScenes(): LibrarySummary[] {
     return this.library.items.filter(
       (item) =>
-        item.kind === "scene_builtin" &&
+        (item.kind === "scene_builtin" || item.kind === "scene_palette") &&
         item.template?.sku === this.catalogue?.sku,
     );
   }
@@ -313,6 +323,10 @@ export class GoveeSceneBrowser extends LitElement {
           <button
             class="primary"
             type="button"
+            aria-describedby=${custom &&
+            this.content?.kind === "scene_palette"
+              ? "palette-apply-reason"
+              : nothing}
             ?disabled=${!this.isAdmin ||
             !this.catalogue?.enabled ||
             !this.hasCurrentSceneContent() ||
@@ -331,6 +345,15 @@ export class GoveeSceneBrowser extends LitElement {
             <div class="callout" role="note">
               Native scenes are disabled for this device in the integration
               options. Browsing and saving copies remain available.
+            </div>
+          `
+        : nothing}
+
+      ${custom && this.content?.kind === "scene_palette"
+        ? html`
+            <div class="callout" id="palette-apply-reason" role="note">
+              Saved palette scene copies cannot be applied. Apply the native
+              catalogue scene through its scene identity instead.
             </div>
           `
         : nothing}
@@ -368,18 +391,28 @@ export class GoveeSceneBrowser extends LitElement {
             `}
       </section>
 
-      ${scene.parameter_kind === "palette"
+      ${this.content?.kind === "scene_builtin"
         ? html`
-            <section class="card">
-              <h3>Colours</h3>
-              <p class="muted">
-                The catalogue palette is preserved. Editable colour conversion
-                is not enabled until the parameter body can be round-tripped
-                losslessly.
-              </p>
-            </section>
+            <govee-effect-preview
+              class="scene-preview"
+              .model=${builtinScenePreviewModel(this.content)}
+            ></govee-effect-preview>
           `
-        : nothing}
+        : this.content?.kind === "scene_palette"
+          ? html`
+              <govee-effect-preview
+                class="scene-preview"
+                .model=${paletteScenePreviewModel(this.content)}
+              ></govee-effect-preview>
+            `
+          : this.content?.kind === "scene_layered"
+            ? html`
+                <govee-effect-preview
+                  class="scene-preview"
+                  .model=${layeredScenePreviewModel(this.content)}
+                ></govee-effect-preview>
+              `
+            : nothing}
 
       ${scene.parameter_kind === "layers"
         ? html`
@@ -495,7 +528,10 @@ export class GoveeSceneBrowser extends LitElement {
       if (!this.requestIsCurrent(request)) {
         return;
       }
-      if (item.content.kind !== "scene_builtin") {
+      if (
+        item.content.kind !== "scene_builtin" &&
+        item.content.kind !== "scene_palette"
+      ) {
         throw new Error("This custom scene uses an unsupported definition.");
       }
       const content = item.content;
@@ -533,7 +569,8 @@ export class GoveeSceneBrowser extends LitElement {
       !this.selectedScene ||
       !this.content ||
       !this.hasCurrentSceneContent() ||
-      this.content.kind !== "scene_builtin" ||
+      (this.content.kind !== "scene_builtin" &&
+        this.content.kind !== "scene_palette") ||
       !this.isAdmin ||
       this.saving
     ) {
@@ -549,10 +586,16 @@ export class GoveeSceneBrowser extends LitElement {
       this.notice = "Give this custom scene a name before saving.";
       return;
     }
-    const content: BuiltinSceneContent = {
-      ...this.content,
-      speed_index: this.speedIndex,
-    };
+    const content =
+      this.content.kind === "scene_palette"
+        ? clonePaletteSceneContent({
+            ...this.content,
+            speed_index: this.speedIndex,
+          })
+        : {
+            ...this.content,
+            speed_index: this.speedIndex,
+          };
     const request = this.captureRequest();
     this.saving = true;
     this.notice = undefined;
@@ -569,7 +612,10 @@ export class GoveeSceneBrowser extends LitElement {
             content,
             this.library.library_revision,
           );
-      if (result.item.content.kind !== "scene_builtin") {
+      if (
+        result.item.content.kind !== "scene_builtin" &&
+        result.item.content.kind !== "scene_palette"
+      ) {
         throw new Error("The saved scene returned an unsupported definition.");
       }
       this.dispatchEvent(
@@ -896,6 +942,11 @@ export class GoveeSceneBrowser extends LitElement {
       padding: 20px;
     }
 
+    .scene-preview {
+      display: block;
+      margin-top: 18px;
+    }
+
     .callout,
     .notice {
       margin-bottom: 18px;
@@ -1039,6 +1090,22 @@ function cloneLayeredSceneContent(
         layers: content.effect.layers,
       }).layers,
     },
+  };
+}
+
+function clonePaletteSceneContent(
+  content: PaletteSceneContent,
+): PaletteSceneContent {
+  return {
+    ...content,
+    template: { ...content.template },
+    steps: content.steps.map((step) => ({
+      ...step,
+      colour: [...step.colour],
+      inline_colour:
+        step.inline_colour === null ? null : [...step.inline_colour],
+    })),
+    palette: content.palette.map((colour) => [...colour]),
   };
 }
 

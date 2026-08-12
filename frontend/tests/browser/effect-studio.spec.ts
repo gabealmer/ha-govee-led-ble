@@ -34,6 +34,25 @@ async function openLayeredScene(page: Page) {
   return openScene(page, "Nature", /Aurora Layers/);
 }
 
+async function openPaletteScene(
+  page: Page,
+  category: string,
+  name: RegExp,
+) {
+  const studio = page.locator(studioSelector);
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const sceneBrowser = studio.locator("govee-scene-browser");
+  await expect(
+    sceneBrowser.getByRole("complementary", { name: "Scene categories" }),
+  ).toBeVisible();
+  await sceneBrowser.getByRole("button", { name: category }).click();
+  await sceneBrowser.getByRole("button", { name }).click();
+  await expect(
+    sceneBrowser.locator("govee-effect-preview"),
+  ).toBeVisible();
+  return sceneBrowser;
+}
+
 test("capability gates Apply while retaining supported H617A custom Apply", async ({
   page,
 }) => {
@@ -85,6 +104,442 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   await expect(
     studio.getByRole("list", { name: "Colours" }),
   ).toBeVisible();
+});
+
+test("effect previews remain static and catalogue-gate unknown Type04 identities", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const preview = studio.locator("govee-effect-preview");
+
+  await studio.getByRole("button", { name: "Supported painted effect" }).click();
+  await expect(preview.getByText("Deterministic", { exact: true })).toBeVisible();
+  await expect(preview.getByRole("button", { name: /^Segment / })).toHaveCount(
+    15,
+  );
+  await expect(
+    preview.getByText(
+      "only the exact 15-segment background and group map is shown",
+    ),
+  ).toBeVisible();
+  await expect(preview.locator(".palette, .sequence, .scene-steps, .layers")).toHaveCount(0);
+  const paintedLabels = await preview
+    .getByRole("button", { name: /^Segment / })
+    .evaluateAll((buttons) =>
+      buttons.map((button) => button.getAttribute("aria-label")),
+    );
+  expect(paintedLabels).toEqual([
+    "Segment 1, #2f6fed",
+    "Segment 2, #2f6fed",
+    "Segment 3, #2f6fed",
+    ...Array.from(
+      { length: 12 },
+      (_, index) => `Segment ${index + 4}, #000000`,
+    ),
+  ]);
+  const firstSegment = preview.getByRole("button", {
+    name: "Segment 1, #2f6fed",
+  });
+  await firstSegment.focus();
+  await firstSegment.press("Enter");
+  await expect(
+    preview.getByRole("button", { name: "Segment 1, #2f80ed" }),
+  ).toBeVisible();
+
+  const modes = studio.getByRole("tablist", { name: "Custom effect type" });
+  await modes.getByRole("tab", { name: "Single" }).click();
+  await expect(
+    preview.getByText("Structural", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    preview.getByText(
+      "Device animation and behaviour are not simulated.",
+      { exact: false },
+    ),
+  ).toBeVisible();
+
+  const animatedElements = await preview.locator("*").evaluateAll((elements) =>
+    elements.filter(
+      (element) => getComputedStyle(element).animationName !== "none",
+    ).length,
+  );
+  expect(animatedElements).toBe(0);
+  await expect(
+    preview.getByRole("list", { name: "Preview palette" }).getByRole("listitem"),
+  ).toHaveCount(2);
+  await expect(
+    preview.getByRole("list", { name: "Catalogue effect order" }).getByRole("listitem"),
+  ).toHaveText([/1\s+Fade\s+Structural/]);
+
+  await studio.getByRole("button", { name: "Verified fixture-backed multi effect" }).click();
+  await expect(
+    preview.getByRole("heading", { name: "Multi effect sequence" }),
+  ).toBeVisible();
+  await expect(
+    preview.getByRole("list", { name: "Preview palette" }).getByRole("listitem"),
+  ).toHaveCount(2);
+  await expect(preview.getByLabel("Colour 1, #0c2238")).toBeVisible();
+  await expect(
+    preview.getByRole("list", { name: "Catalogue effect order" }).getByRole("listitem"),
+  ).toHaveText([
+    /1\s+Fade\s+Structural/,
+    /2\s+Unknown catalogue identity\s+Raw family 254, variant 253\s+Opaque \/ unknown/,
+    /3\s+Marquee\s+Structural/,
+  ]);
+  await expect(preview.getByText("Deterministic", { exact: true })).toHaveCount(0);
+
+  await studio.getByRole("button", { name: "Unknown Type04 pair" }).click();
+  await expect(
+    preview.getByText("Opaque / unknown", { exact: true }),
+  ).toBeVisible();
+  await expect(preview.getByText("Raw family 254, variant 253")).toBeVisible();
+  await expect(preview.getByLabel("Colour 1, #ff0000")).toBeVisible();
+  await expect(preview.getByLabel("Colour 2, #0000ff")).toBeVisible();
+  await expect(preview.getByText(/Family 254|style 253/)).toHaveCount(0);
+
+  await studio.getByRole("button", { name: "Uncaptured special DIY pair" }).click();
+  await expect(
+    preview.getByText("Opaque / unknown", { exact: true }),
+  ).toBeVisible();
+  await expect(preview.getByText("Raw family 252, variant 251")).toBeVisible();
+  await expect(preview.getByLabel("Colour 1, #090807")).toBeVisible();
+  await expect(preview.getByText("Deterministic", { exact: true })).toHaveCount(0);
+  expect(
+    await preview.locator("*").evaluateAll((elements) =>
+      elements.filter(
+        (element) => getComputedStyle(element).animationName !== "none",
+      ).length,
+    ),
+  ).toBe(0);
+});
+
+test("scene Type 0 remains opaque without a visual parameter preview", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const studio = page.locator(studioSelector);
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const sceneBrowser = studio.locator("govee-scene-browser");
+  await sceneBrowser.getByRole("button", { name: "Everyday" }).click();
+  await sceneBrowser.getByRole("button", { name: /^Reading/ }).click();
+  const preview = sceneBrowser.locator("govee-effect-preview");
+
+  await expect(
+    preview.getByRole("heading", { name: "Built-in scene identity" }),
+  ).toBeVisible();
+  await expect(
+    preview.getByText("Scene Type 0 has no documented visual parameters"),
+  ).toBeVisible();
+  await expect(preview.getByText("Scene 100, effect 200")).toBeVisible();
+  await expect(preview.getByRole("list", { name: "Preview palette" })).toHaveCount(0);
+  await expect(preview.locator(".preview-cell, .scene-steps, .layers")).toHaveCount(0);
+});
+
+test("captured layout 0 palette scenes expose lossless structure", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const halloween = await openPaletteScene(page, "Festival", /^Halloween/);
+  const preview = halloween.locator("govee-effect-preview");
+
+  await expect(
+    preview.getByRole("heading", {
+      name: "Captured palette scene structure",
+    }),
+  ).toBeVisible();
+  await expect(preview.getByText("Layout", { exact: true })).toBeVisible();
+  await expect(preview.getByText("0", { exact: true })).toBeVisible();
+  await expect(preview.getByText("Brightness flag")).toBeVisible();
+  await expect(preview.getByText("Set", { exact: true })).toBeVisible();
+  await expect(
+    preview.getByRole("list", { name: "Ordered scene steps" }).getByRole("listitem"),
+  ).toHaveCount(6);
+  await expect(preview.getByText("Raw value 5")).toHaveCount(5);
+  await expect(preview.getByText("Raw value 6")).toHaveCount(1);
+  await expect(
+    preview.getByRole("list", { name: "Preview palette" }).getByRole("listitem"),
+  ).toHaveCount(4);
+  await expect(preview.getByLabel("Colour 1, #ff1e00")).toBeVisible();
+  await expect(
+    preview.getByText("Timing, motion and device animation are not inferred."),
+  ).toBeVisible();
+
+  await halloween.getByRole("button", { name: "Life" }).click();
+  await halloween.getByRole("button", { name: /^Sweet/ }).click();
+  await expect(
+    halloween.getByRole("heading", {
+      name: "Captured palette scene structure",
+    }),
+  ).toBeVisible();
+  await expect(halloween.getByText("Raw value 50")).toBeVisible();
+  await expect(halloween.getByLabel("Colour 4, #e300ff")).toBeVisible();
+});
+
+test("palette scene validation enforces schema boundaries and layout rules", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() => {
+    const decodeEffectContent = (value: unknown) =>
+      window.testHarness.backend.validateEffectContent(value);
+    const template = {
+      sku: "SYNTHETIC",
+      scene_id: 1,
+      effect_id: 2,
+      catalogue_schema_version: 1,
+    };
+    const syntheticSchemaOnlyLayout1 = {
+      kind: "scene_palette",
+      template,
+      layout: 1,
+      brightness_flag: true,
+      steps: [
+        {
+          value: 0x1234,
+          colour: [1, 2, 3],
+          inline_colour: [4, 5, 6],
+        },
+        {
+          value: 2,
+          colour: [7, 8, 9],
+          inline_colour: [10, 11, 12],
+        },
+      ],
+      palette: [],
+      speed_index: 255,
+    };
+    const boundaryLayout0 = {
+      kind: "scene_palette",
+      template,
+      layout: 0,
+      brightness_flag: false,
+      steps: Array.from({ length: 255 }, (_, value) => ({
+        value,
+        colour: [1, 2, 3],
+        inline_colour: null,
+      })),
+      palette: Array.from({ length: 255 }, () => [4, 5, 6]),
+      speed_index: null,
+    };
+    const invalidPayloads = [
+      { ...syntheticSchemaOnlyLayout1, layout: 2 },
+      { ...syntheticSchemaOnlyLayout1, brightness_flag: 1 },
+      { ...syntheticSchemaOnlyLayout1, steps: "not-an-array" },
+      {
+        ...syntheticSchemaOnlyLayout1,
+        steps: Array.from({ length: 256 }, () => syntheticSchemaOnlyLayout1.steps[0]),
+      },
+      {
+        ...syntheticSchemaOnlyLayout1,
+        steps: [{ ...syntheticSchemaOnlyLayout1.steps[0], value: 65_536 }],
+      },
+      {
+        ...syntheticSchemaOnlyLayout1,
+        steps: [{ ...syntheticSchemaOnlyLayout1.steps[0], colour: [1, 2] }],
+      },
+      {
+        ...syntheticSchemaOnlyLayout1,
+        steps: [{ ...syntheticSchemaOnlyLayout1.steps[0], inline_colour: null }],
+      },
+      { ...syntheticSchemaOnlyLayout1, palette: [[1, 2, 3]] },
+      { ...syntheticSchemaOnlyLayout1, speed_index: 256 },
+      {
+        ...boundaryLayout0,
+        steps: [{ value: 1, colour: [1, 2, 3], inline_colour: [4, 5, 6] }],
+      },
+      {
+        ...boundaryLayout0,
+        palette: Array.from({ length: 256 }, () => [4, 5, 6]),
+      },
+    ];
+    const synthetic = decodeEffectContent(syntheticSchemaOnlyLayout1);
+    const boundary = decodeEffectContent(boundaryLayout0);
+    return {
+      synthetic,
+      boundaryStepCount:
+        boundary.kind === "scene_palette" ? boundary.steps.length : -1,
+      boundaryPaletteCount:
+        boundary.kind === "scene_palette" ? boundary.palette.length : -1,
+      rejected: invalidPayloads.map((payload) => {
+        try {
+          decodeEffectContent(payload);
+          return false;
+        } catch {
+          return true;
+        }
+      }),
+    };
+  });
+
+  expect(result.synthetic).toMatchObject({
+    kind: "scene_palette",
+    layout: 1,
+    speed_index: 255,
+    steps: [
+      { value: 0x1234, inline_colour: [4, 5, 6] },
+      { value: 2, inline_colour: [10, 11, 12] },
+    ],
+  });
+  expect(result.boundaryStepCount).toBe(255);
+  expect(result.boundaryPaletteCount).toBe(255);
+  expect(result.rejected).toEqual(Array.from({ length: 11 }, () => true));
+});
+
+test("schema-only layout 1 remains structural and static", async ({ page }) => {
+  await openStudio(page);
+  const sceneBrowser = await openPaletteScene(
+    page,
+    "Synthetic schema-only",
+    /Synthetic Layout 1/,
+  );
+  const preview = sceneBrowser.locator("govee-effect-preview");
+
+  await expect(
+    preview.getByRole("heading", {
+      name: "Palette scene structure (schema-only layout 1)",
+    }),
+  ).toBeVisible();
+  await expect(preview.getByText("Raw value 4660")).toBeVisible();
+  await expect(preview.getByLabel("Step colour #010203")).toBeVisible();
+  await expect(preview.getByLabel("Inline colour #040506")).toBeVisible();
+  await expect(preview.getByRole("list", { name: "Preview palette" })).toHaveCount(0);
+  await expect(
+    preview.getByText("No hardware behaviour, timing, motion or animation is inferred."),
+  ).toBeVisible();
+  const animatedElements = await preview.locator("*").evaluateAll((elements) =>
+    elements.filter(
+      (element) => getComputedStyle(element).animationName !== "none",
+    ).length,
+  );
+  expect(animatedElements).toBe(0);
+});
+
+test("scene Type 2 previews documented layer structure without geometry or animation", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const sceneBrowser = await openLayeredScene(page);
+  const preview = sceneBrowser.locator("govee-effect-preview");
+
+  await expect(
+    preview.getByRole("heading", { name: "Captured layered scene structure" }),
+  ).toBeVisible();
+  await expect(preview.getByText("Structural", { exact: true })).toBeVisible();
+  await expect(preview.getByRole("article")).toHaveCount(2);
+  await expect(
+    preview.getByRole("img", {
+      name: "Layer 1 applied area: start 0 tenths, width 10 tenths",
+    }),
+  ).toBeVisible();
+  await expect(
+    preview.getByRole("list", { name: "Preview palette" }),
+  ).toHaveCount(2);
+  await expect(
+    preview.getByText(
+      "No composite animation or physical LED geometry is inferred.",
+    ),
+  ).toBeVisible();
+  await expect(preview.locator(".preview-cell, .scene-steps")).toHaveCount(0);
+  expect(
+    await preview.locator("*").evaluateAll((elements) =>
+      elements.filter(
+        (element) => getComputedStyle(element).animationName !== "none",
+      ).length,
+    ),
+  ).toBe(0);
+});
+
+test("palette copies save losslessly, reload under Custom and cannot Apply", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const sceneBrowser = await openPaletteScene(page, "Festival", /^Halloween/);
+  const nativeApply = sceneBrowser.getByRole("button", { name: "Apply" });
+
+  await expect(nativeApply).toBeEnabled();
+  await nativeApply.click();
+  await expect(
+    sceneBrowser.getByRole("status").filter({ hasText: "Applied to Test strip" }),
+  ).toBeVisible();
+  await sceneBrowser.getByRole("button", { name: "Save copy" }).click();
+  await expect(
+    sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
+  ).toBeVisible();
+
+  const customApply = sceneBrowser.getByRole("button", { name: "Apply" });
+  await expect(customApply).toBeDisabled();
+  await expect(customApply).toHaveAttribute(
+    "aria-describedby",
+    "palette-apply-reason",
+  );
+  await expect(
+    sceneBrowser.getByRole("note").filter({
+      hasText: "Saved palette scene copies cannot be applied.",
+    }),
+  ).toBeVisible();
+  await sceneBrowser.getByLabel("Scene name").fill("Halloween preserved");
+  await sceneBrowser.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
+  ).toBeVisible();
+
+  const beforeReload = await page.evaluate(() => {
+    const snapshot = window.testHarness.snapshot();
+    const item = Object.values(snapshot.state.items).find(
+      (candidate) => candidate.name === "Halloween preserved",
+    );
+    return {
+      content: item?.content,
+      commands: snapshot.calls
+        .map((call) => String(call.type))
+        .filter((type) => type.endsWith("/scene/apply") || type.endsWith("/apply") || type.endsWith("/apply_snapshot")),
+    };
+  });
+  expect(beforeReload.content).toEqual({
+    kind: "scene_palette",
+    template: {
+      sku: "H617A",
+      scene_id: 1041,
+      effect_id: 1103,
+      catalogue_schema_version: 1,
+    },
+    layout: 0,
+    brightness_flag: true,
+    steps: [
+      { value: 5, colour: [255, 245, 0], inline_colour: null },
+      { value: 5, colour: [255, 255, 255], inline_colour: null },
+      { value: 5, colour: [255, 233, 255], inline_colour: null },
+      { value: 5, colour: [255, 255, 255], inline_colour: null },
+      { value: 5, colour: [255, 233, 217], inline_colour: null },
+      { value: 6, colour: [255, 248, 255], inline_colour: null },
+    ],
+    palette: [
+      [255, 30, 0],
+      [255, 90, 0],
+      [255, 50, 0],
+      [255, 120, 0],
+    ],
+    speed_index: null,
+  });
+  expect(beforeReload.commands).toEqual([
+    "ha_govee_led_ble/editor/scene/apply",
+  ]);
+
+  await page.reload();
+  const studio = page.locator(studioSelector);
+  await expect(
+    studio.getByRole("heading", { name: "Effect Studio" }),
+  ).toBeVisible();
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const reloadedBrowser = studio.locator("govee-scene-browser");
+  await reloadedBrowser
+    .getByRole("button", { name: "Custom", exact: true })
+    .click();
+  await reloadedBrowser.getByRole("button", { name: /Halloween preserved/ }).click();
+  await expect(reloadedBrowser.getByText("Raw value 6")).toBeVisible();
+  await expect(
+    reloadedBrowser.getByRole("button", { name: "Apply" }),
+  ).toBeDisabled();
 });
 
 test("a temporarily unavailable URL device is not reported as unsupported", async ({
@@ -878,19 +1333,30 @@ test("unknown layered values stay raw and use a conservative preview", async ({
   await expect(advanced.getByLabel("Order (raw byte)")).toHaveValue("253");
   await expect(
     advanced.getByText(
-      "Selection type 254 has unknown structure, so no selected cells are previewed.",
+      "Selection type 254 has unknown structure. Its raw parameters remain visible and no selected cells are inferred.",
     ),
   ).toBeVisible();
-  await expect(advanced.locator(".preview-cell")).toHaveCount(15);
-  await expect(advanced.locator(".preview-cell.active")).toHaveCount(0);
+  await expect(advanced.getByText("0x20", { exact: true })).toBeVisible();
+  await expect(
+    advanced.getByText(
+      "Selected movement flags remain visible without interpretation.",
+    ),
+  ).toBeVisible();
+  await expect(advanced.locator(".preview-cell")).toHaveCount(0);
+  await expect(
+    advanced.getByRole("img", { name: /Layer 1 applied area/ }),
+  ).toBeVisible();
 
   await advanced.getByRole("tab", { name: "Layer 2" }).click();
   await expect(
-    advanced.getByText(
-      "Brightness order 253 has unknown structure, so gradient brightness is not previewed.",
-    ),
+    advanced
+      .getByRole("article")
+      .filter({ hasText: "Layer 2 Selected" })
+      .getByText(
+        "Brightness order 253 has unknown structure. Its raw pattern remains visible and no brightness gradient is inferred.",
+      ),
   ).toBeVisible();
-  await expect(advanced.locator(".preview-cell.active")).toHaveCount(0);
+  await expect(advanced.locator(".preview-cell")).toHaveCount(0);
 
   await studio.getByLabel("Effect name").fill("Raw values preserved");
   await expect
@@ -1118,8 +1584,11 @@ test("empty brightness pattern imports remain inspectable and unchanged", async 
   await expect(
     advanced.getByRole("button", { name: "Add brightness pattern" }),
   ).toBeEnabled();
-  await expect(advanced.locator(".preview-cell")).toHaveCount(15);
-  await expect(advanced.locator(".preview-cell.active")).toHaveCount(0);
+  await expect(advanced.locator(".preview-cell")).toHaveCount(0);
+  await expect(
+    advanced.getByText("Brightness", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(advanced.getByText("No pattern records")).toBeVisible();
 
   const draftContent = await page.evaluate(() => {
     const calls = window.testHarness

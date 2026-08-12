@@ -80,22 +80,25 @@ pipeline_known_issues:
   - id: preview_fidelity_ceiling
     summary: >-
       Verified previewability finding covering both models' animatable capabilities.
-      Exact, deterministic preview is achievable only for static colour/brightness, the
-      DIY-03 paint map (diy_type03), the DIY-04 flat palette (diy_type04), and
-      workshop_body's applied-area geometry (which segments/LEDs a colour block covers)
-      — each defines a concrete, fully computable colour-per-position assignment.
-      Workshop-authored scenes (scene_type=2) and scene_type=1 are structural-only:
-      their retention/speed/movement-interval bytes are ordinal/unmeasured, and
-      movement interval/speed have only ever been observed to co-vary in the fixture
-      corpus, never independently calibrated, so no rendering algorithm for the motion
-      itself is evidenced even though the layer/colour shape is known. scene_type=0
-      built-ins, built-in/reactive music modes, live video (DreamView), DIY/workshop
-      codes with no committed fixture, and unexercised H6199 families (e.g.
-      diy_activation) must not be animated by a preview engine at all: for scene_type=0
-      and unfixtured codes this is an evidence gap (no shape is known, matching
-      preview_level opaque); for music and video it is a principled live-signal
-      limitation (matching preview_level live), not an evidence gap that more captures
-      could close.
+      Exact, deterministic static preview is achievable for static colour/brightness
+      and diy_type03's background plus explicit 15-segment paint map. The four
+      fixture-backed diy_type04 authoring identities expose palette, speed and
+      family/variant structure, but no device rendering algorithm, so they are
+      structural-only rather than deterministic. workshop_body and scene_type=2 expose
+      palettes, layers and applied-area structure, but their selection, brightness and
+      movement/timing semantics are not calibrated. scene_type=1 exposes ordered
+      colours, palette and raw step values, but the meaning of those values and the
+      rendering algorithm are not calibrated; every committed catalogue/fixture
+      example is layout 0, while layout 1 has schema and synthetic-test support only,
+      with no hardware evidence. scene_type=0 built-ins, uncaptured special DIY
+      templates or other Type04 family/variant pairs absent from the committed
+      authoring catalogue, built-in/reactive music modes, live video (DreamView), other
+      DIY/workshop codes with no committed fixture, and unexercised H6199 families
+      (e.g. diy_activation) must not be animated by a preview engine at all: for
+      scene_type=0 and unfixtured codes this is an evidence gap (no shape is known,
+      matching preview_level opaque); for music and video it is a principled
+      live-signal limitation (matching preview_level live), not an evidence gap that
+      more captures could close.
     status: open
     affects: [scenes_builtin, music_mode, video_dreamview, diy_upload, diy_activation]
 
@@ -175,13 +178,13 @@ capabilities:
         note: "9 catalogued scenes carry only a numeric scene_id — no scene_body/scene_type1_body-shaped schema or fixture at all — so nothing can be rendered; must not be animated or otherwise previewed."
       - label: scene_type1
         preview_level: structural
-        note: "2 catalogued scenes have a scene_type1_body layout, but retention/speed/movement-interval bytes are ordinal/unmeasured, so only the coarse structure (which layout, which colours) is previewable, not timing/motion."
+        note: "Both catalogued scenes and every committed scene_type1 fixture use layout 0. Ordered steps, palette, colours and raw values are previewable, but the values' meaning and rendering/timing/motion algorithm are uncalibrated. Layout 1 has schema and synthetic-test support only, with no hardware evidence."
       - label: scene_type2
         preview_level: structural
         note: "72 catalogued workshop-style layered scenes (50 with an ordinal speed option); movement interval/speed have only ever been observed to co-vary in the fixture corpus, never independently calibrated, so motion/timing stays structural even though layout/colour is concrete."
     known_gaps:
       - "The scene_activate write is only fixture-evidenced with scene_type=2 (command_write_scene_workshop); built-in scene_type values (0/1) are inferred from the enum and the read side (status_reply_cm_scene), not separately witnessed at the write side. Tracked by GitHub issue #125 (layout-1 type-1 scene body acceptance on real hardware)."
-      - "See pipeline_known_issues: preview_fidelity_ceiling. Of the 83 catalogued scenes, the 9 scene_type=0 built-ins carry no scene_body/scene_type1_body-shaped schema or fixture at all — only a numeric scene_id is known — so they must not be animated (opaque). The 2 scene_type=1 and 72 scene_type=2 (workshop-style layered) scenes are structural-only: retention/speed/movement-interval bytes are ordinal/unmeasured, and movement interval/speed have only ever been observed to co-vary in the fixture corpus, never independently calibrated. See preview_variants for the per-scene_type breakdown."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. Of the 83 catalogued scenes, the 9 scene_type=0 built-ins carry no scene_body/scene_type1_body-shaped schema or fixture at all, only a numeric scene_id is known, so they must not be animated (opaque). The 2 scene_type=1 scenes expose layout-0 ordered colours and raw values, but the values' meaning and rendering algorithm are uncalibrated; layout 1 has no hardware evidence. The 72 scene_type=2 workshop-style layered scenes remain structural-only because retention/speed/movement-interval semantics are unmeasured and movement interval/speed have only ever been observed to co-vary. See preview_variants for the per-scene_type breakdown."
       - "Current scene 'customisation' is a frozen replay of the captured scene definition's exact parameters, plus — for the 50 scenes exposing an ordinal speed option — a discrete speed-byte patch; there is no continuous/parametric control over colour, layout or timing."
 
   - model: H617A
@@ -230,17 +233,23 @@ capabilities:
     persistence_need: none
     preview_level: structural
     preview_variants:
-      - label: static_paint_and_palette
+      - label: painted_segment_map
         preview_level: deterministic
-        note: "diy_type03 paint-map fixtures, diy_type04 flat-palette fixtures, and workshop_body's applied-area geometry (which segments/LEDs a colour block covers) each define a concrete, fully computable colour-per-position assignment — exact preview is achievable for these, given a fixtured code."
-      - label: workshop_motion_timing
+        note: "diy_type03 fixtures define a background colour plus explicit colour groups over the 15 H617A segment indices, so the authored static segment map is exactly computable. The effect enum and speed remain visible parameters; movement is not inferred or animated."
+      - label: type04_fixture_catalogue
         preview_level: structural
-        note: "workshop_body's retention, speed and movement-interval/style bytes are ordinal/unmeasured; movement interval and speed have only ever been observed to co-vary in the fixture corpus, never independently calibrated, so timing/motion cannot be rendered exactly."
+        note: "The committed authoring catalogue contains four family/variant identities, each backed by a diy_type04 flat fixture. The schema defines palette, speed and Single/Multi ordering, but no mapping from those fields to device animation or per-position output, so only catalogue identity, palette and order are previewable."
+      - label: workshop_layers
+        preview_level: structural
+        note: "workshop_body exposes palettes, layer order and applied-area fields, but selection, brightness and movement/timing semantics are not calibrated well enough to infer rendered cells or animation."
+      - label: uncaptured_special_templates
+        preview_level: opaque
+        note: "A special/vendor Type04 family/variant absent from the four-entry committed authoring catalogue has no fixture-backed identity or rendering semantics. Preserve its raw family, variant and palette without inventing a label, layout or animation."
     known_gaps:
       - "workshop_body remains decode-only and has no runtime encoder."
       - "Type03 Painted upload is connected to the evidenced code 800. Type04 Single/Multi Apply uses an explicit caller-supplied code; no automatic allocation rule is evidenced."
       - "Selector readback confirms the accepted code, not the exact uploaded body identity or device-side overwrite/alias semantics."
-      - "See pipeline_known_issues: preview_fidelity_ceiling. The diy_type03 paint map and diy_type04 flat palette fixtures, plus workshop_body's applied-area geometry (which segments/LEDs a colour block covers), achieve deterministic-level exact preview, since each defines a concrete, fully computable colour-per-position assignment. workshop_body's motion/timing fields (retention, speed, movement interval/style) remain structural-only, so this row's blanket preview_level stays structural rather than deterministic. See preview_variants for the static-vs-motion breakdown. Any DIY/workshop code without committed fixture coverage falls outside this evidence entirely and must not be animated by a preview engine."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. diy_type03's explicit 15-segment paint map supports a deterministic static preview. The four fixture-backed diy_type04 catalogue identities and workshop layers are structural-only because their rendering, selection and motion semantics are uncalibrated. A special/vendor Type04 pair absent from the committed catalogue, or any other DIY/workshop code without committed fixture coverage, is opaque and must not be labelled or animated by a preview engine. See preview_variants for the per-product breakdown."
 
   - model: H617A
     capability: music_mode
@@ -394,12 +403,12 @@ capabilities:
         note: "12 catalogued scenes carry no scene_body-shaped schema or fixture at all — only a numeric scene_id is known — so nothing can be rendered; must not be animated or otherwise previewed."
       - label: scene_type1
         preview_level: structural
-        note: "2 catalogued scenes; retention/speed/movement-interval bytes are ordinal/unmeasured, so only coarse structure is previewable, not timing/motion."
+        note: "Both catalogued scenes use layout 0. Ordered steps, palette, colours and raw values are previewable, but the values' meaning and rendering/timing/motion algorithm are uncalibrated. Layout 1 has schema and synthetic-test support only, with no hardware evidence."
       - label: scene_type2
         preview_level: structural
         note: "226 catalogued workshop-style layered scenes; no scene speed control is wired at all for H6199, and movement interval/speed have only ever been observed to co-vary in the fixture corpus, never independently calibrated, so motion/timing stays structural even though layout/colour is concrete."
     known_gaps:
-      - "See pipeline_known_issues: preview_fidelity_ceiling. Of the 240 catalogued scenes, the 12 scene_type=0 built-ins carry no scene_body-shaped schema or fixture at all — only a numeric scene_id is known — so they must not be animated (opaque). The 2 scene_type=1 and 226 scene_type=2 (workshop-style layered) scenes are structural-only, the same finding as H617A's scenes_builtin: retention/speed/movement-interval bytes are ordinal/unmeasured, and movement interval/speed have only ever been observed to co-vary, never independently calibrated. See preview_variants for the per-scene_type breakdown."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. Of the 240 catalogued scenes, the 12 scene_type=0 built-ins carry no scene_body-shaped schema or fixture at all, only a numeric scene_id is known, so they must not be animated (opaque). The 2 scene_type=1 scenes expose layout-0 ordered colours and raw values, but the values' meaning and rendering algorithm are uncalibrated; layout 1 has no hardware evidence. The 226 scene_type=2 workshop-style layered scenes remain structural-only because movement/timing semantics are uncalibrated. See preview_variants for the per-scene_type breakdown."
       - "Unlike H617A, no scene speed control is wired for H6199 at all; current scene 'customisation' is a frozen replay of the captured scene definition's exact parameters with no speed or other parametric adjustment available."
 
   - model: H6199
@@ -431,7 +440,7 @@ capabilities:
     preview_level: structural
     known_gaps:
       - "h6199_effect_upload.py compiles into the shipped generated_protocol package (it is listed in scripts/generate-kaitai.sh's runtime spec array) but is never imported by any handwritten runtime module (protocol.py, coordinator.py, h6199_controls.py) — it ships as dead code inside the HA integration despite having the richest fixture corpus of any DIY/workshop schema in the repository."
-      - "See pipeline_known_issues: preview_fidelity_ceiling. Whether h6199_effect_upload's DIY/workshop/AI-scene payload shapes achieve the same deterministic-vs-structural split verified for H617A's diy_type03/diy_type04/workshop_body (paint-map and palette data deterministic, motion/timing structural) has not been separately evaluated; treat the whole family as structural-only until that breakdown is done. As with H617A, any code without committed fixture coverage falls outside this evidence and must not be animated."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. h6199_effect_upload has not been evaluated against H617A's product-specific split between deterministic painted segment maps, structural fixture-backed family/variant and workshop content, and opaque unfixtured identities. Treat the whole H6199 family as structural-only until that breakdown is done. As with H617A, any code without committed fixture coverage falls outside this evidence and must not be animated."
 
   - model: H6199
     capability: music_mode
