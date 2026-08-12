@@ -8,6 +8,7 @@ from enum import Enum, auto
 from typing import Any
 
 from .const import MUSIC_MODE_SLUGS
+from .generated_protocol_adapter import DIY_PAINTED_EFFECTS, xor_checksum
 from .generated_protocol_adapter import (
     build_brightness as _build_generated_brightness,
 )
@@ -22,6 +23,9 @@ from .generated_protocol_adapter import (
 )
 from .generated_protocol_adapter import (
     build_h617a_diy_multi_body as _build_generated_diy_multi_body,
+)
+from .generated_protocol_adapter import (
+    build_h617a_diy_painted_body as _build_generated_diy_painted_body,
 )
 from .generated_protocol_adapter import (
     build_h617a_diy_single_body as _build_generated_diy_single_body,
@@ -65,7 +69,6 @@ from .generated_protocol_adapter import (
 )
 from .generated_protocol_adapter import parse_command as _parse_generated_command
 from .generated_protocol_adapter import parse_status as _parse_generated_status
-from .generated_protocol_adapter import xor_checksum
 from .scenes import MODEL_SCENES, SCENES, SceneSpeed
 
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
@@ -174,6 +177,13 @@ ALL_SEGMENTS: tuple[int, ...] = tuple(range(1, SEGMENT_COUNT + 1))
 ALL_SEGMENTS_MASK = 0x7FFF
 
 type SegmentColorGroup = tuple[Iterable[int], tuple[int, int, int]]
+type RGB = tuple[int, int, int]
+
+
+@dataclass(frozen=True, slots=True)
+class DiyPaintGroup:
+    fill: RGB
+    segments: tuple[int, ...]
 
 
 def segments_to_mask(segments: Iterable[int]) -> int:
@@ -374,33 +384,75 @@ def build_a3_multi(type_byte: int, body: bytes, *, terminator: bool = False) -> 
     return packets
 
 
-def _validate_diy_byte(value: int, name: str) -> None:
-    if not isinstance(value, int) or not 0 <= value <= 0xFF:
-        raise ValueError(f"{name} must be an integer from 0 to 255")
-
-
 def _validate_diy_percent(value: int, name: str) -> None:
     if not isinstance(value, int) or not 0 <= value <= 100:
         raise ValueError(f"{name} must be an integer from 0 to 100")
 
 
-def _validate_diy_palette(palette: Sequence[tuple[int, int, int]]) -> None:
+def _validate_diy_byte(value: int, name: str) -> None:
+    if not isinstance(value, int) or not 0 <= value <= 0xFF:
+        raise ValueError(f"{name} must be an integer from 0 to 255")
+
+
+def _validate_diy_rgb(value: RGB, name: str) -> None:
+    if (
+        not isinstance(value, tuple)
+        or len(value) != 3
+        or any(not isinstance(channel, int) or not 0 <= channel <= 0xFF for channel in value)
+    ):
+        raise ValueError(f"{name} must be an RGB tuple with channels from 0 to 255")
+
+
+def _validate_diy_palette(palette: Sequence[RGB]) -> None:
     if not 1 <= len(palette) <= 8:
         raise ValueError("palette must contain 1 to 8 colours")
     for colour in palette:
-        if (
-            not isinstance(colour, tuple)
-            or len(colour) != 3
-            or any(not isinstance(channel, int) or not 0 <= channel <= 0xFF for channel in colour)
-        ):
-            raise ValueError("palette colours must be RGB tuples with channels from 0 to 255")
+        _validate_diy_rgb(colour, "palette colour")
+
+
+def build_h617a_diy_painted(
+    effect: str,
+    speed: int,
+    brightness: int,
+    background: RGB,
+    groups: Sequence[DiyPaintGroup] = (),
+) -> list[bytes]:
+    """Encode one proven diy_type03 painted effect into A3 frames."""
+    if effect not in DIY_PAINTED_EFFECTS:
+        raise ValueError(f"unknown painted effect: {effect}")
+    _validate_diy_percent(speed, "speed")
+    _validate_diy_percent(brightness, "brightness")
+    _validate_diy_rgb(background, "background")
+    seen_segments: set[int] = set()
+    encoded_groups: list[tuple[RGB, list[int]]] = []
+    for group in groups:
+        _validate_diy_rgb(group.fill, "paint-group fill")
+        if not group.segments:
+            raise ValueError("paint group must include at least one segment")
+        segments = list(group.segments)
+        for segment in segments:
+            if not isinstance(segment, int) or not 0 <= segment < SEGMENT_COUNT:
+                raise ValueError(f"painted segment {segment} out of range 0..{SEGMENT_COUNT - 1}")
+            if segment in seen_segments:
+                raise ValueError(f"painted segment {segment} appears in more than one group")
+            seen_segments.add(segment)
+        encoded_groups.append((group.fill, segments))
+    body = _build_generated_diy_painted_body(effect, speed, brightness, background, encoded_groups)
+    return build_a3_multi(0x03, body)
+
+
+def build_h617a_diy_activation(diy_code: int) -> bytes:
+    """Select one uploaded H617A DIY definition by its 16-bit device code."""
+    if not isinstance(diy_code, int) or not 0 <= diy_code <= 0xFFFF:
+        raise ValueError("DIY code must be an integer from 0 to 65535")
+    return _build_generated_diy_activation(diy_code)
 
 
 def build_h617a_diy_single(
     family: int,
     variant: int,
     speed: int,
-    palette: Sequence[tuple[int, int, int]],
+    palette: Sequence[RGB],
 ) -> list[bytes]:
     """Encode an H617A type04 Flat body without choosing its activation code."""
     _validate_diy_byte(family, "family")
@@ -416,7 +468,7 @@ def build_h617a_diy_single(
 def build_h617a_diy_multi(
     effects: Sequence[tuple[int, int]],
     speed: int,
-    palette: Sequence[tuple[int, int, int]],
+    palette: Sequence[RGB],
 ) -> list[bytes]:
     """Encode an H617A type04 Combo body without choosing its activation code."""
     if not 1 <= len(effects) <= 4:
@@ -432,13 +484,6 @@ def build_h617a_diy_multi(
     _validate_diy_palette(palette)
     body = _build_generated_diy_multi_body(encoded_effects, speed, list(palette))
     return build_a3_multi(0x04, body)
-
-
-def build_h617a_diy_activation(diy_code: int) -> bytes:
-    """Select an explicitly supplied H617A DIY code after its upload."""
-    if not isinstance(diy_code, int) or not 0 <= diy_code <= 0xFFFF:
-        raise ValueError("DIY code must be an integer from 0 to 65535")
-    return _build_generated_diy_activation(diy_code)
 
 
 def scene_record_spans(payload: bytes) -> list[tuple[int, int]]:

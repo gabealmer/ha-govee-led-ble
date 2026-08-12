@@ -41,6 +41,10 @@ H6199StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
 )
+DiyType03 = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type03").DiyType03,
+)
 DiyType04 = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type04").DiyType04,
@@ -51,6 +55,8 @@ SceneBody = cast(
 )
 
 _A3_CHUNK_SIZE = 17
+
+DIY_PAINTED_EFFECTS = frozenset(DiyType03.Effect.__members__)
 
 _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS = 10
 _BLANK_SCREEN_SAME_TONE_SECONDS = 120
@@ -225,6 +231,35 @@ def parse_scene_body_param(raw_param: bytes) -> Any:
     parsed = SceneBody(KaitaiStream(io.BytesIO(envelope)))
     parsed._read()
     return parsed
+
+
+def build_h617a_diy_painted_body(
+    effect: str,
+    speed: int,
+    brightness: int,
+    background: tuple[int, int, int],
+    groups: list[tuple[tuple[int, int, int], list[int]]],
+) -> bytes:
+    """Serialize the diy_type03 fields after its A3 type byte."""
+    root = DiyType03()
+    root.header = _a3_header(root)
+    root.body_type = b"\x03"
+    root.effect = getattr(DiyType03.Effect, effect)
+    root.speed = speed
+    root.brightness = brightness
+    root.background = _rgb(root, *background)
+    root.num_groups = len(groups)
+    root.groups = []
+    for fill, segments in groups:
+        group = _child(DiyType03.PaintGroup, root)
+        group.num_segment_indices = len(segments)
+        group.fill = _rgb(group, *fill)
+        group.segment_indices = segments
+        root.groups.append(group)
+    root.padding = []
+    length = 10 + sum(4 + len(segments) for _, segments in groups)
+    _check_tree(root)
+    return _write(root, length)[3:]
 
 
 def _diy_type04_palette(parent: Any, colours: list[tuple[int, int, int]]) -> Any:
