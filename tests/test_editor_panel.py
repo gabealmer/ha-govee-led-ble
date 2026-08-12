@@ -16,8 +16,8 @@ from custom_components.ha_govee_led_ble.editor import (
     _EDITOR_STATIC_PATH,
     EDITOR_ELEMENT_NAME,
     EDITOR_FALLBACK_MODULE_URL,
+    EDITOR_LOADER_MODULE_URL,
     EDITOR_PANEL_PATH,
-    EDITOR_STATIC_URL,
     _editor_module_url,
     editor_url,
 )
@@ -102,7 +102,7 @@ def test_manifest_selects_hashed_advanced_asset() -> None:
     assert manifest["effect_schema_version"] == EFFECT_SCHEMA_VERSION
     assert manifest["compiler_version"] == EFFECT_COMPILER_VERSION
     assert (_EDITOR_STATIC_PATH / filename).is_file()
-    assert _editor_module_url() == f"{EDITOR_STATIC_URL}/{filename}"
+    assert _editor_module_url() == EDITOR_LOADER_MODULE_URL
 
 
 def test_invalid_manifest_falls_back_to_stable_editor(
@@ -114,6 +114,18 @@ def test_invalid_manifest_falls_back_to_stable_editor(
     monkeypatch.setattr(
         "custom_components.ha_govee_led_ble.editor._EDITOR_MANIFEST",
         invalid,
+    )
+
+    assert _editor_module_url() == EDITOR_FALLBACK_MODULE_URL
+
+
+def test_missing_development_loader_falls_back_to_stable_editor(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.editor._EDITOR_LOADER",
+        tmp_path / "missing-loader.js",
     )
 
     assert _editor_module_url() == EDITOR_FALLBACK_MODULE_URL
