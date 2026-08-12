@@ -249,6 +249,37 @@ def test_layer_palette_preserves_more_than_diy_authoring_limit() -> None:
         SingleEffect(0, 0, 50, palette)
 
 
+@pytest.mark.parametrize("count", [0, 255])
+def test_palette_scene_preserves_full_u1_count_boundaries(count: int) -> None:
+    content = PaletteScene(
+        CatalogueRef("H617A", 1, 1),
+        layout=0,
+        brightness_flag=False,
+        steps=tuple(SceneStep(value, (1, 2, 3)) for value in range(count)),
+        palette=tuple((1, 2, 3) for _ in range(count)),
+    )
+
+    assert effect_content_from_dict(effect_content_to_dict(content)) == content
+
+
+@pytest.mark.parametrize(
+    ("steps", "palette", "message"),
+    [
+        (tuple(SceneStep(value, (1, 2, 3)) for value in range(256)), (), "steps"),
+        ((), tuple((1, 2, 3) for _ in range(256)), "palette"),
+    ],
+)
+def test_palette_scene_rejects_counts_outside_u1_range(steps, palette, message: str) -> None:
+    with pytest.raises(EffectValidationError, match=message):
+        PaletteScene(
+            CatalogueRef("H617A", 1, 1),
+            layout=0,
+            brightness_flag=False,
+            steps=steps,
+            palette=palette,
+        )
+
+
 def test_layered_effect_preserves_six_layer_order() -> None:
     base = _layered_effect().layers[0]
     content = LayeredEffect(tuple(replace(base, priority=value) for value in (5, 4, 3, 2, 1, 0)))
@@ -429,12 +460,20 @@ def test_effect_documents_reject_oversized_and_deep_opaque_content() -> None:
         lambda: CatalogueRef("", 1, 1),
         lambda: CatalogueRef("H617A", -1, 1),
         lambda: BuiltinScene(CatalogueRef("H617A", 1, 1), speed_index=-1),
+        lambda: BuiltinScene(CatalogueRef("H617A", 1, 1), speed_index=256),
         lambda: SceneStep(-1, (255, 0, 0)),
         lambda: PaletteScene(
             CatalogueRef("H617A", 1, 1),
             layout=2,
             brightness_flag=False,
             steps=(SceneStep(1, (255, 0, 0)),),
+        ),
+        lambda: PaletteScene(
+            CatalogueRef("H617A", 1, 1),
+            layout=0,
+            brightness_flag=False,
+            steps=(),
+            speed_index=256,
         ),
     ],
 )
