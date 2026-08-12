@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from homeassistant.core import HomeAssistant
 
+from .effect_application import EffectStudioApplication
 from .effect_deployments import EffectDeploymentRepository, EffectDeviceCache
 from .effect_drafts import EffectDraftRepository
 from .effect_runtime import EffectDeploymentEngine
@@ -20,6 +21,7 @@ class EffectBackend:
     device_cache: EffectDeviceCache
     drafts: EffectDraftRepository
     user_state: EffectUserStateRepository
+    application: EffectStudioApplication
     engine: EffectDeploymentEngine
 
     @classmethod
@@ -40,5 +42,6 @@ class EffectBackend:
             device_cache=device_cache,
             drafts=drafts,
             user_state=user_state,
+            application=EffectStudioApplication(library, drafts, user_state),
             engine=EffectDeploymentEngine(deployments),
         )

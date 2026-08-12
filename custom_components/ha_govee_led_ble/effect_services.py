@@ -71,8 +71,8 @@ async def async_apply_custom_effect(
     if config_entry is None or config_entry.state is not ConfigEntryState.LOADED:
         raise ServiceValidationError(f"{entity_id} is not loaded")
     try:
-        item = backend.library.get(
-            UUID(call.data[ATTR_EFFECT_ID]),
+        item = backend.application.get_saved_effect(
+            str(UUID(call.data[ATTR_EFFECT_ID])),
             call.data.get(ATTR_REVISION),
         )
         await backend.engine.async_apply_saved(
