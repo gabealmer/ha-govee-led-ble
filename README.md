@@ -24,6 +24,24 @@ Recovery drafts are private to their Home Assistant user.  Deployment status doe
 
 The device configuration link retains the stable editor route.  Installing a stable build uses `frontend/editor.js` and ignores prerelease Effect Studio storage.
 
+### Development deployment
+
+The pushed `ux` branch can be installed through HACS without creating a release:
+
+```bash
+bash tools/harness/deploy-dev.sh frontend
+```
+
+After the stable frontend loader has been activated once, frontend deployments need only a
+browser refresh. Python integration changes still require:
+
+```bash
+bash tools/harness/deploy-dev.sh backend
+```
+
+followed by a Home Assistant restart. The command refuses dirty or unpushed worktrees and
+verifies the manifest-selected bundle served by Home Assistant.
+
 ## Version 6 migration
 
 Version 6 replaces the custom frontend and parallel mode controls with Home Assistant's native light effect selector.
