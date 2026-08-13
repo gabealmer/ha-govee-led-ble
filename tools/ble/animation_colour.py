@@ -165,8 +165,16 @@ def parse_palette(entries: Sequence[dict[str, Any]]) -> tuple[PaletteEntry, ...]
         raise ValueError("authored palette labels must be unique")
     if len({entry.index for entry in palette}) != len(palette):
         raise ValueError("authored palette indexes must be unique")
-    if any(label in SENTINEL_LABELS for label in (entry.label for entry in palette)):
-        raise ValueError(f"authored palette labels must not reuse the sentinels {SENTINEL_LABELS}")
+    
+    # Allow 'black' and 'unknown' as explicit authored labels only if the corresponding RGB
+    # is actually authored (not inferred). This enables black-sentinel capture matrix.
+    for label in (entry.label for entry in palette):
+        if label == UNKNOWN_LABEL:
+            raise ValueError(
+                f"'{UNKNOWN_LABEL}' is a reserved label for unassigned samples; "
+                f"use an explicit colour name instead"
+            )
+    
     return tuple(palette)
 
 
