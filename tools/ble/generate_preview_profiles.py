@@ -146,18 +146,21 @@ def motion_features_to_preview(
     if not mapped_direction:
         return None
 
-    # Build preview profile (placeholder scene_id/effect_id; will be set during integration)
+    # Extract effect identity from capture
+    effect_identity = record.capture.get("authored", {})
+    
+    # Build preview profile with effect-based identity
     profile: PreviewProfile = {
         "sku": record.sku,
-        "scene_id": 0,
-        "effect_id": 0,
+        "effect_family": effect_identity.get("family", -1),
+        "effect_variant": effect_identity.get("variant", -1),
         "kind": "capture-directional-sweep",
         "fidelity": "capture_backed",
         "primitive": "directional_sweep",
         "title": f"{record.capture.get('label', 'Unknown')} effect",
         "direction": mapped_direction,
         "period_seconds": round(period_seconds, 3),
-        "travelling_bands": band_count,
+        "travelling_bands": int(band_count),
         "base_rgb": base_colour,
         "band_rgb": band_colour,
         "notice": (
@@ -172,7 +175,7 @@ def motion_features_to_preview(
 
     logger.info(
         f"Generated preview {preview_index} for {record.capture['label']}: "
-        f"{direction} {period_seconds:.3f}s period"
+        f"{direction} {period_seconds:.3f}s period (family {effect_identity.get('family')}, variant {effect_identity.get('variant')})"
     )
 
     return profile
