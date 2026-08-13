@@ -21,6 +21,9 @@ export class GoveeCustomEffectEditor extends LitElement {
   @property({ attribute: false })
   public catalogue?: CustomEffectCatalogue;
 
+  @property({ type: Number })
+  public segmentCount = 15;
+
   @property({ type: Boolean })
   public disabled = false;
 
@@ -72,7 +75,11 @@ export class GoveeCustomEffectEditor extends LitElement {
 
       <govee-effect-preview
         class="effect-preview"
-        .model=${customEffectPreviewModel(this.content, this.catalogue)}
+        .model=${customEffectPreviewModel(
+          this.content,
+          this.catalogue,
+          this.segmentCount,
+        )}
       ></govee-effect-preview>
 
       <section class="card parameters-card">
