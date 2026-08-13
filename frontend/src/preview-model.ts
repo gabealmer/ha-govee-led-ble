@@ -109,13 +109,16 @@ export interface StructuralScenePreview extends PreviewBase {
 export interface ObservedCustomAnimationPreview extends PreviewBase {
   kind: "custom-animation";
   fidelity: "capture_backed";
-  effect: "jumping" | "fade" | "marquee";
+  effect: "jumping" | "fade" | "marquee" | "chasing";
   palette: RGB[];
   segmentCount: number;
   speedPercent: number;
   phaseMilliseconds: number;
+  transitionMilliseconds: number;
+  segmentPhaseMilliseconds: number;
   bandWidthSegments: number;
-  direction: "towards_last_segment";
+  travellingBands: number;
+  direction: "towards_first_segment" | "towards_last_segment";
 }
 
 export interface OpaquePreview extends PreviewBase {
@@ -228,7 +231,8 @@ export function customEffectPreviewModel(
     if (
       template?.id === "jumping" ||
       template?.id === "fade" ||
-      template?.id === "marquee"
+      template?.id === "marquee" ||
+      template?.id === "chasing"
     ) {
       return observedCustomAnimationPreview(
         content,
@@ -256,23 +260,100 @@ function observedCustomAnimationPreview(
   effect: ObservedCustomAnimationPreview["effect"],
   segmentCount: number,
 ): ObservedCustomAnimationPreview {
-  const speedFactor = 0.25 + 1.5 * clamp(content.speed / 100, 0, 1);
-  const defaultMilliseconds =
-    effect === "marquee" ? 253 : effect === "fade" ? 5_500 : 5_200;
+  const speed = clamp(content.speed, 20, 80);
+  const normalizedSegmentCount = Math.max(1, Math.round(segmentCount));
+  const timing = observedAnimationTiming(effect, speed, normalizedSegmentCount);
   return {
     kind: "custom-animation",
     fidelity: "capture_backed",
     effect,
     title: `Observed ${effectLabel(effect)} preview`,
     palette: clonePalette(content.palette),
-    segmentCount: Math.max(1, Math.round(segmentCount)),
+    segmentCount: normalizedSegmentCount,
     speedPercent: content.speed,
-    phaseMilliseconds: defaultMilliseconds / speedFactor,
-    bandWidthSegments: Math.max(1, Math.round(segmentCount * (2 / 15))),
-    direction: "towards_last_segment",
+    ...timing,
     notice:
-      "Capture-backed behaviour preview: the observed device animation is replayed with your palette and segment count. Timing is an initial capture-based estimate and scales with Speed.",
+      "Capture-backed behaviour preview: the observed device animation is replayed with your palette and segment count. Timing and geometry interpolate Speed 20, 50 and 80 captures; values outside that range use the nearest captured timing.",
   };
+}
+
+function observedAnimationTiming(
+  effect: ObservedCustomAnimationPreview["effect"],
+  speed: number,
+  segmentCount: number,
+): Pick<
+  ObservedCustomAnimationPreview,
+  | "phaseMilliseconds"
+  | "transitionMilliseconds"
+  | "segmentPhaseMilliseconds"
+  | "bandWidthSegments"
+  | "travellingBands"
+  | "direction"
+> {
+  if (effect === "jumping") {
+    return {
+      phaseMilliseconds: Math.max(475, 10_425 - 99.5 * speed),
+      transitionMilliseconds: 0,
+      segmentPhaseMilliseconds: 0,
+      bandWidthSegments: 0,
+      travellingBands: 0,
+      direction: "towards_last_segment",
+    };
+  }
+  if (effect === "fade") {
+    return {
+      phaseMilliseconds: interpolateObserved(
+        speed,
+        [20, 12_000],
+        [50, 5_500],
+        [80, 5_000],
+      ),
+      transitionMilliseconds: 8 * (1000 / 30),
+      segmentPhaseMilliseconds: interpolateObserved(
+        speed,
+        [20, 150],
+        [50, 80],
+        [80, 30],
+      ),
+      bandWidthSegments: 0,
+      travellingBands: 0,
+      direction: "towards_first_segment",
+    };
+  }
+  if (effect === "marquee") {
+    return {
+      phaseMilliseconds: Math.max(40, 501 - 4.95 * speed),
+      transitionMilliseconds: 0,
+      segmentPhaseMilliseconds: 0,
+      bandWidthSegments: scaleObservedSegments(2, segmentCount),
+      travellingBands: 4,
+      direction: "towards_last_segment",
+    };
+  }
+  const circuitMilliseconds = Math.max(300, (9.006 - 0.0883 * speed) * 1000);
+  return {
+    phaseMilliseconds: circuitMilliseconds / segmentCount,
+    transitionMilliseconds: 0,
+    segmentPhaseMilliseconds: 0,
+    bandWidthSegments: scaleObservedSegments(3, segmentCount),
+    travellingBands: 3,
+    direction: "towards_last_segment",
+  };
+}
+
+function interpolateObserved(
+  value: number,
+  low: readonly [number, number],
+  middle: readonly [number, number],
+  high: readonly [number, number],
+): number {
+  const [from, to] = value <= middle[0] ? [low, middle] : [middle, high];
+  const progress = (value - from[0]) / (to[0] - from[0]);
+  return from[1] + (to[1] - from[1]) * progress;
+}
+
+function scaleObservedSegments(observedSegments: number, segmentCount: number): number {
+  return Math.max(1, Math.round(segmentCount * (observedSegments / 15)));
 }
 
 function effectLabel(

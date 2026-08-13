@@ -53,6 +53,51 @@ async function openPaletteScene(
   return sceneBrowser;
 }
 
+async function setCustomPalette(
+  editor: ReturnType<Page["locator"]>,
+  palette: number[][],
+) {
+  await editor
+    .locator("govee-palette-editor")
+    .evaluate((element, nextPalette) => {
+      element.dispatchEvent(
+        new CustomEvent("palette-changed", {
+          detail: { palette: nextPalette },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }, palette);
+}
+
+async function freezePreviewAt(
+  preview: ReturnType<Page["locator"]>,
+  elapsedMilliseconds: number,
+) {
+  await preview.evaluate(async (element, elapsed) => {
+    const target = element as HTMLElement & {
+      previewVisible: boolean;
+      customAnimationElapsedMilliseconds: number;
+      customAnimationRunningSince?: number;
+      requestUpdate(): void;
+      updateComplete: Promise<boolean>;
+    };
+    target.previewVisible = false;
+    target.customAnimationRunningSince = undefined;
+    target.customAnimationElapsedMilliseconds = elapsed;
+    target.requestUpdate();
+    await target.updateComplete;
+  }, elapsedMilliseconds);
+}
+
+async function previewColours(preview: ReturnType<Page["locator"]>) {
+  return preview.locator(".custom-animation-cell").evaluateAll((cells) =>
+    cells.map((cell) =>
+      (cell as HTMLElement).style.getPropertyValue("--preview-colour"),
+    ),
+  );
+}
+
 test("capability gates Apply while retaining supported H617A custom Apply", async ({
   page,
 }) => {
@@ -175,6 +220,19 @@ test("known single effects animate while unknown Type04 identities remain gated"
     preview.getByRole("heading", { name: "Observed Marquee preview" }),
   ).toBeVisible();
   await expect(preview.locator("[data-effect=marquee]")).toBeVisible();
+  await expect(preview.locator('[data-band-width="2"]')).toBeVisible();
+  await expect(preview.locator('[data-travelling-bands="4"]')).toBeVisible();
+
+  await customEditor
+    .getByRole("button", { name: "Choose effect, current Marquee" })
+    .click();
+  await customEditor.getByRole("button", { name: "Chasing", exact: true }).click();
+  await expect(
+    preview.getByRole("heading", { name: "Observed Chasing preview" }),
+  ).toBeVisible();
+  await expect(preview.locator("[data-effect=chasing]")).toBeVisible();
+  await expect(preview.locator('[data-band-width="3"]')).toBeVisible();
+  await expect(preview.locator('[data-travelling-bands="3"]')).toBeVisible();
 
   await studio.getByRole("button", { name: "Verified fixture-backed multi effect" }).click();
   await expect(
@@ -216,6 +274,119 @@ test("known single effects animate while unknown Type04 identities remain gated"
       ).length,
     ),
   ).toBe(0);
+});
+
+test("captured Single frames retain palette order, black phases and measured geometry", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("tablist", { name: "Custom effect type" })
+    .getByRole("tab", { name: "Single" })
+    .click();
+  const editor = studio.locator("govee-custom-effect-editor");
+  const preview = studio.locator("govee-effect-preview");
+  const speed = editor.locator('input[type="range"]');
+  await speed.fill("80");
+  await setCustomPalette(editor, [
+    [255, 0, 0],
+    [0, 0, 0],
+    [0, 0, 255],
+  ]);
+
+  await expect(preview.locator('[data-effect="fade"]')).toHaveAttribute(
+    "data-phase-ms",
+    "5000.000",
+  );
+  await expect(preview.locator('[data-effect="fade"]')).toHaveAttribute(
+    "data-segment-phase-ms",
+    "30.000",
+  );
+  await freezePreviewAt(preview, 5_267);
+  expect(new Set(await previewColours(preview))).toEqual(new Set(["#000000"]));
+  await freezePreviewAt(preview, 10_267);
+  expect(new Set(await previewColours(preview))).toEqual(new Set(["#0000ff"]));
+
+  await editor
+    .getByRole("button", { name: "Choose effect, current Fade" })
+    .click();
+  await editor.getByRole("button", { name: "Jumping", exact: true }).click();
+  await expect(preview.locator('[data-effect="jumping"]')).toHaveAttribute(
+    "data-phase-ms",
+    "2465.000",
+  );
+  await freezePreviewAt(preview, 2_466);
+  expect(new Set(await previewColours(preview))).toEqual(new Set(["#000000"]));
+
+  await editor
+    .getByRole("button", { name: "Choose effect, current Jumping" })
+    .click();
+  await editor.getByRole("button", { name: "Marquee", exact: true }).click();
+  await expect(preview.locator('[data-effect="marquee"]')).toHaveAttribute(
+    "data-phase-ms",
+    "105.000",
+  );
+  await freezePreviewAt(preview, 0);
+  expect(await previewColours(preview)).toEqual([
+    "#000000",
+    "#ff0000",
+    "#ff0000",
+    "#0000ff",
+    "#0000ff",
+    "#ff0000",
+    "#ff0000",
+    "#000000",
+    "#000000",
+    "#ff0000",
+    "#0000ff",
+    "#0000ff",
+    "#ff0000",
+    "#ff0000",
+    "#000000",
+  ]);
+  await freezePreviewAt(preview, 106);
+  expect(await previewColours(preview)).toEqual([
+    "#000000",
+    "#000000",
+    "#ff0000",
+    "#ff0000",
+    "#0000ff",
+    "#0000ff",
+    "#ff0000",
+    "#ff0000",
+    "#000000",
+    "#000000",
+    "#ff0000",
+    "#0000ff",
+    "#0000ff",
+    "#ff0000",
+    "#ff0000",
+  ]);
+
+  await editor
+    .getByRole("button", { name: "Choose effect, current Marquee" })
+    .click();
+  await editor.getByRole("button", { name: "Chasing", exact: true }).click();
+  await expect(preview.locator('[data-effect="chasing"]')).toHaveAttribute(
+    "data-phase-ms",
+    "129.467",
+  );
+  await freezePreviewAt(preview, 0);
+  const chasingColours = await previewColours(preview);
+  expect(chasingColours).not.toContain("#000000");
+  expect(chasingColours.filter((colour) => colour === "#0000ff")).toHaveLength(
+    9,
+  );
+
+  await setCustomPalette(editor, [[255, 0, 0]]);
+  await freezePreviewAt(preview, 30_000);
+  expect(new Set(await previewColours(preview))).toEqual(new Set(["#ff0000"]));
+
+  await speed.fill("20");
+  await expect(preview.locator('[data-effect="chasing"]')).toHaveAttribute(
+    "data-phase-ms",
+    "482.667",
+  );
 });
 
 test("scene Type 0 remains opaque without a visual parameter preview", async ({
