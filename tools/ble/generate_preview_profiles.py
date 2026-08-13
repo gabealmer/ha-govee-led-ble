@@ -69,74 +69,111 @@ def load_analysis_results(path: Path) -> list[AnalysisRecord]:
 
 def motion_features_to_preview(
     record: AnalysisRecord,
+    preview_index: int,
 ) -> PreviewProfile | None:
     """Convert motion features to capture-backed directional sweep preview.
 
     Returns None if insufficient evidence or inapplicable family.
     """
-    if not record.features.get("motion"):
+    motion = record.features.get("motion")
+    if not motion:
         return None
 
-    motion = record.features["motion"]
+    # Extract key motion observations
+    direction_obj = motion.get("direction", {})
+    direction = direction_obj.get("direction")
+    direction_confidence = direction_obj.get("confidence", 0)
 
-    # Extract key observations
-    direction = motion.get("direction", {}).get("direction")
-    path = motion.get("path", {}).get("path")
+    path_obj = motion.get("path", {})
+    path = path_obj.get("path")
+    path_confidence = path_obj.get("confidence", 0)
+
     periodicity = motion.get("periodicity", {})
-    bands = motion.get("bands", {})
-    background = motion.get("background", {})
     period_seconds = periodicity.get("period_seconds")
-    confidence = motion.get("confidence", 0)
+    periodicity_confidence = periodicity.get("confidence", 0)
 
-    # Only support directional wrapping motions for now
+    bands = motion.get("bands", {})
+    band_count = bands.get("simultaneous_band_count", 0)
+    band_width = bands.get("band_width_lanes", 1.0)
+
+    background = motion.get("background", {})
+    motion_confidence = motion.get("confidence", 0)
+
+    # Only support wrapping directional motion for sweep preview
     if path != "wrapping" or not direction or not period_seconds:
+        return None
+
+    if direction_confidence < 0.7 or path_confidence < 0.7:
+        logger.debug(f"Skipping {record.capture['label']}: low direction/path confidence")
         return None
 
     # Extract colour information
     palette_assignment = motion.get("palette_assignment", {})
-    observed_indices = palette_assignment.get("observed_palette_indexes", [])
+    label_by_index = palette_assignment.get("label_by_palette_index", {})
     authored_palette = record.capture.get("authored", {}).get("palette", [])
 
-    if not observed_indices or not authored_palette:
+    if not label_by_index or not authored_palette:
+        logger.debug(f"Skipping {record.capture['label']}: missing palette data")
         return None
 
-    # Map observed indices to authored colours
+    # Map palette indices to RGB values
     base_colour = None
     band_colour = None
 
     background_index = background.get("palette_index")
     if background_index is not None and background_index < len(authored_palette):
-        base_colour = tuple(authored_palette[background_index])
+        base_colour = authored_palette[background_index]
 
-    # Band colour is typically the first non-background observed index
+    # Band colour: use first non-background observed index
+    observed_indices = palette_assignment.get("observed_palette_indexes", [])
     for idx in observed_indices:
         if idx != background_index and idx < len(authored_palette):
-            band_colour = tuple(authored_palette[idx])
+            band_colour = authored_palette[idx]
             break
 
     if not base_colour or not band_colour:
+        logger.warning(
+            f"Skipping {record.capture['label']}: could not map palette colours"
+        )
         return None
 
-    # Map direction
+    # Map direction string to preview direction
     direction_map = {
         "towards_first_segment": "towards_first_segment",
         "towards_last_segment": "towards_last_segment",
     }
     mapped_direction = direction_map.get(direction)
-
     if not mapped_direction:
         return None
 
-    # Build preview profile
+    # Build preview profile (placeholder scene_id/effect_id; will be set during integration)
     profile: PreviewProfile = {
         "sku": record.sku,
-        "scene_id": 0,  # Placeholder: need to map from effect identity
-        "effect_id": 0,  # Placeholder: need to map from effect identity
+        "scene_id": 0,
+        "effect_id": 0,
         "kind": "capture-directional-sweep",
         "fidelity": "capture_backed",
+        "primitive": "directional_sweep",
         "title": f"{record.capture.get('label', 'Unknown')} effect",
-        "notice": f"Capture-backed animation at Default speed. Observed period: {period_seconds:.3f}s, confidence: {confidence:.2%}.",
+        "direction": mapped_direction,
+        "period_seconds": round(period_seconds, 3),
+        "travelling_bands": band_count,
+        "base_rgb": base_colour,
+        "band_rgb": band_colour,
+        "notice": (
+            f"Capture-backed animation at Default speed. "
+            f"Observed: {direction} direction, "
+            f"{band_count} band(s) {band_width:.1f} lanes wide, "
+            f"period {period_seconds:.3f}s (confidence {periodicity_confidence:.0%}). "
+            f"Motion quality: {motion_confidence:.0%}."
+        ),
+        "limitations": record.limitations,
     }
+
+    logger.info(
+        f"Generated preview {preview_index} for {record.capture['label']}: "
+        f"{direction} {period_seconds:.3f}s period"
+    )
 
     return profile
 
@@ -146,12 +183,13 @@ def generate_profiles(results_path: Path) -> list[PreviewProfile]:
     records = load_analysis_results(results_path)
     profiles = []
 
-    for record in records:
+    for idx, record in enumerate(records):
         if record.features.get("motion"):
-            profile = motion_features_to_preview(record)
+            profile = motion_features_to_preview(record, len(profiles))
             if profile:
                 profiles.append(profile)
 
+    logger.info(f"Generated {len(profiles)} profiles from {len(records)} records")
     return profiles
 
 
