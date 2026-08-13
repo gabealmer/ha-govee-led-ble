@@ -14,7 +14,7 @@ import argparse
 import json
 import logging
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -148,7 +148,7 @@ def motion_features_to_preview(
 
     # Extract effect identity from capture
     effect_identity = record.capture.get("authored", {})
-    
+
     # Build preview profile with effect-based identity
     profile: PreviewProfile = {
         "sku": record.sku,
@@ -175,7 +175,8 @@ def motion_features_to_preview(
 
     logger.info(
         f"Generated preview {preview_index} for {record.capture['label']}: "
-        f"{direction} {period_seconds:.3f}s period (family {effect_identity.get('family')}, variant {effect_identity.get('variant')})"
+        f"{direction} {period_seconds:.3f}s period "
+        f"(family {effect_identity.get('family')}, variant {effect_identity.get('variant')})"
     )
 
     return profile
@@ -186,7 +187,7 @@ def generate_profiles(results_path: Path) -> list[PreviewProfile]:
     records = load_analysis_results(results_path)
     profiles = []
 
-    for idx, record in enumerate(records):
+    for record in records:
         if record.features.get("motion"):
             profile = motion_features_to_preview(record, len(profiles))
             if profile:
