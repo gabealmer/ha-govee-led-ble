@@ -611,6 +611,12 @@ const CUSTOM_CATALOGUE: CustomEffectCatalogue = {
       variant: 0,
     },
     {
+      id: "jumping",
+      label: "Jumping",
+      family: 1,
+      variant: 0,
+    },
+    {
       id: "marquee",
       label: "Marquee",
       family: 3,

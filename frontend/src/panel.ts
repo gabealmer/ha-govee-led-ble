@@ -838,6 +838,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-custom-effect-editor
         .content=${content}
         .catalogue=${this.customCatalogue}
+        .segmentCount=${this.selectedDevice?.segment_count ?? 15}
         .disabled=${!this.isAdmin}
         @content-changed=${(
           event: CustomEvent<{ content: CustomEffectContent }>,
