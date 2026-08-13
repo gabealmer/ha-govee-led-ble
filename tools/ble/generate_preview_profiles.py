@@ -132,9 +132,7 @@ def motion_features_to_preview(
             break
 
     if not base_colour or not band_colour:
-        logger.warning(
-            f"Skipping {record.capture['label']}: could not map palette colours"
-        )
+        logger.warning(f"Skipping {record.capture['label']}: could not map palette colours")
         return None
 
     # Map direction string to preview direction
@@ -199,9 +197,7 @@ def generate_profiles(results_path: Path) -> list[PreviewProfile]:
 
 def main() -> int:
     """CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description="Generate capture-backed preview profiles from animation analysis"
-    )
+    parser = argparse.ArgumentParser(description="Generate capture-backed preview profiles from animation analysis")
     parser.add_argument(
         "results_path",
         type=Path,

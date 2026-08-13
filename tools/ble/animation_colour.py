@@ -171,8 +171,7 @@ def parse_palette(entries: Sequence[dict[str, Any]]) -> tuple[PaletteEntry, ...]
     for label in (entry.label for entry in palette):
         if label == UNKNOWN_LABEL:
             raise ValueError(
-                f"'{UNKNOWN_LABEL}' is a reserved label for unassigned samples; "
-                f"use an explicit colour name instead"
+                f"'{UNKNOWN_LABEL}' is a reserved label for unassigned samples; use an explicit colour name instead"
             )
 
     return tuple(palette)
