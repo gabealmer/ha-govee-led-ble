@@ -106,6 +106,18 @@ export interface StructuralScenePreview extends PreviewBase {
   steps: PreviewSceneStep[];
 }
 
+export interface ObservedCustomAnimationPreview extends PreviewBase {
+  kind: "custom-animation";
+  fidelity: "capture_backed";
+  effect: "jumping" | "fade" | "marquee";
+  palette: RGB[];
+  segmentCount: number;
+  speedPercent: number;
+  phaseMilliseconds: number;
+  bandWidthSegments: number;
+  direction: "towards_last_segment";
+}
+
 export interface OpaquePreview extends PreviewBase {
   kind: "opaque";
   fidelity: "opaque";
@@ -149,6 +161,7 @@ export interface CaptureBackedDirectionalSweepPreview
 export type EffectPreviewModel =
   | CaptureBackedStaticPreview
   | CaptureBackedDirectionalSweepPreview
+  | ObservedCustomAnimationPreview
   | DeterministicPreview
   | StructuralPalettePreview
   | StructuralLayersPreview
@@ -185,7 +198,8 @@ export function paintedPreviewModel(
 export function customEffectPreviewModel(
   content: SingleContent | MultiContent,
   catalogue: CustomEffectCatalogue,
-): StructuralPalettePreview | OpaquePreview {
+  segmentCount = 15,
+): ObservedCustomAnimationPreview | StructuralPalettePreview | OpaquePreview {
   const pairs =
     content.kind === "h617a_single"
       ? [content]
@@ -206,6 +220,24 @@ export function customEffectPreviewModel(
     };
   }
 
+  if (content.kind === "h617a_single") {
+    const template = catalogue.effects.find(
+      (effect) =>
+        effect.family === content.family && effect.variant === content.variant,
+    );
+    if (
+      template?.id === "jumping" ||
+      template?.id === "fade" ||
+      template?.id === "marquee"
+    ) {
+      return observedCustomAnimationPreview(
+        content,
+        template.id,
+        segmentCount,
+      );
+    }
+  }
+
   return {
     kind: "palette",
     fidelity: "structural",
@@ -217,6 +249,36 @@ export function customEffectPreviewModel(
     sequence,
     notice,
   };
+}
+
+function observedCustomAnimationPreview(
+  content: SingleContent,
+  effect: ObservedCustomAnimationPreview["effect"],
+  segmentCount: number,
+): ObservedCustomAnimationPreview {
+  const speedFactor = 0.25 + 1.5 * clamp(content.speed / 100, 0, 1);
+  const defaultMilliseconds =
+    effect === "marquee" ? 253 : effect === "fade" ? 5_500 : 5_200;
+  return {
+    kind: "custom-animation",
+    fidelity: "capture_backed",
+    effect,
+    title: `Observed ${effectLabel(effect)} preview`,
+    palette: clonePalette(content.palette),
+    segmentCount: Math.max(1, Math.round(segmentCount)),
+    speedPercent: content.speed,
+    phaseMilliseconds: defaultMilliseconds / speedFactor,
+    bandWidthSegments: Math.max(1, Math.round(segmentCount * (2 / 15))),
+    direction: "towards_last_segment",
+    notice:
+      "Capture-backed behaviour preview: the observed device animation is replayed with your palette and segment count. Timing is an initial capture-based estimate and scales with Speed.",
+  };
+}
+
+function effectLabel(
+  effect: ObservedCustomAnimationPreview["effect"],
+): string {
+  return effect[0].toUpperCase() + effect.slice(1);
 }
 
 export function advancedPreviewModel(

@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
-import { property } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 
 import type {
   EffectPreviewModel,
@@ -40,6 +40,13 @@ export class GoveeEffectPreview extends LitElement {
   private sweepRunningSince?: number;
   private sweepTransitionSequence = 0;
   private sweepTimeout?: number;
+  private customAnimationElapsedMilliseconds = 0;
+  private customAnimationKey?: string;
+  private customAnimationRunningSince?: number;
+  private customAnimationTimeout?: number;
+
+  @state()
+  private customAnimationSequence = 0;
 
   public connectedCallback(): void {
     super.connectedCallback();
@@ -54,6 +61,7 @@ export class GoveeEffectPreview extends LitElement {
       ([entry]) => {
         this.previewVisible = entry.isIntersecting;
         this.configureDirectionalSweep();
+        this.configureCustomAnimation();
         this.requestUpdate();
       },
       { threshold: 0.01 },
@@ -67,11 +75,13 @@ export class GoveeEffectPreview extends LitElement {
     this.motionQuery?.removeEventListener("change", this.motionChanged);
     this.motionQuery = undefined;
     this.pauseDirectionalSweep();
+    this.pauseCustomAnimation();
     super.disconnectedCallback();
   }
 
   protected updated(): void {
     this.configureDirectionalSweep();
+    this.configureCustomAnimation();
   }
 
   protected render() {
@@ -176,6 +186,43 @@ export class GoveeEffectPreview extends LitElement {
           </div>
           <p class="motion-note" role="note">${motionDescription}</p>
           ${this.captureEvidence(model)}
+        `;
+      }
+      case "custom-animation": {
+        const cells = this.customAnimationCells(model);
+        const motion =
+          model.effect === "marquee"
+            ? `Palette bands move towards the last segment in groups of ${model.bandWidthSegments}.`
+            : model.effect === "fade"
+              ? "The whole strip blends between palette colours."
+              : "The whole strip changes abruptly between palette colours.";
+        return html`
+          <div
+            class="custom-animation"
+            role="img"
+            aria-label="${model.title}. ${motion}"
+            data-effect=${model.effect}
+            data-segment-count=${model.segmentCount}
+            data-speed-percent=${model.speedPercent}
+            data-phase-ms=${model.phaseMilliseconds.toFixed(3)}
+          >
+            <div
+              class="custom-animation-track"
+              style="grid-template-columns: repeat(${model.segmentCount}, minmax(0, 1fr))"
+              aria-hidden="true"
+            >
+              ${cells.map(
+                (colour, index) => html`
+                  <span
+                    class="custom-animation-cell"
+                    data-segment=${index}
+                    style="--preview-colour: ${rgbToHex(colour)}"
+                  ></span>
+                `,
+              )}
+            </div>
+          </div>
+          <p class="motion-note" role="note">${motion}</p>
         `;
       }
       case "cells":
@@ -308,7 +355,10 @@ export class GoveeEffectPreview extends LitElement {
 
   private captureEvidence(
     model:
-      | Extract<EffectPreviewModel, { fidelity: "capture_backed" }>
+      | Extract<
+          EffectPreviewModel,
+          { kind: "capture-static" | "capture-directional-sweep" }
+        >
       | undefined,
   ) {
     if (!model) {
@@ -397,6 +447,82 @@ export class GoveeEffectPreview extends LitElement {
     }
     window.clearTimeout(this.sweepTimeout);
     this.sweepTimeout = undefined;
+  }
+
+  private configureCustomAnimation(): void {
+    const model = this.model;
+    if (model?.kind !== "custom-animation") {
+      this.pauseCustomAnimation();
+      this.customAnimationKey = undefined;
+      return;
+    }
+    const key = `${model.effect}:${model.segmentCount}:${model.speedPercent}:${model.palette
+      .map(rgbToHex)
+      .join(",")}`;
+    if (this.customAnimationKey !== key) {
+      this.pauseCustomAnimation();
+      this.customAnimationKey = key;
+      this.customAnimationElapsedMilliseconds = 0;
+    }
+    if (!this.previewVisible || this.motionQuery?.matches) {
+      this.pauseCustomAnimation();
+      return;
+    }
+    if (this.customAnimationRunningSince === undefined) {
+      this.customAnimationRunningSince = performance.now();
+    }
+    window.clearTimeout(this.customAnimationTimeout);
+    this.customAnimationTimeout = window.setTimeout(() => {
+      this.customAnimationSequence += 1;
+    }, model.effect === "jumping" ? 100 : 33);
+  }
+
+  private pauseCustomAnimation(): void {
+    if (this.customAnimationRunningSince !== undefined) {
+      this.customAnimationElapsedMilliseconds +=
+        performance.now() - this.customAnimationRunningSince;
+      this.customAnimationRunningSince = undefined;
+    }
+    window.clearTimeout(this.customAnimationTimeout);
+    this.customAnimationTimeout = undefined;
+  }
+
+  private customAnimationCells(
+    model: Extract<EffectPreviewModel, { kind: "custom-animation" }>,
+  ): RGB[] {
+    const palette = model.palette.length
+      ? model.palette
+      : ([[0, 0, 0]] as RGB[]);
+    const elapsed =
+      this.customAnimationElapsedMilliseconds +
+      (this.customAnimationRunningSince === undefined
+        ? 0
+        : performance.now() - this.customAnimationRunningSince);
+    if (model.effect === "jumping") {
+      const colour =
+        palette[Math.floor(elapsed / model.phaseMilliseconds) % palette.length];
+      return Array.from({ length: model.segmentCount }, () => [...colour] as RGB);
+    }
+    if (model.effect === "fade") {
+      const phase = elapsed / model.phaseMilliseconds;
+      const fromIndex = Math.floor(phase) % palette.length;
+      const toIndex = (fromIndex + 1) % palette.length;
+      const rawProgress = phase - Math.floor(phase);
+      const progress = rawProgress * rawProgress * (3 - 2 * rawProgress);
+      const colour = interpolateColour(
+        palette[fromIndex],
+        palette[toIndex],
+        progress,
+      );
+      return Array.from({ length: model.segmentCount }, () => [...colour] as RGB);
+    }
+    const step = Math.floor(elapsed / model.phaseMilliseconds);
+    const cycleWidth = model.bandWidthSegments * palette.length;
+    return Array.from({ length: model.segmentCount }, (_, segment) => {
+      const position = positiveModulo(segment - step, cycleWidth);
+      const paletteIndex = Math.floor(position / model.bandWidthSegments);
+      return [...palette[paletteIndex]] as RGB;
+    });
   }
 
   private directionalSweepLane(
@@ -693,6 +819,23 @@ export class GoveeEffectPreview extends LitElement {
       background: var(--sweep-band);
     }
 
+    .custom-animation-track {
+      display: grid;
+      gap: 4px;
+      min-height: 48px;
+      direction: ltr;
+    }
+
+    .custom-animation-cell {
+      display: block;
+      min-width: 0;
+      min-height: 48px;
+      border: 1px solid
+        color-mix(in srgb, var(--preview-colour) 70%, #000);
+      border-radius: 5px;
+      background: var(--preview-colour);
+    }
+
     .capture-evidence {
       margin-top: 12px;
       color: var(--preview-muted);
@@ -942,6 +1085,16 @@ function rgbToHex(colour: RGB): string {
   return `#${colour
     .map((channel) => channel.toString(16).padStart(2, "0"))
     .join("")}`;
+}
+
+function interpolateColour(from: RGB, to: RGB, progress: number): RGB {
+  return from.map((channel, index) =>
+    Math.round(channel + (to[index] - channel) * progress),
+  ) as RGB;
+}
+
+function positiveModulo(value: number, modulus: number): number {
+  return ((value % modulus) + modulus) % modulus;
 }
 
 function laneAfterSteps(

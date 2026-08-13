@@ -106,7 +106,7 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   ).toBeVisible();
 });
 
-test("effect previews remain static and catalogue-gate unknown Type04 identities", async ({
+test("known single effects animate while unknown Type04 identities remain gated", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -149,27 +149,32 @@ test("effect previews remain static and catalogue-gate unknown Type04 identities
   const modes = studio.getByRole("tablist", { name: "Custom effect type" });
   await modes.getByRole("tab", { name: "Single" }).click();
   await expect(
-    preview.getByText("Structural", { exact: true }).first(),
+    preview.getByText("Capture-backed", { exact: true }),
   ).toBeVisible();
   await expect(
-    preview.getByText(
-      "Device animation and behaviour are not simulated.",
-      { exact: false },
-    ),
+    preview.getByRole("heading", { name: "Observed Fade preview" }),
   ).toBeVisible();
+  await expect(preview.locator("[data-effect=fade]")).toBeVisible();
+  await expect(preview.locator(".custom-animation-cell")).toHaveCount(15);
 
-  const animatedElements = await preview.locator("*").evaluateAll((elements) =>
-    elements.filter(
-      (element) => getComputedStyle(element).animationName !== "none",
-    ).length,
-  );
-  expect(animatedElements).toBe(0);
+  const customEditor = studio.locator("govee-custom-effect-editor");
+  await customEditor
+    .getByRole("button", { name: "Choose effect, current Fade" })
+    .click();
+  await customEditor.getByRole("button", { name: "Jumping", exact: true }).click();
   await expect(
-    preview.getByRole("list", { name: "Preview palette" }).getByRole("listitem"),
-  ).toHaveCount(2);
+    preview.getByRole("heading", { name: "Observed Jumping preview" }),
+  ).toBeVisible();
+  await expect(preview.locator("[data-effect=jumping]")).toBeVisible();
+
+  await customEditor
+    .getByRole("button", { name: "Choose effect, current Jumping" })
+    .click();
+  await customEditor.getByRole("button", { name: "Marquee", exact: true }).click();
   await expect(
-    preview.getByRole("list", { name: "Catalogue effect order" }).getByRole("listitem"),
-  ).toHaveText([/1\s+Fade\s+Structural/]);
+    preview.getByRole("heading", { name: "Observed Marquee preview" }),
+  ).toBeVisible();
+  await expect(preview.locator("[data-effect=marquee]")).toBeVisible();
 
   await studio.getByRole("button", { name: "Verified fixture-backed multi effect" }).click();
   await expect(
