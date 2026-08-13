@@ -1,0 +1,283 @@
+{
+  "analysis": {
+    "container": "webm",
+    "crop": {
+      "calibration_target": "calibration-all-white",
+      "height": 125,
+      "width": 800,
+      "x": 0,
+      "y": 0
+    },
+    "fps": 30,
+    "music_audio_codec": "opus",
+    "video_codec": "vp9-lossless"
+  },
+  "campaign_id": "animation-native-gaps-v1",
+  "device_baseline": {
+    "direct": {
+      "brightness_percent": 5,
+      "diy_activation_code": 240,
+      "power": false
+    },
+    "vendor_app": {
+      "household_light_service": "light.turn_off"
+    }
+  },
+  "schema_version": 1,
+  "targets": [
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.0
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p0-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.0,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.05
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p05-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.05,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.1
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p1-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.1,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p25-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.25,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.5
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p5-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.5,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    }
+  ],
+  "viewer": {
+    "expected_height": 720,
+    "expected_width": 1280,
+    "sample_count": 9,
+    "sample_interval_seconds": 0.5,
+    "session": "govee-camera",
+    "stable_seconds": 2.0,
+    "url": "https://vdo.ninja/?view=7MdKzqF"
+  }
+}

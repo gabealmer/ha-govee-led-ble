@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ha-govee-led-ble/schemas/animation-evidence-candidate.schema.json",
+  "title": "Animation evidence candidates",
+  "description": "Compact observations proposed for human review. A candidate is not evidence and never reaches runtime: rows carry no rendering payload, stay pending, and the document states that promotion is not allowed.",
+  "type": "object",
+  "required": ["schema_version", "purpose", "runtime_promotion", "campaign", "candidates"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1, "maximum": 1},
+    "purpose": {"type": "string"},
+    "runtime_promotion": {
+      "type": "object",
+      "required": ["allowed", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "allowed": {"const": false},
+        "reason": {"type": "string"}
+      }
+    },
+    "campaign": {
+      "type": "object",
+      "required": ["id", "sku", "manifest_sha256", "analysis_results_sha256", "analysis_tool_sha256", "toolchain"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "sku": {"type": "string", "description": "The campaign device, or MULTI when its captures span more than one."},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "analysis_results_sha256": {"$ref": "#/$defs/sha256"},
+        "analysis_tool_sha256": {"$ref": "#/$defs/sha256"},
+        "toolchain": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/candidate"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "candidate": {
+      "type": "object",
+      "required": ["sku", "stem", "kind", "source", "observed", "review_state", "review_confidence", "unresolved"],
+      "additionalProperties": false,
+      "properties": {
+        "sku": {"type": "string"},
+        "stem": {"type": "string"},
+        "kind": {"enum": ["motion", "multi", "advanced", "music"]},
+        "source": {
+          "type": "object",
+          "required": ["video_sha256", "analysis_record_sha256"],
+          "additionalProperties": false,
+          "properties": {
+            "video_sha256": {"$ref": "#/$defs/sha256"},
+            "analysis_record_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        "observed": {
+          "type": "object",
+          "required": [
+            "background_state",
+            "direction",
+            "path",
+            "movement_domain",
+            "simultaneous_band_count",
+            "band_width_lanes",
+            "duty_cycle",
+            "period_seconds",
+            "transition_shape",
+            "palette_relation",
+            "palette_indexes",
+            "state_count",
+            "spatial_response_class",
+            "colour_treatment",
+            "confidence"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "background_state": {"enum": ["black", "lit", "none", "unknown"]},
+            "direction": {
+              "enum": ["towards_first_segment", "towards_last_segment", "bidirectional", "stationary", "unknown"]
+            },
+            "path": {"enum": ["wrapping", "bouncing", "open", "stationary", "unknown"]},
+            "movement_domain": {"enum": ["none", "within_active_region", "whole_strip", "unknown"]},
+            "simultaneous_band_count": {"type": ["integer", "null"], "minimum": 0},
+            "band_width_lanes": {"type": ["number", "null"], "minimum": 0},
+            "duty_cycle": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+            "period_seconds": {"type": ["number", "null"], "minimum": 0},
+            "transition_shape": {"enum": ["step", "fade", "mixed", "unknown"]},
+            "palette_relation": {
+              "enum": [
+                "authored_order",
+                "reversed_authored_order",
+                "other_permutation",
+                "single_label",
+                "unknown"
+              ]
+            },
+            "palette_indexes": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+            "state_count": {"type": ["integer", "null"], "minimum": 0},
+            "spatial_response_class": {
+              "enum": ["whole_strip", "end_to_end", "centre_out", "edges_in", "localised", "none", "unknown"]
+            },
+            "colour_treatment": {"enum": ["single_label", "palette_cycle", "level_mapped", "unknown"]},
+            "confidence": {"$ref": "#/$defs/confidence"}
+          }
+        },
+        "review_state": {"const": "pending_human_review"},
+        "review_confidence": {"type": "null"},
+        "unresolved": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}
