@@ -190,12 +190,7 @@ export class GoveeEffectPreview extends LitElement {
       }
       case "custom-animation": {
         const cells = this.customAnimationCells(model);
-        const motion =
-          model.effect === "marquee"
-            ? `Palette bands move towards the last segment in groups of ${model.bandWidthSegments}.`
-            : model.effect === "fade"
-              ? "The whole strip blends between palette colours."
-              : "The whole strip changes abruptly between palette colours.";
+        const motion = customAnimationDescription(model);
         return html`
           <div
             class="custom-animation"
@@ -205,6 +200,10 @@ export class GoveeEffectPreview extends LitElement {
             data-segment-count=${model.segmentCount}
             data-speed-percent=${model.speedPercent}
             data-phase-ms=${model.phaseMilliseconds.toFixed(3)}
+            data-transition-ms=${model.transitionMilliseconds.toFixed(3)}
+            data-segment-phase-ms=${model.segmentPhaseMilliseconds.toFixed(3)}
+            data-band-width=${model.bandWidthSegments}
+            data-travelling-bands=${model.travellingBands}
           >
             <div
               class="custom-animation-track"
@@ -504,25 +503,51 @@ export class GoveeEffectPreview extends LitElement {
       return Array.from({ length: model.segmentCount }, () => [...colour] as RGB);
     }
     if (model.effect === "fade") {
-      const phase = elapsed / model.phaseMilliseconds;
-      const fromIndex = Math.floor(phase) % palette.length;
-      const toIndex = (fromIndex + 1) % palette.length;
-      const rawProgress = phase - Math.floor(phase);
-      const progress = rawProgress * rawProgress * (3 - 2 * rawProgress);
-      const colour = interpolateColour(
-        palette[fromIndex],
-        palette[toIndex],
-        progress,
-      );
-      return Array.from({ length: model.segmentCount }, () => [...colour] as RGB);
+      return Array.from({ length: model.segmentCount }, (_, segment) => {
+        const segmentElapsed =
+          elapsed +
+          (model.direction === "towards_first_segment" ? segment : -segment) *
+            model.segmentPhaseMilliseconds;
+        const phase = segmentElapsed / model.phaseMilliseconds;
+        const toIndex = positiveModulo(Math.floor(phase), palette.length);
+        const fromIndex = positiveModulo(toIndex - 1, palette.length);
+        const phaseElapsed = positiveModulo(
+          segmentElapsed,
+          model.phaseMilliseconds,
+        );
+        const rawProgress = Math.min(
+          1,
+          phaseElapsed / model.transitionMilliseconds,
+        );
+        const progress = rawProgress * rawProgress * (3 - 2 * rawProgress);
+        return interpolateColour(
+          palette[fromIndex],
+          palette[toIndex],
+          progress,
+        );
+      });
     }
+    const { background, moving } = travellingPalette(model.effect, palette);
     const step = Math.floor(elapsed / model.phaseMilliseconds);
-    const cycleWidth = model.bandWidthSegments * palette.length;
-    return Array.from({ length: model.segmentCount }, (_, segment) => {
-      const position = positiveModulo(segment - step, cycleWidth);
-      const paletteIndex = Math.floor(position / model.bandWidthSegments);
-      return [...palette[paletteIndex]] as RGB;
-    });
+    const cells = Array.from(
+      { length: model.segmentCount },
+      () => [...background] as RGB,
+    );
+    for (let band = 0; band < model.travellingBands; band += 1) {
+      const origin = Math.round(
+        (band * model.segmentCount) / model.travellingBands,
+      );
+      const leadingSegment = positiveModulo(origin + step, model.segmentCount);
+      const colour = moving[band % moving.length];
+      for (let width = 0; width < model.bandWidthSegments; width += 1) {
+        const segment = positiveModulo(
+          leadingSegment - width,
+          model.segmentCount,
+        );
+        cells[segment] = [...colour] as RGB;
+      }
+    }
+    return cells;
   }
 
   private directionalSweepLane(
@@ -1095,6 +1120,42 @@ function interpolateColour(from: RGB, to: RGB, progress: number): RGB {
 
 function positiveModulo(value: number, modulus: number): number {
   return ((value % modulus) + modulus) % modulus;
+}
+
+function customAnimationDescription(
+  model: Extract<EffectPreviewModel, { kind: "custom-animation" }>,
+): string {
+  if (model.effect === "fade") {
+    return "A smooth palette transition propagates from the last segment towards the first.";
+  }
+  if (model.effect === "jumping") {
+    return "The whole strip changes abruptly between palette colours.";
+  }
+  const label = model.effect === "marquee" ? "Marquee" : "Chasing";
+  return `${label} bands move towards the last segment in groups of ${model.bandWidthSegments}.`;
+}
+
+function travellingPalette(
+  effect: "marquee" | "chasing",
+  palette: RGB[],
+): {
+  background: RGB;
+  moving: RGB[];
+} {
+  const background = palette[0];
+  const candidates = palette.slice(1);
+  const moving =
+    effect === "chasing"
+      ? candidates.filter((colour) => !isBlack(colour))
+      : candidates;
+  return {
+    background,
+    moving: moving.length ? moving : [background],
+  };
+}
+
+function isBlack(colour: RGB): boolean {
+  return colour[0] === 0 && colour[1] === 0 && colour[2] === 0;
 }
 
 function laneAfterSteps(

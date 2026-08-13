@@ -622,6 +622,12 @@ const CUSTOM_CATALOGUE: CustomEffectCatalogue = {
       family: 3,
       variant: 3,
     },
+    {
+      id: "chasing",
+      label: "Chasing",
+      family: 8,
+      variant: 9,
+    },
   ],
   limits: {
     palette_min: 1,
