@@ -195,8 +195,7 @@ def derive_corpus_calibration(
         "lane_count": len(lanes),
         "lanes": video_lanes,
         "limitations": [
-            "White-light spill is brighter than the LED ridge; "
-            "geometry uses colour endpoints and the traced path."
+            "White-light spill is brighter than the LED ridge; geometry uses colour endpoints and the traced path."
         ],
     }
     return calibration, lanes

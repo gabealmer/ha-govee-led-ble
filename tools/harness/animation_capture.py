@@ -380,6 +380,18 @@ def _palette_label(rgb: list[int], index: int) -> str:
     return known.get(key, f"colour-{index}")
 
 
+def _analysis_palette(palette: list[list[int]]) -> list[dict[str, Any]]:
+    labels: dict[str, int] = {}
+    entries: list[dict[str, Any]] = []
+    for index, rgb in enumerate(palette):
+        base = _palette_label(rgb, index)
+        occurrence = labels.get(base, 0)
+        labels[base] = occurrence + 1
+        label = base if occurrence == 0 else f"{base}-{occurrence}"
+        entries.append({"index": index, "label": label, "rgb": rgb})
+    return entries
+
+
 def _analysis_kind(target: dict[str, Any]) -> str:
     family = str(target["family"])
     if family == "type04-multi":
@@ -417,10 +429,7 @@ def analysis_manifest_document(corpus: Path, campaign: dict[str, Any]) -> dict[s
         model = str(target["model"])
         models.add(model)
         authored: dict[str, Any] = {
-            "palette": [
-                {"index": index, "label": _palette_label(rgb, index), "rgb": rgb}
-                for index, rgb in enumerate(target["palette"])
-            ],
+            "palette": _analysis_palette(target["palette"]),
             "background": target["parameters"].get("background"),
             "speed": target["speed_policy"],
         }
