@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ha-govee-led-ble/schemas/animation-capture-manifest.schema.json",
+  "title": "Animation capture manifest",
+  "description": "The contract between an effect-capture campaign and the analyser. Authored palette values are the exact commanded source colours; the camera never supplies them.",
+  "type": "object",
+  "required": ["schema_version", "campaign", "sku", "segment_count", "media", "captures"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1, "maximum": 1},
+    "campaign": {"type": "string", "pattern": "^[0-9a-z-]+$"},
+    "sku": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]+$",
+      "description": "The device the corpus was captured from, or MULTI when its captures span more than one. A mixed corpus names the device on each capture instead."
+    },
+    "segment_count": {"type": "integer", "minimum": 1},
+    "calibration": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "directory": {"type": "string"},
+        "mapping_reference_stem": {"type": ["string", "null"]}
+      }
+    },
+    "media": {
+      "type": "object",
+      "required": ["directory"],
+      "additionalProperties": true,
+      "properties": {
+        "directory": {"type": "string"},
+        "fps": {"type": ["number", "null"], "minimum": 1}
+      }
+    },
+    "captures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/capture"}
+    }
+  },
+  "$defs": {
+    "capture": {
+      "type": "object",
+      "required": ["stem", "kind", "label", "authored"],
+      "additionalProperties": true,
+      "properties": {
+        "stem": {"type": "string", "pattern": "^[0-9a-z][0-9a-z-]*$"},
+        "kind": {"enum": ["motion", "multi", "advanced", "music"]},
+        "sku": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]+$",
+          "description": "The device this capture came from. Required in a mixed corpus; otherwise it defaults to the campaign sku."
+        },
+        "label": {"type": "string"},
+        "duration_seconds": {"type": ["number", "null"], "minimum": 0},
+        "pilot": {"type": "boolean"},
+        "notes": {"type": ["string", "null"]},
+        "media": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "video": {"type": ["string", "null"]},
+            "audio": {"type": ["string", "null"]}
+          }
+        },
+        "authored": {"$ref": "#/$defs/authored"}
+      }
+    },
+    "authored": {
+      "type": "object",
+      "required": ["palette"],
+      "additionalProperties": true,
+      "properties": {
+        "palette": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/palette_entry"}
+        },
+        "background": {"type": ["string", "null"]},
+        "speed": {"type": ["object", "null"], "additionalProperties": true},
+        "states": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["index", "label"],
+            "additionalProperties": true,
+            "properties": {
+              "index": {"type": "integer", "minimum": 0},
+              "label": {"type": "string"},
+              "palette_indexes": {"type": "array", "items": {"type": "integer", "minimum": 0}}
+            }
+          }
+        }
+      }
+    },
+    "palette_entry": {
+      "type": "object",
+      "required": ["index", "label", "rgb"],
+      "additionalProperties": true,
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "label": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+        "rgb": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {"type": "integer", "minimum": 0, "maximum": 255}
+        }
+      }
+    }
+  }
+}

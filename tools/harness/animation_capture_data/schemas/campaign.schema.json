@@ -1,0 +1,343 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/home-assistant-custom-components/ha-govee-led-ble/animation-capture-campaign.schema.json",
+  "title": "Animation capture campaign definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "campaign_id",
+    "viewer",
+    "analysis",
+    "device_baseline",
+    "targets"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "campaign_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "viewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "session",
+        "expected_width",
+        "expected_height",
+        "stable_seconds",
+        "sample_interval_seconds",
+        "sample_count"
+      ],
+      "properties": {
+        "url": {
+          "const": "https://vdo.ninja/?view=7MdKzqF"
+        },
+        "session": {
+          "const": "govee-camera"
+        },
+        "expected_width": {
+          "const": 1280
+        },
+        "expected_height": {
+          "const": 720
+        },
+        "stable_seconds": {
+          "type": "number",
+          "minimum": 1
+        },
+        "sample_interval_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 3
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fps",
+        "crop",
+        "container",
+        "video_codec",
+        "music_audio_codec"
+      ],
+      "properties": {
+        "fps": {
+          "const": 30
+        },
+        "crop": {
+          "$ref": "#/$defs/crop"
+        },
+        "container": {
+          "const": "webm"
+        },
+        "video_codec": {
+          "const": "vp9-lossless"
+        },
+        "music_audio_codec": {
+          "const": "opus"
+        }
+      }
+    },
+    "device_baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "direct",
+        "vendor_app"
+      ],
+      "properties": {
+        "direct": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "diy_activation_code",
+            "brightness_percent",
+            "power"
+          ],
+          "properties": {
+            "diy_activation_code": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "brightness_percent": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "power": {
+              "type": "boolean"
+            }
+          }
+        },
+        "vendor_app": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "household_light_service"
+          ],
+          "properties": {
+            "household_light_service": {
+              "const": "light.turn_off"
+            }
+          }
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    }
+  },
+  "$defs": {
+    "crop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height",
+        "calibration_target"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "calibration_target": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "rgb": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "batch",
+        "driver",
+        "family",
+        "model",
+        "duration_seconds",
+        "brightness_percent",
+        "parameters",
+        "palette",
+        "speed_policy",
+        "audio"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "batch": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "driver": {
+          "enum": [
+            "direct",
+            "vendor_app"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "model": {
+          "enum": [
+            "H617A",
+            "H6199"
+          ]
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "brightness_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "palette": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rgb"
+          },
+          "maxItems": 8
+        },
+        "speed_policy": {
+          "type": "object"
+        },
+        "audio": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "retain_in_reduced",
+            "stimulus_notes"
+          ],
+          "properties": {
+            "retain_in_reduced": {
+              "type": "boolean"
+            },
+            "stimulus_notes": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "direct": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "send_gap_seconds"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "static_rgb",
+                "calibration",
+                "type04_single",
+                "type04_multi",
+                "music"
+              ]
+            },
+            "send_gap_seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "activation_code": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            }
+          }
+        },
+        "operator_steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "driver": {
+                "const": "direct"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "direct"
+            ]
+          },
+          "else": {
+            "required": [
+              "operator_steps"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

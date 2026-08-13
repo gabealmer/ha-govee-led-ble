@@ -1,0 +1,430 @@
+{
+  "analysis": {
+    "container": "webm",
+    "crop": {
+      "calibration_target": "calibration-all-white",
+      "height": 125,
+      "width": 800,
+      "x": 0,
+      "y": 0
+    },
+    "fps": 30,
+    "music_audio_codec": "opus",
+    "video_codec": "vp9-lossless"
+  },
+  "campaign_id": "animation-music-v1",
+  "device_baseline": {
+    "direct": {
+      "brightness_percent": 5,
+      "diy_activation_code": 240,
+      "power": false
+    },
+    "vendor_app": {
+      "household_light_service": "light.turn_off"
+    }
+  },
+  "schema_version": 1,
+  "targets": [
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-energetic-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "energetic",
+        "mode_id": 5,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-rhythm-dynamic",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "rhythm",
+        "mode_id": 3,
+        "sensitivity": 99,
+        "style": "dynamic"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-rhythm-calm",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "rhythm",
+        "mode_id": 3,
+        "sensitivity": 99,
+        "style": "calm"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-spectrum-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "spectrum",
+        "mode_id": 4,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-rolling-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "rolling",
+        "mode_id": 6,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-separation-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "separation",
+        "mode_id": 50,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-hopping-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "hopping",
+        "mode_id": 51,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-piano-keys-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "piano_keys",
+        "mode_id": 52,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-fountain-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "fountain",
+        "mode_id": 53,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-day-and-night-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "day_and_night",
+        "mode_id": 55,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-bloom-dynamic",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "bloom",
+        "mode_id": 48,
+        "sensitivity": 99,
+        "style": "dynamic"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-bloom-calm",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "bloom",
+        "mode_id": 48,
+        "sensitivity": 99,
+        "style": "calm"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-shiny-dynamic",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "shiny",
+        "mode_id": 49,
+        "sensitivity": 99,
+        "style": "dynamic"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-shiny-calm",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "shiny",
+        "mode_id": 49,
+        "sensitivity": 99,
+        "style": "calm"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    }
+  ],
+  "viewer": {
+    "expected_height": 720,
+    "expected_width": 1280,
+    "sample_count": 9,
+    "sample_interval_seconds": 0.5,
+    "session": "govee-camera",
+    "stable_seconds": 2.0,
+    "url": "https://vdo.ninja/?view=7MdKzqF"
+  }
+}
