@@ -11,6 +11,9 @@ bash tools/harness/down.sh
 Run `tools/harness/preflight.sh app` or `tools/harness/preflight.sh direct` before taking a
 device link when setting up a host.
 
+The manifest-driven camera, direct-effect and vendor-app corpus workflow is documented in
+[Animation capture campaign](ANIMATION_CAPTURE.md).
+
 ## Isolated Home Assistant Container
 
 `container.sh` runs a separate [Home Assistant Container](https://www.home-assistant.io/installation/linux#install-home-assistant-container) through Podman.  It does not deploy to, restart or otherwise repurpose the household Home Assistant instance.

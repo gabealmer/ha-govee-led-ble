@@ -1,0 +1,276 @@
+{
+  "analysis": {
+    "container": "webm",
+    "crop": {
+      "calibration_target": "calibration-all-white",
+      "height": 125,
+      "width": 800,
+      "x": 0,
+      "y": 0
+    },
+    "fps": 30,
+    "music_audio_codec": "opus",
+    "video_codec": "vp9-lossless"
+  },
+  "campaign_id": "animation-type04-multi-v1",
+  "device_baseline": {
+    "direct": {
+      "brightness_percent": 5,
+      "diy_activation_code": 240,
+      "power": false
+    },
+    "vendor_app": {
+      "household_light_service": "light.turn_off"
+    }
+  },
+  "schema_version": 1,
+  "targets": [
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-multi",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_multi",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-multi",
+      "id": "type04-multi-1-effect-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effects": [
+          {
+            "effect": "fade",
+            "family": 0,
+            "variant": 0
+          }
+        ],
+        "speed": 50
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-multi",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_multi",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-multi",
+      "id": "type04-multi-2-effect-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effects": [
+          {
+            "effect": "fade",
+            "family": 0,
+            "variant": 0
+          },
+          {
+            "effect": "jumping",
+            "family": 1,
+            "variant": 0
+          }
+        ],
+        "speed": 50
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-multi",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_multi",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-multi",
+      "id": "type04-multi-3-effect-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effects": [
+          {
+            "effect": "fade",
+            "family": 0,
+            "variant": 0
+          },
+          {
+            "effect": "jumping",
+            "family": 1,
+            "variant": 0
+          },
+          {
+            "effect": "marquee",
+            "family": 3,
+            "variant": 3
+          }
+        ],
+        "speed": 50
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-multi",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_multi",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-multi",
+      "id": "type04-multi-4-effect-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effects": [
+          {
+            "effect": "fade",
+            "family": 0,
+            "variant": 0
+          },
+          {
+            "effect": "jumping",
+            "family": 1,
+            "variant": 0
+          },
+          {
+            "effect": "marquee",
+            "family": 3,
+            "variant": 3
+          },
+          {
+            "effect": "chasing",
+            "family": 8,
+            "variant": 9
+          }
+        ],
+        "speed": 50
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    }
+  ],
+  "viewer": {
+    "expected_height": 720,
+    "expected_width": 1280,
+    "sample_count": 9,
+    "sample_interval_seconds": 0.5,
+    "session": "govee-camera",
+    "stable_seconds": 2.0,
+    "url": "https://vdo.ninja/?view=7MdKzqF"
+  }
+}

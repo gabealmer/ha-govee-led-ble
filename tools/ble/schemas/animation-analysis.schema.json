@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ha-govee-led-ble/schemas/animation-analysis.schema.json",
+  "title": "Animation analysis record",
+  "description": "One analysed effect capture. Every value is camera-observed behaviour with provenance; none of it describes BLE wire semantics, and no field may be promoted to runtime rendering.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "campaign",
+    "sku",
+    "capture",
+    "source",
+    "calibration",
+    "sampling",
+    "colour",
+    "features",
+    "duration_recommendation",
+    "limitations",
+    "toolchain"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1, "maximum": 1},
+    "campaign": {"type": "string"},
+    "sku": {"type": "string", "description": "The device this capture came from, never the mixed-corpus sentinel."},
+    "capture": {
+      "type": "object",
+      "required": ["stem", "kind", "label", "pilot"],
+      "additionalProperties": false,
+      "properties": {
+        "stem": {"type": "string"},
+        "kind": {"enum": ["motion", "multi", "advanced", "music"]},
+        "label": {"type": "string"},
+        "pilot": {"type": "boolean"},
+        "authored": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["video", "video_sha256", "manifest_sha256", "audio", "audio_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "video": {"type": "string"},
+        "video_sha256": {"$ref": "#/$defs/sha256"},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "audio": {"type": ["string", "null"]},
+        "audio_sha256": {"$ref": "#/$defs/nullable_sha256"}
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "required": ["lane_count", "uniform_scale", "calibration_sha256", "video_mapping"],
+      "additionalProperties": false,
+      "properties": {
+        "lane_count": {"type": "integer", "minimum": 1},
+        "uniform_scale": {"type": "number", "minimum": 0},
+        "calibration_sha256": {"$ref": "#/$defs/sha256"},
+        "video_mapping": {
+          "type": "object",
+          "required": ["validated", "confidence", "reference_video"],
+          "additionalProperties": true,
+          "properties": {
+            "validated": {"type": "boolean"},
+            "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+            "reference_video": {"type": ["string", "null"]}
+          }
+        }
+      }
+    },
+    "sampling": {
+      "type": "object",
+      "required": ["lane_count", "frame_count", "fps", "duration_seconds", "timestamps_seconds", "colours_rgb"],
+      "additionalProperties": false,
+      "properties": {
+        "lane_count": {"type": "integer", "minimum": 1},
+        "frame_count": {"type": "integer", "minimum": 2},
+        "fps": {"type": "number", "minimum": 0},
+        "duration_seconds": {"type": "number", "minimum": 0},
+        "timestamps_seconds": {"type": "array", "minItems": 2, "items": {"type": "number"}},
+        "colours_rgb": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "array",
+            "items": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}
+          }
+        }
+      }
+    },
+    "colour": {
+      "type": "object",
+      "required": [
+        "black_threshold",
+        "background_black_detected",
+        "clipped_sample_fraction",
+        "camera_hue_rotation_degrees",
+        "clusters",
+        "label_coverage",
+        "unassigned_palette_labels",
+        "blended_sample_fraction",
+        "unknown_sample_fraction",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "black_threshold": {"type": "number", "minimum": 0},
+        "background_black_detected": {"type": "boolean"},
+        "clipped_sample_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "camera_hue_rotation_degrees": {"type": "number"},
+        "clusters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "chromaticity",
+              "spread",
+              "sample_fraction",
+              "label",
+              "palette_index",
+              "assignment_cost",
+              "assignment_confidence"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "integer", "minimum": 0},
+              "chromaticity": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+              "spread": {"type": "number", "minimum": 0},
+              "sample_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+              "label": {"type": "string"},
+              "palette_index": {"type": ["integer", "null"], "minimum": 0},
+              "assignment_cost": {"type": ["number", "null"], "minimum": 0},
+              "assignment_confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          }
+        },
+        "label_coverage": {"type": "object", "additionalProperties": true},
+        "unassigned_palette_labels": {"type": "array", "items": {"type": "string"}},
+        "blended_sample_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "unknown_sample_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "confidence": {"$ref": "#/$defs/confidence"}
+      }
+    },
+    "features": {
+      "type": "object",
+      "required": ["motion", "multi", "advanced", "music"],
+      "additionalProperties": false,
+      "properties": {
+        "motion": {"$ref": "#/$defs/nullable_motion"},
+        "multi": {"type": ["object", "null"], "additionalProperties": true},
+        "advanced": {"type": ["object", "null"], "additionalProperties": true},
+        "music": {"type": ["object", "null"], "additionalProperties": true}
+      }
+    },
+    "duration_recommendation": {"$ref": "#/$defs/nullable_duration"},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "toolchain": {"type": "object", "additionalProperties": true}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullable_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "nullable_motion": {
+      "type": ["object", "null"],
+      "required": [
+        "background",
+        "direction",
+        "path",
+        "bands",
+        "phase",
+        "periodicity",
+        "transition_shape",
+        "palette_assignment",
+        "palette_order",
+        "confidence"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "background": {
+          "type": "object",
+          "required": ["label", "palette_index", "is_black", "coverage", "presence", "state"],
+          "additionalProperties": true,
+          "properties": {"state": {"enum": ["black", "lit", "none", "unknown"]}}
+        },
+        "direction": {"$ref": "#/$defs/direction"},
+        "path": {
+          "type": "object",
+          "required": ["path", "confidence"],
+          "additionalProperties": true,
+          "properties": {
+            "path": {"enum": ["wrapping", "bouncing", "open", "stationary", "unknown"]},
+            "confidence": {"$ref": "#/$defs/confidence"}
+          }
+        },
+        "bands": {
+          "type": "object",
+          "required": ["simultaneous_band_count", "band_width_lanes", "duty_cycle", "lane_duty_cycle", "confidence"],
+          "additionalProperties": true
+        },
+        "phase": {"type": "object", "required": ["confidence", "adjacent_pairs"], "additionalProperties": true},
+        "periodicity": {
+          "type": "object",
+          "required": ["period_seconds", "period_frames", "correlation", "rise_from_dip", "confidence"],
+          "additionalProperties": true
+        },
+        "transition_shape": {"$ref": "#/$defs/transition_shape"},
+        "palette_assignment": {
+          "type": "object",
+          "required": ["observed_palette_indexes", "unassigned_palette_labels", "confidence"],
+          "additionalProperties": true
+        },
+        "palette_order": {
+          "type": "object",
+          "required": ["temporal_sequence", "temporal_repeats", "relation", "confidence"],
+          "additionalProperties": true,
+          "properties": {
+            "relation": {
+              "enum": [
+                "authored_order",
+                "reversed_authored_order",
+                "other_permutation",
+                "single_label",
+                "unknown"
+              ]
+            }
+          }
+        },
+        "confidence": {"$ref": "#/$defs/confidence"}
+      }
+    },
+    "direction": {
+      "type": "object",
+      "required": ["direction", "confidence", "speed_lanes_per_second", "wrap"],
+      "additionalProperties": true,
+      "properties": {
+        "direction": {
+          "enum": ["towards_first_segment", "towards_last_segment", "bidirectional", "stationary", "unknown"]
+        },
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "speed_lanes_per_second": {"type": ["number", "null"], "minimum": 0},
+        "wrap": {"type": "boolean"}
+      }
+    },
+    "transition_shape": {
+      "type": "object",
+      "required": ["shape", "median_transition_frames", "fade_fraction", "event_count"],
+      "additionalProperties": true,
+      "properties": {
+        "shape": {"enum": ["step", "fade", "mixed", "unknown"]},
+        "median_transition_frames": {"type": ["number", "null"], "minimum": 0},
+        "fade_fraction": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "event_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "nullable_duration": {
+      "type": ["object", "null"],
+      "required": [
+        "recommended_seconds",
+        "reason",
+        "pilot_seconds",
+        "period_seconds",
+        "cycles_captured",
+        "analysed_seconds",
+        "settling_seconds",
+        "margin_seconds",
+        "limitations"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "recommended_seconds": {"type": "number", "minimum": 10, "maximum": 25},
+        "reason": {"enum": ["periodic", "stochastic", "unresolved"]},
+        "pilot_seconds": {"type": "number", "minimum": 0},
+        "period_seconds": {"type": ["number", "null"], "minimum": 0},
+        "cycles_captured": {"type": ["number", "null"], "minimum": 0},
+        "analysed_seconds": {"type": ["number", "null"], "minimum": 0},
+        "settling_seconds": {"type": "number", "minimum": 0},
+        "margin_seconds": {"type": "number", "minimum": 0},
+        "limitations": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}
