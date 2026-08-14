@@ -201,6 +201,9 @@ export class GoveeLedEffectStudio extends LitElement {
   private currentItem?: LibraryItem;
 
   @state()
+  private savedSceneSelection?: LibraryItem;
+
+  @state()
   private name = "";
 
   @state()
@@ -405,6 +408,7 @@ export class GoveeLedEffectStudio extends LitElement {
           .device=${this.selectedDevice}
           .library=${this.library}
           .isAdmin=${this.isAdmin}
+          .savedSceneSelection=${this.savedSceneSelection}
           @library-item-saved=${this.sceneLibraryItemSaved}
           @library-item-delete-requested=${this.sceneLibraryItemDeleteRequested}
           @scene-edit-selected=${this.sceneTemplateSelected}
@@ -2855,6 +2859,12 @@ export class GoveeLedEffectStudio extends LitElement {
         this.name = result.item.name;
         this.content = cloneEditableEffect(savedContent);
         this.savedBaseline = serialiseEditable(this.name, this.content);
+        if (
+          originatingItem &&
+          savedContent.kind === "scene_layered"
+        ) {
+          this.savedSceneSelection = result.item;
+        }
       }
       const savedResultIsCurrent = () =>
         this.editorTransitionIsCurrent(transitionEpoch) &&

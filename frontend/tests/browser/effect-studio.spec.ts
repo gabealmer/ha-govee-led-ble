@@ -437,7 +437,7 @@ test("default harness uses complete production H617A catalogues", async ({
   ).toHaveCount(1);
   await studio
     .locator(".editor")
-    .getByRole("button", { name: "Edit" })
+    .getByRole("button", { name: "Edit", exact: true })
     .click();
   await expect(
     studio.getByRole("combobox", { name: "Effect", exact: true }),
@@ -1251,7 +1251,7 @@ test("device catalogues expose complete model-specific effect families", async (
   ).toHaveAttribute("max", "99");
   await studio
     .locator(".editor")
-    .getByRole("button", { name: "Edit" })
+    .getByRole("button", { name: "Edit", exact: true })
     .click();
   await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveValue(
     "bloom",
@@ -1304,7 +1304,7 @@ test("device catalogues expose complete model-specific effect families", async (
   await effects.getByRole("button", { name: "Music", exact: true }).click();
   await studio
     .locator(".editor")
-    .getByRole("button", { name: "Edit" })
+    .getByRole("button", { name: "Edit", exact: true })
     .click();
   await expect(
     studio.getByRole("combobox", { name: "Effect", exact: true }),
@@ -3215,12 +3215,21 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
     ),
   );
   expect(revised).toHaveLength(1);
-  expect(revised[0]?.revision).toBe(3);
+  expect(revised[0]).toMatchObject({
+    revision: 3,
+    content: {
+      kind: "scene_layered",
+      speed_index: 1,
+    },
+  });
 
   await studio.getByRole("button", { name: "Back to Scenes" }).click();
   await expect(sceneBrowser.getByLabel("Scene name")).toHaveValue(
     "Aurora revised",
   );
+  await expect(
+    speed.getByRole("button", { name: "Default" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await sceneBrowser.getByRole("button", { name: "Apply" }).click();
   const revisedApply = await page.evaluate(() =>
     [...window.testHarness.snapshot().calls].reverse().find(
