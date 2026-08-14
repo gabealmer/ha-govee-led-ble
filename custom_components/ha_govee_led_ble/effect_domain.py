@@ -18,7 +18,7 @@ from .effect_limits import (
     validate_json_document,
     validate_revision,
 )
-from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES
+from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES, h6199_diy_padding_len
 from .layered_scene import AppliedArea as AppliedArea
 from .layered_scene import BrightnessOrder as BrightnessOrder
 from .layered_scene import BrightnessPattern as BrightnessPattern
@@ -340,6 +340,7 @@ class SpecialDiyEffect:
             raise EffectValidationError(
                 f"Special DIY trailing padding must be an integer from 0 to {MAX_SCENE_PARAM_BYTES}"
             )
+        object.__setattr__(self, "trailing_padding", h6199_diy_padding_len(len(self.palette)))
 
 
 @dataclass(frozen=True, slots=True)

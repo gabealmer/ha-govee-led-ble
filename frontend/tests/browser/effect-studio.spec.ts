@@ -587,7 +587,7 @@ test("Workshop and Special DIY templates use shared editors and apply safely", a
   await expect(
     studio.getByRole("status").filter({
       hasText:
-        "This upload has no device readback, so packet completion is the available confirmation.",
+        "The H6199 effect upload was sent to H6199 DreamView T1, but activation and readback remain unproven. The result is uncertain.",
     }),
   ).toBeVisible();
 });

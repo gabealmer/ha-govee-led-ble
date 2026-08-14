@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import io
 from dataclasses import replace
 from typing import Any, cast
 from uuid import UUID
 
 import pytest
+from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import effect_domain as effect_domain_module
 from custom_components.ha_govee_led_ble import layered_scene as layered_scene_module
@@ -18,6 +20,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
 from custom_components.ha_govee_led_ble.effect_compiler import (
     ActivationMode,
     CompatibilityState,
+    VerificationStrategy,
     compatibility,
     compile_application,
     compile_effect,
@@ -74,6 +77,7 @@ from custom_components.ha_govee_led_ble.effect_limits import (
     MAX_LIBRARY_ITEMS,
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
+from custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload import H6199EffectUpload
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 
 
@@ -568,15 +572,51 @@ def test_workshop_compiler_reproduces_fixture_body_without_inventing_activation(
 
 
 @pytest.mark.parametrize("template", H6199_SPECIAL_DIY_TEMPLATES, ids=lambda template: template.id)
-def test_special_diy_compiler_reproduces_fixture_body_without_inventing_activation(template) -> None:
+def test_special_diy_compiler_reproduces_fixture_body_and_uses_the_shared_activation(template) -> None:
     content = template.content()
     item = LibraryItem.new("Special DIY", content)
 
     compiled = compile_effect(item, "H6199")
 
-    assert compiled.activation_packet is None
-    assert compiled.diy_code is None
+    assert compiled.activation_packet == protocol.build_h6199_palette_diy_activation(401, 2)
+    assert compiled.diy_code == 401
+    assert compiled.verification_strategy is VerificationStrategy.UNPROVEN_H6199_SLOT
     assert b"".join(packet[2:19] for packet in compiled.upload_packets) == content.raw_payload
+
+
+def test_special_diy_maximum_palette_derives_padding_for_the_fixed_envelope() -> None:
+    template = H6199_SPECIAL_DIY_TEMPLATES[0].content()
+    content = replace(
+        template,
+        palette=tuple((index, index + 1, index + 2) for index in range(8)),
+    )
+
+    compiled = compile_effect(LibraryItem.new("Maximum palette", content), "H6199")
+    envelope = b"".join(packet[2:19] for packet in compiled.upload_packets)
+    parsed = H6199EffectUpload(KaitaiStream(io.BytesIO(envelope)))
+    parsed._read()
+
+    assert len(envelope) == 34
+    assert len(parsed.content.palette) == 8
+    assert len(parsed.content.padding) == 3
+    assert content.trailing_padding == 3
+    assert content.raw_payload == template.raw_payload
+    assert envelope != content.raw_payload
+
+
+def test_special_diy_rejects_palette_overflow_before_compilation() -> None:
+    with pytest.raises(EffectValidationError, match="palette must contain 1 to 8 colours"):
+        replace(
+            H6199_SPECIAL_DIY_TEMPLATES[0].content(),
+            palette=tuple((index, index + 1, index + 2) for index in range(9)),
+        )
+
+
+def test_special_diy_rejects_a_slot_other_than_the_shared_palette_diy_slot() -> None:
+    item = LibraryItem.new("Special DIY", H6199_SPECIAL_DIY_TEMPLATES[0].content())
+
+    with pytest.raises(ValueError, match="only evidenced for slot 401"):
+        compile_effect(item, "H6199", diy_code=800)
 
 
 @pytest.mark.parametrize("model", ["H617A", "H6199"])
@@ -613,7 +653,6 @@ def test_workshop_edit_preserves_reserved_layer_data(model: str) -> None:
     ("item", "model"),
     [
         (LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content("H617A")), "H617A"),
-        (LibraryItem.new("Special DIY", H6199_SPECIAL_DIY_TEMPLATES[0].content()), "H6199"),
     ],
 )
 def test_upload_only_compilers_reject_invented_activation(item: LibraryItem, model: str) -> None:

@@ -381,6 +381,7 @@ class EffectDeploymentEngine:
         current = record
         if isinstance(compiled, CompiledMusicProfile):
             coordinator.install_music_profile_state(
+                mode=compiled.mode,
                 sensitivity=compiled.sensitivity,
                 colour=compiled.colour,
                 calm=compiled.calm,
@@ -846,9 +847,9 @@ def resolve_diy_code(
         return 800
     if isinstance(item.content, SingleEffect | MultiEffect):
         return H617A_TYPE04_APPLY_CODE
-    if isinstance(item.content, PaletteDiyEffect):
+    if isinstance(item.content, PaletteDiyEffect | SpecialDiyEffect):
         return H6199_PALETTE_DIY_APPLY_CODE
-    if isinstance(item.content, WorkshopEffect | SpecialDiyEffect):
+    if isinstance(item.content, WorkshopEffect):
         return None
     raise ValueError("this content kind has no custom-effect selector allocation")
 
@@ -859,11 +860,11 @@ def _resolve_compiler_diy_code(
     config_entry_id: str,
     diy_code: int | None,
 ) -> int | None:
-    if isinstance(item.content, WorkshopEffect | SpecialDiyEffect):
+    if isinstance(item.content, WorkshopEffect):
         if diy_code is not None:
             raise ValueError("this upload has no evidenced activation packet")
         return None
-    if not isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect):
+    if not isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect | SpecialDiyEffect):
         return None
     return resolve_diy_code(deployments, item, config_entry_id) if diy_code is None else diy_code
 
