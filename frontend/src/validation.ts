@@ -39,11 +39,13 @@ import type {
   WorkshopContent,
   WorkshopTemplate,
 } from "./types";
+import {
+  EDITOR_API_VERSION,
+  EFFECT_COMPILER_VERSION,
+  EFFECT_SCHEMA_VERSION,
+} from "./contracts";
 import { DEPLOYMENT_PHASES } from "./types";
 
-const EDITOR_API_VERSION = 2;
-const EFFECT_SCHEMA_VERSION = 1;
-const EFFECT_COMPILER_VERSION = 2;
 const CUSTOM_CATALOGUE_SCHEMA_VERSION = 5;
 const MAX_EFFECT_NAME_LENGTH = 128;
 const MAX_EFFECT_DOCUMENT_BYTES = 65_536;

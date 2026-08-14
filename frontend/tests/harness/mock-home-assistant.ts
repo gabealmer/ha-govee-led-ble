@@ -1,5 +1,10 @@
 import { blankAdvancedContent, cloneAdvancedContent } from "../../src/advanced-effect-editor";
 import {
+  EDITOR_API_VERSION,
+  EFFECT_COMPILER_VERSION,
+  EFFECT_SCHEMA_VERSION,
+} from "../../src/contracts";
+import {
   decodeCustomCatalogue,
   decodeDeployment,
   decodeEffectContent,
@@ -259,9 +264,11 @@ export class MockHomeAssistantBackend {
     switch (command) {
       case "info":
         return this.result<T>({
-          api_version: this.apiMismatch ? 3 : 2,
-          effect_schema_version: 1,
-          compiler_version: 2,
+          api_version: this.apiMismatch
+            ? EDITOR_API_VERSION + 1
+            : EDITOR_API_VERSION,
+          effect_schema_version: EFFECT_SCHEMA_VERSION,
+          compiler_version: EFFECT_COMPILER_VERSION,
           limits: {
             effect_name: 128,
             effect_document_bytes: 65_536,

@@ -1,11 +1,12 @@
 import { readdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
-
-const ASSET_VERSION = 2;
-const API_VERSION = 2;
-const EFFECT_SCHEMA_VERSION = 1;
-const COMPILER_VERSION = 3;
+import {
+  EDITOR_API_VERSION,
+  EDITOR_ASSET_VERSION,
+  EFFECT_COMPILER_VERSION,
+  EFFECT_SCHEMA_VERSION,
+} from "./src/contracts";
 
 function editorManifest(): Plugin {
   const outputDirectory = resolve(
@@ -36,10 +37,10 @@ function editorManifest(): Plugin {
         fileName: "manifest.json",
         source: `${JSON.stringify({
           bootstrap: entry.fileName,
-          asset_version: ASSET_VERSION,
-          api_version: API_VERSION,
+          asset_version: EDITOR_ASSET_VERSION,
+          api_version: EDITOR_API_VERSION,
           effect_schema_version: EFFECT_SCHEMA_VERSION,
-          compiler_version: COMPILER_VERSION,
+          compiler_version: EFFECT_COMPILER_VERSION,
         }, null, 2)}\n`,
       });
     },
