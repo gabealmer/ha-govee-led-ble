@@ -160,6 +160,20 @@ export const studioFormStyles = css`
     gap: 10px;
   }
 
+  .check-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--studio-control-height);
+  }
+
+  .check-field input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--studio-blue);
+  }
+
   .parameter-label,
   .field > span:first-child,
   .range-field > span:first-child,
