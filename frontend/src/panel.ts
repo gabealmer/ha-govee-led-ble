@@ -10,9 +10,11 @@ import "./advanced-effect-editor";
 import { EffectStudioApi } from "./api";
 import "./colour-picker";
 import "./custom-effect-editor";
+import "./music-profile-editor";
 import "./palette-editor";
 import "./painted-segment-editor";
 import "./scene-browser";
+import "./video-profile-editor";
 import {
   studioActionStyles,
   studioBaseStyles,
@@ -37,10 +39,15 @@ import type {
   LibraryItem,
   LibrarySummary,
   LibrarySnapshot,
+  ModelEffectCatalogue,
+  ModelSku,
+  MusicProfileContent,
   OpaqueContent,
+  PaletteDiyEffectContent,
   PaintedContent,
   PanelConfig,
   RGB,
+  VideoProfileContent,
 } from "./types";
 import {
   compareLabels,
@@ -49,17 +56,29 @@ import {
 } from "./ui-utils";
 import { isCompatibleEditorInfo } from "./validation";
 
-type StudioSection = "scenes" | "custom";
+type StudioSection = "video" | "scenes" | "custom";
 type AdvancedEditableContent = AdvancedContent | LayeredSceneContent;
-type EditableEffectContent = CustomEffectContent | AdvancedEditableContent;
-type NewEffectKind = CustomEffectContent["kind"] | AdvancedContent["kind"];
+type ProfileContent =
+  | PaletteDiyEffectContent
+  | MusicProfileContent
+  | VideoProfileContent;
+type EditableEffectContent =
+  | CustomEffectContent
+  | ProfileContent
+  | AdvancedEditableContent;
+type NewEffectKind =
+  | CustomEffectContent["kind"]
+  | PaletteDiyEffectContent["kind"]
+  | AdvancedContent["kind"];
 type NewEffectType = "single" | "multi" | "advanced";
 type DeleteCandidate = Pick<LibrarySummary, "id" | "revision" | "name">;
 type CustomEffectCategory =
   | "all"
+  | "music"
   | "single-layer"
   | "multi-layer"
-  | "advanced";
+  | "advanced"
+  | "my-effects";
 type CustomEffectListEntry =
   | {
       kind: "paint";
@@ -74,6 +93,15 @@ type CustomEffectListEntry =
       category: "single-layer";
       family: number;
       variant: number;
+    }
+  | {
+      kind: "music";
+      key: string;
+      label: string;
+      category: "music";
+      mode?: string;
+      family?: number;
+      variant?: number;
     }
   | {
       kind: "multi";
@@ -201,13 +229,28 @@ export class GoveeLedEffectStudio extends LitElement {
     );
   }
 
+  private get selectedModel(): ModelSku | undefined {
+    const model = this.selectedDevice?.model ?? this.devices[0]?.model;
+    return model === "H617A" || model === "H6199" ? model : undefined;
+  }
+
+  private get modelCatalogue(): ModelEffectCatalogue | undefined {
+    const model = this.selectedModel;
+    return model ? this.customCatalogue?.models[model] : undefined;
+  }
+
+  private get videoAvailable(): boolean {
+    return Boolean(this.modelCatalogue?.video_modes.length);
+  }
+
   private get customEffectsAvailable(): boolean {
-    const capabilities = this.selectedDevice?.custom_effects;
-    return (
-      !capabilities ||
-      Object.values(capabilities).some(
-        (capability) => capability !== "unsupported",
-      )
+    const catalogue = this.modelCatalogue;
+    return Boolean(
+      catalogue &&
+        (catalogue.painted_effects.length ||
+          catalogue.effects.length ||
+          catalogue.music_modes.length ||
+          catalogue.supports.advanced !== "unsupported"),
     );
   }
 
@@ -306,11 +349,12 @@ export class GoveeLedEffectStudio extends LitElement {
         : nothing}
 
       <main
-        class="studio ${this.section === "scenes"
-          ? "scenes-mode"
-          : "custom-mode"}"
+        class="studio ${this.section}-mode"
       >
         <nav class="primary-nav" aria-label="Create">
+          ${this.videoAvailable
+            ? this.navButton("video", "Video")
+            : nothing}
           ${this.navButton("scenes", "Scenes")}
           ${this.customEffectsAvailable
             ? this.navButton("custom", "Effects")
@@ -325,8 +369,9 @@ export class GoveeLedEffectStudio extends LitElement {
           .library=${this.library}
           .isAdmin=${this.isAdmin}
           @library-item-saved=${this.sceneLibraryItemSaved}
-          @scene-template-selected=${this.sceneTemplateSelected}
+          @scene-edit-selected=${this.sceneTemplateSelected}
         ></govee-scene-browser>
+        ${this.section === "video" ? this.renderVideo() : nothing}
         ${this.section === "custom" ? this.renderCustomEffects() : nothing}
       </main>
       ${this.deleteCandidate ? this.renderDeleteConfirmation() : nothing}
@@ -406,6 +451,9 @@ export class GoveeLedEffectStudio extends LitElement {
             `
           : nothing}
         ${this.customEffectCategoryButton("all", "All")}
+        ${this.customEffectCategoryAvailable("music")
+          ? this.customEffectCategoryButton("music", "Music")
+          : nothing}
         ${this.customEffectCategoryAvailable("single-layer")
           ? this.customEffectCategoryButton("single-layer", "Single Layer")
           : nothing}
@@ -414,6 +462,9 @@ export class GoveeLedEffectStudio extends LitElement {
           : nothing}
         ${this.customEffectCategoryAvailable("advanced")
           ? this.customEffectCategoryButton("advanced", "Advanced")
+          : nothing}
+        ${this.customEffectCategoryAvailable("my-effects")
+          ? this.customEffectCategoryButton("my-effects", "My effects")
           : nothing}
       </aside>
 
@@ -425,29 +476,213 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <section class="editor-surface editor">
         ${this.name || this.currentItem
-          ? isCustomEffectContent(this.content)
-            ? this.content.kind === "h617a_painted"
-              ? this.renderPaintedEditor()
-              : this.renderPaletteEffectEditor()
-            : isAdvancedEditableContent(this.content)
-              ? this.renderAdvancedEditor()
-              : this.content.kind === "opaque"
-                ? this.renderOpaqueEditor(this.content)
-                : nothing
+          ? this.renderCurrentCustomEditor()
           : nothing}
       </section>
     `;
   }
 
+  private renderCurrentCustomEditor() {
+    if (isCustomEffectContent(this.content)) {
+      return this.content.kind === "h617a_painted"
+        ? this.renderPaintedEditor()
+        : this.renderPaletteEffectEditor();
+    }
+    if (this.content.kind === "palette_diy") {
+      return this.renderPaletteEffectEditor();
+    }
+    if (this.content.kind === "music_profile") {
+      return this.renderMusicProfileEditor();
+    }
+    if (isAdvancedEditableContent(this.content)) {
+      return this.renderAdvancedEditor();
+    }
+    return this.content.kind === "opaque"
+      ? this.renderOpaqueEditor(this.content)
+      : nothing;
+  }
+
+  private renderVideo() {
+    const catalogue = this.modelCatalogue;
+    if (!catalogue || !this.videoAvailable) {
+      return nothing;
+    }
+    const saved = this.library.items
+      .filter(
+        (item) =>
+          item.kind === "video_profile" && this.libraryItemAvailable(item),
+      )
+      .sort((left, right) => compareLabels(left.name, right.name));
+    return html`
+      <aside class="sidebar item-sidebar library" aria-label="Video profiles">
+        ${catalogue.video_modes.map((mode) =>
+          this.videoListButton(
+            `template:video:${mode.id}`,
+            mode.label,
+            () => this.openVideoTemplate(mode.id, mode.label),
+          ),
+        )}
+        ${saved.map((item) =>
+          this.videoListButton(
+            `saved:${item.id}`,
+            item.name,
+            () => void this.selectItem(item.id),
+            item,
+          ),
+        )}
+      </aside>
+      <section class="editor-surface editor">
+        ${this.content.kind === "video_profile"
+          ? this.renderVideoProfileEditor()
+          : nothing}
+      </section>
+    `;
+  }
+
+  private videoListButton(
+    key: string,
+    label: string,
+    select: () => void,
+    item?: LibrarySummary,
+  ) {
+    const selected = item
+      ? this.currentItem?.id === item.id
+      : !this.currentItem && this.customTemplateSelection === key;
+    return html`
+      <div class="library-row">
+        <button
+          class="selector item ${selected ? "selected" : ""}"
+          type="button"
+          ?disabled=${!item && !this.isAdmin}
+          @click=${select}
+        >
+          <span>${label}</span>
+        </button>
+        ${item && this.isAdmin
+          ? html`
+              <button
+                class="library-delete"
+                type="button"
+                aria-label="Delete ${label}"
+                title="Delete ${label}"
+                @click=${(event: Event) =>
+                  this.requestDelete(
+                    item,
+                    event.currentTarget as HTMLElement,
+                  )}
+              >
+                <span aria-hidden="true">&times;</span>
+              </button>
+            `
+          : nothing}
+      </div>
+    `;
+  }
+
+  private openVideoTemplate(mode: string, label: string): void {
+    if (this.selectedModel !== "H6199") {
+      return;
+    }
+    this.openEditableTemplate(
+      label,
+      blankVideoProfile(mode),
+      `template:video:${mode}`,
+    );
+  }
+
+  private renderVideoProfileEditor() {
+    if (this.content.kind !== "video_profile") {
+      return nothing;
+    }
+    return html`
+      ${this.renderProfileHeading("Video")}
+      <govee-video-profile-editor
+        .content=${this.content}
+        .disabled=${!this.isAdmin}
+        @content-changed=${(
+          event: CustomEvent<{ content: VideoProfileContent }>,
+        ) => {
+          this.content = cloneVideoProfile(event.detail.content);
+        }}
+      ></govee-video-profile-editor>
+    `;
+  }
+
+  private renderMusicProfileEditor() {
+    if (this.content.kind !== "music_profile") {
+      return nothing;
+    }
+    return html`
+      ${this.renderProfileHeading("Music")}
+      <govee-music-profile-editor
+        .content=${this.content}
+        .catalogue=${this.modelCatalogue}
+        .disabled=${!this.isAdmin}
+        @content-changed=${(
+          event: CustomEvent<{ content: MusicProfileContent }>,
+        ) => {
+          this.content = cloneMusicProfile(event.detail.content);
+        }}
+      ></govee-music-profile-editor>
+    `;
+  }
+
+  private renderProfileHeading(kind: "Music" | "Video") {
+    return html`
+      <div class="editor-heading">
+        <div>
+          <p class="eyebrow">${kind}</p>
+          ${this.renderEffectName()}
+        </div>
+        <div class="actions">
+          ${this.renderSaveAction()}
+          <button class="secondary" type="button" disabled>Apply</button>
+          ${this.renderEditorDeleteButton()}
+        </div>
+      </div>
+    `;
+  }
+
   private get customEffectEntries(): CustomEffectListEntry[] {
+    const catalogue = this.modelCatalogue;
+    const musicFamily = catalogue?.effects.find(
+      (effect) => effect.id === "music",
+    );
     const entries: CustomEffectListEntry[] = [
-      {
-        kind: "paint",
-        key: "template:paint",
-        label: "Paint",
-        category: "single-layer",
-      },
-      ...(this.customCatalogue?.effects.map(
+      ...(catalogue?.painted_effects.length
+        ? [
+            {
+              kind: "paint" as const,
+              key: "template:paint" as const,
+              label: "Paint" as const,
+              category: "single-layer" as const,
+            },
+          ]
+        : []),
+      ...(catalogue?.music_modes.map(
+        (mode): CustomEffectListEntry => ({
+          kind: "music",
+          key: `template:music:${mode.id}`,
+          label: mode.label,
+          category: "music",
+          mode: mode.id,
+        }),
+      ) ?? []),
+      ...(musicFamily
+        ? [
+            {
+              kind: "music" as const,
+              key: `template:music:custom:${musicFamily.family}`,
+              label: "Custom",
+              category: "music" as const,
+              family: musicFamily.family,
+              variant: musicFamily.variations[0].variant,
+            },
+          ]
+        : []),
+      ...(catalogue?.effects
+        .filter((effect) => effect.id !== "music")
+        .map(
         (effect): CustomEffectListEntry => ({
           kind: "single",
           key: `template:single:${effect.family}:${effect.variations[0].variant}`,
@@ -457,12 +692,16 @@ export class GoveeLedEffectStudio extends LitElement {
           variant: effect.variations[0].variant,
         }),
       ) ?? []),
-      {
-        kind: "multi",
-        key: "template:mix",
-        label: "Mix",
-        category: "multi-layer",
-      },
+      ...(catalogue?.supports.multi !== "unsupported"
+        ? [
+            {
+              kind: "multi" as const,
+              key: "template:mix" as const,
+              label: "Mix" as const,
+              category: "multi-layer" as const,
+            },
+          ]
+        : []),
       {
         kind: "advanced",
         key: "template:advanced",
@@ -470,7 +709,11 @@ export class GoveeLedEffectStudio extends LitElement {
         category: "advanced",
       },
       ...this.library.items
-        .filter((item) => isMyEffectKind(item.kind))
+        .filter(
+          (item) =>
+            isMyEffectKind(item.kind) &&
+            item.kind !== "video_profile",
+        )
         .map(
           (item): CustomEffectListEntry => ({
             kind: "saved",
@@ -486,6 +729,8 @@ export class GoveeLedEffectStudio extends LitElement {
       .filter(
         (entry) =>
           this.customEffectCategory === "all" ||
+          (this.customEffectCategory === "my-effects" &&
+            entry.kind === "saved") ||
           entry.category === this.customEffectCategory,
       )
       .sort((left, right) => compareLabels(left.label, right.label));
@@ -496,14 +741,63 @@ export class GoveeLedEffectStudio extends LitElement {
       case "paint":
         return this.customEffectKindAvailable("h617a_painted");
       case "single":
-        return this.customEffectKindAvailable("h617a_single");
+        return this.customEffectKindAvailable(
+          this.selectedModel === "H617A"
+            ? "h617a_single"
+            : "palette_diy",
+        );
+      case "music":
+        return entry.mode
+          ? this.customEffectKindAvailable("music_profile")
+          : this.customEffectKindAvailable("palette_diy") ||
+              this.customEffectKindAvailable("h617a_single");
       case "multi":
         return this.customEffectKindAvailable("h617a_multi");
       case "advanced":
         return this.customEffectKindAvailable("advanced");
       case "saved":
-        return this.customEffectKindAvailable(entry.item.kind);
+        return this.libraryItemAvailable(entry.item);
     }
+  }
+
+  private libraryItemAvailable(item: LibrarySummary): boolean {
+    const model = this.selectedModel;
+    if (item.model !== undefined && item.model !== model) {
+      return false;
+    }
+    if (item.kind === "video_profile") {
+      return this.videoAvailable;
+    }
+    if (
+      item.model === undefined &&
+      ["h617a_painted", "h617a_single", "h617a_multi"].includes(item.kind) &&
+      model !== "H617A"
+    ) {
+      return false;
+    }
+    return this.customEffectKindAvailable(item.kind);
+  }
+
+  private effectContentAvailable(content: EffectContent): boolean {
+    const model = this.selectedModel;
+    if (
+      content.kind === "h617a_painted" ||
+      content.kind === "h617a_single" ||
+      content.kind === "h617a_multi"
+    ) {
+      return model === "H617A";
+    }
+    if (
+      content.kind === "palette_diy" ||
+      content.kind === "music_profile" ||
+      content.kind === "video_profile"
+    ) {
+      return content.model === model;
+    }
+    if (content.kind === "scene_layered") {
+      return content.template.sku === model;
+    }
+    return this.customEffectKindAvailable(content.kind);
   }
 
   private customEffectCategoryAvailable(
@@ -512,38 +806,55 @@ export class GoveeLedEffectStudio extends LitElement {
     switch (category) {
       case "all":
         return this.customEffectsAvailable;
+      case "music":
+        return Boolean(this.modelCatalogue?.music_modes.length);
       case "single-layer":
         return (
           this.customEffectKindAvailable("h617a_painted") ||
-          this.customEffectKindAvailable("h617a_single")
+          this.customEffectKindAvailable("h617a_single") ||
+          this.customEffectKindAvailable("palette_diy")
         );
       case "multi-layer":
         return this.customEffectKindAvailable("h617a_multi");
       case "advanced":
         return this.customEffectKindAvailable("advanced");
+      case "my-effects":
+        return this.library.items.some(
+          (item) =>
+            item.kind !== "video_profile" &&
+            isMyEffectKind(item.kind) &&
+            this.libraryItemAvailable(item),
+        );
     }
   }
 
   private customEffectKindAvailable(kind: string): boolean {
-    const capabilities = this.selectedDevice?.custom_effects;
-    if (!capabilities) {
-      return true;
-    }
+    const catalogue = this.modelCatalogue;
+    const model = this.selectedModel;
     if (kind === "h617a_painted") {
-      return capabilities.painted !== "unsupported";
+      return model === "H617A" && Boolean(catalogue?.painted_effects.length);
     }
     if (kind === "h617a_single") {
-      return capabilities.single !== "unsupported";
+      return model === "H617A" && Boolean(catalogue?.effects.length);
+    }
+    if (kind === "palette_diy") {
+      return model === "H6199" && Boolean(catalogue?.effects.length);
     }
     if (kind === "h617a_multi") {
-      return capabilities.multi !== "unsupported";
+      return model === "H617A" && catalogue?.supports.multi !== "unsupported";
     }
-    return capabilities.advanced !== "unsupported";
+    if (kind === "music_profile") {
+      return Boolean(catalogue?.music_modes.length);
+    }
+    return catalogue?.supports.advanced !== "unsupported";
   }
 
   private get defaultNewEffectKind(): NewEffectKind | undefined {
     if (this.customEffectKindAvailable("h617a_single")) {
       return "h617a_single";
+    }
+    if (this.customEffectKindAvailable("palette_diy")) {
+      return "palette_diy";
     }
     if (this.customEffectKindAvailable("h617a_painted")) {
       return "h617a_painted";
@@ -672,7 +983,36 @@ export class GoveeLedEffectStudio extends LitElement {
       this.customTemplateSelection = entry.key;
       return;
     }
-    if (!this.customCatalogue) {
+    const catalogue = this.modelCatalogue;
+    if (!catalogue) {
+      return;
+    }
+    if (entry.kind === "music") {
+      if (entry.mode) {
+        this.openMusicTemplate(entry.mode, entry.label);
+        return;
+      }
+      if (entry.family === undefined || entry.variant === undefined) {
+        return;
+      }
+      const content =
+        this.selectedModel === "H617A"
+          ? {
+              ...blankCustomEffect("h617a_single", catalogue),
+              family: entry.family,
+              variant: entry.variant,
+            }
+          : blankPaletteDiy(
+              catalogue,
+              this.selectedModel!,
+              entry.family,
+              entry.variant,
+            );
+      this.openEditableTemplate(
+        entry.label,
+        content,
+        entry.key,
+      );
       return;
     }
     if (entry.kind === "paint") {
@@ -685,28 +1025,79 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     if (entry.kind === "single") {
-      const content = blankCustomEffect(
-        "h617a_single",
-        this.customCatalogue,
-      );
-      this.newEffect("h617a_single", undefined, {
-        name: entry.label,
-        content: {
-          ...content,
-          family: entry.family,
-          variant: entry.variant,
-        },
-        selectionIdentity: entry.key,
-        templateLabel: entry.label,
-      });
+      if (this.selectedModel === "H617A") {
+        const content = blankCustomEffect(
+          "h617a_single",
+          catalogue,
+        );
+        this.newEffect("h617a_single", undefined, {
+          name: entry.label,
+          content: {
+            ...content,
+            family: entry.family,
+            variant: entry.variant,
+          },
+          selectionIdentity: entry.key,
+          templateLabel: entry.label,
+        });
+      } else {
+        this.openEditableTemplate(
+          entry.label,
+          blankPaletteDiy(
+            catalogue,
+            this.selectedModel!,
+            entry.family,
+            entry.variant,
+          ),
+          entry.key,
+        );
+      }
       return;
     }
     this.newEffect("h617a_multi", undefined, {
       name: entry.label,
-      content: blankCustomEffect("h617a_multi", this.customCatalogue),
+      content: blankCustomEffect("h617a_multi", catalogue),
       selectionIdentity: entry.key,
       templateLabel: entry.label,
     });
+  }
+
+  private openEditableTemplate(
+    label: string,
+    content: EditableEffectContent,
+    selectionIdentity: string,
+  ): void {
+    this.beginEditorTransition();
+    this.currentItem = undefined;
+    this.templateSourceLabel = label;
+    this.customCopyStarted = true;
+    this.customTemplateSelection = selectionIdentity;
+    this.name = label;
+    this.content = cloneEditableEffect(content);
+    this.savedBaseline = undefined;
+    this.notice = undefined;
+  }
+
+  private openMusicTemplate(mode: string, label: string): void {
+    const model = this.selectedModel;
+    if (model !== "H617A" && model !== "H6199") {
+      return;
+    }
+    this.openEditableTemplate(
+      label,
+      {
+        kind: "music_profile",
+        model,
+        mode,
+        sensitivity: model === "H6199" ? 100 : 99,
+        colour: null,
+        calm: ["rhythm", "bloom", "shiny"].includes(mode)
+          ? false
+          : null,
+        parameters: {},
+      },
+      `template:music:${mode}`,
+    );
   }
 
   private renderAdvancedEditor() {
@@ -934,7 +1325,8 @@ export class GoveeLedEffectStudio extends LitElement {
   private renderPaletteEffectEditor() {
     if (
       this.content.kind !== "h617a_single" &&
-      this.content.kind !== "h617a_multi"
+      this.content.kind !== "h617a_multi" &&
+      this.content.kind !== "palette_diy"
     ) {
       return nothing;
     }
@@ -974,12 +1366,19 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <govee-custom-effect-editor
         .content=${content}
-        .catalogue=${this.customCatalogue}
+        .catalogue=${this.modelCatalogue}
         .disabled=${!this.isAdmin}
         @content-changed=${(
-          event: CustomEvent<{ content: CustomEffectContent }>,
+          event: CustomEvent<{
+            content:
+              | CustomEffectContent
+              | PaletteDiyEffectContent;
+          }>,
         ) => {
-          this.content = cloneCustomEffect(event.detail.content);
+          this.content =
+            event.detail.content.kind === "palette_diy"
+              ? clonePaletteDiy(event.detail.content)
+              : cloneCustomEffect(event.detail.content);
         }}
       ></govee-custom-effect-editor>
 
@@ -992,7 +1391,8 @@ export class GoveeLedEffectStudio extends LitElement {
       !this.customCatalogue ||
       this.templateSourceLabel ||
       (this.content.kind !== "h617a_painted" &&
-        this.content.kind !== "h617a_single")
+        this.content.kind !== "h617a_single" &&
+        this.content.kind !== "palette_diy")
     ) {
       return nothing;
     }
@@ -1003,15 +1403,28 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     const family = this.selectedSingleEffectFamily;
-    const selectedEffect =
-      this.content.kind === "h617a_painted"
-        ? "paint"
-        : family?.id ?? `unknown:${this.content.family}`;
-    const includePaint = this.currentItem?.content.kind !== "h617a_single";
+    const currentFamily =
+      this.content.kind === "h617a_painted" ? undefined : this.content.family;
     const effectFamilies =
       this.currentItem?.content.kind === "h617a_painted"
         ? []
-        : this.customCatalogue.effects;
+        : this.modelCatalogue?.effects.filter(
+            (effect) =>
+              effect.id !== "music" ||
+              effect.family === currentFamily,
+          ) ?? [];
+    const familyAvailable = effectFamilies.some(
+      (effect) => effect.family === family?.family,
+    );
+    const selectedEffect =
+      this.content.kind === "h617a_painted"
+        ? "paint"
+        : family && familyAvailable
+          ? family.id
+          : `unknown:${this.content.family}`;
+    const includePaint =
+      this.customEffectKindAvailable("h617a_painted") &&
+      this.currentItem?.content.kind !== "h617a_single";
     return html`
       <section class="card single-effect-settings">
         <h3>Effect</h3>
@@ -1023,7 +1436,8 @@ export class GoveeLedEffectStudio extends LitElement {
             ?disabled=${!this.isAdmin}
             @change=${this.singleEffectChanged}
           >
-            ${this.content.kind === "h617a_single" && !family
+            ${(this.content.kind === "h617a_single" ||
+              this.content.kind === "palette_diy") && !familyAvailable
               ? html`
                   <option value=${selectedEffect}>
                     Unknown effect ${this.content.family}
@@ -1144,11 +1558,14 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private get selectedSingleEffectFamily(): DiyEffectFamily | undefined {
-    if (this.content.kind !== "h617a_single") {
+    if (
+      this.content.kind !== "h617a_single" &&
+      this.content.kind !== "palette_diy"
+    ) {
       return undefined;
     }
     const family = this.content.family;
-    return this.customCatalogue?.effects.find(
+    return this.modelCatalogue?.effects.find(
       (effect) => effect.family === family,
     );
   }
@@ -1156,7 +1573,8 @@ export class GoveeLedEffectStudio extends LitElement {
   private syncSingleEffectSelects(): void {
     if (
       this.content.kind !== "h617a_painted" &&
-      this.content.kind !== "h617a_single"
+      this.content.kind !== "h617a_single" &&
+      this.content.kind !== "palette_diy"
     ) {
       return;
     }
@@ -1232,7 +1650,8 @@ export class GoveeLedEffectStudio extends LitElement {
     if (type === "single") {
       return (
         this.customEffectKindAvailable("h617a_painted") ||
-        this.customEffectKindAvailable("h617a_single")
+        this.customEffectKindAvailable("h617a_single") ||
+        this.customEffectKindAvailable("palette_diy")
       );
     }
     return this.customEffectKindAvailable(
@@ -1313,24 +1732,40 @@ export class GoveeLedEffectStudio extends LitElement {
     if (section === "custom" && !this.customEffectsAvailable) {
       return;
     }
+    if (section === "video" && !this.videoAvailable) {
+      return;
+    }
     this.section = section;
     this.notice = undefined;
     if (section === "scenes") {
       return;
     }
+    if (section === "video") {
+      const savedVideo = this.library.items.find(
+        (item) =>
+          item.kind === "video_profile" && this.libraryItemAvailable(item),
+      );
+      if (savedVideo) {
+        await this.selectItem(savedVideo.id, transitionEpoch);
+        return;
+      }
+      const mode = this.modelCatalogue?.video_modes[0];
+      if (mode) {
+        this.openVideoTemplate(mode.id, mode.label);
+      }
+      return;
+    }
     if (
       (isCustomEffectContent(this.content) ||
+        this.content.kind === "palette_diy" ||
+        this.content.kind === "music_profile" ||
         isAdvancedEditableContent(this.content) ||
         this.content.kind === "opaque") &&
       this.customEffectKindAvailable(this.content.kind)
     ) {
       return;
     }
-    const item = this.library.items.find(
-      (candidate) =>
-        isMyEffectKind(candidate.kind) &&
-        this.customEffectKindAvailable(candidate.kind),
-    );
+    const item = this.preferredLibraryEffect();
     if (item) {
       await this.selectItem(item.id, transitionEpoch);
       return;
@@ -1417,11 +1852,7 @@ export class GoveeLedEffectStudio extends LitElement {
         this.unsubscribeDeployments = unsubscribeDeployments;
       }
 
-      const firstCustom = library.items.find(
-        (item) =>
-          isCustomEffectKind(item.kind) &&
-          this.customEffectKindAvailable(item.kind),
-      );
+      const firstCustom = this.preferredLibraryEffect(library.items);
       if (firstCustom) {
         await this.selectItem(firstCustom.id);
       } else if (this.isAdmin) {
@@ -1448,6 +1879,24 @@ export class GoveeLedEffectStudio extends LitElement {
     });
   }
 
+  private preferredLibraryEffect(
+    items: LibrarySummary[] = this.library.items,
+  ): LibrarySummary | undefined {
+    return items
+      .filter(
+        (item) =>
+          item.kind !== "video_profile" &&
+          isMyEffectKind(item.kind) &&
+          this.libraryItemAvailable(item),
+      )
+      .sort((left, right) => {
+        const priority =
+          libraryKindPriority(left.kind, this.selectedModel) -
+          libraryKindPriority(right.kind, this.selectedModel);
+        return priority || compareLabels(left.name, right.name);
+      })[0];
+  }
+
   private openDefaultAvailableTemplate(
     existingTransitionEpoch?: number,
   ): void {
@@ -1457,11 +1906,13 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     if (
       this.customEffectKindAvailable("h617a_single") &&
-      this.customCatalogue?.effects[0]
+      this.modelCatalogue?.effects[0]
     ) {
-      const family = this.customCatalogue.effects[0];
+      const family = this.modelCatalogue.effects.find(
+        (effect) => effect.id !== "music",
+      ) ?? this.modelCatalogue.effects[0];
       const variation = family.variations[0];
-      const content = blankCustomEffect("h617a_single", this.customCatalogue);
+      const content = blankCustomEffect("h617a_single", this.modelCatalogue);
       this.newEffect("h617a_single", existingTransitionEpoch, {
         name: family.label,
         content: {
@@ -1474,10 +1925,29 @@ export class GoveeLedEffectStudio extends LitElement {
       });
       return;
     }
+    if (
+      this.customEffectKindAvailable("palette_diy") &&
+      this.modelCatalogue?.effects[0]
+    ) {
+      const family = this.modelCatalogue.effects.find(
+        (effect) => effect.id !== "music",
+      ) ?? this.modelCatalogue.effects[0];
+      this.openEditableTemplate(
+        family.label,
+        blankPaletteDiy(
+          this.modelCatalogue,
+          this.selectedModel!,
+          family.family,
+          family.variations[0].variant,
+        ),
+        `template:single:${family.family}:${family.variations[0].variant}`,
+      );
+      return;
+    }
     if (this.customEffectKindAvailable("h617a_multi")) {
       this.newEffect("h617a_multi", existingTransitionEpoch, {
         name: "Mix",
-        content: blankCustomEffect("h617a_multi", this.customCatalogue!),
+        content: blankCustomEffect("h617a_multi", this.modelCatalogue!),
         selectionIdentity: "template:mix",
         templateLabel: "Mix",
       });
@@ -1640,6 +2110,10 @@ export class GoveeLedEffectStudio extends LitElement {
       "interrupted",
     ])?.operation_id;
     this.notice = undefined;
+    if (this.section === "video" && !this.videoAvailable) {
+      this.section = "scenes";
+      return;
+    }
     if (!this.customEffectsAvailable) {
       this.section = "scenes";
       return;
@@ -1649,9 +2123,36 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     if (
       this.section === "custom" &&
-      !this.customEffectKindAvailable(this.content.kind)
+      !this.effectContentAvailable(this.content)
     ) {
-      this.openDefaultAvailableTemplate(transitionEpoch);
+      const entries = this.customEffectEntries.filter(
+        (candidate) => candidate.kind !== "saved",
+      );
+      const entry =
+        this.customEffectCategory === "all"
+          ? undefined
+          : this.customEffectCategory === "music"
+            ? entries.find(
+                (candidate) =>
+                  candidate.kind === "music" &&
+                  candidate.mode !== undefined,
+              )
+            : entries[0];
+      if (entry) {
+        this.selectCustomEffectEntry(entry);
+      } else {
+        this.openDefaultAvailableTemplate(transitionEpoch);
+      }
+    }
+    if (
+      this.section === "video" &&
+      this.content.kind === "video_profile" &&
+      this.content.model !== this.selectedModel
+    ) {
+      const mode = this.modelCatalogue?.video_modes[0];
+      if (mode) {
+        this.openVideoTemplate(mode.id, mode.label);
+      }
     }
   }
 
@@ -1670,9 +2171,20 @@ export class GoveeLedEffectStudio extends LitElement {
       this.newEffect("advanced");
       return;
     }
-    const kind = type === "single" ? "h617a_single" : "h617a_multi";
-    if (isCustomEffectContent(this.content)) {
+    const kind =
+      type === "single"
+        ? this.selectedModel === "H6199"
+          ? "palette_diy"
+          : "h617a_single"
+        : "h617a_multi";
+    if (isCustomEffectContent(this.content) && kind !== "palette_diy") {
       this.switchCustomMode(kind);
+      return;
+    }
+    if (
+      this.content.kind === "palette_diy" &&
+      kind === "palette_diy"
+    ) {
       return;
     }
     this.newEffect(kind);
@@ -1785,7 +2297,7 @@ export class GoveeLedEffectStudio extends LitElement {
       !this.api ||
       !this.isAdmin ||
       !this.customEffectKindAvailable(kind) ||
-      (kind !== "advanced" && !this.customCatalogue)
+      (kind !== "advanced" && !this.modelCatalogue)
     ) {
       return;
     }
@@ -1802,7 +2314,12 @@ export class GoveeLedEffectStudio extends LitElement {
       initial?.content ??
       (kind === "advanced"
         ? blankAdvancedContent()
-        : blankCustomEffect(kind, this.customCatalogue!));
+       : kind === "palette_diy"
+         ? blankPaletteDiy(
+             this.modelCatalogue!,
+             this.selectedModel!,
+           )
+         : blankCustomEffect(kind, this.modelCatalogue!));
     if (kind === "h617a_painted") {
       this.brushUsesBackground = false;
     }
@@ -2089,7 +2606,7 @@ export class GoveeLedEffectStudio extends LitElement {
       this.updateGeneratedEffectName("Paint");
       return;
     }
-    const family = this.customCatalogue.effects.find(
+    const family = this.modelCatalogue?.effects.find(
       (effect) => effect.id === selected,
     );
     const variation = family?.variations[0];
@@ -2099,7 +2616,10 @@ export class GoveeLedEffectStudio extends LitElement {
     if (this.content.kind === "h617a_painted") {
       this.switchCustomMode("h617a_single");
     }
-    if (this.content.kind !== "h617a_single") {
+    if (
+      this.content.kind !== "h617a_single" &&
+      this.content.kind !== "palette_diy"
+    ) {
       return;
     }
     this.content = {
@@ -2454,6 +2974,10 @@ export class GoveeLedEffectStudio extends LitElement {
       grid-template-columns: 190px 190px 230px minmax(0, 1fr);
     }
 
+    .studio.video-mode {
+      grid-template-columns: 190px 230px minmax(0, 1fr);
+    }
+
     .primary-nav {
       padding: 22px 16px;
       border-inline-end: 1px solid var(--studio-border);
@@ -2679,13 +3203,19 @@ export class GoveeLedEffectStudio extends LitElement {
       }
 
       .studio.scenes-mode,
-      .studio.custom-mode {
+      .studio.custom-mode,
+      .studio.video-mode {
         grid-template-columns: 170px minmax(0, 1fr);
       }
 
       .custom-mode .effect-categories,
       .custom-mode .library,
       .custom-mode .editor {
+        grid-column: 2;
+      }
+
+      .video-mode .library,
+      .video-mode .editor {
         grid-column: 2;
       }
 
@@ -2706,7 +3236,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       .primary-nav {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
         padding: 10px 16px;
         border-inline-end: 0;
         border-bottom: 1px solid var(--studio-border);
@@ -2773,23 +3303,23 @@ function blankPainted(): PaintedContent {
 
 function blankCustomEffect(
   kind: "h617a_painted",
-  catalogue: CustomEffectCatalogue,
+  catalogue: ModelEffectCatalogue,
 ): PaintedContent;
 function blankCustomEffect(
   kind: "h617a_single",
-  catalogue: CustomEffectCatalogue,
+  catalogue: ModelEffectCatalogue,
 ): Extract<CustomEffectContent, { kind: "h617a_single" }>;
 function blankCustomEffect(
   kind: "h617a_multi",
-  catalogue: CustomEffectCatalogue,
+  catalogue: ModelEffectCatalogue,
 ): Extract<CustomEffectContent, { kind: "h617a_multi" }>;
 function blankCustomEffect(
   kind: CustomEffectContent["kind"],
-  catalogue: CustomEffectCatalogue,
+  catalogue: ModelEffectCatalogue,
 ): CustomEffectContent;
 function blankCustomEffect(
   kind: CustomEffectContent["kind"],
-  catalogue: CustomEffectCatalogue,
+  catalogue: ModelEffectCatalogue,
 ): CustomEffectContent {
   if (kind === "h617a_painted") {
     return blankPainted();
@@ -2819,6 +3349,51 @@ function blankCustomEffect(
     effects: [pair],
     speed: 50,
     palette: defaultPalette(),
+  };
+}
+
+function blankPaletteDiy(
+  catalogue: ModelEffectCatalogue,
+  model: string,
+  family?: number,
+  variant?: number,
+): PaletteDiyEffectContent {
+  if (model !== "H617A" && model !== "H6199") {
+    throw new Error(`Unsupported custom-effect model ${model}.`);
+  }
+  const selected =
+    catalogue.effects.find((effect) => effect.family === family) ??
+    catalogue.effects[0];
+  if (!selected) {
+    throw new Error("The custom-effect catalogue has no compatible effects.");
+  }
+  return {
+    kind: "palette_diy",
+    model,
+    family: family ?? selected.family,
+    variant: variant ?? selected.variations[0].variant,
+    speed: 50,
+    palette: defaultPalette(),
+  };
+}
+
+function blankVideoProfile(mode: string): VideoProfileContent {
+  return {
+    kind: "video_profile",
+    model: "H6199",
+    mode: mode === "game" ? "game" : "movie",
+    full_screen: true,
+    saturation: 50,
+    sound_effects: false,
+    sound_effects_softness: 50,
+    white_balance_position: 17,
+    relative_brightness: {
+      left: 100,
+      top: 100,
+      right: 100,
+      bottom: 100,
+    },
+    blank_screen: false,
   };
 }
 
@@ -2853,6 +3428,34 @@ function cloneCustomEffect(
   };
 }
 
+function clonePaletteDiy(
+  content: PaletteDiyEffectContent,
+): PaletteDiyEffectContent {
+  return {
+    ...content,
+    palette: content.palette.map((colour) => [...colour]),
+  };
+}
+
+function cloneMusicProfile(
+  content: MusicProfileContent,
+): MusicProfileContent {
+  return {
+    ...content,
+    colour: content.colour ? [...content.colour] : null,
+    parameters: structuredClone(content.parameters),
+  };
+}
+
+function cloneVideoProfile(
+  content: VideoProfileContent,
+): VideoProfileContent {
+  return {
+    ...content,
+    relative_brightness: { ...content.relative_brightness },
+  };
+}
+
 function cloneEditableEffect(
   content: EditableEffectContent,
 ): EditableEffectContent {
@@ -2861,6 +3464,15 @@ function cloneEditableEffect(
   }
   if (content.kind === "scene_layered") {
     return cloneLayeredSceneContent(content);
+  }
+  if (content.kind === "palette_diy") {
+    return clonePaletteDiy(content);
+  }
+  if (content.kind === "music_profile") {
+    return cloneMusicProfile(content);
+  }
+  if (content.kind === "video_profile") {
+    return cloneVideoProfile(content);
   }
   return cloneCustomEffect(content);
 }
@@ -3019,7 +3631,10 @@ function isEditableEffectContent(
     (typeof content === "object" &&
       content !== null &&
       "kind" in content &&
-      isAdvancedEditableKind(content.kind))
+      (isAdvancedEditableKind(content.kind) ||
+        content.kind === "palette_diy" ||
+        content.kind === "music_profile" ||
+        content.kind === "video_profile"))
   );
 }
 
@@ -3032,7 +3647,9 @@ function newEffectTypeForContent(
   if (isAdvancedEditableKind(content.kind)) {
     return "advanced";
   }
-  return content.kind === "h617a_painted" || content.kind === "h617a_single"
+  return content.kind === "h617a_painted" ||
+    content.kind === "h617a_single" ||
+    content.kind === "palette_diy"
     ? "single"
     : undefined;
 }
@@ -3053,6 +3670,9 @@ function isKnownEffectKind(kind: string): boolean {
   return (
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
+    kind === "palette_diy" ||
+    kind === "music_profile" ||
+    kind === "video_profile" ||
     kind === "scene_builtin" ||
     kind === "scene_palette"
   );
@@ -3068,6 +3688,8 @@ function customKindLabel(kind: unknown): string {
       return "Multi";
     case "advanced":
       return "Layered";
+    case "palette_diy":
+      return "Single";
     default:
       return "Custom";
   }
@@ -3077,8 +3699,26 @@ function isMyEffectKind(kind: string): boolean {
   return (
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
+    kind === "palette_diy" ||
+    kind === "music_profile" ||
     !isKnownEffectKind(kind)
   );
+}
+
+function libraryKindPriority(kind: string, model: ModelSku | undefined): number {
+  const order =
+    model === "H6199"
+      ? ["palette_diy", "music_profile", "advanced", "scene_layered"]
+      : [
+          "h617a_painted",
+          "h617a_single",
+          "h617a_multi",
+          "music_profile",
+          "advanced",
+          "scene_layered",
+        ];
+  const priority = order.indexOf(kind);
+  return priority === -1 ? order.length : priority;
 }
 
 function customEffectCategoryForKind(
@@ -3087,7 +3727,14 @@ function customEffectCategoryForKind(
   if (kind === "h617a_multi") {
     return "multi-layer";
   }
-  if (kind === "h617a_painted" || kind === "h617a_single") {
+  if (kind === "music_profile") {
+    return "music";
+  }
+  if (
+    kind === "h617a_painted" ||
+    kind === "h617a_single" ||
+    kind === "palette_diy"
+  ) {
     return "single-layer";
   }
   return "advanced";
@@ -3104,6 +3751,7 @@ function upsertSummary(
   summaries: LibrarySnapshot["items"],
   item: LibraryItem,
 ): LibrarySnapshot["items"] {
+  const model = libraryItemModel(item);
   return [
     ...summaries.filter((summary) => summary.id !== item.id),
     {
@@ -3114,11 +3762,42 @@ function upsertSummary(
         item.content.kind === "opaque"
           ? item.content.source_kind
           : item.content.kind,
+      ...(model ? { model } : {}),
       ...("template" in item.content
         ? { template: item.content.template as LibrarySummary["template"] }
         : {}),
     },
   ].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function libraryItemModel(item: LibraryItem): ModelSku | undefined {
+  const content = item.content;
+  if (
+    content.kind === "palette_diy" ||
+    content.kind === "music_profile" ||
+    content.kind === "video_profile"
+  ) {
+    return content.model;
+  }
+  if (
+    content.kind === "h617a_painted" ||
+    content.kind === "h617a_single" ||
+    content.kind === "h617a_multi"
+  ) {
+    return "H617A";
+  }
+  if (
+    content.kind === "scene_builtin" ||
+    content.kind === "scene_palette" ||
+    content.kind === "scene_layered"
+  ) {
+    return knownModel(content.template.sku);
+  }
+  return knownModel(item.target_hint?.model);
+}
+
+function knownModel(model: string | null | undefined): ModelSku | undefined {
+  return model === "H617A" || model === "H6199" ? model : undefined;
 }
 
 declare global {

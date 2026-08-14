@@ -30,9 +30,16 @@ async function openScene(
   await sceneBrowser.getByRole("button", { name: category }).click();
   await sceneBrowser.getByRole("button", { name }).click();
   await expect(
-    sceneBrowser.getByRole("button", { name: "Use as template" }),
+    sceneBrowser.getByRole("button", { name: "Edit", exact: true }),
   ).toBeEnabled();
   return sceneBrowser;
+}
+
+async function selectSavedPainted(studio: Locator) {
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "Supported painted effect", exact: true })
+    .click();
 }
 
 async function openLayeredScene(page: Page) {
@@ -177,6 +184,14 @@ test("default harness uses complete production H617A catalogues", async ({
     "Cheerful",
     "Cherry blossoms",
   ]);
+  const sceneSearch = sceneBrowser.getByRole("searchbox", {
+    name: "Search scenes",
+  });
+  await sceneSearch.fill("Bloom");
+  await expect(
+    sceneBrowser.locator("aside.scenes").getByRole("button"),
+  ).toHaveText(["Bloom"]);
+  await sceneSearch.fill("");
 
   await studio
     .getByRole("button", { name: "Effects", exact: true })
@@ -185,7 +200,14 @@ test("default harness uses complete production H617A catalogues", async ({
     studio
       .getByRole("complementary", { name: "Effect categories" })
       .getByRole("button"),
-  ).toHaveText(["New", "All", "Single Layer", "Multi Layer", "Advanced"]);
+  ).toHaveText([
+    "New",
+    "All",
+    "Music",
+    "Single Layer",
+    "Multi Layer",
+    "Advanced",
+  ]);
   const categories = studio.getByRole("complementary", {
     name: "Effect categories",
   });
@@ -202,10 +224,30 @@ test("default harness uses complete production H617A catalogues", async ({
     "Flow",
     "Jumping",
     "Marquee",
-    "Music",
     "Paint",
     "Stream",
   ]);
+  await categories
+    .getByRole("button", { name: "Music", exact: true })
+    .click();
+  await expect(effectList.getByRole("button")).toHaveText([
+    "Bloom",
+    "Custom",
+    "Day And Night",
+    "Energetic",
+    "Fountain",
+    "Hopping",
+    "Piano Keys",
+    "Rhythm",
+    "Rolling",
+    "Separation",
+    "Shiny",
+    "Spectrum",
+  ]);
+  await effectList.getByRole("button", { name: "Bloom", exact: true }).click();
+  await expect(
+    studio.locator("govee-music-profile-editor"),
+  ).toBeVisible();
   await categories
     .getByRole("button", { name: "All", exact: true })
     .click();
@@ -215,6 +257,10 @@ test("default harness uses complete production H617A catalogues", async ({
   await expect(
     effectList.getByRole("button", { name: "Mix", exact: true }),
   ).toBeVisible();
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await effectList.getByRole("button", { name: "Paint", exact: true }).click();
   await expect(effectList.locator("small")).toHaveCount(0);
   await expect(
     effectList.getByRole("button", { name: "Unsupported special DIY pair" }),
@@ -284,9 +330,12 @@ test("default harness uses complete production H617A catalogues", async ({
     )
     .toBe("none");
 
-  await effectList.getByRole("button", { name: "Music", exact: true }).click();
+  await categories
+    .getByRole("button", { name: "Music", exact: true })
+    .click();
+  await effectList.getByRole("button", { name: "Custom", exact: true }).click();
   await expect(
-    studio.locator(".editor").getByRole("heading", { name: "Music" }),
+    studio.locator(".editor").getByRole("heading", { name: "Custom" }),
   ).toBeVisible();
   await expect(variation.locator("option")).toHaveText([
     "Rhythm",
@@ -299,7 +348,17 @@ test("default harness uses complete production H617A catalogues", async ({
       .locator("govee-custom-effect-editor")
       .getByRole("heading", { name: "Sensitivity", exact: true }),
   ).toBeVisible();
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Save as Custom" })
+    .click();
+  await expect(
+    studio.getByRole("combobox", { name: "Effect", exact: true }),
+  ).toHaveValue("music");
 
+  await categories
+    .getByRole("button", { name: "All", exact: true })
+    .click();
   await effectList.getByRole("button", { name: "Paint", exact: true }).click();
   await expect(
     studio.locator("govee-painted-segment-editor"),
@@ -422,8 +481,6 @@ test("Single and Multi variation selects track same-sized family changes", async
     "true",
   );
   await singleEffect.selectOption("fade");
-  await singleEffect.selectOption("music");
-  await expect(singleVariation).toHaveValue("8");
   await singleEffect.selectOption("blinking");
   await expect(singleVariation).toHaveValue("0");
   await singleEffect.selectOption("stream");
@@ -449,6 +506,7 @@ test("Single and Multi variation selects track same-sized family changes", async
 
 test("saved Painted effects retain their content kind", async ({ page }) => {
   const studio = await openStudio(page);
+  await selectSavedPainted(studio);
 
   await expect(
     studio.getByRole("combobox", {
@@ -508,10 +566,40 @@ test("custom catalogues reject families without variations", async ({
   expect(rejected).toBe(true);
 });
 
+test("unknown library models remain optional compatibility hints", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const decoded = await page.evaluate(() =>
+    window.testHarness.backend.validateLibrarySnapshot({
+      library_revision: 1,
+      items: [
+        {
+          id: "future-item",
+          revision: 1,
+          name: "Future",
+          kind: "future_private",
+          model: "future-model",
+        },
+      ],
+    }),
+  );
+
+  expect(decoded.items).toEqual([
+    {
+      id: "future-item",
+      revision: 1,
+      name: "Future",
+      kind: "future_private",
+    },
+  ]);
+});
+
 test("Painted effects keep multiple brushes and their picker visible", async ({
   page,
 }) => {
   const studio = await openStudio(page);
+  await selectSavedPainted(studio);
   const brushes = studio.locator("govee-palette-editor.paint-brushes");
   const brushTabs = brushes.getByRole("tab", { name: /^Brush / });
 
@@ -545,6 +633,7 @@ test("saved effects can be deleted from the editor or item list", async ({
   const effectList = studio.getByRole("complementary", {
     name: "Effects",
   });
+  await selectSavedPainted(studio);
   const editorDelete = studio
     .locator(".editor-heading .actions")
     .getByRole("button", { name: "Delete", exact: true });
@@ -684,7 +773,7 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   ).toBeVisible();
 });
 
-test("device capabilities hide unsupported effect families", async ({ page }) => {
+test("device catalogues expose complete model-specific effect families", async ({ page }) => {
   const studio = await openStudio(page);
   const devicePicker = studio.getByRole("combobox", {
     name: "Development device",
@@ -695,36 +784,145 @@ test("device capabilities hide unsupported effect families", async ({ page }) =>
   const effects = studio.getByRole("complementary", { name: "Effects" });
 
   await categories
-    .getByRole("button", { name: "Single Layer", exact: true })
+    .getByRole("button", { name: "Music", exact: true })
     .click();
-  await effects.getByRole("button", { name: "Flow", exact: true }).click();
+  await effects.getByRole("button", { name: "Bloom", exact: true }).click();
+  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveValue(
+    "bloom",
+  );
+  await expect(
+    studio.getByRole("slider", { name: "Sensitivity" }),
+  ).toHaveAttribute("min", "0");
+  await expect(
+    studio.getByRole("slider", { name: "Sensitivity" }),
+  ).toHaveAttribute("max", "99");
   await devicePicker.selectOption("h6199-main");
 
+  await expect(
+    studio
+      .getByRole("navigation", { name: "Create" })
+      .getByRole("button"),
+  ).toHaveText(["Video", "Scenes", "Effects"]);
   await expect(categories.getByRole("button")).toHaveText([
     "New",
     "All",
+    "Music",
+    "Single Layer",
     "Advanced",
   ]);
+  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveValue(
+    "energetic",
+  );
   await expect(
-    categories.getByRole("button", { name: "Single Layer", exact: true }),
-  ).toHaveCount(0);
+    studio.getByRole("slider", { name: "Sensitivity" }),
+  ).toHaveAttribute("min", "1");
+  await expect(
+    studio.getByRole("slider", { name: "Sensitivity" }),
+  ).toHaveAttribute("max", "100");
+  await expect(
+    studio.locator(".editor").getByRole("heading", {
+      name: "Energetic",
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(
     categories.getByRole("button", { name: "Multi Layer", exact: true }),
   ).toHaveCount(0);
   await expect(
-    effects.getByRole("button", { name: "Flow", exact: true }),
+    categories.getByRole("button", { name: "My effects", exact: true }),
   ).toHaveCount(0);
+  await effects.getByRole("button", { name: "Custom", exact: true }).click();
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Save as Custom" })
+    .click();
+  await expect(
+    studio.getByRole("combobox", { name: "Effect", exact: true }),
+  ).toHaveValue("music");
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await expect(effects.getByRole("button")).toHaveText([
+    "Chasing",
+    "Crossing",
+    "Fade",
+    "Jumping",
+    "Marquee",
+    "Rainbow",
+    "Twinkle",
+  ]);
+  await effects.getByRole("button", { name: "Fade", exact: true }).click();
   await expect(
     studio.locator(".editor").getByRole("heading", {
-      name: "Layered",
+      name: "Fade",
       exact: true,
     }),
   ).toBeVisible();
+  await categories.getByRole("button", { name: "New", exact: true }).click();
+  await expect(
+    studio
+      .getByRole("combobox", { name: "Effect", exact: true })
+      .getByRole("option", { name: "Paint", exact: true }),
+  ).toHaveCount(0);
   await expect(
     studio.getByRole("status").filter({
       hasText: "cannot be applied to this device",
     }),
   ).toHaveCount(0);
+});
+
+test("H6199 Video exposes complete reusable profile controls", async ({ page }) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await studio.getByRole("button", { name: "Video", exact: true }).click();
+
+  const profiles = studio.getByRole("complementary", {
+    name: "Video profiles",
+  });
+  await expect(profiles.getByRole("button")).toHaveText(["Movie", "Game"]);
+  await profiles.getByRole("button", { name: "Movie", exact: true }).click();
+
+  const editor = studio.locator("govee-video-profile-editor");
+  await expect(
+    editor.getByRole("group", { name: "Mode" }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("group", { name: "Capture area" }),
+  ).toBeVisible();
+  await expect(editor.getByRole("slider", { name: "Saturation" })).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "White balance" }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("status", { name: "White balance value" }),
+  ).toHaveText("17");
+  await expect(editor.locator(".endpoint-labels span")).toHaveText([
+    "Cool",
+    "Warm",
+  ]);
+  await expect(
+    editor.getByRole("slider", { name: "Uniform brightness" }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "Left", exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "Top", exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "Right", exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "Bottom", exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("switch", { name: "Sound effects" }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("switch", { name: "Blank screen" }),
+  ).toBeVisible();
 });
 
 test("Home Assistant mode omits the fixture device picker", async ({ page }) => {
@@ -1155,24 +1353,28 @@ test("schema-only layout 1 exposes decoded parameters", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("palette copies save losslessly, reload under Custom and cannot Apply", async ({
+test("palette scenes copy on Edit, save losslessly and cannot Apply", async ({
   page,
 }) => {
   await openStudio(page);
   const sceneBrowser = await openPaletteScene(page, "Festival", /^Halloween/);
   const nativeApply = sceneBrowser.getByRole("button", { name: "Apply" });
-  const saveCopy = sceneBrowser.getByRole("button", { name: "Save copy" });
+  const edit = sceneBrowser.getByRole("button", { name: "Edit" });
 
   await expect(nativeApply).toBeEnabled();
   await expect(nativeApply).toHaveClass("secondary");
-  await expect(saveCopy).toHaveClass("primary");
+  await expect(edit).toHaveClass("primary");
   await nativeApply.click();
   await expect(
     sceneBrowser
       .getByRole("status")
       .filter({ hasText: "Applied to H617A LED Strip" }),
   ).toBeVisible();
-  await saveCopy.click();
+  await edit.click();
+  await expect(sceneBrowser.getByLabel("Scene name")).toHaveValue(
+    /Halloween.* copy/,
+  );
+  await sceneBrowser.getByRole("button", { name: "Save" }).click();
   await expect(
     sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
   ).toBeVisible();
@@ -1263,6 +1465,7 @@ test("a temporarily unavailable URL device is not reported as unsupported", asyn
     page,
     "ha-govee-led-ble/editor/missing-entry",
   );
+  await selectSavedPainted(studio);
 
   await expect(
     studio.getByRole("status").filter({
@@ -1280,6 +1483,7 @@ test("a temporarily unavailable URL device is not reported as unsupported", asyn
 
 test("non-admin users receive a read-only editor", async ({ page }) => {
   const studio = await openStudio(page, "?admin=0");
+  await selectSavedPainted(studio);
 
   await expect(studio.getByLabel("Effect name")).toBeDisabled();
   await expect(
@@ -1315,6 +1519,43 @@ test("non-admin users receive a read-only editor", async ({ page }) => {
       active: 0,
     },
   });
+});
+
+test("non-admin profile templates and controls remain read-only", async ({
+  page,
+}) => {
+  const studio = await openStudio(page, "?admin=0");
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await studio.getByRole("button", { name: "Video", exact: true }).click();
+
+  await expect(
+    studio
+      .getByRole("complementary", { name: "Video profiles" })
+      .getByRole("button", { name: "Game", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    studio
+      .locator("govee-video-profile-editor")
+      .getByRole("button", { name: "Game", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    studio
+      .locator("govee-video-profile-editor")
+      .getByRole("slider", { name: "Saturation" }),
+  ).toBeDisabled();
+
+  await studio.getByRole("button", { name: "Effects", exact: true }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Music", exact: true })
+    .click();
+  await expect(
+    studio
+      .getByRole("complementary", { name: "Effects" })
+      .getByRole("button", { name: "Energetic", exact: true }),
+  ).toBeDisabled();
 });
 
 test("non-admin users cannot inspect opaque library bodies", async ({
@@ -1457,6 +1698,7 @@ test("stale subscription snapshots cannot roll back visible state", async ({
   page,
 }) => {
   const studio = await openStudio(page);
+  await selectSavedPainted(studio);
   await studio
     .locator(".editor")
     .getByRole("button", { name: "Apply" })
@@ -1618,6 +1860,8 @@ test("a second tab preserves dirty work when the library changes", async ({
   const firstStudio = await openStudio(page);
   const secondPage = await context.newPage();
   const secondStudio = await openStudio(secondPage);
+  await selectSavedPainted(firstStudio);
+  await selectSavedPainted(secondStudio);
 
   await secondStudio.getByLabel("Effect name").fill("Tab two dirty work");
   await firstStudio.getByLabel("Effect name").fill("Tab one saved revision");
@@ -1648,6 +1892,7 @@ test("save conflict keeps feedback when the library refresh fails", async ({
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   const studio = await openStudio(page);
+  await selectSavedPainted(studio);
 
   await studio.getByLabel("Effect name").fill("Conflict edit");
   await page.evaluate(() => {
@@ -2047,7 +2292,7 @@ test("empty layered scene imports remain inspectable and unchanged", async ({
 }) => {
   const studio = await openStudio(page);
   const sceneBrowser = await openScene(page, "Focus", /Ocean Layers/);
-  await sceneBrowser.getByRole("button", { name: "Use as template" }).click();
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
   const advanced = studio.locator("govee-advanced-effect-editor");
 
   await expect(
@@ -2066,7 +2311,7 @@ test("empty layered scene imports remain inspectable and unchanged", async ({
   await studio.getByRole("button", { name: "Save" }).click();
   const savedContent = await page.evaluate(() => {
     const items = Object.values(window.testHarness.snapshot().state.items);
-    return items.find((item) => item.name === "Ocean Layers layered")?.content;
+    return items.find((item) => item.name === "Ocean Layers copy")?.content;
   });
   expect(savedContent).toEqual({
     kind: "scene_layered",
@@ -2091,7 +2336,7 @@ test("empty brightness pattern imports remain inspectable and unchanged", async 
     "Focus",
     /Empty Pattern Layers/,
   );
-  await sceneBrowser.getByRole("button", { name: "Use as template" }).click();
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
   const advanced = studio.locator("govee-advanced-effect-editor");
 
   await expect(
@@ -2106,7 +2351,7 @@ test("empty brightness pattern imports remain inspectable and unchanged", async 
   const savedContent = await page.evaluate(() => {
     const items = Object.values(window.testHarness.snapshot().state.items);
     return items.find(
-      (item) => item.name === "Empty Pattern Layers layered",
+      (item) => item.name === "Empty Pattern Layers copy",
     )?.content;
   });
   expect(savedContent).toMatchObject({
@@ -2134,7 +2379,7 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
   const studio = await openStudio(page);
   const sceneBrowser = await openLayeredScene(page);
   await sceneBrowser.getByLabel("Scene speed").press("End");
-  await sceneBrowser.getByRole("button", { name: "Use as template" }).click();
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
 
   const advancedApply = studio
     .locator(".editor")
@@ -2188,7 +2433,7 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
 test("Back navigation discards an unsaved scene template", async ({ page }) => {
   const studio = await openStudio(page);
   const sceneBrowser = await openLayeredScene(page);
-  await sceneBrowser.getByRole("button", { name: "Use as template" }).click();
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(
     studio.getByRole("button", { name: "Back to Scenes" }),
   ).toBeVisible();

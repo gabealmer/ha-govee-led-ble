@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+from .const import MODEL_PROFILES
 from .effect_limits import (
     MAX_EFFECT_DOCUMENT_BYTES,
     MAX_EFFECT_KIND_LENGTH,
@@ -43,6 +44,7 @@ MAX_MULTI_EFFECTS = 4
 H617A_SEGMENT_COUNT = 15
 
 PALETTE_CONFIG_RESERVED_MASK = 0x08
+VIDEO_PROFILE_MODES = frozenset({"movie", "game"})
 
 type RGB = tuple[int, int, int]
 type JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
@@ -162,6 +164,98 @@ class SingleEffect:
 
 
 @dataclass(frozen=True, slots=True)
+class PaletteDiyEffect:
+    model: str
+    family: int
+    variant: int
+    speed: int
+    palette: tuple[RGB, ...]
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.model, "model")
+        _validate_byte(self.family, "family")
+        _validate_byte(self.variant, "variant")
+        _validate_percent(self.speed, "speed")
+        _validate_palette(self.palette)
+
+
+@dataclass(frozen=True, slots=True)
+class MusicProfile:
+    model: str
+    mode: str
+    sensitivity: int
+    colour: RGB | None = None
+    calm: bool | None = None
+    parameters: Mapping[str, JsonValue] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.model, "model")
+        _validate_identifier(self.mode, "mode")
+        profile = MODEL_PROFILES.get(self.model)
+        if profile is None:
+            raise EffectValidationError(f"unsupported music-profile model {self.model!r}")
+        _validate_range(
+            self.sensitivity,
+            "sensitivity",
+            minimum=profile.music_sensitivity_min,
+            maximum=profile.music_sensitivity_max,
+        )
+        if self.colour is not None:
+            _validate_rgb(self.colour, "colour")
+        if self.calm is not None and not isinstance(self.calm, bool):
+            raise EffectValidationError("calm must be a boolean or null")
+        if not isinstance(self.parameters, Mapping):
+            raise EffectValidationError("parameters must be a mapping")
+        validate_json_document(
+            dict(self.parameters),
+            "parameters",
+            maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
+            error_type=EffectValidationError,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RelativeBrightness:
+    left: int
+    top: int
+    right: int
+    bottom: int
+
+    def __post_init__(self) -> None:
+        _validate_range(self.left, "left", minimum=1, maximum=100)
+        _validate_range(self.top, "top", minimum=1, maximum=100)
+        _validate_range(self.right, "right", minimum=1, maximum=100)
+        _validate_range(self.bottom, "bottom", minimum=1, maximum=100)
+
+
+@dataclass(frozen=True, slots=True)
+class VideoProfile:
+    model: str
+    mode: str
+    full_screen: bool
+    saturation: int
+    sound_effects: bool
+    sound_effects_softness: int
+    white_balance_position: int
+    relative_brightness: RelativeBrightness
+    blank_screen: bool
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.model, "model")
+        _validate_identifier(self.mode, "mode")
+        if self.mode not in VIDEO_PROFILE_MODES:
+            raise EffectValidationError("mode must be 'movie' or 'game'")
+        _validate_bool(self.full_screen, "full_screen")
+        _validate_percent(self.saturation, "saturation")
+        _validate_bool(self.sound_effects, "sound_effects")
+        _validate_range(self.sound_effects_softness, "sound_effects_softness", minimum=1, maximum=100)
+        _validate_range(self.white_balance_position, "white_balance_position", minimum=1, maximum=20)
+        if not isinstance(self.relative_brightness, RelativeBrightness):
+            raise EffectValidationError("relative_brightness must be a relative-brightness mapping")
+        _validate_bool(self.blank_screen, "blank_screen")
+
+
+@dataclass(frozen=True, slots=True)
 class EffectPair:
     family: int
     variant: int
@@ -270,6 +364,9 @@ class OpaqueContent:
 type EffectContent = (
     PaintedEffect
     | SingleEffect
+    | PaletteDiyEffect
+    | MusicProfile
+    | VideoProfile
     | MultiEffect
     | LayeredEffect
     | BuiltinScene
@@ -396,13 +493,30 @@ class LibraryItem:
 
 
 def _validate_percent(value: int, name: str) -> None:
-    if not isinstance(value, int) or not 0 <= value <= 100:
-        raise EffectValidationError(f"{name} must be an integer from 0 to 100")
+    _validate_range(value, name, minimum=0, maximum=100)
 
 
 def _validate_byte(value: int, name: str) -> None:
-    if not isinstance(value, int) or not 0 <= value <= 0xFF:
-        raise EffectValidationError(f"{name} must be an integer from 0 to 255")
+    _validate_range(value, name, minimum=0, maximum=0xFF)
+
+
+def _validate_range(value: int, name: str, *, minimum: int, maximum: int) -> None:
+    if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
+        raise EffectValidationError(f"{name} must be an integer from {minimum} to {maximum}")
+
+
+def _validate_bool(value: bool, name: str) -> None:
+    if not isinstance(value, bool):
+        raise EffectValidationError(f"{name} must be a boolean")
+
+
+def _validate_identifier(value: str, name: str) -> None:
+    validate_bounded_string(
+        value,
+        name,
+        maximum=MAX_IDENTIFIER_LENGTH,
+        error_type=EffectValidationError,
+    )
 
 
 def _validate_rgb(value: RGB, name: str) -> None:
@@ -449,6 +563,38 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "variant": content.variant,
             "speed": content.speed,
             "palette": [list(colour) for colour in content.palette],
+        }
+    if isinstance(content, PaletteDiyEffect):
+        return {
+            "kind": "palette_diy",
+            "model": content.model,
+            "family": content.family,
+            "variant": content.variant,
+            "speed": content.speed,
+            "palette": [list(colour) for colour in content.palette],
+        }
+    if isinstance(content, MusicProfile):
+        return {
+            "kind": "music_profile",
+            "model": content.model,
+            "mode": content.mode,
+            "sensitivity": content.sensitivity,
+            "colour": None if content.colour is None else list(content.colour),
+            "calm": content.calm,
+            "parameters": dict(content.parameters),
+        }
+    if isinstance(content, VideoProfile):
+        return {
+            "kind": "video_profile",
+            "model": content.model,
+            "mode": content.mode,
+            "full_screen": content.full_screen,
+            "saturation": content.saturation,
+            "sound_effects": content.sound_effects,
+            "sound_effects_softness": content.sound_effects_softness,
+            "white_balance_position": content.white_balance_position,
+            "relative_brightness": _relative_brightness_to_dict(content.relative_brightness),
+            "blank_screen": content.blank_screen,
         }
     if isinstance(content, MultiEffect):
         return {
@@ -505,6 +651,35 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             variant=_required_int(raw, "variant"),
             speed=_required_int(raw, "speed"),
             palette=_palette_from_value(raw.get("palette")),
+        )
+    if kind == "palette_diy":
+        return PaletteDiyEffect(
+            model=_required_str(raw, "model"),
+            family=_required_int(raw, "family"),
+            variant=_required_int(raw, "variant"),
+            speed=_required_int(raw, "speed"),
+            palette=_palette_from_value(raw.get("palette")),
+        )
+    if kind == "music_profile":
+        return MusicProfile(
+            model=_required_str(raw, "model"),
+            mode=_required_str(raw, "mode"),
+            sensitivity=_required_int(raw, "sensitivity"),
+            colour=_required_optional_rgb(raw, "colour"),
+            calm=_required_optional_bool(raw, "calm"),
+            parameters=cast(dict[str, JsonValue], dict(_required_mapping(raw, "parameters"))),
+        )
+    if kind == "video_profile":
+        return VideoProfile(
+            model=_required_str(raw, "model"),
+            mode=_required_str(raw, "mode"),
+            full_screen=_required_bool(raw, "full_screen"),
+            saturation=_required_int(raw, "saturation"),
+            sound_effects=_required_bool(raw, "sound_effects"),
+            sound_effects_softness=_required_int(raw, "sound_effects_softness"),
+            white_balance_position=_required_int(raw, "white_balance_position"),
+            relative_brightness=_relative_brightness_from_dict(_required_mapping(raw, "relative_brightness")),
+            blank_screen=_required_bool(raw, "blank_screen"),
         )
     if kind == "h617a_multi":
         return MultiEffect(
@@ -570,6 +745,24 @@ def _catalogue_ref_to_dict(reference: CatalogueRef) -> dict[str, JsonValue]:
         "effect_id": reference.effect_id,
         "catalogue_schema_version": reference.catalogue_schema_version,
     }
+
+
+def _relative_brightness_to_dict(relative_brightness: RelativeBrightness) -> dict[str, JsonValue]:
+    return {
+        "left": relative_brightness.left,
+        "top": relative_brightness.top,
+        "right": relative_brightness.right,
+        "bottom": relative_brightness.bottom,
+    }
+
+
+def _relative_brightness_from_dict(raw: Mapping[str, Any]) -> RelativeBrightness:
+    return RelativeBrightness(
+        left=_required_int(raw, "left"),
+        top=_required_int(raw, "top"),
+        right=_required_int(raw, "right"),
+        bottom=_required_int(raw, "bottom"),
+    )
 
 
 def _catalogue_ref_from_dict(raw: Mapping[str, Any]) -> CatalogueRef:
@@ -693,6 +886,24 @@ def _optional_str(raw: Mapping[str, Any], key: str) -> str | None:
         return None
     if not isinstance(value, str):
         raise EffectValidationError(f"{key} must be a string or null")
+    return value
+
+
+def _required_optional_rgb(raw: Mapping[str, Any], key: str) -> RGB | None:
+    if key not in raw:
+        raise EffectValidationError(f"missing required field {key!r}")
+    value = raw[key]
+    return None if value is None else _rgb_from_value(value, key)
+
+
+def _required_optional_bool(raw: Mapping[str, Any], key: str) -> bool | None:
+    if key not in raw:
+        raise EffectValidationError(f"missing required field {key!r}")
+    value = raw[key]
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise EffectValidationError(f"{key} must be a boolean or null")
     return value
 
 

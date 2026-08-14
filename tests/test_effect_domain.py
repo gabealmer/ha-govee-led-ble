@@ -36,11 +36,14 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     Movement,
     MultiEffect,
+    MusicProfile,
     OpaqueContent,
     PaintedEffect,
     PaintGroup,
+    PaletteDiyEffect,
     PaletteScene,
     Provenance,
+    RelativeBrightness,
     SceneStep,
     Selection,
     SelectionType,
@@ -48,6 +51,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SourceKind,
     TargetHint,
     UnsupportedEffectSchemaError,
+    VideoProfile,
     effect_content_from_dict,
     effect_content_to_dict,
 )
@@ -93,6 +97,41 @@ def _layered_effect() -> LayeredEffect:
 
 def _first_layer_document(content: LayeredEffect) -> dict[str, Any]:
     return cast(list[dict[str, Any]], effect_content_to_dict(content)["layers"])[0]
+
+
+def _palette_diy_effect() -> PaletteDiyEffect:
+    return PaletteDiyEffect("H6199", 8, 9, 60, ((255, 0, 0), (0, 0, 255)))
+
+
+def _music_profile() -> MusicProfile:
+    return MusicProfile(
+        "H6199",
+        "rolling",
+        75,
+        None,
+        True,
+        {
+            "preset": "warm",
+            "bands": [1, 2, 3],
+            "mirror": False,
+            "slot": 2,
+            "override": None,
+        },
+    )
+
+
+def _video_profile() -> VideoProfile:
+    return VideoProfile(
+        "H6199",
+        "movie",
+        True,
+        70,
+        True,
+        40,
+        12,
+        RelativeBrightness(80, 60, 55, 45),
+        False,
+    )
 
 
 def test_layered_types_and_validation_error_are_re_exported() -> None:
@@ -156,6 +195,18 @@ def test_unknown_content_round_trips_without_becoming_applicable() -> None:
     assert isinstance(restored.content, OpaqueContent)
     assert restored.to_dict() == document
     assert compatibility(restored, "H617A").state is CompatibilityState.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "content",
+    [_palette_diy_effect(), _music_profile(), _video_profile()],
+)
+def test_saved_effect_profile_content_round_trips(content) -> None:
+    assert effect_content_from_dict(effect_content_to_dict(content)) == content
+
+    item = LibraryItem.new("Studio profile", content)
+
+    assert LibraryItem.from_dict(item.to_dict()) == item
 
 
 @pytest.mark.parametrize(
@@ -408,6 +459,62 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert h6199.to_dict()["readback"] == "mode_only"
 
 
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        (
+            {
+                "kind": "palette_diy",
+                "model": "H617A",
+                "family": 1,
+                "variant": 0,
+                "speed": 50,
+                "palette": [],
+            },
+            "palette must contain 1 to 8 colours",
+        ),
+        (
+            {
+                "kind": "music_profile",
+                "model": "H6199",
+                "mode": "rolling",
+                "sensitivity": 50,
+                "colour": None,
+                "calm": None,
+                "parameters": [],
+            },
+            "parameters must be a mapping",
+        ),
+        (
+            {
+                "kind": "video_profile",
+                "model": "H6199",
+                "mode": "movie",
+                "full_screen": True,
+                "saturation": 50,
+                "sound_effects": True,
+                "sound_effects_softness": 50,
+                "white_balance_position": 10,
+                "relative_brightness": {
+                    "left": 0,
+                    "top": 50,
+                    "right": 50,
+                    "bottom": 50,
+                },
+                "blank_screen": False,
+            },
+            "left must be an integer from 1 to 100",
+        ),
+    ],
+)
+def test_saved_effect_profile_content_rejects_malformed_payloads(
+    raw: dict[str, Any],
+    message: str,
+) -> None:
+    with pytest.raises(EffectValidationError, match=message):
+        effect_content_from_dict(raw)
+
+
 def test_effect_documents_reject_oversized_and_deep_opaque_content() -> None:
     with pytest.raises(EffectValidationError, match="must not exceed"):
         LibraryItem.new(
@@ -443,6 +550,14 @@ def test_effect_documents_reject_oversized_and_deep_opaque_content() -> None:
         lambda: PaintedEffect("clockwise", 50, 100, (0, 0, 256)),
         lambda: SingleEffect(0xFF, 0, 50, ((255, 0, 0),)),
         lambda: SingleEffect(0, 0, 50, ()),
+        lambda: PaletteDiyEffect("", 0, 0, 50, ((255, 0, 0),)),
+        lambda: MusicProfile("H6199", "", 50, None, None, {}),
+        lambda: MusicProfile("H6199", "rolling", 0, None, None, {}),
+        lambda: MusicProfile("H617A", "rolling", 100, None, None, {}),
+        lambda: MusicProfile("future", "rolling", 50, None, None, {}),
+        lambda: MusicProfile("H6199", "rolling", 50, None, 1, {}),
+        lambda: RelativeBrightness(0, 1, 1, 1),
+        lambda: VideoProfile("H6199", "sport", True, 50, True, 50, 10, RelativeBrightness(1, 1, 1, 1), False),
         lambda: MultiEffect((), 50, ((255, 0, 0),)),
         lambda: AppliedArea(16, 1),
         lambda: AppliedArea(0, 16),

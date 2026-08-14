@@ -175,9 +175,485 @@
     ],
     "limits": {
       "multi_max": 4,
+      "music_sensitivity_max": 99,
+      "music_sensitivity_min": 0,
       "palette_max": 8,
       "palette_min": 1
     },
+    "models": {
+      "H617A": {
+        "apply": {
+          "multi": "supported",
+          "single": "supported"
+        },
+        "effects": [
+          {
+            "family": 0,
+            "id": "fade",
+            "label": "Fade",
+            "rate": "speed",
+            "supports_multi": true,
+            "variations": [
+              {
+                "id": "whole",
+                "label": "Whole strip",
+                "variant": 0
+              },
+              {
+                "id": "sections",
+                "label": "Sections",
+                "variant": 1
+              },
+              {
+                "id": "cycle",
+                "label": "Cycle",
+                "variant": 2
+              }
+            ]
+          },
+          {
+            "family": 1,
+            "id": "jumping",
+            "label": "Jumping",
+            "rate": "speed",
+            "supports_multi": true,
+            "variations": [
+              {
+                "id": "whole",
+                "label": "Whole strip",
+                "variant": 0
+              },
+              {
+                "id": "cycle",
+                "label": "Cycle",
+                "variant": 2
+              }
+            ]
+          },
+          {
+            "family": 2,
+            "id": "blinking",
+            "label": "Blinking",
+            "rate": "speed",
+            "supports_multi": true,
+            "variations": [
+              {
+                "id": "whole",
+                "label": "Whole strip",
+                "variant": 0
+              },
+              {
+                "id": "sections",
+                "label": "Sections",
+                "variant": 1
+              },
+              {
+                "id": "cycle",
+                "label": "Cycle",
+                "variant": 2
+              }
+            ]
+          },
+          {
+            "family": 3,
+            "id": "marquee",
+            "label": "Marquee",
+            "rate": "speed",
+            "supports_multi": true,
+            "variations": [
+              {
+                "id": "all",
+                "label": "Together",
+                "variant": 3
+              },
+              {
+                "id": "gathered",
+                "label": "Gather",
+                "variant": 4
+              },
+              {
+                "id": "dispersive",
+                "label": "Disperse",
+                "variant": 5
+              }
+            ]
+          },
+          {
+            "family": 4,
+            "id": "music",
+            "label": "Music",
+            "rate": "sensitivity",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "rhythm",
+                "label": "Rhythm",
+                "variant": 8
+              },
+              {
+                "id": "spectrum",
+                "label": "Spectrum",
+                "variant": 6
+              },
+              {
+                "id": "rolling",
+                "label": "Rolling",
+                "variant": 7
+              }
+            ]
+          },
+          {
+            "family": 8,
+            "id": "stream",
+            "label": "Stream",
+            "rate": "speed",
+            "supports_multi": true,
+            "variations": [
+              {
+                "id": "clockwise",
+                "label": "Clockwise",
+                "variant": 9
+              },
+              {
+                "id": "counter_clockwise",
+                "label": "Counterclockwise",
+                "variant": 10
+              }
+            ]
+          },
+          {
+            "family": 9,
+            "id": "flow",
+            "label": "Flow",
+            "rate": "speed",
+            "supports_multi": true,
+            "variations": [
+              {
+                "id": "clockwise",
+                "label": "Clockwise",
+                "variant": 9
+              },
+              {
+                "id": "counter_clockwise",
+                "label": "Counterclockwise",
+                "variant": 10
+              }
+            ]
+          },
+          {
+            "family": 10,
+            "id": "chase",
+            "label": "Chase",
+            "rate": "speed",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "default",
+                "label": "Default",
+                "variant": 0
+              }
+            ]
+          }
+        ],
+        "limits": {
+          "multi_max": 4,
+          "music_sensitivity_max": 99,
+          "music_sensitivity_min": 0,
+          "palette_max": 8,
+          "palette_min": 1
+        },
+        "music_modes": [
+          {
+            "id": "energetic",
+            "label": "Energetic"
+          },
+          {
+            "id": "rhythm",
+            "label": "Rhythm"
+          },
+          {
+            "id": "spectrum",
+            "label": "Spectrum"
+          },
+          {
+            "id": "rolling",
+            "label": "Rolling"
+          },
+          {
+            "id": "separation",
+            "label": "Separation"
+          },
+          {
+            "id": "hopping",
+            "label": "Hopping"
+          },
+          {
+            "id": "piano_keys",
+            "label": "Piano Keys"
+          },
+          {
+            "id": "fountain",
+            "label": "Fountain"
+          },
+          {
+            "id": "day_and_night",
+            "label": "Day And Night"
+          },
+          {
+            "id": "bloom",
+            "label": "Bloom"
+          },
+          {
+            "id": "shiny",
+            "label": "Shiny"
+          }
+        ],
+        "painted_effects": [
+          {
+            "id": "cycle",
+            "label": "Cycle"
+          },
+          {
+            "id": "clockwise",
+            "label": "Clockwise"
+          },
+          {
+            "id": "counter_clockwise",
+            "label": "Counterclockwise"
+          },
+          {
+            "id": "twinkle",
+            "label": "Twinkle"
+          },
+          {
+            "id": "gradient",
+            "label": "Gradient"
+          },
+          {
+            "id": "breathe",
+            "label": "Breathe"
+          }
+        ],
+        "sku": "H617A",
+        "supports": {
+          "advanced": "evidence_gap",
+          "multi": "supported"
+        },
+        "video_modes": []
+      },
+      "H6199": {
+        "apply": {
+          "multi": "unsupported",
+          "single": "unsupported"
+        },
+        "effects": [
+          {
+            "family": 0,
+            "id": "fade",
+            "label": "Fade",
+            "rate": "speed",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "default",
+                "label": "Default",
+                "variant": 0
+              }
+            ]
+          },
+          {
+            "family": 1,
+            "id": "jumping",
+            "label": "Jumping",
+            "rate": "speed",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "default",
+                "label": "Default",
+                "variant": 0
+              }
+            ]
+          },
+          {
+            "family": 2,
+            "id": "twinkle",
+            "label": "Twinkle",
+            "rate": "speed",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "default",
+                "label": "Default",
+                "variant": 0
+              }
+            ]
+          },
+          {
+            "family": 3,
+            "id": "marquee",
+            "label": "Marquee",
+            "rate": "speed",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "default",
+                "label": "Default",
+                "variant": 3
+              }
+            ]
+          },
+          {
+            "family": 4,
+            "id": "music",
+            "label": "Music",
+            "rate": "sensitivity",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "default",
+                "label": "Default",
+                "variant": 8
+              }
+            ]
+          },
+          {
+            "family": 8,
+            "id": "chasing",
+            "label": "Chasing",
+            "rate": "speed",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "clockwise",
+                "label": "Clockwise",
+                "variant": 9
+              },
+              {
+                "id": "counter_clockwise",
+                "label": "Counterclockwise",
+                "variant": 10
+              }
+            ]
+          },
+          {
+            "family": 9,
+            "id": "rainbow",
+            "label": "Rainbow",
+            "rate": "speed",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "default",
+                "label": "Default",
+                "variant": 9
+              }
+            ]
+          },
+          {
+            "family": 10,
+            "id": "crossing",
+            "label": "Crossing",
+            "rate": "speed",
+            "supports_multi": false,
+            "variations": [
+              {
+                "id": "default",
+                "label": "Default",
+                "variant": 0
+              }
+            ]
+          }
+        ],
+        "limits": {
+          "multi_max": 4,
+          "music_sensitivity_max": 100,
+          "music_sensitivity_min": 1,
+          "palette_max": 8,
+          "palette_min": 1
+        },
+        "music_modes": [
+          {
+            "id": "energetic",
+            "label": "Energetic"
+          },
+          {
+            "id": "rhythm",
+            "label": "Rhythm"
+          },
+          {
+            "id": "spectrum",
+            "label": "Spectrum"
+          },
+          {
+            "id": "rolling",
+            "label": "Rolling"
+          }
+        ],
+        "painted_effects": [],
+        "sku": "H6199",
+        "supports": {
+          "advanced": "evidence_gap",
+          "multi": "unsupported"
+        },
+        "video_modes": [
+          {
+            "id": "movie",
+            "label": "Movie"
+          },
+          {
+            "id": "game",
+            "label": "Game"
+          }
+        ]
+      }
+    },
+    "music_modes": [
+      {
+        "id": "energetic",
+        "label": "Energetic"
+      },
+      {
+        "id": "rhythm",
+        "label": "Rhythm"
+      },
+      {
+        "id": "spectrum",
+        "label": "Spectrum"
+      },
+      {
+        "id": "rolling",
+        "label": "Rolling"
+      },
+      {
+        "id": "separation",
+        "label": "Separation"
+      },
+      {
+        "id": "hopping",
+        "label": "Hopping"
+      },
+      {
+        "id": "piano_keys",
+        "label": "Piano Keys"
+      },
+      {
+        "id": "fountain",
+        "label": "Fountain"
+      },
+      {
+        "id": "day_and_night",
+        "label": "Day And Night"
+      },
+      {
+        "id": "bloom",
+        "label": "Bloom"
+      },
+      {
+        "id": "shiny",
+        "label": "Shiny"
+      }
+    ],
     "painted_effects": [
       {
         "id": "cycle",
@@ -204,8 +680,13 @@
         "label": "Breathe"
       }
     ],
-    "schema_version": 1,
-    "sku": "H617A"
+    "schema_version": 2,
+    "sku": "H617A",
+    "supports": {
+      "advanced": "evidence_gap",
+      "multi": "supported"
+    },
+    "video_modes": []
   },
   "devices": [
     {

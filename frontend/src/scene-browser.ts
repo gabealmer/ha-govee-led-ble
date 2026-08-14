@@ -10,6 +10,7 @@ import {
   studioEditorStyles,
   studioFeedbackStyles,
   studioSelectorStyles,
+  studioVisuallyHiddenStyles,
   studioWorkspaceStyles,
 } from "./studio-styles";
 import type {
@@ -69,6 +70,9 @@ export class GoveeSceneBrowser extends LitElement {
   private category: CategorySelection = "all";
 
   @state()
+  private search = "";
+
+  @state()
   private selectedScene?: SceneSummary;
 
   @state()
@@ -93,6 +97,9 @@ export class GoveeSceneBrowser extends LitElement {
   private applying = false;
 
   @state()
+  private editingCopy = false;
+
+  @state()
   private notice?: string;
 
   @state()
@@ -106,9 +113,11 @@ export class GoveeSceneBrowser extends LitElement {
       this.invalidateRequests();
       this.catalogue = undefined;
       this.category = "all";
+      this.search = "";
       this.selectedScene = undefined;
       this.selectedItem = undefined;
       this.content = undefined;
+      this.editingCopy = false;
       this.notice = undefined;
       this.error = undefined;
       this.loading = Boolean(this.api && this.device);
@@ -157,6 +166,18 @@ export class GoveeSceneBrowser extends LitElement {
       </aside>
 
       <aside class="sidebar item-sidebar scenes" aria-label="Scenes">
+        <label class="scene-search">
+          <span class="visually-hidden">Search scenes</span>
+          <input
+            type="search"
+            aria-label="Search scenes"
+            placeholder="Search scenes"
+            .value=${this.search}
+            @input=${(event: Event) => {
+              this.search = (event.target as HTMLInputElement).value;
+            }}
+          />
+        </label>
         ${this.filteredSceneEntries.map((entry) =>
           entry.kind === "custom"
             ? this.sceneButton(
@@ -238,6 +259,7 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   private get filteredSceneEntries(): SceneListEntry[] {
+    const query = this.search.trim().toLocaleLowerCase();
     return [
       ...this.filteredCustomScenes.map(
         (item): SceneListEntry => ({
@@ -253,7 +275,12 @@ export class GoveeSceneBrowser extends LitElement {
           label: scene.display_name,
         }),
       ),
-    ].sort((left, right) => compareLabels(left.label, right.label));
+    ]
+      .filter(
+        (entry) =>
+          !query || entry.label.toLocaleLowerCase().includes(query),
+      )
+      .sort((left, right) => compareLabels(left.label, right.label));
   }
 
   private get selectionKey(): string | undefined {
@@ -299,7 +326,7 @@ export class GoveeSceneBrowser extends LitElement {
     const scene = this.selectedScene!;
     const speed = scene.speed;
     const speedIndex = this.speedIndex ?? speed?.default_index ?? 0;
-    const custom = this.selectedItem !== undefined;
+    const custom = this.selectedItem !== undefined || this.editingCopy;
     return html`
       <header class="detail-heading">
         <div>
@@ -324,31 +351,11 @@ export class GoveeSceneBrowser extends LitElement {
             type="button"
             ?disabled=${!this.isAdmin ||
             this.saving ||
-            !this.hasCurrentSceneContent() ||
-            this.content?.kind === "scene_layered"}
-            @click=${this.save}
+            !this.hasCurrentSceneContent()}
+            @click=${custom ? this.save : this.edit}
           >
-            ${this.saving
-              ? "Saving..."
-              : custom
-                ? "Save"
-                : "Save copy"}
+            ${this.saving ? "Saving..." : custom ? "Save" : "Edit"}
           </button>
-          ${scene.parameter_kind === "layers"
-            ? html`
-                <button
-                  class="secondary"
-                  type="button"
-                  ?disabled=${!this.isAdmin ||
-                  scene.scene_type !== 2 ||
-                  !this.hasCurrentSceneContent() ||
-                  this.content?.kind !== "scene_layered"}
-                  @click=${this.useAsTemplate}
-                >
-                  Use as Template
-                </button>
-              `
-            : nothing}
           <button
             class="secondary"
             type="button"
@@ -540,6 +547,7 @@ export class GoveeSceneBrowser extends LitElement {
     this.selectedScene = undefined;
     this.selectedItem = undefined;
     this.content = undefined;
+    this.editingCopy = false;
     this.notice = undefined;
   }
 
@@ -552,6 +560,7 @@ export class GoveeSceneBrowser extends LitElement {
     this.notice = undefined;
     this.selectedScene = scene;
     this.selectedItem = undefined;
+    this.editingCopy = false;
     this.content = undefined;
     this.name = scene.display_name;
     this.speedIndex = scene.speed?.default_index ?? null;
@@ -587,6 +596,7 @@ export class GoveeSceneBrowser extends LitElement {
     this.notice = undefined;
     this.selectedScene = undefined;
     this.selectedItem = undefined;
+    this.editingCopy = false;
     this.content = undefined;
     this.name = summary.name;
     try {
@@ -627,6 +637,7 @@ export class GoveeSceneBrowser extends LitElement {
       }
       this.selectedScene = scene;
       this.selectedItem = item;
+      this.editingCopy = false;
       this.content = content;
       this.name = item.name;
       this.speedIndex =
@@ -657,7 +668,7 @@ export class GoveeSceneBrowser extends LitElement {
     const name = (
       this.selectedItem
         ? this.name.trim()
-        : `${this.selectedScene.display_name} copy`
+        : this.name.trim()
     ).trim();
     if (!name) {
       this.notice = "Give this custom scene a name before saving.";
@@ -711,6 +722,7 @@ export class GoveeSceneBrowser extends LitElement {
       this.requestGeneration += 1;
       this.activeSelectionIdentity = `custom:${result.item.id}`;
       this.selectedItem = result.item;
+      this.editingCopy = false;
       this.content = result.item.content;
       this.name = result.item.name;
       this.category = "custom";
@@ -727,13 +739,30 @@ export class GoveeSceneBrowser extends LitElement {
     }
   }
 
-  private useAsTemplate(): void {
+  private edit(): void {
     if (
       !this.isAdmin ||
       !this.selectedScene ||
-      this.selectedScene.scene_type !== 2 ||
-      this.content?.kind !== "scene_layered" ||
       !this.hasCurrentSceneContent()
+    ) {
+      return;
+    }
+    if (
+      this.selectedScene.scene_type === 2 &&
+      this.content?.kind === "scene_layered"
+    ) {
+      this.dispatchSceneEdit();
+      return;
+    }
+    this.editingCopy = true;
+    this.name = `${this.selectedScene.display_name} copy`;
+    this.notice = undefined;
+  }
+
+  private dispatchSceneEdit(): void {
+    if (
+      !this.selectedScene ||
+      this.content?.kind !== "scene_layered"
     ) {
       return;
     }
@@ -742,14 +771,14 @@ export class GoveeSceneBrowser extends LitElement {
         content: LayeredSceneContent;
         config_entry_id: string;
         name: string;
-      }>("scene-template-selected", {
+      }>("scene-edit-selected", {
         detail: {
           content: cloneLayeredSceneContent({
             ...this.content,
             speed_index: this.speedIndex,
           }),
           config_entry_id: this.device!.config_entry_id,
-          name: `${this.selectedScene.display_name} layered`,
+          name: `${this.selectedScene.display_name} copy`,
         },
         bubbles: true,
         composed: true,
@@ -845,6 +874,7 @@ export class GoveeSceneBrowser extends LitElement {
     studioSelectorStyles,
     studioEditorStyles,
     studioFeedbackStyles,
+    studioVisuallyHiddenStyles,
     studioWorkspaceStyles,
     css`
     :host {
@@ -868,6 +898,21 @@ export class GoveeSceneBrowser extends LitElement {
     h4 {
       margin: 0;
       font-size: 13px;
+    }
+
+    .scene-search {
+      display: block;
+      margin-bottom: 12px;
+    }
+
+    .scene-search input {
+      width: 100%;
+      min-height: var(--studio-control-height);
+      padding: 8px 11px;
+      border: 1px solid var(--studio-border);
+      border-radius: var(--studio-control-radius);
+      color: var(--primary-text-color);
+      background: var(--studio-card);
     }
 
     .empty {

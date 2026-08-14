@@ -8,23 +8,24 @@ import {
   studioFormStyles,
 } from "./studio-styles";
 import type {
-  CustomEffectCatalogue,
   DiyEffectFamily,
   EffectPair,
+  ModelEffectCatalogue,
   MultiContent,
+  PaletteDiyEffectContent,
   RGB,
   SingleContent,
 } from "./types";
 import { clonePalette } from "./ui-utils";
 
-type PaletteContent = SingleContent | MultiContent;
+type PaletteContent = SingleContent | MultiContent | PaletteDiyEffectContent;
 
 export class GoveeCustomEffectEditor extends LitElement {
   @property({ attribute: false })
   public content?: PaletteContent;
 
   @property({ attribute: false })
-  public catalogue?: CustomEffectCatalogue;
+  public catalogue?: ModelEffectCatalogue;
 
   @property({ type: Boolean })
   public disabled = false;
@@ -35,7 +36,10 @@ export class GoveeCustomEffectEditor extends LitElement {
     if (!this.content) {
       return;
     }
-    if (this.content.kind === "h617a_single") {
+    if (
+      this.content.kind === "h617a_single" ||
+      this.content.kind === "palette_diy"
+    ) {
       const variation = this.shadowRoot?.querySelector<HTMLSelectElement>(
         "select[data-single-variation]",
       );
@@ -66,7 +70,8 @@ export class GoveeCustomEffectEditor extends LitElement {
       return nothing;
     }
     const rateLabel =
-      this.content.kind === "h617a_single" &&
+      (this.content.kind === "h617a_single" ||
+        this.content.kind === "palette_diy") &&
       this.effectFamily(this.content)?.rate === "sensitivity"
         ? "Sensitivity"
         : "Speed";
@@ -112,7 +117,11 @@ export class GoveeCustomEffectEditor extends LitElement {
   }
 
   private renderSingleVariation() {
-    if (!this.content || this.content.kind !== "h617a_single") {
+    if (
+      !this.content ||
+      (this.content.kind !== "h617a_single" &&
+        this.content.kind !== "palette_diy")
+    ) {
       return nothing;
     }
     const content = this.content;
