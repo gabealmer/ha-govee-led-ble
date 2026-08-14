@@ -2,10 +2,10 @@ import { readdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
-const ASSET_VERSION = 1;
-const API_VERSION = 1;
+const ASSET_VERSION = 2;
+const API_VERSION = 2;
 const EFFECT_SCHEMA_VERSION = 1;
-const COMPILER_VERSION = 1;
+const COMPILER_VERSION = 2;
 
 function editorManifest(): Plugin {
   const outputDirectory = resolve(

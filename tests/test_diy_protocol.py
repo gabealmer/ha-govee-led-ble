@@ -7,8 +7,15 @@ import pytest
 from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import protocol as proto
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    H6199_DIY_EFFECTS,
+    H6199_PALETTE_DIY_APPLY_CODE,
+)
+from custom_components.ha_govee_led_ble.effect_compiler import VerificationStrategy, compile_h6199
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, PaletteDiyEffect
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type04 import DiyType04
+from custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload import H6199EffectUpload
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tools/ble/kaitai/src"
 
@@ -95,6 +102,37 @@ def test_multi_encoder_round_trips_every_fixture(path: Path) -> None:
     frames = proto.build_h617a_diy_multi(effects, parsed.body.speed, palette)
 
     assert _reassemble(frames) == raw
+
+
+@pytest.mark.parametrize("effect", H6199_DIY_EFFECTS, ids=lambda effect: effect.id)
+def test_h6199_compiler_matches_every_visible_family_and_variation(effect) -> None:
+    raw = (FIXTURES / effect.source_fixture).read_bytes()
+    parsed = H6199EffectUpload(KaitaiStream(io.BytesIO(raw)))
+    parsed._read()
+    palette = tuple((colour.red, colour.green, colour.blue) for colour in parsed.content.palette)
+    item = LibraryItem.new(
+        effect.label,
+        PaletteDiyEffect(
+            "H6199",
+            int(parsed.content.family),
+            parsed.content.variant,
+            parsed.content.speed,
+            palette,
+        ),
+    )
+
+    compiled = compile_h6199(item)
+
+    assert _reassemble(list(compiled.upload_packets)) == raw
+    assert compiled.activation_packet == (FIXTURES / "h6199_scene_workshop_slot.bin").read_bytes()
+    assert compiled.diy_code == H6199_PALETTE_DIY_APPLY_CODE
+    assert compiled.verification_strategy is VerificationStrategy.UNPROVEN_H6199_SLOT
+
+
+def test_h6199_activation_encoder_matches_captured_workshop_slot() -> None:
+    expected = (FIXTURES / "h6199_scene_workshop_slot.bin").read_bytes()
+
+    assert proto.build_h6199_palette_diy_activation(401, 2) == expected
 
 
 @pytest.mark.parametrize("effect", ["", "unknown", "Clockwise"])

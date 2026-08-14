@@ -11,7 +11,9 @@ from uuid import uuid4
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.ha_govee_led_ble.effect_compiler import compile_h617a
+from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+from custom_components.ha_govee_led_ble.effect_catalogue import H6199_PALETTE_DIY_APPLY_CODE
+from custom_components.ha_govee_led_ble.effect_compiler import compile_h617a, compile_h6199
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
@@ -22,6 +24,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     PaintedEffect,
+    PaletteDiyEffect,
     SingleEffect,
 )
 from custom_components.ha_govee_led_ble.effect_runtime import (
@@ -40,6 +43,13 @@ def _item() -> LibraryItem:
 
 def _type04_item() -> LibraryItem:
     return LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+
+
+def _h6199_item(*, family: int = 8, variant: int = 9) -> LibraryItem:
+    return LibraryItem.new(
+        "H6199 palette",
+        PaletteDiyEffect("H6199", family, variant, 60, ((255, 0, 0), (0, 0, 255))),
+    )
 
 
 def _coordinator(*, readable: bool = True):
@@ -549,6 +559,107 @@ async def test_h6199_is_rejected_before_any_write(hass: HomeAssistant) -> None:
         )
 
     coordinator.send_command.assert_not_awaited()
+
+
+async def test_h6199_upload_uses_best_evidence_sequence_and_stays_uncertain(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    coordinator.unknown_scene_code = None
+    item = _h6199_item()
+    compiled = compile_h6199(item)
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.UNCERTAIN
+    assert result.error_code == "activation_readback_unproven"
+    assert result.verification_confidence is ObservationConfidence.UNKNOWN
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
+    assert coordinator.refresh_state.await_count == 3
+
+
+async def test_h6199_slot_readback_cannot_confirm_uploaded_content(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    coordinator.unknown_scene_code = None
+
+    async def refresh() -> bool:
+        if coordinator.refresh_state.await_count >= 2:
+            coordinator.unknown_scene_code = H6199_PALETTE_DIY_APPLY_CODE
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        _h6199_item(),
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.UNCERTAIN
+    assert result.error_code == "effect_content_readback_unproven"
+    assert result.verification_confidence is ObservationConfidence.UNKNOWN
+    assert cache.get("entry-a") is not None
+    assert cache.get("entry-a").mode == "scene"
+    assert cache.get("entry-a").confidence is ObservationConfidence.UNKNOWN
+
+
+async def test_h6199_rejects_unfixtured_variation_before_any_write(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+
+    with pytest.raises(ValueError, match="no committed capture fixture"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            _h6199_item(family=8, variant=11),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+        )
+
+    coordinator.send_command.assert_not_awaited()
+    coordinator.refresh_state.assert_not_awaited()
+
+
+async def test_h6199_uncertain_result_emits_structured_evidence_gap(
+    hass: HomeAssistant,
+) -> None:
+    backend = await EffectBackend.async_create(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    coordinator.unknown_scene_code = None
+
+    result = await backend.engine.async_apply_saved(
+        coordinator,
+        _h6199_item(),
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    gap = backend.diagnostics.snapshot(config_entry_id="entry-a")["events"][-1]
+    assert result.phase is DeploymentPhase.UNCERTAIN
+    assert gap["stage"] == "evidence_gap"
+    assert gap["code"] == "device_state_uncertain"
+    assert gap["presentation"] == "diagnostic_only"
+    assert gap["details"] == {
+        "confidence": "unknown",
+        "error_code": "activation_readback_unproven",
+        "progress_current": 3,
+        "progress_total": 3,
+    }
 
 
 async def test_type04_uses_evidenced_code_and_confirms_readback(

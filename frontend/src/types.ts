@@ -49,6 +49,7 @@ export interface DeviceCapabilities {
     painted: CapabilityState;
     single: CapabilityState;
     multi: CapabilityState;
+    palette_diy: CapabilityState;
     advanced: CapabilityState;
   };
   readback: string;
@@ -255,11 +256,12 @@ export interface ModelEffectCatalogue {
     painted: CapabilityState;
     single: CapabilityState;
     multi: CapabilityState;
+    palette_diy: CapabilityState;
   };
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 3;
+  schema_version: 4;
   sku: "H617A";
   models: Record<ModelSku, ModelEffectCatalogue>;
 }
@@ -409,6 +411,10 @@ export interface DeploymentRecord {
   error_code: string | null;
   progress_current: number;
   progress_total: number;
+  verification_confidence:
+    | "exact_session"
+    | "activation_match"
+    | "unknown";
 }
 
 export interface DeploymentSnapshot {

@@ -83,7 +83,7 @@ def test_h6199_segments_readback_is_decode_only(atlas):
 
 def test_diy_upload_encoder_status_matches_runtime(atlas):
     assert _row(atlas, "H617A", "diy_upload")["runtime"]["encode"] == "wired"
-    assert _row(atlas, "H6199", "diy_upload")["runtime"]["encode"] == "none"
+    assert _row(atlas, "H6199", "diy_upload")["runtime"]["encode"] == "wired"
 
 
 def test_h617a_type04_apply_evidence_is_current(atlas):
@@ -172,9 +172,10 @@ def test_diy_upload_notes_deterministic_paint_map_and_palette_subset(atlas):
     assert any("deterministic static preview" in gap and "15-segment paint map" in gap for gap in row["known_gaps"])
 
 
-def test_h6199_diy_activation_flags_must_not_animate(atlas):
+def test_h6199_diy_activation_preserves_the_unproven_binding(atlas):
     row = _row(atlas, "H6199", "diy_activation")
-    assert any("must not be animated" in gap for gap in row["known_gaps"])
+    assert row["persistence_need"] == "deployment_intent"
+    assert any("Runtime therefore reports the transaction as uncertain" in gap for gap in row["known_gaps"])
 
 
 def test_rejects_missing_required_field(atlas):

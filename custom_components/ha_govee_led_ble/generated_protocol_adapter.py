@@ -17,6 +17,10 @@ H6199CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
 )
+H6199EffectUpload = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload").H6199EffectUpload,
+)
 StatusQuery = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.status_query").StatusQuery,
@@ -262,6 +266,28 @@ def _rgb(parent: Any, red: int, green: int, blue: int) -> Any:
 def new_rgb(parent: Any, rgb: tuple[int, int, int]) -> Any:
     """Construct a shared RGB triple bound to ``parent`` from a colour tuple."""
     return _rgb(parent, *rgb)
+
+
+def build_h6199_palette_diy_envelope(
+    family: int,
+    variant: int,
+    speed: int,
+    palette: tuple[tuple[int, int, int], ...],
+) -> bytes:
+    root = H6199EffectUpload()
+    root.header = b"\x01"
+    root.chunk_count = root.diy_chunk_count
+    root.kind = H6199EffectUpload.BodyKind.diy
+    content = _child(H6199EffectUpload.DiyContent, root)
+    content.family = H6199EffectUpload.EffectFamily(family)
+    content.variant = variant
+    content.speed = speed
+    content.palette_len = len(palette) * 3
+    content.palette = [new_rgb(content, colour) for colour in palette]
+    root.content = content
+    content.padding = [0] * content.padding_len
+    _check_tree(root)
+    return _write(root, root.diy_chunk_count * _A3_CHUNK_SIZE)
 
 
 def _a3_header(parent: Any) -> Any:
@@ -584,6 +610,7 @@ def build_h6199_scene(scene_code: int, music_code: int = 0) -> bytes:
     detail = _child(H6199CommandWrite.SceneBody, mode)
     detail.scene_id = max(0, min(0xFFFF, scene_code))
     detail.music_code = max(0, min(0xFFFF, music_code))
+    detail.reserved = bytes(12)
     mode.detail = detail
     root.body = mode
     return _serialize_xor(root)

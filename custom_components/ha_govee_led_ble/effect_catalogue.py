@@ -16,7 +16,7 @@ from .effect_contracts import (
 from .effect_domain import MAX_MULTI_EFFECTS, MAX_PALETTE_COLOURS, JsonValue
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 3
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 4
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # PR #156 proves code 24 immediately follows and reads back after both Flat and Combo uploads.
@@ -104,12 +104,14 @@ class ApplySupport:
     painted: CapabilityState
     single: CapabilityState
     multi: CapabilityState
+    palette_diy: CapabilityState
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
             "painted": self.painted.value,
             "single": self.single.value,
             "multi": self.multi.value,
+            "palette_diy": self.palette_diy.value,
         }
 
 
@@ -292,6 +294,10 @@ def _native_music_modes(model: str) -> tuple[NativeModeOption, ...]:
 
 H617A_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617A")
 H6199_DIY_SOURCE_REFERENCE: Final = "tools/ble/kaitai/h6199_effect_upload.ksy"
+# h6199_scene_workshop_slot.kst captures four saved user effects selecting slot 401 with
+# the second scene field set to 2 after distinct A3 uploads.
+H6199_PALETTE_DIY_APPLY_CODE: Final = 401
+H6199_PALETTE_DIY_APPLY_MUSIC_CODE: Final = 2
 
 H6199_DIY_EFFECTS: Final = (
     DiyEffectTemplate(
@@ -452,6 +458,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
             painted=studio_apply_capability_state("H617A", CapabilityWorkflow.PAINTED),
             single=studio_apply_capability_state("H617A", CapabilityWorkflow.SINGLE),
             multi=studio_apply_capability_state("H617A", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H617A", CapabilityWorkflow.PALETTE_DIY),
         ),
     ),
     "H6199": ModelEffectCatalogue(
@@ -468,6 +475,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
             painted=studio_apply_capability_state("H6199", CapabilityWorkflow.PAINTED),
             single=studio_apply_capability_state("H6199", CapabilityWorkflow.SINGLE),
             multi=studio_apply_capability_state("H6199", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY),
         ),
     ),
 }

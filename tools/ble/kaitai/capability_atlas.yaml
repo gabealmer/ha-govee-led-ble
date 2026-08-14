@@ -48,6 +48,7 @@ preview_level_values:
 
 persistence_need_values:
   - device_readback # device is the source of truth; verified via query/readback, no restore
+  - deployment_intent # operation history records what was sent when exact device readback is unavailable
   - restore_required # optimistic write only; HA must restore the value on restart
   - none # nothing to persist (stateless query, telemetry, or unwired)
 
@@ -413,18 +414,18 @@ capabilities:
 
   - model: H6199
     capability: diy_activation
-    summary: Selecting/observing an on-device DIY effect via colour_mode_body; unlike H617A, h6199_status_reply.ksy's mode_sel enum has no diy case at all, so this is unmodelled on the read side and there is no write-side builder either.
-    kaitai_schema: []
-    evidence_status: absent
-    evidence_refs: []
-    generated_module: null
-    runtime: {encode: none, decode: none, readback: none}
-    ha_surface: none
-    persistence_need: none
-    preview_level: opaque
+    summary: Applying a user-authored H6199 effect through the captured scene slot 401 after an A3 definition upload. The activation frame is captured from saved Workshop effects, while pairing it with the palette-DIY preview body remains the best-evidence transaction rather than a confirmed identity binding.
+    kaitai_schema: ["h6199_command_write.ksy::scene_body", "h6199_status_reply.ksy::scene_state"]
+    evidence_status: raw_attributed
+    evidence_refs: [h6199_scene_workshop_slot]
+    generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_command_write.py
+    runtime: {encode: wired, decode: wired, readback: wired}
+    ha_surface: Effect Studio Apply
+    persistence_need: deployment_intent
+    preview_level: structural
     known_gaps:
-      - "h6199_status_reply.ksy's mode_sel enum defines only video/scene/music/static_colour; there is no diy entry, and parse_generated_color_mode's H6199 branch has no COLOR_MODE_DIY case (it falls through to ParsedMode.UNKNOWN). Whether H6199 exposes DIY-slot selection through this same colour_mode domain, or through a different mechanism entirely, is an open question with no fixture evidence either way."
-      - "See pipeline_known_issues: preview_fidelity_ceiling. Per the verified previewability finding, unexercised H6199 families such as this one must not be animated by a preview engine: there is no schema, no fixture and no runtime wiring in either direction to ground any rendering at all."
+      - "Four saved Workshop effects uploaded different scene-shaped bodies and then selected scene slot 401 with the same frame. Palette DIY preview bodies use kind 0x04 instead, and no committed capture proves that slot 401 activates that body shape. Runtime therefore reports the transaction as uncertain even when the slot is observed."
+      - "The H6199 status reply reports slot 401 as an otherwise unknown scene. It cannot identify the uploaded effect contents, so readback remains mode-only and exact content confirmation is unavailable."
 
   - model: H6199
     capability: diy_upload
@@ -434,13 +435,13 @@ capabilities:
     evidence_refs:
       [h6199_effect_diy_chasing1, h6199_effect_diy_chasing2, h6199_effect_diy_crossing, h6199_effect_diy_fade1_fast, h6199_effect_diy_fade1_slow, h6199_effect_diy_jumping1, h6199_effect_diy_marquee1, h6199_effect_diy_music1, h6199_effect_diy_rainbow1, h6199_effect_diy_twinkle1, h6199_effect_workshop_one_colour, h6199_effect_workshop_customize_segment, h6199_effect_builtin_halloween, h6199_effect_reject_diy_palette_len]
     generated_module: custom_components/ha_govee_led_ble/generated_protocol/h6199_effect_upload.py
-    runtime: {encode: none, decode: none, readback: none}
-    ha_surface: none
-    persistence_need: none
+    runtime: {encode: wired, decode: wired, readback: none}
+    ha_surface: Effect Studio Apply
+    persistence_need: deployment_intent
     preview_level: structural
     known_gaps:
-      - "h6199_effect_upload.py compiles into the shipped generated_protocol package (it is listed in scripts/generate-kaitai.sh's runtime spec array) but is never imported by any handwritten runtime module (protocol.py, coordinator.py, h6199_controls.py) — it ships as dead code inside the HA integration despite having the richest fixture corpus of any DIY/workshop schema in the repository."
-      - "See pipeline_known_issues: preview_fidelity_ceiling. h6199_effect_upload has not been evaluated against H617A's product-specific split between deterministic painted segment maps, structural fixture-backed family/variant and workshop content, and opaque unfixtured identities. Treat the whole H6199 family as structural-only until that breakdown is done. As with H617A, any code without committed fixture coverage falls outside this evidence and must not be animated."
+      - "The generated writer covers only the fixture-backed palette DIY families and variations. Workshop, AI-generated and unfixtured identities remain outside this compiler and retain structural or opaque handling."
+      - "The upload bytes are fully modelled, but their binding to the captured scene-slot activation is not. Deployment preserves that evidence boundary by completing with uncertain confidence and a bounded evidence-gap diagnostic."
 
   - model: H6199
     capability: music_mode

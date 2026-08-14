@@ -18,9 +18,11 @@ from homeassistant.setup import async_setup_component
 
 from custom_components.ha_govee_led_ble.const import EFFECT_FAMILY_SCENES
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+from custom_components.ha_govee_led_ble.effect_catalogue import H6199_DIY_EFFECTS
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
+    ObservationConfidence,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
@@ -137,11 +139,11 @@ async def test_authenticated_users_can_read_library(
     catalogue = await client.receive_json()
 
     assert info["success"] is True
-    assert info["result"]["api_version"] == 1
+    assert info["result"]["api_version"] == 2
     assert listing["success"] is True
     assert listing["result"] == {"library_revision": 0, "items": []}
     assert catalogue["success"] is True
-    assert catalogue["result"]["catalogue"]["schema_version"] == 3
+    assert catalogue["result"]["catalogue"]["schema_version"] == 4
     assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H617A", "H6199"]
     assert [effect["label"] for effect in catalogue["result"]["catalogue"]["effects"]] == [
         "Fade",
@@ -877,6 +879,124 @@ async def test_device_capabilities_and_apply(
     assert malformed["error"]["code"] == "invalid_format"
     assert unsupported["error"]["code"] == "unsupported_model"
     assert apply_mock.await_count == 2
+
+
+async def test_h6199_palette_diy_saved_and_snapshot_apply_cover_every_visible_option(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+    coordinator = SimpleNamespace(
+        model="H6199",
+        profile=SimpleNamespace(segment_count=15),
+    )
+    entry = SimpleNamespace(
+        entry_id="entry-h6199",
+        domain="ha_govee_led_ble",
+        state=ConfigEntryState.LOADED,
+        runtime_data=coordinator,
+        title="DreamView",
+    )
+    items = [
+        LibraryItem.new(
+            effect.label,
+            PaletteDiyEffect(
+                "H6199",
+                effect.family,
+                effect.variant,
+                50,
+                ((255, 0, 0), (0, 0, 255)),
+            ),
+        )
+        for effect in H6199_DIY_EFFECTS
+    ]
+    revision = 0
+    for item in items:
+        revision += 1
+        await backend.library.async_create(item, expected_library_revision=revision - 1)
+
+    async def apply_saved(_coordinator, item, **kwargs):
+        return DeploymentRecord(
+            operation_id=uuid4(),
+            config_entry_id=kwargs["config_entry_id"],
+            diy_code=401,
+            phase=DeploymentPhase.UNCERTAIN,
+            compiler_version=2,
+            artifact_sha256=sha256(item.name.encode()).hexdigest(),
+            updated_at=kwargs["updated_at"],
+            item_id=item.id,
+            item_revision=item.revision,
+            error_code="activation_readback_unproven",
+            progress_current=3,
+            progress_total=3,
+            verification_confidence=ObservationConfidence.UNKNOWN,
+        )
+
+    async def apply_snapshot(_coordinator, item, **kwargs):
+        return DeploymentRecord(
+            operation_id=uuid4(),
+            config_entry_id=kwargs["config_entry_id"],
+            diy_code=401,
+            phase=DeploymentPhase.UNCERTAIN,
+            compiler_version=2,
+            artifact_sha256=sha256(item.name.encode()).hexdigest(),
+            updated_at=kwargs["updated_at"],
+            snapshot_id=kwargs["snapshot_id"],
+            snapshot=item,
+            error_code="activation_readback_unproven",
+            progress_current=3,
+            progress_total=3,
+            verification_confidence=ObservationConfidence.UNKNOWN,
+        )
+
+    saved_mock = AsyncMock(side_effect=apply_saved)
+    snapshot_mock = AsyncMock(side_effect=apply_snapshot)
+    monkeypatch.setattr(backend.engine, "async_apply_saved", saved_mock)
+    monkeypatch.setattr(backend.engine, "async_apply_snapshot", snapshot_mock)
+
+    with monkeypatch.context() as context:
+        context.setattr(hass.config_entries, "async_entries", lambda domain=None: [entry])
+        context.setattr(
+            hass.config_entries,
+            "async_get_entry",
+            lambda entry_id: entry if entry_id == entry.entry_id else None,
+        )
+        await client.send_json_auto_id({"type": WS_DEVICES})
+        devices = await client.receive_json()
+        assert devices["result"]["devices"][0]["custom_effects"]["palette_diy"] == "supported"
+
+        for item in items:
+            await client.send_json_auto_id(
+                {
+                    "type": WS_APPLY,
+                    "config_entry_id": entry.entry_id,
+                    "item_id": str(item.id),
+                    "revision": item.revision,
+                    "updated_at": "2026-08-14T00:00:00Z",
+                }
+            )
+            saved = await client.receive_json()
+            assert saved["success"] is True
+            assert saved["result"]["deployment"]["phase"] == "uncertain"
+            assert saved["result"]["deployment"]["verification_confidence"] == "unknown"
+
+            await client.send_json_auto_id(
+                {
+                    "type": WS_APPLY_SNAPSHOT,
+                    "config_entry_id": entry.entry_id,
+                    "name": item.name,
+                    "content": effect_content_to_dict(item.content),
+                    "updated_at": "2026-08-14T00:00:00Z",
+                }
+            )
+            snapshot = await client.receive_json()
+            assert snapshot["success"] is True
+            assert snapshot["result"]["deployment"]["phase"] == "uncertain"
+
+    assert saved_mock.await_count == len(H6199_DIY_EFFECTS)
+    assert snapshot_mock.await_count == len(H6199_DIY_EFFECTS)
 
 
 async def test_scene_catalogue_and_native_apply(

@@ -16,6 +16,7 @@ from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     PaintedEffect,
+    PaletteDiyEffect,
 )
 from custom_components.ha_govee_led_ble.effect_services import (
     ATTR_CORRELATION_ID,
@@ -26,17 +27,22 @@ from custom_components.ha_govee_led_ble.effect_services import (
 )
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        PaintedEffect("clockwise", 50, 100, (0, 0, 0)),
+        PaletteDiyEffect("H6199", 8, 9, 50, ((255, 0, 0), (0, 0, 255))),
+    ],
+)
 async def test_service_registration_and_apply(
     hass: HomeAssistant,
     entity_registry,
     monkeypatch,
+    content,
 ) -> None:
     backend = await EffectBackend.async_create(hass)
     async_register_effect_services(hass, backend)
-    item = LibraryItem.new(
-        "Paint",
-        PaintedEffect("clockwise", 50, 100, (0, 0, 0)),
-    )
+    item = LibraryItem.new("Paint", content)
     await backend.library.async_create(item, expected_library_revision=0)
     entry = MockConfigEntry(domain=DOMAIN)
     entry.add_to_hass(hass)

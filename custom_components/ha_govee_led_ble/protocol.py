@@ -40,6 +40,9 @@ from .generated_protocol_adapter import (
     build_h6199_blank_screen_query as _build_generated_blank_screen_query,
 )
 from .generated_protocol_adapter import (
+    build_h6199_palette_diy_envelope as _build_generated_h6199_palette_diy_envelope,
+)
+from .generated_protocol_adapter import (
     build_h6199_relative_brightness as _build_generated_relative_brightness,
 )
 from .generated_protocol_adapter import (
@@ -384,6 +387,13 @@ def build_a3_multi(type_byte: int, body: bytes, *, terminator: bool = False) -> 
     return packets
 
 
+def _fragment_a3_envelope(envelope: bytes) -> list[bytes]:
+    if len(envelope) < 2 or envelope[0] != 0x01 or len(envelope) != envelope[1] * 17:
+        raise ValueError("A3 envelope does not match its chunk count")
+    chunks = [envelope[index : index + 17] for index in range(0, len(envelope), 17)]
+    return [_a3_frame(index if index + 1 < len(chunks) else 0xFF, chunk) for index, chunk in enumerate(chunks)]
+
+
 def _validate_diy_percent(value: int, name: str) -> None:
     if not isinstance(value, int) or not 0 <= value <= 100:
         raise ValueError(f"{name} must be an integer from 0 to 100")
@@ -446,6 +456,35 @@ def build_h617a_diy_activation(diy_code: int) -> bytes:
     if not isinstance(diy_code, int) or not 0 <= diy_code <= 0xFFFF:
         raise ValueError("DIY code must be an integer from 0 to 65535")
     return _build_generated_diy_activation(diy_code)
+
+
+def build_h6199_palette_diy(
+    family: int,
+    variant: int,
+    speed: int,
+    palette: Sequence[RGB],
+) -> list[bytes]:
+    """Encode one fixture-backed H6199 palette DIY body into its captured A3 form."""
+    _validate_diy_byte(family, "effect family")
+    _validate_diy_byte(variant, "effect variant")
+    _validate_diy_percent(speed, "speed")
+    _validate_diy_palette(palette)
+    envelope = _build_generated_h6199_palette_diy_envelope(
+        family,
+        variant,
+        speed,
+        tuple(palette),
+    )
+    return _fragment_a3_envelope(envelope)
+
+
+def build_h6199_palette_diy_activation(scene_code: int, music_code: int) -> bytes:
+    """Select the capture-backed H6199 user-effect slot after an A3 upload."""
+    if not isinstance(scene_code, int) or not 0 <= scene_code <= 0xFFFF:
+        raise ValueError("scene code must be an integer from 0 to 65535")
+    if not isinstance(music_code, int) or not 0 <= music_code <= 0xFFFF:
+        raise ValueError("music code must be an integer from 0 to 65535")
+    return _build_generated_h6199_scene(scene_code, music_code)
 
 
 def build_h617a_diy_single(

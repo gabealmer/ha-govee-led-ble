@@ -1,0 +1,23 @@
+id: h6199_scene_workshop_slot
+data: h6199_scene_workshop_slot.bin
+imports:
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-ai.pcap
+  source_sha256: 07d8af653fd033c562d870a46f9c370256e35e92521a3d199a4e520ba7cd00f8
+  source_index: 1
+asserts:
+- actual: opcode
+  expected: 5
+- actual: body.sub_mode
+  expected: 4
+- actual: body.detail.scene_id
+  expected: 401
+- actual: body.detail.music_code
+  expected: 2
+- actual: body.detail.reserved
+  expected: "000000000000000000000000"
+fixture_sha256: 440bba3987495ce19f634daada9755b5447af052db8caa42959769579c592a93

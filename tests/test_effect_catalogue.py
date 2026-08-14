@@ -90,6 +90,7 @@ def test_model_aware_catalogue_includes_both_models_and_legacy_h617a_view() -> N
         "painted": "supported",
         "single": "supported",
         "multi": "supported",
+        "palette_diy": "unsupported",
     }
 
 
@@ -172,6 +173,7 @@ def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries
         "painted": "unsupported",
         "single": "unsupported",
         "multi": "unsupported",
+        "palette_diy": "supported",
     }
 
 
@@ -256,8 +258,9 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
         for capability in (h617a_music, h6199_music, h6199_video)
     )
     assert h6199_diy is not None
-    assert h6199_diy.application_route is ApplicationRoute.NONE
-    assert h6199_diy.compiler_deployer_strategy is CompilerDeployerStrategy.STRUCTURAL_PARSER_ONLY
+    assert h6199_diy.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+    assert h6199_diy.compiler_deployer_strategy is CompilerDeployerStrategy.H6199_CUSTOM_ENGINE
+    assert h6199_diy.verification_confidence is VerificationConfidence.UNVERIFIED
     assert h6199_diy.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
     assert h6199_special is not None
     assert h6199_special.compiler_deployer_strategy is CompilerDeployerStrategy.RAW_PRESERVATION
@@ -269,6 +272,7 @@ def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contr
         "painted": CapabilityWorkflow.PAINTED,
         "single": CapabilityWorkflow.SINGLE,
         "multi": CapabilityWorkflow.MULTI,
+        "palette_diy": CapabilityWorkflow.PALETTE_DIY,
     }
     models = cast(
         dict[str, dict[str, JsonValue]],
@@ -290,4 +294,4 @@ def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contr
 def test_capability_state_distinguishes_visibility_from_deployability() -> None:
     assert workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED) is CapabilityState.EVIDENCE_GAP
     assert workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED) is CapabilityState.EVIDENCE_GAP
-    assert studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY) is CapabilityState.UNSUPPORTED
+    assert studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY) is CapabilityState.SUPPORTED

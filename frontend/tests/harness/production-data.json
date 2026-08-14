@@ -3,6 +3,7 @@
     "apply": {
       "multi": "supported",
       "painted": "supported",
+      "palette_diy": "unsupported",
       "single": "supported"
     },
     "effects": [
@@ -186,6 +187,7 @@
         "apply": {
           "multi": "supported",
           "painted": "supported",
+          "palette_diy": "unsupported",
           "single": "supported"
         },
         "effects": [
@@ -509,6 +511,7 @@
         "apply": {
           "multi": "unsupported",
           "painted": "unsupported",
+          "palette_diy": "supported",
           "single": "unsupported"
         },
         "effects": [
@@ -691,7 +694,7 @@
             "label": "Layered scenes"
           },
           {
-            "application": "planned",
+            "application": "studio",
             "content_kind": "palette_diy",
             "id": "palette_diy",
             "label": "Palette DIY"
@@ -801,7 +804,7 @@
         "label": "Breathe"
       }
     ],
-    "schema_version": 3,
+    "schema_version": 4,
     "sku": "H617A",
     "supports": {
       "advanced": "evidence_gap",
@@ -878,6 +881,7 @@
         "advanced": "evidence_gap",
         "multi": "supported",
         "painted": "supported",
+        "palette_diy": "unsupported",
         "single": "supported"
       },
       "display_name": "H617A LED Strip",
@@ -891,6 +895,7 @@
         "advanced": "evidence_gap",
         "multi": "unsupported",
         "painted": "unsupported",
+        "palette_diy": "supported",
         "single": "unsupported"
       },
       "display_name": "H6199 DreamView T1",

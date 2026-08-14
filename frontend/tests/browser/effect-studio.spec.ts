@@ -1012,6 +1012,92 @@ test("device catalogues expose complete model-specific effect families", async (
   ).toHaveCount(0);
 });
 
+test("H6199 palette DIY Apply covers every visible family and variation", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await studio.getByRole("button", { name: "Effects", exact: true }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "New", exact: true })
+    .click();
+
+  const effect = studio.getByRole("combobox", {
+    name: "Effect",
+    exact: true,
+  });
+  const variation = studio.getByRole("combobox", {
+    name: "Variation",
+    exact: true,
+  });
+  const apply = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply", exact: true });
+  const options = [
+    ["fade", "default", 0, 0],
+    ["jumping", "default", 1, 0],
+    ["twinkle", "default", 2, 0],
+    ["marquee", "default", 3, 3],
+    ["chasing", "clockwise", 8, 9],
+    ["chasing", "counter_clockwise", 8, 10],
+    ["rainbow", "default", 9, 9],
+    ["crossing", "default", 10, 0],
+  ] as const;
+
+  for (const [familyId, variationId] of options) {
+    await effect.selectOption(familyId);
+    if (familyId === "chasing") {
+      await variation.selectOption(variationId === "clockwise" ? "9" : "10");
+    }
+    await expect(apply).toBeEnabled();
+    await apply.click();
+    await expect(
+      studio.getByRole("alert").filter({
+        hasText: "activation and readback remain unproven",
+      }),
+    ).toBeVisible();
+  }
+
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  await categories.getByRole("button", { name: "Music", exact: true }).click();
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "Custom", exact: true })
+    .click();
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(
+    studio.getByRole("alert").filter({
+      hasText: "activation and readback remain unproven",
+    }),
+  ).toBeVisible();
+
+  const calls = await page.evaluate(() =>
+    window.testHarness
+      .snapshot()
+      .calls.filter(
+        (call) =>
+          call.type === "ha_govee_led_ble/editor/apply_snapshot",
+      )
+      .map((call) => call.content),
+  );
+  expect(calls).toHaveLength(options.length + 1);
+  expect(
+    calls.map((content) => {
+      const value = content as { family: number; variant: number };
+      return [value.family, value.variant];
+    }),
+  ).toEqual([
+    ...options.map(([, , family, variant]) => [family, variant]),
+    [4, 8],
+  ]);
+});
+
 test("H6199 Video exposes complete reusable profile controls", async ({ page }) => {
   const studio = await openStudio(page);
   await studio
@@ -1843,6 +1929,7 @@ test("deployment phases decode and render without contract drift", async ({
         error_code: null,
         progress_current: 0,
         progress_total: 2,
+        verification_confidence: "unknown",
       }).phase,
     ),
     DEPLOYMENT_PHASES,
@@ -1861,6 +1948,7 @@ test("deployment phases decode and render without contract drift", async ({
         error_code: null,
         progress_current: 0,
         progress_total: 2,
+        verification_confidence: "unknown",
       });
       return false;
     } catch {
