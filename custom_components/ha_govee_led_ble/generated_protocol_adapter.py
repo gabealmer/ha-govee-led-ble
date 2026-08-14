@@ -276,6 +276,19 @@ def new_rgb(parent: Any, rgb: tuple[int, int, int]) -> Any:
     return _rgb(parent, *rgb)
 
 
+def h6199_diy_padding_len(palette_size: int) -> int:
+    """Return the zero padding required by the captured two-chunk DIY envelope."""
+    if not isinstance(palette_size, int) or isinstance(palette_size, bool) or palette_size < 0:
+        raise ValueError("H6199 DIY palette size must be a non-negative integer")
+    root = H6199EffectUpload()
+    content = _child(H6199EffectUpload.DiyContent, root)
+    content.palette_len = palette_size * 3
+    padding_len = int(content.padding_len)
+    if padding_len < 0:
+        raise ValueError("H6199 DIY palette does not fit the fixed two-chunk envelope")
+    return padding_len
+
+
 def build_h6199_palette_diy_envelope(
     family: int,
     variant: int,
@@ -293,7 +306,7 @@ def build_h6199_palette_diy_envelope(
     content.palette_len = len(palette) * 3
     content.palette = [new_rgb(content, colour) for colour in palette]
     root.content = content
-    content.padding = [0] * content.padding_len
+    content.padding = [0] * h6199_diy_padding_len(len(palette))
     _check_tree(root)
     return _write(root, root.diy_chunk_count * _A3_CHUNK_SIZE)
 
@@ -495,27 +508,6 @@ def build_h617a_diy_multi_body(
     length = 8 + body.len_palette + body.seqlen
     _check_tree(root)
     return _write(root, length)[3:]
-
-
-def build_h6199_special_diy_body(
-    family: int,
-    variant: int,
-    speed: int,
-    palette: list[tuple[int, int, int]],
-    *,
-    trailing_padding: int = 0,
-) -> bytes:
-    """Serialize the H6199 0x04 DIY content through the generated Kaitai writer."""
-    root = H6199EffectUpload()
-    content = _child(H6199EffectUpload.DiyContent, root)
-    content.family = family
-    content.variant = variant
-    content.speed = speed
-    content.palette_len = len(palette) * 3
-    content.palette = [_rgb(content, *colour) for colour in palette]
-    content.padding = [0] * trailing_padding
-    _check_tree(content)
-    return _write(content, 4 + content.palette_len + trailing_padding)
 
 
 def build_power(on: bool, model: str = "H617A") -> bytes:

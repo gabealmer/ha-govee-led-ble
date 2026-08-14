@@ -860,25 +860,31 @@ async def test_workshop_upload_completes_without_inventing_activation_or_readbac
     assert coordinator.refresh_state.await_count == 1
 
 
-async def test_special_diy_upload_completes_without_inventing_activation_or_readback(
+async def test_special_diy_uses_shared_slot_activation_and_stays_uncertain(
     hass: HomeAssistant,
 ) -> None:
-    repository, cache = await _repositories(hass)
+    backend = await EffectBackend.async_create(hass)
     coordinator = _coordinator()
     coordinator.model = "H6199"
+    coordinator.unknown_scene_code = None
     item = LibraryItem.new("Special DIY", H6199_SPECIAL_DIY_TEMPLATES[0].content())
     compiled = compile_effect(item, "H6199")
 
-    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+    result = await backend.engine.async_apply_saved(
         coordinator,
         item,
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
     )
+    gap = backend.diagnostics.snapshot(config_entry_id="entry-a")["events"][-1]
 
-    assert result.phase is DeploymentPhase.APPLIED
-    assert result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
-    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.upload_packets]
+    assert result.phase is DeploymentPhase.UNCERTAIN
+    assert result.diy_code == H6199_PALETTE_DIY_APPLY_CODE
+    assert result.error_code == "activation_readback_unproven"
+    assert result.verification_confidence is ObservationConfidence.UNKNOWN
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
+    assert gap["code"] == "device_state_uncertain"
+    assert gap["details"]["error_code"] == "activation_readback_unproven"
 
 
 async def test_cross_model_workshop_is_rejected_before_any_write(
@@ -926,7 +932,7 @@ async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confid
     events: list[str] = []
 
     def install_music_profile_state(**values) -> None:
-        events.append("install")
+        events.append(f"install:{values['mode']}")
         coordinator.music_sensitivity = values["sensitivity"]
         coordinator.music_color = values["colour"]
         coordinator.music_calm = values["calm"]
@@ -949,7 +955,7 @@ async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confid
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert events == ["install", "select:separation:False", "parameters:50"]
+    assert events == ["install:separation", "select:separation:False", "parameters:50"]
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.diy_code is None
     assert result.content_kind == "music_profile"

@@ -5,7 +5,7 @@ import { defineConfig, type Plugin } from "vite";
 const ASSET_VERSION = 2;
 const API_VERSION = 2;
 const EFFECT_SCHEMA_VERSION = 1;
-const COMPILER_VERSION = 2;
+const COMPILER_VERSION = 3;
 
 function editorManifest(): Plugin {
   const outputDirectory = resolve(

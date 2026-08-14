@@ -424,12 +424,12 @@ capabilities:
     persistence_need: deployment_intent
     preview_level: structural
     known_gaps:
-      - "Four saved Workshop effects uploaded different scene-shaped bodies and then selected scene slot 401 with the same frame. Palette DIY preview bodies use kind 0x04 instead, and no committed capture proves that slot 401 activates that body shape. Runtime therefore reports the transaction as uncertain even when the slot is observed."
+      - "Four saved Workshop effects uploaded different scene-shaped bodies and then selected scene slot 401 with the same frame. Palette DIY and Special DIY templates use the same captured kind 0x04 bodies instead, and no committed capture proves that slot 401 activates that body shape. Runtime therefore reports the transaction as uncertain for both workflows even when the slot is observed."
       - "The H6199 status reply reports slot 401 as an otherwise unknown scene. It cannot identify the uploaded effect contents, so readback remains mode-only and exact content confirmation is unavailable."
 
   - model: H6199
     capability: diy_upload
-    summary: Creating/uploading DIY, workshop and AI-generated effects via the 0xA3 h6199_effect_upload family; fixture-backed Workshop and Special DIY definitions are persisted, compiled through the generated structures and applied as hardened upload-only transactions.
+    summary: Creating/uploading DIY, workshop and AI-generated effects via the 0xA3 h6199_effect_upload family; fixture-backed Workshop and Special DIY definitions are persisted and compiled through the generated structures.
     kaitai_schema: ["h6199_effect_upload.ksy::h6199_effect_upload"]
     evidence_status: confirmed
     evidence_refs:
@@ -441,8 +441,8 @@ capabilities:
     preview_level: structural
     known_gaps:
       - "The generated writer covers fixture-backed palette DIY, Workshop and Special DIY definitions. AI-generated and unfixtured identities remain outside the compiler and retain structural or opaque handling."
-      - "Palette DIY upload bytes are modelled, but their binding to captured scene slot 401 is not. That transaction remains uncertain even when the selector is observed."
-      - "Workshop and Special DIY fixtures expose no committed readback or separate activation selector. Successful writes are reported with packet-completion confidence, not device-state confirmation."
+      - "Palette DIY and Special DIY use the same captured kind 0x04 bodies. Runtime sends both through the same slot 401 activation transaction, but no capture proves that slot binding, so both remain uncertain even when the selector is observed."
+      - "Workshop fixtures expose no committed readback or separate activation selector. Successful Workshop writes are reported with packet-completion confidence, not device-state confirmation."
       - "Workshop and Special DIY rendering semantics remain structural. The editor exposes only schema-backed parameters, preserves source payload provenance and does not infer animation from family or timing fields."
 
   - model: H6199

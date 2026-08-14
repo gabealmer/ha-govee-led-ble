@@ -273,6 +273,7 @@ class _ActiveModeMixin(_CoordinatorBase):
     def install_music_profile_state(
         self,
         *,
+        mode: str,
         sensitivity: int,
         colour: tuple[int, int, int] | None,
         calm: bool,
@@ -281,7 +282,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.music_sensitivity = sensitivity
         self.music_color = colour
         self.music_calm = calm
-        for spec in MUSIC_PARAM_SPECS:
+        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode]):
             if spec.profile_key in parameters:
                 setattr(self, spec.key, parameters[spec.profile_key])
 

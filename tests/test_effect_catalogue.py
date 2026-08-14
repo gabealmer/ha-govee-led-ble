@@ -292,7 +292,8 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
     assert h6199_diy.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
     assert h6199_special is not None
     assert h6199_special.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
-    assert h6199_special.compiler_deployer_strategy is CompilerDeployerStrategy.A3_EFFECT_UPLOAD
+    assert h6199_special.compiler_deployer_strategy is CompilerDeployerStrategy.H6199_CUSTOM_ENGINE
+    assert h6199_special.verification_confidence is VerificationConfidence.UNVERIFIED
     assert h6199_special.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
 
 

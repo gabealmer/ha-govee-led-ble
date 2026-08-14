@@ -254,6 +254,7 @@ async def test_restore_effect_control_state_reapplies_complete_music_profile(coo
 
     assert recovered is True
     install.assert_called_once_with(
+        mode="separation",
         sensitivity=50,
         colour=(4, 5, 6),
         calm=False,
@@ -270,6 +271,25 @@ async def test_restore_effect_control_state_reapplies_complete_music_profile(coo
     select.assert_awaited_once_with("separation")
     parameters.assert_awaited_once_with(0x32)
     refresh.assert_awaited_once_with(expected_music_mode="separation")
+
+
+def test_install_music_profile_state_updates_only_the_selected_modes_parameters(coord):
+    coord.music_separation_gradient = True
+    coord.music_daynight_gradient = True
+
+    coord.install_music_profile_state(
+        mode="separation",
+        sensitivity=50,
+        colour=None,
+        calm=False,
+        parameters={"point": 4, "gradient": False},
+    )
+    recovery_snapshot = coord.capture_effect_control_state()
+
+    assert coord.music_separation_point == 4
+    assert coord.music_separation_gradient is False
+    assert coord.music_daynight_gradient is True
+    assert recovery_snapshot.music_daynight_gradient is True
 
 
 async def test_restore_effect_control_state_reapplies_complete_video_profile(h6199):

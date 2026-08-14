@@ -71,7 +71,7 @@ async def test_surfaces_release_capability_evidence_without_hiding_planned_workf
     }
     assert capabilities["special_diy"]["frontend_visibility"] == "visible"
     assert capabilities["special_diy"]["application_route"] == "studio_custom_apply"
-    assert capabilities["special_diy"]["compiler_deployer_strategy"] == "a3_effect_upload"
+    assert capabilities["special_diy"]["compiler_deployer_strategy"] == "h6199_custom_engine"
     assert capabilities["special_diy"]["evidence_classification"] == "structural"
 
 

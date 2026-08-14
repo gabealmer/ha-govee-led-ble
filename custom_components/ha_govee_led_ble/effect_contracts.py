@@ -19,7 +19,7 @@ from .effect_limits import (
 
 EDITOR_API_VERSION: Final = 2
 EDITOR_ASSET_VERSION: Final = 2
-EFFECT_COMPILER_VERSION: Final = 2
+EFFECT_COMPILER_VERSION: Final = 3
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
 
@@ -369,7 +369,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         "Special DIY",
         "special_diy",
         ApplicationRoute.STUDIO_CUSTOM_APPLY,
-        CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
+        CompilerDeployerStrategy.H6199_CUSTOM_ENGINE,
         VerificationConfidence.UNVERIFIED,
         PhysicalValidationState.CAPTURE_VALIDATED,
         EvidenceClassification.STRUCTURAL,

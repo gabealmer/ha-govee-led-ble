@@ -460,6 +460,15 @@ def test_diy_upload_h6199_has_no_preview_variants_pending_evaluation(atlas):
     assert "preview_variants" not in row
 
 
+def test_h6199_special_diy_wording_distinguishes_shared_routing_from_physical_evidence(atlas):
+    row = _row(atlas, "H6199", "diy_upload")
+    gaps = " ".join(row["known_gaps"])
+
+    assert "Palette DIY and Special DIY use the same captured kind 0x04 bodies" in gaps
+    assert "Runtime sends both through the same slot 401 activation transaction" in gaps
+    assert "no capture proves that slot binding" in gaps
+
+
 def test_check_preview_variants_requires_all_fields(atlas):
     row = copy.deepcopy(atlas["capabilities"][0])
     row["preview_variants"] = [{"label": "incomplete"}]

@@ -584,42 +584,44 @@ export class MockHomeAssistantBackend {
       content.kind === "scene_palette" ||
       content.kind === "scene_layered";
     const device = requiredDevice(String(message.config_entry_id));
-    const h6199PaletteDiy =
-      device.model === "H6199" && content.kind === "palette_diy";
+    const h6199SlotEffect =
+      device.model === "H6199" &&
+      (content.kind === "palette_diy" || content.kind === "special_diy");
     const profileTarget =
       content.kind === "music_profile"
         ? "music"
         : content.kind === "video_profile"
           ? "video"
           : undefined;
-    const uploadOnly =
-      content.kind === "workshop" || content.kind === "special_diy";
+    const uploadOnly = content.kind === "workshop";
     const deployment: DeploymentRecord = {
       operation_id: operationId,
       config_entry_id: String(message.config_entry_id),
       diy_code:
-        profileTarget || uploadOnly ? null : h6199PaletteDiy ? 401 : 1,
+        profileTarget || uploadOnly ? null : h6199SlotEffect ? 401 : 1,
       content_kind: content.kind,
       target_mode: profileTarget ?? (sceneTarget ? "scene" : "custom"),
       target_effect: sceneTarget ? "compiled-scene" : null,
       phase: uploadOnly
         ? "applied"
-        : h6199PaletteDiy
+        : h6199SlotEffect
           ? "uncertain"
           : "confirmed",
       updated_at: new Date().toISOString(),
       item_id:
         typeof message.item_id === "string" ? message.item_id : null,
       item_revision:
-      typeof message.revision === "number" ? message.revision : null,
-      error_code: h6199PaletteDiy ? "activation_readback_unproven" : null,
-      progress_current: h6199PaletteDiy ? 3 : 1,
-      progress_total: h6199PaletteDiy ? 3 : 1,
-      verification_confidence: h6199PaletteDiy
+        typeof message.revision === "number" ? message.revision : null,
+      error_code: h6199SlotEffect ? "activation_readback_unproven" : null,
+      progress_current: h6199SlotEffect ? 3 : 1,
+      progress_total: h6199SlotEffect ? 3 : 1,
+      verification_confidence: h6199SlotEffect
         ? "unknown"
-        : profileTarget
-          ? "settings_match"
-          : "activation_match",
+        : uploadOnly
+          ? "write_completed"
+          : profileTarget
+            ? "settings_match"
+            : "activation_match",
     };
     state.deployments.unshift(deployment);
     this.writeState(state);

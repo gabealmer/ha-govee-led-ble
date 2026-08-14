@@ -16,6 +16,7 @@ from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, Palett
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type04 import DiyType04
 from custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload import H6199EffectUpload
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h6199_palette_diy_envelope
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tools/ble/kaitai/src"
 
@@ -133,6 +134,31 @@ def test_h6199_activation_encoder_matches_captured_workshop_slot() -> None:
     expected = (FIXTURES / "h6199_scene_workshop_slot.bin").read_bytes()
 
     assert proto.build_h6199_palette_diy_activation(401, 2) == expected
+
+
+def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palette() -> None:
+    envelope = build_h6199_palette_diy_envelope(
+        0,
+        0,
+        50,
+        tuple((index, index + 1, index + 2) for index in range(9)),
+    )
+    parsed = H6199EffectUpload(KaitaiStream(io.BytesIO(envelope)))
+    parsed._read()
+
+    assert len(envelope) == 34
+    assert len(parsed.content.palette) == 9
+    assert parsed.content.padding == []
+
+
+def test_h6199_fixed_diy_envelope_rejects_palette_overflow_before_writing() -> None:
+    with pytest.raises(ValueError, match="does not fit the fixed two-chunk envelope"):
+        build_h6199_palette_diy_envelope(
+            0,
+            0,
+            50,
+            tuple((index, index + 1, index + 2) for index in range(10)),
+        )
 
 
 @pytest.mark.parametrize("effect", ["", "unknown", "Clockwise"])

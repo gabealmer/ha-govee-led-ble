@@ -436,6 +436,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return self.profile.state_readable and await self.refresh_state(expected_effect=state.effect)
         if state.mode == "music" and state.music_mode in self.profile.music_modes:
             self.install_music_profile_state(
+                mode=state.music_mode,
                 sensitivity=state.music_sensitivity,
                 colour=state.music_color,
                 calm=state.music_calm,
