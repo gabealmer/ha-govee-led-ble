@@ -145,19 +145,11 @@ export class GoveeSceneBrowser extends LitElement {
             ? this.sceneButton(
                 `custom:${entry.item.id}`,
                 entry.label,
-                "Custom",
                 () => this.selectCustom(entry.item),
               )
             : this.sceneButton(
                 sceneKey(entry.scene),
                 entry.label,
-                entry.scene.parameter_kind === "none"
-                  ? "Built-in"
-                  : entry.scene.parameter_kind === "palette"
-                    ? "Colours"
-                    : entry.scene.parameter_kind === "layers"
-                      ? "Layers"
-                      : "Built-in",
                 () => this.selectBuiltin(entry.scene),
               ),
         )}
@@ -260,7 +252,6 @@ export class GoveeSceneBrowser extends LitElement {
   private sceneButton(
     key: string,
     label: string,
-    meta: string,
     select: () => void,
   ) {
     const selected = this.selectionKey === key;
@@ -272,7 +263,6 @@ export class GoveeSceneBrowser extends LitElement {
         @click=${select}
       >
         <span>${label}</span>
-        <small>${meta}</small>
       </button>
     `;
   }
@@ -304,9 +294,6 @@ export class GoveeSceneBrowser extends LitElement {
           <button
             class="secondary"
             type="button"
-            title=${this.content?.kind === "scene_layered"
-              ? "Use as template to save an editable layered copy"
-              : nothing}
             ?disabled=${!this.isAdmin ||
             this.saving ||
             !this.hasCurrentSceneContent() ||
@@ -319,6 +306,21 @@ export class GoveeSceneBrowser extends LitElement {
                 ? "Save"
                 : "Save copy"}
           </button>
+          ${scene.parameter_kind === "layers"
+            ? html`
+                <button
+                  class="secondary"
+                  type="button"
+                  ?disabled=${!this.isAdmin ||
+                  scene.scene_type !== 2 ||
+                  !this.hasCurrentSceneContent() ||
+                  this.content?.kind !== "scene_layered"}
+                  @click=${this.useAsTemplate}
+                >
+                  Use as Template
+                </button>
+              `
+            : nothing}
           <button
             class="primary"
             type="button"
@@ -387,29 +389,6 @@ export class GoveeSceneBrowser extends LitElement {
 
       ${this.content?.kind === "scene_palette"
         ? this.renderPaletteParameters(this.content)
-        : nothing}
-
-      ${scene.parameter_kind === "layers"
-        ? html`
-            <section class="card">
-              <h3>Layers</h3>
-              <p class="muted">
-                Open this decoded scene in Advanced to edit and save a layered
-                copy. Native scene Apply remains separate.
-              </p>
-              <button
-                class="secondary"
-                type="button"
-                ?disabled=${!this.isAdmin ||
-                scene.scene_type !== 2 ||
-                !this.hasCurrentSceneContent() ||
-                this.content?.kind !== "scene_layered"}
-                @click=${this.useAsTemplate}
-              >
-                Use as template
-              </button>
-            </section>
-          `
         : nothing}
     `;
   }
@@ -900,19 +879,6 @@ export class GoveeSceneBrowser extends LitElement {
       color: var(--studio-blue);
       background: var(--studio-blue-soft);
       font-weight: 650;
-    }
-
-    .scene {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .scene small {
-      color: var(--studio-muted);
-      font-size: 11px;
-      font-weight: 500;
     }
 
     .detail {

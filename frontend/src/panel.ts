@@ -346,16 +346,8 @@ export class GoveeLedEffectStudio extends LitElement {
               ? this.renderAdvancedEditor()
               : this.content.kind === "opaque"
                 ? this.renderOpaqueEditor(this.content)
-                : this.renderEmptyEditor(
-                    "Select an effect",
-                    "Choose a saved effect to inspect it.",
-                  )
-          : html`
-              <div class="empty-editor">
-                <h2>Select an effect</h2>
-                <p>Choose a saved effect to inspect it.</p>
-              </div>
-            `}
+                : nothing
+          : nothing}
       </section>
     `;
   }
@@ -609,15 +601,6 @@ export class GoveeLedEffectStudio extends LitElement {
           2,
         )}</pre>
       </section>
-    `;
-  }
-
-  private renderEmptyEditor(title: string, body: string) {
-    return html`
-      <div class="empty-editor">
-        <h2>${title}</h2>
-        <p>${body}</p>
-      </div>
     `;
   }
 
@@ -1951,9 +1934,7 @@ export class GoveeLedEffectStudio extends LitElement {
       color: var(--studio-muted);
     }
 
-    .card,
-    .placeholder,
-    .empty-editor {
+    .card {
       border: 1px solid var(--studio-border);
       border-radius: 10px;
       background: var(--studio-card);
@@ -2059,22 +2040,6 @@ export class GoveeLedEffectStudio extends LitElement {
       );
     }
 
-    .placeholder,
-    .empty-editor {
-      grid-column: 2 / -1;
-      align-self: start;
-      max-width: 720px;
-      margin: 28px;
-      padding: 28px;
-      line-height: 1.55;
-    }
-
-    .placeholder p:last-child,
-    .empty-editor p {
-      margin: 12px 0 0;
-      color: var(--studio-muted);
-    }
-
     @media (max-width: 900px) {
       .studio {
         grid-template-columns: 170px minmax(0, 1fr);
@@ -2172,10 +2137,6 @@ export class GoveeLedEffectStudio extends LitElement {
         flex: 1;
       }
 
-      .placeholder,
-      .empty-editor {
-        margin: 18px 16px;
-      }
     }
 
     @media (max-width: 480px) {

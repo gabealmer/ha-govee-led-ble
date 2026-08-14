@@ -87,11 +87,9 @@ test("default harness uses complete production H617A catalogues", async ({
   await studio.getByRole("button", { name: "Scenes", exact: true }).click();
   const sceneBrowser = studio.locator("govee-scene-browser");
   await expect(
-    sceneBrowser
-      .locator("aside.scenes")
-      .getByRole("button")
-      .filter({ hasText: /Built-in|Colours|Layers/ }),
+    sceneBrowser.locator("aside.scenes").getByRole("button"),
   ).toHaveCount(83);
+  await expect(sceneBrowser.locator("aside.scenes small")).toHaveCount(0);
   await expect(
     sceneBrowser.getByRole("button", { name: "Natural", exact: true }),
   ).toBeVisible();
