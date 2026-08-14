@@ -1,9 +1,10 @@
 import { LitElement, css, html, nothing } from "lit";
-import { property, state } from "lit/decorators.js";
+import { property } from "lit/decorators.js";
 
 import "./palette-editor";
 import type {
   CustomEffectCatalogue,
+  DiyEffectFamily,
   EffectPair,
   MultiContent,
   RGB,
@@ -22,51 +23,48 @@ export class GoveeCustomEffectEditor extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
-  @state()
-  private pickerIndex?: number;
-
   private draggedEffectIndex?: number;
 
-  private readonly windowKeyPressed = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && this.pickerIndex !== undefined) {
-      event.preventDefault();
-      this.closePicker();
+  protected updated(): void {
+    if (!this.content || this.content.kind !== "h617a_multi") {
+      return;
     }
-  };
-
-  public connectedCallback(): void {
-    super.connectedCallback();
-    window.addEventListener("keydown", this.windowKeyPressed);
-  }
-
-  public disconnectedCallback(): void {
-    window.removeEventListener("keydown", this.windowKeyPressed);
-    super.disconnectedCallback();
-  }
-
-  protected updated(changed: Map<PropertyKey, unknown>): void {
-    if (
-      changed.has("pickerIndex") &&
-      this.pickerIndex !== undefined
-    ) {
-      this.shadowRoot
-        ?.querySelector<HTMLButtonElement>(".modal-close")
-        ?.focus();
-    }
+    this.content.effects.forEach((pair, index) => {
+      const family = this.effectFamily(pair, true);
+      const effect = this.shadowRoot?.querySelector<HTMLSelectElement>(
+        `select[data-effect-index="${index}"]`,
+      );
+      const variation = this.shadowRoot?.querySelector<HTMLSelectElement>(
+        `select[data-variation-index="${index}"]`,
+      );
+      if (effect) {
+        effect.value = family?.id ?? `unknown:${pair.family}`;
+      }
+      if (variation) {
+        variation.value = String(pair.variant);
+      }
+    });
   }
 
   protected render() {
     if (!this.content || !this.catalogue) {
       return nothing;
     }
+    const rateLabel =
+      this.content.kind === "h617a_single" &&
+      this.effectFamily(this.content)?.rate === "sensitivity"
+        ? "Sensitivity"
+        : "Speed";
 
     return html`
-      <section class="card effect-card">
-        <h3>${this.content.kind === "h617a_multi" ? "Effects" : "Effect"}</h3>
-        ${this.content.kind === "h617a_single"
-          ? this.effectRow(this.content, 0)
-          : this.renderSequence(this.content)}
-      </section>
+      ${this.content.kind === "h617a_multi"
+        ? html`
+            <section class="card effect-card">
+              <h3>Effects</h3>
+              ${this.renderSequence(this.content)}
+            </section>
+          `
+        : nothing}
 
       <section class="card parameters-card">
         <h3>Parameters</h3>
@@ -75,9 +73,9 @@ export class GoveeCustomEffectEditor extends LitElement {
           ${this.renderPalette()}
         </div>
         <div class="parameter-group speed-group">
-          <h4>Speed</h4>
+          <h4>${rateLabel}</h4>
           <label class="range-field">
-            <span>Speed</span>
+            <span>${rateLabel}</span>
             <input
               type="range"
               min="0"
@@ -94,8 +92,6 @@ export class GoveeCustomEffectEditor extends LitElement {
           </label>
         </div>
       </section>
-
-      ${this.pickerIndex === undefined ? nothing : this.renderPicker()}
     `;
   }
 
@@ -119,32 +115,82 @@ export class GoveeCustomEffectEditor extends LitElement {
   }
 
   private effectRow(pair: EffectPair, index: number) {
-    const multi = this.content?.kind === "h617a_multi";
+    const family = this.effectFamily(pair, true);
+    const variations = family?.variations ?? [];
     return html`
       <li
         class="effect-row"
-        draggable=${multi && !this.disabled ? "true" : "false"}
+        draggable=${!this.disabled ? "true" : "false"}
         @dragstart=${(event: DragEvent) =>
           this.effectDragStarted(index, event)}
         @dragover=${(event: DragEvent) => {
-          if (multi && !this.disabled) {
+          if (!this.disabled) {
             event.preventDefault();
           }
         }}
         @drop=${(event: DragEvent) => this.effectDropped(index, event)}
       >
-        <button
-          class="effect-field"
-          type="button"
-          data-effect-index=${index}
-          aria-label="Choose effect, current ${this.effectLabel(pair)}"
-          ?disabled=${this.disabled}
-          @click=${() => this.openPicker(index)}
-        >
-          <span class="effect-name">${this.effectLabel(pair)}</span>
-          <span class="chevron" aria-hidden="true">›</span>
-        </button>
-        ${multi && !this.disabled
+        <div class="effect-fields">
+          <label>
+            <span>Effect</span>
+            <select
+              aria-label="Effect ${index + 1}"
+              data-effect-index=${index}
+              .value=${family?.id ?? `unknown:${pair.family}`}
+              ?disabled=${this.disabled}
+              @change=${(event: Event) =>
+                this.effectFamilyChanged(
+                  index,
+                  (event.target as HTMLSelectElement).value,
+                )}
+            >
+              ${family
+                ? nothing
+                : html`
+                    <option value=${`unknown:${pair.family}`}>
+                      Unknown effect ${pair.family}
+                    </option>
+                  `}
+              ${this.multiFamilies.map(
+                (effect) => html`
+                  <option value=${effect.id}>${effect.label}</option>
+                `,
+              )}
+            </select>
+          </label>
+          <label>
+            <span>Variation</span>
+            <select
+              aria-label="Variation ${index + 1}"
+              data-variation-index=${index}
+              .value=${String(pair.variant)}
+              ?disabled=${this.disabled}
+              @change=${(event: Event) =>
+                this.effectVariationChanged(
+                  index,
+                  Number((event.target as HTMLSelectElement).value),
+                )}
+            >
+              ${variations.some(
+                (variation) => variation.variant === pair.variant,
+              )
+                ? nothing
+                : html`
+                    <option value=${String(pair.variant)}>
+                      Unknown variation ${pair.variant}
+                    </option>
+                  `}
+              ${variations.map(
+                (variation) => html`
+                  <option value=${String(variation.variant)}>
+                    ${variation.label}
+                  </option>
+                `,
+              )}
+            </select>
+          </label>
+        </div>
+        ${!this.disabled
           ? html`
               <details class="row-menu">
                 <summary aria-label="Reorder or remove effect ${index + 1}">
@@ -193,6 +239,10 @@ export class GoveeCustomEffectEditor extends LitElement {
     `;
   }
 
+  private get multiFamilies(): DiyEffectFamily[] {
+    return this.catalogue?.effects.filter((effect) => effect.supports_multi) ?? [];
+  }
+
   private renderPalette() {
     return html`
       <govee-palette-editor
@@ -210,80 +260,37 @@ export class GoveeCustomEffectEditor extends LitElement {
     `;
   }
 
-  private renderPicker() {
-    const current =
-      this.content?.kind === "h617a_single"
-        ? this.content
-        : this.content?.effects[this.pickerIndex ?? 0];
-    return html`
-      <div
-        class="modal-overlay"
-        @click=${(event: MouseEvent) => {
-          if (event.target === event.currentTarget) {
-            this.closePicker();
-          }
-        }}
-      >
-        <section
-          class="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="effect-picker-title"
-          @keydown=${this.modalKeyPressed}
-        >
-          <div class="modal-header">
-            <div>
-              <h3 id="effect-picker-title">Select an effect</h3>
-              <p>Choose the visual style for this step.</p>
-            </div>
-            <button
-              class="modal-close"
-              type="button"
-              aria-label="Close effect picker"
-              @click=${() => this.closePicker()}
-            >
-              ×
-            </button>
-          </div>
-          <div class="modal-grid">
-            ${this.catalogue!.effects.map((effect) => {
-              const selected =
-                current !== undefined &&
-                pairKey(effect) === pairKey(current);
-              return html`
-                <button
-                  class="effect-tile ${selected ? "selected" : ""}"
-                  type="button"
-                  aria-pressed=${selected}
-                  @click=${() => this.selectEffect(effect)}
-                >
-                  <span>${effect.label}</span>
-                </button>
-              `;
-            })}
-          </div>
-        </section>
-      </div>
-    `;
-  }
-
-  private selectEffect(selected: EffectPair): void {
-    if (!this.content || this.pickerIndex === undefined) {
+  private effectFamilyChanged(index: number, familyId: string): void {
+    const family = this.multiFamilies.find((effect) => effect.id === familyId);
+    const variation = family?.variations[0];
+    if (!family || !variation) {
       return;
     }
-    const pair = {
-      family: selected.family,
-      variant: selected.variant,
-    };
-    if (this.content.kind === "h617a_single") {
-      this.emitContent({ ...this.content, ...pair });
-    } else {
-      const effects = this.content.effects.map((effect, index) =>
-        index === this.pickerIndex ? pair : effect,
-      );
-      this.emitContent({ ...this.content, effects });
+    this.replaceEffect(index, {
+      family: family.family,
+      variant: variation.variant,
+    });
+  }
+
+  private effectVariationChanged(index: number, variant: number): void {
+    if (!this.content || this.content.kind !== "h617a_multi") {
+      return;
     }
-    this.closePicker();
+    const current = this.content.effects[index];
+    if (!current) {
+      return;
+    }
+    this.replaceEffect(index, { ...current, variant });
+  }
+
+  private replaceEffect(index: number, pair: EffectPair): void {
+    if (!this.content || this.content.kind !== "h617a_multi") {
+      return;
+    }
+    const effects = this.content.effects.map((effect, effectIndex) =>
+      effectIndex === index ? pair : effect,
+    );
+    this.emitContent({ ...this.content, effects });
   }
 
   private addEffect(): void {
@@ -291,14 +298,15 @@ export class GoveeCustomEffectEditor extends LitElement {
       return;
     }
     const next =
-      this.catalogue?.effects[this.content.effects.length] ??
-      this.catalogue?.effects[0];
-    if (!next) {
+      this.multiFamilies[this.content.effects.length] ??
+      this.multiFamilies[0];
+    const variation = next?.variations[0];
+    if (!next || !variation) {
       return;
     }
     const effects = [
       ...this.content.effects,
-      { family: next.family, variant: next.variant },
+      { family: next.family, variant: variation.variant },
     ];
     this.emitContent({ ...this.content, effects });
   }
@@ -354,54 +362,12 @@ export class GoveeCustomEffectEditor extends LitElement {
     );
   }
 
-  private openPicker(index: number): void {
-    this.pickerIndex = index;
-  }
-
-  private closePicker(): void {
-    const index = this.pickerIndex;
-    this.pickerIndex = undefined;
-    void this.updateComplete.then(() => {
-      if (index !== undefined) {
-        this.shadowRoot
-          ?.querySelector<HTMLButtonElement>(
-            `[data-effect-index="${index}"]`,
-          )
-          ?.focus();
-      }
-    });
-  }
-
-  private modalKeyPressed(event: KeyboardEvent): void {
-    if (event.key !== "Tab") {
-      return;
-    }
-    const modal = event.currentTarget as HTMLElement;
-    const focusable = [
-      ...modal.querySelectorAll<HTMLButtonElement>(
-        'button:not([disabled])',
-      ),
-    ];
-    if (!focusable.length) {
-      return;
-    }
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    const active = this.shadowRoot?.activeElement;
-    if (event.shiftKey && active === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
-  private effectLabel(pair: EffectPair): string {
-    return (
-      this.catalogue?.effects.find(
-        (effect) => pairKey(effect) === pairKey(pair),
-      )?.label ?? "Unknown catalogue effect"
+  private effectFamily(
+    pair: EffectPair,
+    multiOnly = false,
+  ): DiyEffectFamily | undefined {
+    return (multiOnly ? this.multiFamilies : this.catalogue?.effects)?.find(
+      (effect) => effect.family === pair.family,
     );
   }
 
@@ -435,7 +401,8 @@ export class GoveeCustomEffectEditor extends LitElement {
     }
 
     button,
-    input {
+    input,
+    select {
       font: inherit;
     }
 
@@ -492,31 +459,30 @@ export class GoveeCustomEffectEditor extends LitElement {
       cursor: grab;
     }
 
-    .effect-field {
-      display: flex;
+    .effect-fields {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       flex: 1;
-      align-items: center;
-      gap: 12px;
+      gap: 10px;
       min-width: 0;
-      padding: 8px 14px;
+    }
+
+    .effect-fields label {
+      display: grid;
+      gap: 6px;
+      color: var(--studio-muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .effect-fields select {
+      width: 100%;
+      min-height: 44px;
+      padding: 8px 10px;
       border: 1px solid var(--studio-border);
       border-radius: 8px;
       color: var(--primary-text-color);
       background: var(--secondary-background-color, #f5f6f8);
-      cursor: pointer;
-    }
-
-    .effect-name {
-      flex: 1;
-      overflow: hidden;
-      text-align: start;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .chevron {
-      color: var(--studio-muted);
-      font-size: 20px;
     }
 
     .row-menu {
@@ -706,56 +672,10 @@ export class GoveeCustomEffectEditor extends LitElement {
       text-align: end;
     }
 
-    .modal-overlay {
-      position: fixed;
-      z-index: 1000;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-      background: rgb(0 0 0 / 48%);
-    }
-
-    .modal {
-      width: min(680px, 100%);
-      max-height: min(760px, calc(100vh - 48px));
-      overflow: auto;
-      padding: 18px;
-      border: 1px solid var(--studio-border);
-      border-radius: 12px;
-      background: var(--studio-card);
-      box-shadow: 0 16px 48px rgb(0 0 0 / 28%);
-    }
-
-    .modal-header {
-      display: flex;
-      align-items: start;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 14px;
-    }
-
-    .modal-header h3 {
-      margin-bottom: 4px;
-      font-size: 18px;
-    }
-
-    .modal-header p {
-      margin-bottom: 0;
-      color: var(--studio-muted);
-      font-size: 13px;
-    }
-
-    .modal-close {
-      flex: 0 0 44px;
-      width: 44px;
-      padding: 0;
-      border: 1px solid var(--studio-border);
-      border-radius: 50%;
-      color: var(--primary-text-color);
-      background: var(--studio-card);
-      cursor: pointer;
-      font-size: 22px;
+    @media (max-width: 560px) {
+      .effect-fields {
+        grid-template-columns: 1fr;
+      }
     }
 
     .modal-grid {
@@ -821,10 +741,6 @@ export class GoveeCustomEffectEditor extends LitElement {
       }
     }
   `;
-}
-
-function pairKey(pair: EffectPair): string {
-  return `${pair.family}:${pair.variant}`;
 }
 
 function clonePalette(palette: RGB[]): RGB[] {

@@ -435,10 +435,10 @@ def test_type04_preview_claim_is_limited_to_fixture_backed_catalogue_entries(atl
 
     assert len(catalogue_fixtures) == 4
     assert catalogue_fixtures <= set(row["evidence_refs"])
-    assert "four family/variant identities" in variants["type04_fixture_catalogue"]["note"]
-    assert "no mapping" in variants["type04_fixture_catalogue"]["note"]
+    assert "Four exact family/variant identities" in variants["type04_fixture_catalogue"]["note"]
+    assert "Neither source maps" in variants["type04_fixture_catalogue"]["note"]
     uncaptured_note = variants["uncaptured_special_templates"]["note"]
-    assert "absent from the four-entry committed authoring catalogue" in uncaptured_note
+    assert "Special DIY templates use parser-specific grammars" in uncaptured_note
 
 
 def test_preview_pipeline_does_not_call_type04_palette_deterministic(atlas):

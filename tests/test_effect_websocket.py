@@ -104,8 +104,12 @@ async def test_authenticated_users_can_read_library(
     assert [effect["label"] for effect in catalogue["result"]["catalogue"]["effects"]] == [
         "Fade",
         "Jumping",
+        "Blinking",
         "Marquee",
-        "Chasing",
+        "Music",
+        "Stream",
+        "Flow",
+        "Chase",
     ]
 
 

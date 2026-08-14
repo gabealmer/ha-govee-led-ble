@@ -203,6 +203,16 @@ export function decodeCustomCatalogue(value: unknown): CustomEffectCatalogue {
       MAX_JSON_COLLECTION_ITEMS,
     ).map((item, index) => {
       const effect = objectValue(item, `custom-effect templates[${index}]`);
+      const variations = arrayValue(
+        effect.variations,
+        "template variations",
+        MAX_JSON_COLLECTION_ITEMS,
+      );
+      if (variations.length === 0) {
+        throw new Error(
+          "Malformed Effect Studio server payload: custom-effect template has no variations.",
+        );
+      }
       return {
         id: boundedString(effect.id, "template ID", MAX_IDENTIFIER_LENGTH),
         label: boundedString(
@@ -211,7 +221,39 @@ export function decodeCustomCatalogue(value: unknown): CustomEffectCatalogue {
           MAX_EFFECT_NAME_LENGTH,
         ),
         family: integerValue(effect.family, "template family", 0, 255),
-        variant: integerValue(effect.variant, "template variant", 0, 255),
+        variations: variations.map((item, variationIndex) => {
+          const variation = objectValue(
+            item,
+            `custom-effect templates[${index}].variations[${variationIndex}]`,
+          );
+          return {
+            id: boundedString(
+              variation.id,
+              "variation ID",
+              MAX_IDENTIFIER_LENGTH,
+            ),
+            label: boundedString(
+              variation.label,
+              "variation label",
+              MAX_EFFECT_NAME_LENGTH,
+            ),
+            variant: integerValue(
+              variation.variant,
+              "template variant",
+              0,
+              255,
+            ),
+          };
+        }),
+        supports_multi: booleanValue(
+          effect.supports_multi,
+          "Multi support",
+        ),
+        rate: enumString(
+          effect.rate,
+          ["speed", "sensitivity"],
+          "rate parameter",
+        ) as "speed" | "sensitivity",
       };
     }),
     limits: {

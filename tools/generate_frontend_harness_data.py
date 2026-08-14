@@ -1,4 +1,4 @@
-"""Generate production H617A catalogues for the frontend development harness."""
+"""Generate production contracts for the frontend development harness."""
 
 from __future__ import annotations
 
@@ -6,24 +6,39 @@ import argparse
 import json
 from pathlib import Path
 
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.effect_catalogue import custom_effect_catalogue_payload
+from custom_components.ha_govee_led_ble.effect_contracts import device_effect_capabilities
 from custom_components.ha_govee_led_ble.effect_scenes import scene_catalogue_payload, scene_detail_payload
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_PATH = REPO_ROOT / "frontend" / "tests" / "harness" / "h617a-data.json"
+OUTPUT_PATH = REPO_ROOT / "frontend" / "tests" / "harness" / "production-data.json"
+MODELS = ("H617A", "H6199")
 
 
 def rendered_data() -> str:
-    details = {
-        f"{entry.scene_id}:{entry.effect_id}": scene_detail_payload("H617A", entry.scene_id, entry.effect_id)
-        for entry in SCENE_ENTRIES["H617A"]
+    scene_details = {
+        model: {
+            f"{entry.scene_id}:{entry.effect_id}": scene_detail_payload(model, entry.scene_id, entry.effect_id)
+            for entry in SCENE_ENTRIES[model]
+        }
+        for model in MODELS
     }
     document = {
         "schema_version": 1,
+        "devices": [
+            device_effect_capabilities(
+                f"{model.lower()}-main",
+                model,
+                MODEL_PROFILES[model].name,
+                MODEL_PROFILES[model].segment_count,
+            ).to_dict()
+            for model in MODELS
+        ],
         "custom_catalogue": custom_effect_catalogue_payload(),
-        "scene_catalogue": scene_catalogue_payload("H617A", enabled=True),
-        "scene_details": details,
+        "scene_catalogues": {model: scene_catalogue_payload(model, enabled=True) for model in MODELS},
+        "scene_details": scene_details,
     }
     return f"{json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True)}\n"
 

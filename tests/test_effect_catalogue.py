@@ -9,6 +9,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_PAINTED_EFFECTS,
     H617A_TYPE04_APPLY_CODE,
     H617A_TYPE04_EFFECTS,
+    H617A_TYPE04_FAMILIES,
     custom_effect_catalogue_payload,
 )
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
@@ -41,6 +42,38 @@ def test_type04_catalogue_exposes_domain_limits_and_apply_support() -> None:
     assert isinstance(apply, dict)
     assert apply["single"] == "supported"
     assert apply["multi"] == "supported"
+
+
+def test_type04_catalogue_exposes_every_basic_vendor_family_and_variation() -> None:
+    catalogue = custom_effect_catalogue_payload()
+
+    assert catalogue["effects"] == [family.to_dict() for family in H617A_TYPE04_FAMILIES]
+    assert {
+        (family.family, variation.variant) for family in H617A_TYPE04_FAMILIES for variation in family.variations
+    } == {
+        (0, 0),
+        (0, 1),
+        (0, 2),
+        (1, 0),
+        (1, 2),
+        (2, 0),
+        (2, 1),
+        (2, 2),
+        (3, 3),
+        (3, 4),
+        (3, 5),
+        (4, 6),
+        (4, 7),
+        (4, 8),
+        (8, 9),
+        (8, 10),
+        (9, 9),
+        (9, 10),
+        (10, 0),
+    }
+    assert {family.source_reference for family in H617A_TYPE04_FAMILIES} == {
+        "GoveeHome V7.5.30 dreamcolorlightv1.adjust.Diy"
+    }
 
 
 def test_painted_catalogue_exposes_every_kaitai_effect() -> None:
