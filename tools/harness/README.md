@@ -14,6 +14,21 @@ device link when setting up a host.
 The manifest-driven camera, direct-effect and vendor-app corpus workflow is documented in
 [Animation capture campaign](ANIMATION_CAPTURE.md).
 
+## Household Home Assistant Effect Studio validation
+
+`effect-studio-home-assistant.sh` selects the `cupboard` entry through the untracked device identity, authenticates through the platform helper, restarts Home Assistant once, applies every H617A Effect Studio route, verifies diagnostics, and restores the saved library and light state.
+
+```bash
+bash tools/harness/effect-studio-home-assistant.sh
+```
+
+The restart boundary can be split across two invocations when deployment timing requires it.  The first stage retains only the temporary library item and protected recovery state.  The second stage verifies persistence, completes physical validation, removes the item, and restores the light.
+
+```bash
+bash tools/harness/effect-studio-home-assistant.sh --stage before-restart
+bash tools/harness/effect-studio-home-assistant.sh --stage after-restart
+```
+
 ## Isolated Home Assistant Container
 
 `container.sh` runs a separate [Home Assistant Container](https://www.home-assistant.io/installation/linux#install-home-assistant-container) through Podman.  It does not deploy to, restart or otherwise repurpose the household Home Assistant instance.
