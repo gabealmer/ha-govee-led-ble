@@ -549,33 +549,14 @@ export class GoveeLedEffectStudio extends LitElement {
       ? this.currentItem?.id === item.id
       : !this.currentItem && this.customTemplateSelection === key;
     return html`
-      <div class="library-row">
-        <button
-          class="selector item ${selected ? "selected" : ""}"
-          type="button"
-          ?disabled=${!item && !this.isAdmin}
-          @click=${select}
-        >
-          <span>${label}</span>
-        </button>
-        ${item && this.isAdmin
-          ? html`
-              <button
-                class="library-delete"
-                type="button"
-                aria-label="Delete ${label}"
-                title="Delete ${label}"
-                @click=${(event: Event) =>
-                  this.requestDelete(
-                    item,
-                    event.currentTarget as HTMLElement,
-                  )}
-              >
-                <span aria-hidden="true">&times;</span>
-              </button>
-            `
-          : nothing}
-      </div>
+      <button
+        class="selector item ${selected ? "selected" : ""}"
+        type="button"
+        ?disabled=${!item && !this.isAdmin}
+        @click=${select}
+      >
+        <span>${label}</span>
+      </button>
     `;
   }
 
@@ -595,10 +576,11 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     return html`
-      ${this.renderProfileHeading("Video")}
+      ${this.renderProfileHeading()}
       <govee-video-profile-editor
         .content=${this.content}
         .disabled=${!this.isAdmin}
+        .showModeSelector=${!this.templateSourceLabel}
         @content-changed=${(
           event: CustomEvent<{ content: VideoProfileContent }>,
         ) => {
@@ -613,11 +595,12 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     return html`
-      ${this.renderProfileHeading("Music")}
+      ${this.renderProfileHeading()}
       <govee-music-profile-editor
         .content=${this.content}
         .catalogue=${this.modelCatalogue}
         .disabled=${!this.isAdmin}
+        .showModeSelector=${!this.templateSourceLabel}
         @content-changed=${(
           event: CustomEvent<{ content: MusicProfileContent }>,
         ) => {
@@ -627,20 +610,10 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
-  private renderProfileHeading(kind: "Music" | "Video") {
-    return html`
-      <div class="editor-heading">
-        <div>
-          <p class="eyebrow">${kind}</p>
-          ${this.renderEffectName()}
-        </div>
-        <div class="actions">
-          ${this.renderSaveAction()}
-          <button class="secondary" type="button" disabled>Apply</button>
-          ${this.renderEditorDeleteButton()}
-        </div>
-      </div>
-    `;
+  private renderProfileHeading() {
+    return this.renderEditorHeading(
+      html`<button class="secondary" type="button" disabled>Apply</button>`,
+    );
   }
 
   private get customEffectEntries(): CustomEffectListEntry[] {
@@ -892,36 +865,14 @@ export class GoveeLedEffectStudio extends LitElement {
         ? this.currentItem?.id === entry.item.id
         : !this.currentItem && this.customTemplateSelection === entry.key;
     return html`
-      <div class="library-row">
-        <button
-          class="selector item ${selected ? "selected" : ""}"
-          type="button"
-          ?disabled=${entry.kind !== "saved" && !this.isAdmin}
-          @click=${() => this.selectCustomEffectEntry(entry)}
-        >
-          <span>${entry.label}</span>
-        </button>
-        ${entry.kind === "saved" && this.isAdmin
-          ? html`
-              <button
-                class="library-delete"
-                type="button"
-                aria-label="Delete ${entry.label}"
-                title="Delete ${entry.label}"
-                ?disabled=${this.deletingItemId !== undefined ||
-                this.saving ||
-                this.applying}
-                @click=${(event: Event) =>
-                  this.requestDelete(
-                    entry.item,
-                    event.currentTarget as HTMLElement,
-                  )}
-              >
-                <span aria-hidden="true">&times;</span>
-              </button>
-            `
-          : nothing}
-      </div>
+      <button
+        class="selector item ${selected ? "selected" : ""}"
+        type="button"
+        ?disabled=${entry.kind !== "saved" && !this.isAdmin}
+        @click=${() => this.selectCustomEffectEntry(entry)}
+      >
+        <span>${entry.label}</span>
+      </button>
     `;
   }
 
@@ -1117,25 +1068,13 @@ export class GoveeLedEffectStudio extends LitElement {
             </button>
           `
         : nothing}
-      <div class="editor-heading">
-        <div>
-          <p class="eyebrow">
-            Advanced / ${layeredScene ? "Scene template" : "Layered"}
-          </p>
-          ${this.renderEffectName()}
-        </div>
-        <div class="actions">
-          ${this.renderSaveAction()}
-          <button
-            class="secondary"
-            type="button"
-            disabled
-          >
+      ${this.renderEditorHeading(
+        html`
+          <button class="secondary" type="button" disabled>
             Apply
           </button>
-          ${this.renderEditorDeleteButton()}
-        </div>
-      </div>
+        `,
+      )}
 
       ${this.renderNewEffectTypeTabs()}
 
@@ -1178,24 +1117,18 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderOpaqueEditor(content: OpaqueContent) {
     return html`
-      <div class="editor-heading">
-        <div>
-          <p class="eyebrow">Other / Unsupported definition</p>
-          <h2>${this.name}</h2>
-        </div>
-        <div class="actions">
-          <button class="secondary" type="button" disabled>Apply</button>
-          ${this.renderEditorDeleteButton()}
-        </div>
-      </div>
+      ${this.renderEditorHeading(
+        html`<button class="secondary" type="button" disabled>Apply</button>`,
+        { save: false, title: html`<h2>${this.name}</h2>` },
+      )}
       <div class="feedback read-only" role="note">
         This effect definition can be inspected, but this editor cannot change,
         save or apply it.
       </div>
       <section class="card opaque-content">
-        <h3>Source kind</h3>
+        <h3 class="section-title">Source kind</h3>
         <p><code>${content.source_kind}</code></p>
-        <h3>Preserved content</h3>
+        <h3 class="section-title">Preserved content</h3>
         <pre aria-label="Preserved opaque content">${JSON.stringify(
           content.body,
           null,
@@ -1211,23 +1144,16 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     const deployment = this.activeDeployment;
     return html`
-      <div class="editor-heading">
-        <div>
-          ${this.renderEffectName()}
-        </div>
-        <div class="actions">
-          ${this.renderSaveAction()}
-          <button
-            class="secondary"
-            type="button"
-            ?disabled=${!this.canApply}
-            @click=${this.apply}
-          >
-            ${this.applying ? "Applying..." : "Apply"}
-          </button>
-          ${this.renderEditorDeleteButton()}
-        </div>
-      </div>
+      ${this.renderEditorHeading(html`
+        <button
+          class="secondary"
+          type="button"
+          ?disabled=${!this.canApply}
+          @click=${this.apply}
+        >
+          ${this.applying ? "Applying..." : "Apply"}
+        </button>
+      `)}
 
       ${this.renderNewEffectTypeTabs()}
 
@@ -1252,7 +1178,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <div class="controls">
         <section class="card">
-          <h3>Brushes</h3>
+          <h3 class="section-title">Brushes</h3>
           <govee-palette-editor
             class="paint-brushes"
             .palette=${this.paintBrushes}
@@ -1267,7 +1193,7 @@ export class GoveeLedEffectStudio extends LitElement {
             @colour-selected=${this.paintBrushSelected}
           ></govee-palette-editor>
           <div class="background-colour">
-            <h4>Background</h4>
+            <span class="parameter-label">Background</span>
             <govee-colour-picker
               .colour=${this.content.background}
               .disabled=${!this.isAdmin}
@@ -1307,14 +1233,15 @@ export class GoveeLedEffectStudio extends LitElement {
         </section>
 
         <section class="card">
-          <h3>Parameters</h3>
-          ${this.renderPaintedVariationField()}
-          ${this.rangeField("Speed", "speed", this.content.speed)}
-          ${this.rangeField(
-            "Brightness",
-            "brightness",
-            this.content.brightness,
-          )}
+          <div class="parameter-stack">
+            ${this.renderPaintedVariationField()}
+            ${this.rangeField("Speed", "speed", this.content.speed)}
+            ${this.rangeField(
+              "Brightness",
+              "brightness",
+              this.content.brightness,
+            )}
+          </div>
         </section>
       </div>
 
@@ -1333,23 +1260,16 @@ export class GoveeLedEffectStudio extends LitElement {
     const content = this.content;
     const deployment = this.activeDeployment;
     return html`
-      <div class="editor-heading">
-        <div>
-          ${this.renderEffectName()}
-        </div>
-        <div class="actions">
-          ${this.renderSaveAction()}
-          <button
-            class="secondary"
-            type="button"
-            ?disabled=${!this.canApply}
-            @click=${this.apply}
-          >
-            ${this.applying ? "Applying..." : "Apply"}
-          </button>
-          ${this.renderEditorDeleteButton()}
-        </div>
-      </div>
+      ${this.renderEditorHeading(html`
+        <button
+          class="secondary"
+          type="button"
+          ?disabled=${!this.canApply}
+          @click=${this.apply}
+        >
+          ${this.applying ? "Applying..." : "Apply"}
+        </button>
+      `)}
 
       ${this.renderNewEffectTypeTabs()}
 
@@ -1427,7 +1347,6 @@ export class GoveeLedEffectStudio extends LitElement {
       this.currentItem?.content.kind !== "h617a_single";
     return html`
       <section class="card single-effect-settings">
-        <h3>Effect</h3>
         <label class="field">
           <span>Effect</span>
           <select
@@ -1484,7 +1403,7 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     return html`
       <label class="field">
-        <span>Variation</span>
+        <span class="parameter-label">Variation</span>
         <select
           aria-label="Variation"
           .value=${content.effect}
@@ -1526,6 +1445,22 @@ export class GoveeLedEffectStudio extends LitElement {
             @input=${this.nameChanged}
           />
         `;
+  }
+
+  private renderEditorHeading(
+    applyAction: unknown,
+    options: { save?: boolean; title?: unknown } = {},
+  ) {
+    return html`
+      <div class="editor-heading">
+        <div>${options.title ?? this.renderEffectName()}</div>
+        <div class="actions">
+          ${options.save === false ? nothing : this.renderSaveAction()}
+          ${applyAction}
+          ${this.renderEditorDeleteButton()}
+        </div>
+      </div>
+    `;
   }
 
   private renderSaveAction() {
@@ -1605,7 +1540,7 @@ export class GoveeLedEffectStudio extends LitElement {
   ) {
     return html`
       <label class="range-field">
-        <span>${label}</span>
+        <span class="parameter-label">${label}</span>
         <input
           type="range"
           min="0"
@@ -2929,15 +2864,6 @@ export class GoveeLedEffectStudio extends LitElement {
       font-size: 16px;
     }
 
-    .eyebrow {
-      margin-bottom: 6px;
-      color: var(--studio-muted);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-
     .device-picker {
       margin-top: auto;
     }
@@ -2988,40 +2914,6 @@ export class GoveeLedEffectStudio extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
-    }
-
-    .library-row {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .library-row > .selector {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .library-delete {
-      width: 44px;
-      flex: 0 0 44px;
-      padding: 0;
-      border: 0;
-      border-radius: 50%;
-      color: var(--studio-muted);
-      background: transparent;
-      font-size: 24px;
-      line-height: 1;
-      cursor: pointer;
-    }
-
-    .library-delete:hover,
-    .library-delete:focus-visible {
-      color: var(--error-color, #db4437);
-      background: color-mix(
-        in srgb,
-        var(--error-color, #db4437) 10%,
-        transparent
-      );
     }
 
     .item {
@@ -3163,13 +3055,9 @@ export class GoveeLedEffectStudio extends LitElement {
     }
 
     .background-colour {
+      display: grid;
+      gap: 10px;
       margin-top: 18px;
-    }
-
-    .background-colour h4 {
-      margin: 0 0 10px;
-      color: var(--studio-muted);
-      font-size: 13px;
     }
 
     .range-field {

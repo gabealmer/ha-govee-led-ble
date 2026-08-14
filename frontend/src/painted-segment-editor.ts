@@ -21,7 +21,9 @@ export class GoveePaintedSegmentEditor extends LitElement {
   protected render() {
     return html`
       <section class="card" aria-labelledby="painted-segments-heading">
-        <h3 id="painted-segments-heading">Painted segments</h3>
+        <h3 class="section-title" id="painted-segments-heading">
+          Painted segments
+        </h3>
         <div class="segments">
           ${this.colours.map(
             (colour, index) => html`
@@ -107,11 +109,6 @@ export class GoveePaintedSegmentEditor extends LitElement {
   static styles = [studioBaseStyles, studioCardStyles, css`
     :host {
       display: block;
-    }
-
-    h3 {
-      margin: 0 0 14px;
-      font-size: 16px;
     }
 
     .segments {

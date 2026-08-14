@@ -101,11 +101,14 @@ export class GoveeVideoProfileEditor extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
+  @property({ type: Boolean })
+  public showModeSelector = true;
+
   protected render() {
     if (!this.content) {
       return html`
         <section class="card empty-state" role="status">
-          <h3>Video profile unavailable</h3>
+          <h3 class="section-title">Video profile unavailable</h3>
           <p class="muted">
             Load an H6199 video profile to edit video-sync settings.
           </p>
@@ -121,17 +124,18 @@ export class GoveeVideoProfileEditor extends LitElement {
     return html`
       <div class="editor-grid">
         <section class="card">
-          <h3>Profile</h3>
-          <div class="content-stack">
-            ${this.renderSegmentedField(
-              "Mode",
-              this.content.mode,
-              VIDEO_MODE_OPTIONS,
-              (value) =>
-                this.updateContent((content) => {
-                  content.mode = value;
-                }),
-            )}
+          <div class="parameter-stack">
+            ${this.showModeSelector
+              ? this.renderSegmentedField(
+                  "Mode",
+                  this.content.mode,
+                  VIDEO_MODE_OPTIONS,
+                  (value) =>
+                    this.updateContent((content) => {
+                      content.mode = value;
+                    }),
+                )
+              : nothing}
             ${this.renderSegmentedField(
               "Capture area",
               this.content.full_screen,
@@ -174,8 +178,8 @@ export class GoveeVideoProfileEditor extends LitElement {
         </section>
 
         <section class="card">
-          <h3>Image</h3>
-          <div class="content-stack">
+          <h3 class="section-title">Image</h3>
+          <div class="parameter-stack">
             ${this.renderRangeField(
               "Saturation",
               this.content.saturation,
@@ -193,12 +197,12 @@ export class GoveeVideoProfileEditor extends LitElement {
 
         <section class="card brightness-card">
           <div class="card-heading">
-            <h3>Relative brightness</h3>
+            <h3 class="section-title">Relative brightness</h3>
             ${mixedBrightness
               ? html`<span class="status-chip">Mixed edges</span>`
               : nothing}
           </div>
-          <div class="content-stack">
+          <div class="parameter-stack">
             ${this.renderRangeField(
               "Uniform brightness",
               uniformBrightness,
@@ -246,8 +250,8 @@ export class GoveeVideoProfileEditor extends LitElement {
   ) {
     return html`
       <div class="field-group">
-        <span class="field-label">${label}</span>
-        <div class="segmented" role="group" aria-label=${label}>
+        <span class="parameter-label">${label}</span>
+        <div class="parameter-options" role="group" aria-label=${label}>
           ${options.map(
             (option) => html`
               <button
@@ -277,7 +281,7 @@ export class GoveeVideoProfileEditor extends LitElement {
   ) {
     return html`
       <div class="toggle-row">
-        <span class="toggle-label">${label}</span>
+        <span class="parameter-label">${label}</span>
         <button
           class="switch ${checked ? "on" : ""}"
           type="button"
@@ -304,7 +308,7 @@ export class GoveeVideoProfileEditor extends LitElement {
   ) {
     return html`
       <label class="range-field">
-        <span>${label}</span>
+        <span class="parameter-label">${label}</span>
         <input
           type="range"
           min=${minimum}
@@ -324,7 +328,7 @@ export class GoveeVideoProfileEditor extends LitElement {
   private renderWhiteBalanceField(value: number) {
     return html`
       <label class="range-field white-balance-field">
-        <span>White balance</span>
+        <span class="parameter-label">White balance</span>
         <div class="slider-with-endpoints">
           <input
             type="range"
@@ -390,14 +394,8 @@ export class GoveeVideoProfileEditor extends LitElement {
         color: var(--primary-text-color);
       }
 
-      h3,
       p {
         margin-top: 0;
-      }
-
-      h3 {
-        margin-bottom: 14px;
-        font-size: 16px;
       }
 
       .editor-grid {
@@ -410,14 +408,9 @@ export class GoveeVideoProfileEditor extends LitElement {
         grid-column: 1 / -1;
       }
 
-      .content-stack,
       .edge-grid,
       .field-group {
         display: grid;
-      }
-
-      .content-stack {
-        gap: 14px;
       }
 
       .field-group {
@@ -433,18 +426,6 @@ export class GoveeVideoProfileEditor extends LitElement {
       .range-field,
       .field-group {
         margin-top: 0;
-      }
-
-      .field-label {
-        color: var(--studio-muted);
-        font-size: 13px;
-        font-weight: 600;
-      }
-
-      .toggle-label {
-        color: var(--primary-text-color);
-        font-size: 14px;
-        font-weight: 600;
       }
 
       .muted,
@@ -476,30 +457,6 @@ export class GoveeVideoProfileEditor extends LitElement {
 
       .toggle-row {
         min-height: var(--studio-control-height);
-      }
-
-      .segmented {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-      }
-
-      .segmented button {
-        flex: 1;
-        min-width: 0;
-        padding: 8px 14px;
-        border: 1px solid var(--studio-border);
-        border-radius: 8px;
-        color: var(--primary-text-color);
-        background: var(--studio-card);
-        cursor: pointer;
-      }
-
-      .segmented button.selected {
-        color: var(--studio-blue);
-        border-color: var(--studio-blue);
-        background: var(--studio-blue-soft);
-        font-weight: 650;
       }
 
       .switch {
