@@ -279,13 +279,12 @@ export class GoveeSceneBrowser extends LitElement {
 
   private renderDetail() {
     const scene = this.selectedScene!;
+    const speed = scene.speed;
+    const speedIndex = this.speedIndex ?? speed?.default_index ?? 0;
     const custom = this.selectedItem !== undefined;
     return html`
       <header class="detail-heading">
         <div>
-          <p class="eyebrow">
-            ${custom ? "Custom scene" : scene.category}
-          </p>
           ${custom
             ? html`
                 <input
@@ -358,38 +357,33 @@ export class GoveeSceneBrowser extends LitElement {
           `
         : nothing}
 
-      <section class="card">
-        <h3>Common settings</h3>
-        ${scene.speed
-          ? html`
-              <div class="setting">
+      ${speed
+        ? html`
+            <section class="card">
+              <h3>Common settings</h3>
+              <label class="range-field">
                 <span>Speed</span>
-                <div class="segmented" role="group" aria-label="Scene speed">
-                  ${Array.from(
-                    { length: scene.speed.option_count },
-                    (_, index) => html`
-                      <button
-                        class=${this.speedIndex === index ? "selected" : ""}
-                        type="button"
-                        aria-pressed=${this.speedIndex === index}
-                        ?disabled=${!this.isAdmin}
-                        @click=${() => {
-                          this.speedIndex = index;
-                        }}
-                      >
-                        ${speedLabel(index, scene.speed!.default_index)}
-                      </button>
-                    `,
-                  )}
-                </div>
-              </div>
-            `
-          : html`
-              <p class="muted">
-                This scene has no documented adjustable speed.
-              </p>
-            `}
-      </section>
+                <input
+                  type="range"
+                  aria-label="Scene speed"
+                  min="0"
+                  max=${speed.option_count - 1}
+                  step="1"
+                  .value=${String(speedIndex)}
+                  ?disabled=${!this.isAdmin}
+                  @input=${(event: Event) => {
+                    this.speedIndex = Number(
+                      (event.target as HTMLInputElement).value,
+                    );
+                  }}
+                />
+                <output>
+                  ${speedLabel(speedIndex, speed.default_index)}
+                </output>
+              </label>
+            </section>
+          `
+        : nothing}
 
       ${this.content?.kind === "scene_palette"
         ? this.renderPaletteParameters(this.content)
@@ -1102,35 +1096,19 @@ export class GoveeSceneBrowser extends LitElement {
       padding: 12px 10px;
     }
 
-    .setting {
+    .range-field {
       display: grid;
-      gap: 12px;
+      grid-template-columns: 80px minmax(100px, 1fr) 72px;
+      align-items: center;
+      gap: 10px;
       color: var(--studio-muted);
       font-size: 13px;
       font-weight: 600;
     }
 
-    .segmented {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
-    }
-
-    .segmented button {
-      flex: 1 1 90px;
-      padding: 8px 12px;
-      border: 1px solid var(--studio-border);
-      border-radius: 8px;
+    .range-field output {
       color: var(--primary-text-color);
-      background: var(--studio-card);
-      cursor: pointer;
-    }
-
-    .segmented button.selected {
-      color: var(--studio-blue);
-      border-color: var(--studio-blue);
-      background: var(--studio-blue-soft);
-      font-weight: 650;
+      text-align: end;
     }
 
     .status {
