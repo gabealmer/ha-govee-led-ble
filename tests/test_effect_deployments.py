@@ -272,11 +272,40 @@ def test_unsaved_apply_requires_durable_snapshot() -> None:
 
 def test_deployment_round_trip_preserves_prior_state_and_verification_confidence() -> None:
     prior_state = PriorControlState(
-        mode="colour",
+        mode="video",
         is_on=True,
         brightness_pct=72,
         rgb_color=(1, 2, 3),
+        color_temp_kelvin=4000,
+        effect="forest",
+        diy_code=800,
+        music_mode="separation",
+        video_mode="game",
         music_sensitivity=50,
+        music_calm=True,
+        music_color=(4, 5, 6),
+        music_separation_point=4,
+        music_separation_gradient=False,
+        music_hopping_brightness=40,
+        music_piano_key_count=12,
+        music_fountain_direction="two_way",
+        music_daynight_segments=6,
+        music_daynight_speed=30,
+        music_daynight_gradient=True,
+        video_full_screen=False,
+        video_saturation=63,
+        video_sound_effects=True,
+        video_sound_effects_softness=27,
+        white_balance_red=21,
+        white_balance_blue=5,
+        relative_brightness_left=20,
+        relative_brightness_top=30,
+        relative_brightness_right=40,
+        relative_brightness_bottom=50,
+        blank_screen=True,
+        blank_screen_detection=2,
+        blank_screen_low_brightness_duration_seconds=10,
+        blank_screen_same_tone_duration_seconds=120,
     )
     record = replace(
         _deployment(DeploymentPhase.CONFIRMED),
@@ -296,6 +325,28 @@ def test_deployment_round_trip_preserves_prior_state_and_verification_confidence
     assert restored.to_public_dict()["verification_confidence"] == "activation_match"
     assert restored.to_public_dict()["target_mode"] == "scene"
     assert restored.to_public_dict()["target_effect"] == "forest"
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"music_separation_point": 0}, "prior separation point must be from 1 to 5"),
+        ({"music_separation_gradient": 1}, "prior separation gradient must be a boolean"),
+        ({"music_fountain_direction": "sideways"}, "prior fountain direction is invalid"),
+        ({"white_balance_red": 256}, "prior white-balance red must be from 0 to 255"),
+        ({"blank_screen": 1}, "prior blank-screen state must be a boolean or null"),
+    ],
+)
+def test_invalid_profile_recovery_state_is_rejected(changes, message) -> None:
+    state = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+    )
+
+    with pytest.raises(EffectStorageError, match=message):
+        replace(state, **changes)
 
 
 @pytest.mark.parametrize(

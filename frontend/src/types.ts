@@ -52,6 +52,10 @@ export interface DeviceCapabilities {
     palette_diy: CapabilityState;
     advanced: CapabilityState;
   };
+  profiles: {
+    music: CapabilityState;
+    video: CapabilityState;
+  };
   readback: string;
 }
 
@@ -403,8 +407,9 @@ export const IN_FLIGHT_DEPLOYMENT_PHASES = [
 export interface DeploymentRecord {
   operation_id: string;
   config_entry_id: string;
-  diy_code: number;
-  target_mode: "custom" | "scene";
+  diy_code: number | null;
+  content_kind: string;
+  target_mode: "custom" | "scene" | "music" | "video";
   target_effect: string | null;
   phase: DeploymentPhase;
   updated_at: string;
@@ -416,6 +421,8 @@ export interface DeploymentRecord {
   verification_confidence:
     | "exact_session"
     | "activation_match"
+    | "settings_match"
+    | "mode_match"
     | "unknown";
 }
 

@@ -23,9 +23,12 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
+    MusicProfile,
     PaintedEffect,
     PaletteDiyEffect,
+    RelativeBrightness,
     SingleEffect,
+    VideoProfile,
 )
 from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
@@ -54,6 +57,37 @@ def _h6199_item(*, family: int = 8, variant: int = 9) -> LibraryItem:
     )
 
 
+def _music_item(model: str = "H617A") -> LibraryItem:
+    return LibraryItem.new(
+        "Separation",
+        MusicProfile(
+            model,
+            "separation" if model == "H617A" else "rolling",
+            50,
+            (1, 2, 3),
+            None,
+            {"point": 5, "gradient": False} if model == "H617A" else {},
+        ),
+    )
+
+
+def _video_item() -> LibraryItem:
+    return LibraryItem.new(
+        "Movie",
+        VideoProfile(
+            "H6199",
+            "movie",
+            False,
+            63,
+            True,
+            27,
+            10,
+            RelativeBrightness(20, 30, 40, 50),
+            True,
+        ),
+    )
+
+
 def _coordinator(*, readable: bool = True):
     return SimpleNamespace(
         _control_lock=asyncio.Lock(),
@@ -74,6 +108,43 @@ def _coordinator(*, readable: bool = True):
         send_command=AsyncMock(),
         refresh_state=AsyncMock(return_value=True),
     )
+
+
+def _profile_coordinator(model: str):
+    coordinator = _coordinator()
+    coordinator.model = model
+    coordinator.profile = SimpleNamespace(
+        state_readable=True,
+        supports_video_mode=model == "H6199",
+        supports_video_sound_effects=model == "H6199",
+        supports_white_balance=model == "H6199",
+        supports_relative_brightness=model == "H6199",
+        supports_blank_screen=model == "H6199",
+    )
+    coordinator.video_full_screen = True
+    coordinator.video_saturation = 88
+    coordinator.video_sound_effects = False
+    coordinator.video_sound_effects_softness = 50
+    coordinator.white_balance_red = 16
+    coordinator.white_balance_blue = 3
+    coordinator.relative_brightness = 75
+    coordinator.relative_brightness_left = 75
+    coordinator.relative_brightness_top = 75
+    coordinator.relative_brightness_right = 75
+    coordinator.relative_brightness_bottom = 75
+    coordinator.blank_screen = False
+    coordinator.blank_screen_detection = 2
+    coordinator.blank_screen_low_brightness_duration_seconds = 10
+    coordinator.blank_screen_same_tone_duration_seconds = 120
+    coordinator.music_separation_point = 1
+    coordinator.music_separation_gradient = True
+    coordinator.music_hopping_brightness = 50
+    coordinator.music_piano_key_count = 15
+    coordinator.music_fountain_direction = "clockwise"
+    coordinator.music_daynight_segments = 1
+    coordinator.music_daynight_speed = 10
+    coordinator.music_daynight_gradient = False
+    return coordinator
 
 
 class YieldingVersionedDocumentStore(InMemoryVersionedDocumentStore):
@@ -776,6 +847,311 @@ async def test_type04_uses_evidenced_code_and_confirms_readback(
 
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.diy_code == 24
+
+
+async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confidence(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H617A")
+    events: list[str] = []
+
+    def install_music_profile_state(**values) -> None:
+        events.append("install")
+        coordinator.music_sensitivity = values["sensitivity"]
+        coordinator.music_color = values["colour"]
+        coordinator.music_calm = values["calm"]
+
+    async def select_music(mode: str, *, include_parameters: bool) -> None:
+        events.append(f"select:{mode}:{include_parameters}")
+        coordinator.music_mode = mode
+
+    async def apply_parameters(mode_code: int) -> None:
+        events.append(f"parameters:{mode_code}")
+
+    coordinator.install_music_profile_state = install_music_profile_state
+    coordinator.async_select_music_slug = select_music
+    coordinator.async_apply_music_params = apply_parameters
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        _music_item(),
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert events == ["install", "select:separation:False", "parameters:50"]
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.diy_code is None
+    assert result.content_kind == "music_profile"
+    assert result.progress_current == result.progress_total == 2
+    assert result.verification_confidence is ObservationConfidence.MODE_MATCH
+    assert coordinator.refresh_state.await_args_list[-1] == call(
+        expected_on=True,
+        expected_music_mode="separation",
+    )
+
+
+async def test_h617a_music_profile_applies_style_companion_parameters(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H617A")
+    events: list[str] = []
+    coordinator.install_music_profile_state = lambda **values: None
+
+    async def select_music(mode: str, *, include_parameters: bool) -> None:
+        events.append(f"select:{mode}:{include_parameters}")
+        coordinator.music_mode = mode
+
+    async def apply_parameters(mode_code: int) -> None:
+        events.append(f"parameters:{mode_code}")
+
+    coordinator.async_select_music_slug = select_music
+    coordinator.async_apply_music_params = apply_parameters
+    item = LibraryItem.new(
+        "Bloom",
+        MusicProfile("H617A", "bloom", 50, None, True, {}),
+    )
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert events == ["select:bloom:False", "parameters:48"]
+    assert result.progress_current == result.progress_total == 2
+    assert result.verification_confidence is ObservationConfidence.MODE_MATCH
+
+
+async def test_music_profile_rejects_parameters_not_owned_by_the_mode(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H617A")
+    item = LibraryItem.new(
+        "Rhythm",
+        MusicProfile("H617A", "rhythm", 50, None, False, {"point": 3}),
+    )
+
+    with pytest.raises(ValueError, match="does not support parameter point"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            item,
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+        )
+
+    assert repository.snapshot().records == ()
+
+
+async def test_music_profile_rejects_a_diy_code_override(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H617A")
+
+    with pytest.raises(ValueError, match="profiles do not use a DIY code"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            _music_item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+            diy_code=24,
+        )
+
+    assert repository.snapshot().records == ()
+
+
+async def test_h6199_music_profile_confirms_all_written_settings(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H6199")
+    coordinator.install_music_profile_state = lambda **values: None
+
+    async def select_music(mode: str, *, include_parameters: bool) -> None:
+        coordinator.music_mode = mode
+
+    coordinator.async_select_music_slug = select_music
+    coordinator.async_apply_music_params = AsyncMock()
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        _music_item("H6199"),
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.progress_current == result.progress_total == 1
+    assert result.verification_confidence is ObservationConfidence.SETTINGS_MATCH
+    coordinator.async_apply_music_params.assert_not_awaited()
+
+
+async def test_unsaved_music_profile_persists_the_applied_snapshot(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H6199")
+    coordinator.install_music_profile_state = lambda **values: None
+
+    async def select_music(mode: str, *, include_parameters: bool) -> None:
+        coordinator.music_mode = mode
+
+    coordinator.async_select_music_slug = select_music
+    coordinator.async_apply_music_params = AsyncMock()
+    item = _music_item("H6199")
+    snapshot_id = uuid4()
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_snapshot(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        snapshot_id=snapshot_id,
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    persisted = repository.get(result.operation_id)
+    assert persisted.snapshot_id == snapshot_id
+    assert persisted.snapshot == item
+    assert persisted.item_id is None
+    assert persisted.content_kind == "music_profile"
+
+
+async def test_music_profile_retries_the_complete_writer_before_confirmation(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H617A")
+    events: list[str] = []
+
+    def install_music_profile_state(**values) -> None:
+        events.append("install")
+
+    async def select_music(mode: str, *, include_parameters: bool) -> None:
+        events.append("select")
+        coordinator.music_mode = mode
+
+    async def apply_parameters(mode_code: int) -> None:
+        events.append("parameters")
+
+    coordinator.install_music_profile_state = install_music_profile_state
+    coordinator.async_select_music_slug = select_music
+    coordinator.async_apply_music_params = apply_parameters
+    coordinator.refresh_state.side_effect = [True, False, True]
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        _music_item(),
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert events == ["install", "select", "parameters", "install", "select", "parameters"]
+
+
+async def test_h6199_video_profile_uses_native_writers_in_profile_order(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H6199")
+    events: list[str] = []
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_active_video_mode",
+        AsyncMock(side_effect=lambda _coordinator: events.append("video")),
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_white_balance",
+        AsyncMock(side_effect=lambda _coordinator: events.append("white_balance")),
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_relative_brightness",
+        AsyncMock(side_effect=lambda _coordinator: events.append("relative_brightness")),
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_blank_screen",
+        AsyncMock(side_effect=lambda _coordinator: events.append("blank_screen")),
+    )
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        _video_item(),
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert events == ["video", "white_balance", "relative_brightness", "blank_screen"]
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.content_kind == "video_profile"
+    assert result.diy_code is None
+    assert result.progress_current == result.progress_total == 4
+    assert result.verification_confidence is ObservationConfidence.SETTINGS_MATCH
+    assert result.prior_state is not None
+    assert result.prior_state.relative_brightness_left == 75
+
+
+async def test_video_profile_requires_complete_prior_display_state(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H6199")
+    coordinator.blank_screen = None
+    operation_id = uuid4()
+
+    with pytest.raises(RuntimeError, match="current video settings are incomplete"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            _video_item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+            operation_id=operation_id,
+        )
+
+    failed = repository.get(operation_id)
+    assert failed.phase is DeploymentPhase.FAILED
+    assert failed.error_code == "RuntimeError"
+    assert failed.prior_state is None
+
+
+async def test_video_profile_failure_restores_complete_prior_state(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H6199")
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_active_video_mode",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_white_balance",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_relative_brightness",
+        AsyncMock(side_effect=RuntimeError("write failed")),
+    )
+    operation_id = uuid4()
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            _video_item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+            operation_id=operation_id,
+        )
+
+    failed = repository.get(operation_id)
+    assert failed.phase is DeploymentPhase.FAILED
+    assert failed.progress_current == 2
+    coordinator.async_restore_effect_control_state.assert_awaited_once()
+    assert coordinator.async_restore_effect_control_state.await_args.kwargs == {"overwritten_diy_code": None}
 
 
 def test_painted_effect_uses_evidenced_code(hass: HomeAssistant) -> None:

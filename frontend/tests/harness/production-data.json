@@ -482,7 +482,7 @@
             "label": "Multi"
           },
           {
-            "application": "home_assistant",
+            "application": "studio",
             "content_kind": "music_profile",
             "id": "native_music",
             "label": "Music"
@@ -700,13 +700,13 @@
             "label": "Palette DIY"
           },
           {
-            "application": "home_assistant",
+            "application": "studio",
             "content_kind": "music_profile",
             "id": "native_music",
             "label": "Music"
           },
           {
-            "application": "home_assistant",
+            "application": "studio",
             "content_kind": "video_profile",
             "id": "video",
             "label": "Video"
@@ -849,7 +849,7 @@
         "label": "Multi"
       },
       {
-        "application": "home_assistant",
+        "application": "studio",
         "content_kind": "music_profile",
         "id": "native_music",
         "label": "Music"
@@ -886,6 +886,10 @@
       },
       "display_name": "H617A LED Strip",
       "model": "H617A",
+      "profiles": {
+        "music": "supported",
+        "video": "unsupported"
+      },
       "readback": "diy_code_only",
       "segment_count": 15
     },
@@ -900,6 +904,10 @@
       },
       "display_name": "H6199 DreamView T1",
       "model": "H6199",
+      "profiles": {
+        "music": "supported",
+        "video": "supported"
+      },
       "readback": "mode_only",
       "segment_count": 15
     }

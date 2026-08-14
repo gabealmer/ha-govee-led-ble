@@ -10,6 +10,7 @@ from homeassistant.exceptions import ServiceValidationError
 from .const import DOMAIN
 from .coordinator import GoveeBLECoordinator
 from .coordinator_modes import MUSIC_STYLE_SLUGS
+from .native_profile_controls import apply_active_video_mode
 from .protocol import (
     SegmentColorGroup,
     build_power,
@@ -17,36 +18,7 @@ from .protocol import (
     build_video_mode,
 )
 
-
-# fmt: off
-async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: bool) -> None:
-    sound_effects = coord.video_sound_effects and coord.profile.supports_video_sound_effects
-    await coord.send_command(build_video_mode(full_screen=coord.video_full_screen, game_mode=game_mode,
-        saturation=coord.video_saturation, sound_effects=sound_effects,
-        sound_effects_softness=coord.video_sound_effects_softness))
-    if not coord.profile.supports_video_sound_effects:
-        coord.video_sound_effects = False
-# fmt: on
-
-
-async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
-    if coord.video_mode not in ("movie", "game"):
-        return False
-    for _ in range(2):
-        if not coord.is_on:
-            await coord.send_command(build_power(True, coord.model))
-            coord.is_on = True
-        await apply_video_mode_from_state(coord, game_mode=coord.video_mode == "game")
-        if await coord.refresh_state(
-            expected_on=True,
-            expected_video_mode=coord.video_mode,
-            expected_video_full_screen=coord.video_full_screen,
-            expected_video_saturation=coord.video_saturation,
-            expected_video_sound_effects=coord.video_sound_effects,
-            expected_video_sound_effects_softness=coord.video_sound_effects_softness,
-        ):
-            return True
-    raise RuntimeError("Video-mode write was not confirmed by the device")
+__all__ = ("apply_active_video_mode",)
 
 
 class _GoveeLightOwner:

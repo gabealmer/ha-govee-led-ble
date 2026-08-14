@@ -9,9 +9,18 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 from uuid import UUID, uuid4
 
+from .const import MUSIC_MODE_SLUGS
 from .coordinator import GoveeBLECoordinator
 from .effect_catalogue import H617A_TYPE04_APPLY_CODE, H6199_PALETTE_DIY_APPLY_CODE
-from .effect_compiler import ActivationMode, CompiledEffect, VerificationStrategy, compile_effect
+from .effect_compiler import (
+    ActivationMode,
+    CompiledApplication,
+    CompiledEffect,
+    CompiledMusicProfile,
+    CompiledVideoProfile,
+    VerificationStrategy,
+    compile_application,
+)
 from .effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
@@ -21,7 +30,22 @@ from .effect_deployments import (
     ObservedDeviceState,
     PriorControlState,
 )
-from .effect_domain import LibraryItem, MultiEffect, PaintedEffect, PaletteDiyEffect, SingleEffect
+from .effect_domain import (
+    LibraryItem,
+    MultiEffect,
+    MusicProfile,
+    PaintedEffect,
+    PaletteDiyEffect,
+    SingleEffect,
+    VideoProfile,
+)
+from .native_profile_controls import (
+    apply_active_video_mode,
+    apply_blank_screen,
+    apply_relative_brightness,
+    apply_white_balance,
+)
+from .protocol import WHITE_BALANCE_POSITIONS
 
 ACTIVATION_ATTEMPTS = 2
 VERIFICATION_ATTEMPTS = 2
@@ -53,13 +77,13 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        resolved_diy_code = _resolve_compiler_diy_code(
+        resolved_diy_code = _resolve_application_diy_code(
             self._deployments,
             item,
             config_entry_id,
             diy_code,
         )
-        compiled = compile_effect(item, coordinator.model, diy_code=resolved_diy_code)
+        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -81,13 +105,13 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        resolved_diy_code = _resolve_compiler_diy_code(
+        resolved_diy_code = _resolve_application_diy_code(
             self._deployments,
             item,
             config_entry_id,
             diy_code,
         )
-        compiled = compile_effect(item, coordinator.model, diy_code=resolved_diy_code)
+        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -116,7 +140,7 @@ class EffectDeploymentEngine:
 
     def _new_record(
         self,
-        compiled: CompiledEffect,
+        compiled: CompiledApplication,
         *,
         config_entry_id: str,
         updated_at: str,
@@ -126,28 +150,37 @@ class EffectDeploymentEngine:
         snapshot_id: UUID | None = None,
         snapshot: LibraryItem | None = None,
     ) -> DeploymentRecord:
+        if isinstance(compiled, CompiledEffect):
+            target_mode = compiled.activation_mode.value
+            target_effect = compiled.expected_effect
+            evidence_codes = compiled.evidence_codes
+        else:
+            target_mode = "music" if isinstance(compiled, CompiledMusicProfile) else "video"
+            target_effect = None
+            evidence_codes = ()
         return DeploymentRecord(
             operation_id=operation_id or uuid4(),
             config_entry_id=config_entry_id,
             diy_code=compiled.diy_code,
+            content_kind=compiled.content_kind,
             phase=DeploymentPhase.COMPILING,
             compiler_version=compiled.compiler_version,
             artifact_sha256=compiled.artifact_sha256,
             updated_at=updated_at,
-            target_mode=compiled.activation_mode.value,
-            target_effect=compiled.expected_effect,
-            evidence_codes=compiled.evidence_codes,
+            target_mode=target_mode,
+            target_effect=target_effect,
+            evidence_codes=evidence_codes,
             item_id=item_id,
             item_revision=item_revision,
             snapshot_id=snapshot_id,
             snapshot=snapshot,
-            progress_total=len(compiled.upload_packets) + 1,
+            progress_total=compiled.progress_total,
         )
 
     async def _async_apply(
         self,
         coordinator: GoveeBLECoordinator,
-        compiled: CompiledEffect,
+        compiled: CompiledApplication,
         record: DeploymentRecord,
     ) -> DeploymentRecord:
         async with self._operation_lock(record.operation_id):
@@ -156,7 +189,7 @@ class EffectDeploymentEngine:
     async def _async_apply_serialised(
         self,
         coordinator: GoveeBLECoordinator,
-        compiled: CompiledEffect,
+        compiled: CompiledApplication,
         record: DeploymentRecord,
     ) -> DeploymentRecord:
         if existing := self._deployments.get_optional(record.operation_id):
@@ -176,7 +209,7 @@ class EffectDeploymentEngine:
             async with coordinator._control_lock:
                 lock_acquired = True
                 try:
-                    refreshed = await self._async_refresh_for_reconciliation(coordinator)
+                    refreshed = await self._async_prepare_prior_state(coordinator, compiled)
                     self._reconcile_observation(
                         coordinator,
                         config_entry_id=record.config_entry_id,
@@ -191,22 +224,28 @@ class EffectDeploymentEngine:
                     next_record = replace(current, phase=DeploymentPhase.UPLOADING)
                     await self._deployments.async_put(next_record, expected_revision=None)
                     current = next_record
-                    for index, packet in enumerate(compiled.upload_packets, start=1):
-                        await coordinator.send_command(packet)
-                        current = replace(current, progress_current=index)
-                        await self._deployments.async_put(current, expected_revision=None)
+                    if isinstance(compiled, CompiledEffect):
+                        for index, packet in enumerate(compiled.upload_packets, start=1):
+                            await coordinator.send_command(packet)
+                            current = replace(current, progress_current=index)
+                            await self._deployments.async_put(current, expected_revision=None)
 
-                    next_record = replace(current, phase=DeploymentPhase.ACTIVATING)
-                    await self._deployments.async_put(next_record, expected_revision=None)
-                    current = next_record
-                    await self._async_activate(coordinator, compiled.activation_packet)
-                    current = replace(current, progress_current=current.progress_total)
-                    await self._deployments.async_put(current, expected_revision=None)
+                        next_record = replace(current, phase=DeploymentPhase.ACTIVATING)
+                        await self._deployments.async_put(next_record, expected_revision=None)
+                        current = next_record
+                        await self._async_activate(coordinator, compiled.activation_packet)
+                        current = replace(current, progress_current=current.progress_total)
+                        await self._deployments.async_put(current, expected_revision=None)
+                    else:
+                        current = await self._async_apply_profile(coordinator, compiled, current)
 
                     next_record = replace(current, phase=DeploymentPhase.VERIFYING)
                     await self._deployments.async_put(next_record, expected_revision=None)
                     current = next_record
-                    if compiled.verification_strategy is VerificationStrategy.UNPROVEN_H6199_SLOT:
+                    if (
+                        isinstance(compiled, CompiledEffect)
+                        and compiled.verification_strategy is VerificationStrategy.UNPROVEN_H6199_SLOT
+                    ):
                         selector_observed = await self._async_observe_unproven_h6199_slot(
                             coordinator,
                             compiled.diy_code,
@@ -229,9 +268,9 @@ class EffectDeploymentEngine:
                             refreshed=False,
                         )
                         return uncertain
-                    confirmed, current = await self._async_verify(
+                    confirmed, confidence, current = await self._async_verify(
                         coordinator,
-                        compiled.activation_packet,
+                        compiled,
                         current,
                     )
                     if not confirmed:
@@ -244,7 +283,7 @@ class EffectDeploymentEngine:
                         current,
                         phase=DeploymentPhase.CONFIRMED,
                         error_code=None,
-                        verification_confidence=ObservationConfidence.ACTIVATION_MATCH,
+                        verification_confidence=confidence,
                     )
                     await self._deployments.async_put(completed, expected_revision=None)
                     self._reconcile_observation(
@@ -256,6 +295,7 @@ class EffectDeploymentEngine:
                     )
                     return completed
                 except asyncio.CancelledError:
+                    current = self._deployments.get_optional(record.operation_id) or current
                     await self._async_finish_failure_while_locked_best_effort(
                         coordinator,
                         current,
@@ -263,6 +303,7 @@ class EffectDeploymentEngine:
                     )
                     raise
                 except Exception as exc:
+                    current = self._deployments.get_optional(record.operation_id) or current
                     await self._async_finish_failure_while_locked_best_effort(
                         coordinator,
                         current,
@@ -316,14 +357,78 @@ class EffectDeploymentEngine:
                 if attempt + 1 == ACTIVATION_ATTEMPTS:
                     raise
 
+    async def _async_apply_profile(
+        self,
+        coordinator: GoveeBLECoordinator,
+        compiled: CompiledMusicProfile | CompiledVideoProfile,
+        record: DeploymentRecord,
+    ) -> DeploymentRecord:
+        current = record
+        if isinstance(compiled, CompiledMusicProfile):
+            coordinator.install_music_profile_state(
+                sensitivity=compiled.sensitivity,
+                colour=compiled.colour,
+                calm=compiled.calm,
+                parameters=compiled.parameters,
+            )
+            await coordinator.async_select_music_slug(compiled.mode, include_parameters=False)
+            current = replace(current, progress_current=1)
+            await self._deployments.async_put(current, expected_revision=None)
+            if compiled.progress_total > 1:
+                await coordinator.async_apply_music_params(MUSIC_MODE_SLUGS[compiled.mode])
+                current = replace(current, progress_current=2)
+                await self._deployments.async_put(current, expected_revision=None)
+            return current
+
+        coordinator.video_mode = compiled.mode
+        coordinator.video_full_screen = compiled.full_screen
+        coordinator.video_saturation = compiled.saturation
+        coordinator.video_sound_effects = compiled.sound_effects
+        coordinator.video_sound_effects_softness = compiled.sound_effects_softness
+        coordinator.effect = None
+        coordinator.music_mode = "off"
+        coordinator.diy_code = None
+        await apply_active_video_mode(coordinator)
+        current = await self._record_profile_progress(current, 1)
+
+        red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
+        coordinator.white_balance_red = red
+        coordinator.white_balance_blue = blue
+        await apply_white_balance(coordinator)
+        current = await self._record_profile_progress(current, 2)
+
+        left, top, right, bottom = compiled.relative_brightness
+        coordinator.relative_brightness = left if len(set(compiled.relative_brightness)) == 1 else None
+        coordinator.relative_brightness_left = left
+        coordinator.relative_brightness_top = top
+        coordinator.relative_brightness_right = right
+        coordinator.relative_brightness_bottom = bottom
+        await apply_relative_brightness(coordinator)
+        current = await self._record_profile_progress(current, 3)
+
+        coordinator.blank_screen = compiled.blank_screen
+        await apply_blank_screen(coordinator)
+        return await self._record_profile_progress(current, 4)
+
+    async def _record_profile_progress(
+        self,
+        record: DeploymentRecord,
+        progress_current: int,
+    ) -> DeploymentRecord:
+        current = replace(record, progress_current=progress_current)
+        await self._deployments.async_put(current, expected_revision=None)
+        return current
+
     async def _async_verify(
         self,
         coordinator: GoveeBLECoordinator,
-        activation_packet: bytes,
+        compiled: CompiledApplication,
         record: DeploymentRecord,
-    ) -> tuple[bool, DeploymentRecord]:
+    ) -> tuple[bool, ObservationConfidence, DeploymentRecord]:
         if not coordinator.profile.state_readable:
-            return False, record
+            return False, ObservationConfidence.UNKNOWN, record
+        if not isinstance(compiled, CompiledEffect):
+            return await self._async_verify_profile(coordinator, compiled, record)
         current = record
         for attempt in range(VERIFICATION_ATTEMPTS):
             try:
@@ -333,14 +438,37 @@ class EffectDeploymentEngine:
                     raise
                 continue
             if refreshed and _activation_matches(coordinator, record):
-                return True, current
+                return True, ObservationConfidence.ACTIVATION_MATCH, current
             if refreshed and attempt + 1 < VERIFICATION_ATTEMPTS:
                 current = replace(current, phase=DeploymentPhase.ACTIVATING)
                 await self._deployments.async_put(current, expected_revision=None)
-                await self._async_activate(coordinator, activation_packet)
+                await self._async_activate(coordinator, compiled.activation_packet)
                 current = replace(current, phase=DeploymentPhase.VERIFYING)
                 await self._deployments.async_put(current, expected_revision=None)
-        return False, current
+        return False, ObservationConfidence.UNKNOWN, current
+
+    async def _async_verify_profile(
+        self,
+        coordinator: GoveeBLECoordinator,
+        compiled: CompiledMusicProfile | CompiledVideoProfile,
+        record: DeploymentRecord,
+    ) -> tuple[bool, ObservationConfidence, DeploymentRecord]:
+        current = record
+        confidence = _profile_verification_confidence(compiled)
+        for attempt in range(VERIFICATION_ATTEMPTS):
+            if await _async_refresh_profile(coordinator, compiled):
+                return True, confidence, current
+            if attempt + 1 < VERIFICATION_ATTEMPTS:
+                current = replace(
+                    current,
+                    phase=DeploymentPhase.UPLOADING,
+                    progress_current=0,
+                )
+                await self._deployments.async_put(current, expected_revision=None)
+                current = await self._async_apply_profile(coordinator, compiled, current)
+                current = replace(current, phase=DeploymentPhase.VERIFYING)
+                await self._deployments.async_put(current, expected_revision=None)
+        return False, ObservationConfidence.UNKNOWN, current
 
     async def _async_observe_unproven_h6199_slot(
         self,
@@ -397,7 +525,11 @@ class EffectDeploymentEngine:
                     recovered = await restore(
                         recovering.prior_state,
                         overwritten_diy_code=(
-                            recovering.diy_code if recovering.target_mode == ActivationMode.CUSTOM.value else -1
+                            recovering.diy_code
+                            if recovering.target_mode == ActivationMode.CUSTOM.value
+                            else -1
+                            if recovering.target_mode == ActivationMode.SCENE.value
+                            else None
                         ),
                     )
                 except Exception:
@@ -473,6 +605,35 @@ class EffectDeploymentEngine:
             )
             return False
 
+    async def _async_prepare_prior_state(
+        self,
+        coordinator: GoveeBLECoordinator,
+        compiled: CompiledApplication,
+    ) -> bool:
+        refreshed = await self._async_refresh_for_reconciliation(coordinator)
+        if not isinstance(compiled, CompiledVideoProfile):
+            return refreshed
+        if not refreshed or not await coordinator.refresh_state(
+            refresh_display_settings=True,
+            refresh_relative_brightness=True,
+        ):
+            raise RuntimeError("Could not read the current video settings before applying the profile")
+        required = (
+            coordinator.white_balance_red,
+            coordinator.white_balance_blue,
+            coordinator.relative_brightness_left,
+            coordinator.relative_brightness_top,
+            coordinator.relative_brightness_right,
+            coordinator.relative_brightness_bottom,
+            coordinator.blank_screen,
+            coordinator.blank_screen_detection,
+            coordinator.blank_screen_low_brightness_duration_seconds,
+            coordinator.blank_screen_same_tone_duration_seconds,
+        )
+        if any(value is None for value in required):
+            raise RuntimeError("The current video settings are incomplete")
+        return True
+
     def _capture_prior_state(
         self,
         coordinator: GoveeBLECoordinator,
@@ -496,6 +657,37 @@ class EffectDeploymentEngine:
             music_sensitivity=getattr(coordinator, "music_sensitivity", 100),
             music_calm=getattr(coordinator, "music_calm", False),
             music_color=getattr(coordinator, "music_color", None),
+            music_separation_point=getattr(coordinator, "music_separation_point", 1),
+            music_separation_gradient=getattr(coordinator, "music_separation_gradient", True),
+            music_hopping_brightness=getattr(coordinator, "music_hopping_brightness", 50),
+            music_piano_key_count=getattr(coordinator, "music_piano_key_count", 15),
+            music_fountain_direction=getattr(coordinator, "music_fountain_direction", "clockwise"),
+            music_daynight_segments=getattr(coordinator, "music_daynight_segments", 1),
+            music_daynight_speed=getattr(coordinator, "music_daynight_speed", 10),
+            music_daynight_gradient=getattr(coordinator, "music_daynight_gradient", False),
+            video_full_screen=getattr(coordinator, "video_full_screen", True),
+            video_saturation=getattr(coordinator, "video_saturation", 100),
+            video_sound_effects=getattr(coordinator, "video_sound_effects", False),
+            video_sound_effects_softness=getattr(coordinator, "video_sound_effects_softness", 100),
+            white_balance_red=getattr(coordinator, "white_balance_red", None),
+            white_balance_blue=getattr(coordinator, "white_balance_blue", None),
+            relative_brightness=getattr(coordinator, "relative_brightness", None),
+            relative_brightness_left=getattr(coordinator, "relative_brightness_left", None),
+            relative_brightness_top=getattr(coordinator, "relative_brightness_top", None),
+            relative_brightness_right=getattr(coordinator, "relative_brightness_right", None),
+            relative_brightness_bottom=getattr(coordinator, "relative_brightness_bottom", None),
+            blank_screen=getattr(coordinator, "blank_screen", None),
+            blank_screen_detection=getattr(coordinator, "blank_screen_detection", None),
+            blank_screen_low_brightness_duration_seconds=getattr(
+                coordinator,
+                "blank_screen_low_brightness_duration_seconds",
+                None,
+            ),
+            blank_screen_same_tone_duration_seconds=getattr(
+                coordinator,
+                "blank_screen_same_tone_duration_seconds",
+                None,
+            ),
         )
 
     def _reconcile_observation(
@@ -518,7 +710,13 @@ class EffectDeploymentEngine:
             latest = self._deployments.latest_for_effect(config_entry_id, effect)
             if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
                 matched_record = latest
-        if diy_code is not None or effect is not None:
+        profile_match = matched_record is not None and (
+            (matched_record.content_kind == "music_profile" and mode == "music")
+            or (matched_record.content_kind == "video_profile" and mode == "video")
+        )
+        if profile_match and matched_record is not None:
+            confidence = matched_record.verification_confidence
+        elif diy_code is not None or effect is not None:
             confidence = (
                 ObservationConfidence.ACTIVATION_MATCH if matched_record is not None else ObservationConfidence.UNKNOWN
             )
@@ -535,7 +733,13 @@ class EffectDeploymentEngine:
             effect=effect,
             matched_operation_id=(
                 matched_record.operation_id
-                if confidence is ObservationConfidence.ACTIVATION_MATCH and matched_record is not None
+                if matched_record is not None
+                and confidence
+                in {
+                    ObservationConfidence.ACTIVATION_MATCH,
+                    ObservationConfidence.SETTINGS_MATCH,
+                    ObservationConfidence.MODE_MATCH,
+                }
                 else None
             ),
         )
@@ -561,6 +765,59 @@ def _coordinator_mode(coordinator: GoveeBLECoordinator) -> str:
     if getattr(coordinator, "video_mode", "off") not in (None, "off"):
         return "video"
     return "colour"
+
+
+async def _async_refresh_profile(
+    coordinator: GoveeBLECoordinator,
+    compiled: CompiledMusicProfile | CompiledVideoProfile,
+) -> bool:
+    if isinstance(compiled, CompiledMusicProfile):
+        if compiled.model == "H617A":
+            return await coordinator.refresh_state(
+                expected_on=True,
+                expected_music_mode=compiled.mode,
+            )
+        return await coordinator.refresh_state(
+            expected_on=True,
+            expected_music_mode=compiled.mode,
+            expected_music_sensitivity=compiled.sensitivity,
+            expected_music_calm=compiled.calm if compiled.mode == "rhythm" else None,
+            expected_music_color=compiled.colour,
+            expected_music_auto_color=compiled.colour is None,
+        )
+    red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
+    return await coordinator.refresh_state(
+        expected_on=True,
+        expected_video_mode=compiled.mode,
+        expected_video_full_screen=compiled.full_screen,
+        expected_video_saturation=compiled.saturation,
+        expected_video_sound_effects=compiled.sound_effects,
+        expected_video_sound_effects_softness=compiled.sound_effects_softness,
+        expected_white_balance=(red, blue),
+        expected_blank_screen=compiled.blank_screen,
+        expected_relative_brightness=compiled.relative_brightness,
+    )
+
+
+def _profile_verification_confidence(
+    compiled: CompiledMusicProfile | CompiledVideoProfile,
+) -> ObservationConfidence:
+    if isinstance(compiled, CompiledMusicProfile) and compiled.model == "H617A":
+        return ObservationConfidence.MODE_MATCH
+    return ObservationConfidence.SETTINGS_MATCH
+
+
+def _resolve_application_diy_code(
+    deployments: EffectDeploymentRepository,
+    item: LibraryItem,
+    config_entry_id: str,
+    requested: int | None,
+) -> int | None:
+    if isinstance(item.content, MusicProfile | VideoProfile):
+        if requested is not None:
+            raise ValueError("profiles do not use a DIY code")
+        return None
+    return _resolve_compiler_diy_code(deployments, item, config_entry_id, requested)
 
 
 def resolve_diy_code(

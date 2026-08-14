@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256
-from typing import Final
+from typing import Any, Final, assert_never
 
 from . import protocol
+from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS
+from .coordinator_modes import (
+    MUSIC_STYLE_SLUGS,
+    music_mode_has_parameter_write,
+    music_params_for_mode,
+)
 from .effect_catalogue import (
     H6199_DIY_EFFECTS,
     H6199_PALETTE_DIY_APPLY_CODE,
@@ -20,11 +28,13 @@ from .effect_domain import (
     LayeredScene,
     LibraryItem,
     MultiEffect,
+    MusicProfile,
     OpaqueContent,
     PaintedEffect,
     PaletteDiyEffect,
     PaletteScene,
     SingleEffect,
+    VideoProfile,
 )
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene
@@ -59,6 +69,7 @@ class CompiledEffect:
     item_id: str
     revision: int
     model: str
+    content_kind: str
     diy_code: int
     activation_mode: ActivationMode
     expected_effect: str | None
@@ -72,6 +83,53 @@ class CompiledEffect:
     @property
     def packets(self) -> tuple[bytes, ...]:
         return (*self.upload_packets, self.activation_packet)
+
+    @property
+    def progress_total(self) -> int:
+        return len(self.packets)
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledMusicProfile:
+    item_id: str
+    revision: int
+    model: str
+    mode: str
+    sensitivity: int
+    colour: tuple[int, int, int] | None
+    calm: bool
+    parameters: Mapping[str, int | bool | str]
+    artifact_sha256: str
+    compiler_version: int = EFFECT_COMPILER_VERSION
+    content_kind: str = "music_profile"
+    diy_code: None = None
+
+    @property
+    def progress_total(self) -> int:
+        return 1 + int(music_mode_has_parameter_write(MUSIC_MODE_SLUGS[self.mode]))
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledVideoProfile:
+    item_id: str
+    revision: int
+    model: str
+    mode: str
+    full_screen: bool
+    saturation: int
+    sound_effects: bool
+    sound_effects_softness: int
+    white_balance_position: int
+    relative_brightness: tuple[int, int, int, int]
+    blank_screen: bool
+    artifact_sha256: str
+    compiler_version: int = EFFECT_COMPILER_VERSION
+    content_kind: str = "video_profile"
+    diy_code: None = None
+    progress_total: int = 4
+
+
+CompiledApplication = CompiledEffect | CompiledMusicProfile | CompiledVideoProfile
 
 
 _ADVANCED_CARRIER_IDENTITIES: Final = {
@@ -87,6 +145,26 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             CompatibilityState.UNKNOWN,
             (f"content kind {content.kind!r} is not understood",),
         )
+    if isinstance(content, MusicProfile):
+        if content.model != model:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"music profile targets {content.model}, not {model}",),
+            )
+        profile = MODEL_PROFILES.get(model)
+        if profile is None or content.mode not in profile.music_modes:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} does not support music mode {content.mode}",),
+            )
+        return CompatibilityResult(CompatibilityState.COMPATIBLE)
+    if isinstance(content, VideoProfile):
+        if model != "H6199" or content.model != model:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} video-profile application is not supported",),
+            )
+        return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
         return CompatibilityResult(
             CompatibilityState.INCOMPATIBLE,
@@ -144,10 +222,7 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             CompatibilityState.INCOMPATIBLE,
             (f"{model} layered-scene framing is not supported",),
         )
-    return CompatibilityResult(
-        CompatibilityState.UNKNOWN,
-        ("this content kind has no compiler yet",),
-    )
+    assert_never(content)
 
 
 def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None) -> CompiledEffect:
@@ -176,17 +251,20 @@ def compile_scene_effect(item: LibraryItem, model: str) -> CompiledEffect:
     content = item.content
     evidence_codes = ["scene_payload_readback_unavailable"]
     if isinstance(content, PaletteScene):
+        content_kind = "scene_palette"
         scene_key, entry = _resolve_scene(model, content.template, expected_scene_type=1)
         if content.speed_index is not None:
             raise ValueError("type-1 palette scenes do not expose a documented Speed control")
         scene_type = 1
         payload = encode_palette_scene(content)
     elif isinstance(content, LayeredScene):
+        content_kind = "scene_layered"
         scene_key, entry = _resolve_scene(model, content.template, expected_scene_type=2)
         scene_type = 2
         payload = _apply_speed(encode_layered_scene(content), entry, content.speed_index)
         evidence_codes.append("layered_field_semantics_uncalibrated")
     elif isinstance(content, LayeredEffect):
+        content_kind = "advanced"
         scene_key, entry = _advanced_carrier(model)
         scene_type = 2
         payload = encode_layered_scene(
@@ -211,6 +289,7 @@ def compile_scene_effect(item: LibraryItem, model: str) -> CompiledEffect:
         item_id=str(item.id),
         revision=item.revision,
         model=model,
+        content_kind=content_kind,
         diy_code=entry.code,
         activation_mode=ActivationMode.SCENE,
         expected_effect=scene_key,
@@ -228,6 +307,7 @@ def compile_h617a(item: LibraryItem, diy_code: int) -> CompiledEffect:
 
     content = item.content
     if isinstance(content, PaintedEffect):
+        content_kind = "h617a_painted"
         upload = protocol.build_h617a_diy_painted(
             content.effect,
             content.speed,
@@ -236,6 +316,7 @@ def compile_h617a(item: LibraryItem, diy_code: int) -> CompiledEffect:
             tuple(protocol.DiyPaintGroup(group.fill, group.segments) for group in content.groups),
         )
     elif isinstance(content, SingleEffect):
+        content_kind = "h617a_single"
         upload = protocol.build_h617a_diy_single(
             content.family,
             content.variant,
@@ -243,6 +324,7 @@ def compile_h617a(item: LibraryItem, diy_code: int) -> CompiledEffect:
             content.palette,
         )
     elif isinstance(content, MultiEffect):
+        content_kind = "h617a_multi"
         upload = protocol.build_h617a_diy_multi(
             tuple((effect.family, effect.variant) for effect in content.effects),
             content.speed,
@@ -257,6 +339,7 @@ def compile_h617a(item: LibraryItem, diy_code: int) -> CompiledEffect:
         item_id=str(item.id),
         revision=item.revision,
         model="H617A",
+        content_kind=content_kind,
         diy_code=diy_code,
         activation_mode=ActivationMode.CUSTOM,
         expected_effect=None,
@@ -294,6 +377,7 @@ def compile_h6199(
         item_id=str(item.id),
         revision=item.revision,
         model="H6199",
+        content_kind="palette_diy",
         diy_code=H6199_PALETTE_DIY_APPLY_CODE,
         activation_mode=ActivationMode.CUSTOM,
         expected_effect=None,
@@ -353,3 +437,118 @@ def _scene_activation(model: str, entry: SceneEntry) -> bytes:
     if model == "H6199":
         return protocol.build_h6199_scene(entry.code, entry.music_code)[0]
     return protocol.build_scene(entry.code)
+
+
+def compile_application(item: LibraryItem, model: str, *, diy_code: int | None = None) -> CompiledApplication:
+    if isinstance(item.content, MusicProfile):
+        return compile_music_profile(item, model)
+    if isinstance(item.content, VideoProfile):
+        return compile_video_profile(item, model)
+    if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
+        if model != "H617A":
+            raise ValueError(f"{model} custom-effect upload is not supported")
+        if diy_code is None:
+            raise ValueError("custom-effect application requires a DIY code")
+    return compile_effect(item, model, diy_code=diy_code)
+
+
+def compile_music_profile(item: LibraryItem, model: str) -> CompiledMusicProfile:
+    result = compatibility(item, model)
+    if result.state is not CompatibilityState.COMPATIBLE:
+        raise ValueError("; ".join(result.reasons))
+    content = item.content
+    if not isinstance(content, MusicProfile):
+        raise ValueError("content is not a music profile")
+    profile = MODEL_PROFILES[model]
+    if content.colour is not None and not profile.supports_music_color:
+        raise ValueError(f"{model} does not support a fixed music colour")
+    if content.calm is not None and content.mode not in MUSIC_STYLE_SLUGS:
+        raise ValueError(f"music mode {content.mode} does not support a style setting")
+
+    mode_code = MUSIC_MODE_SLUGS[content.mode]
+    parameters = _compile_music_parameters(content.parameters, mode_code)
+    payload = {
+        "kind": "music_profile",
+        "model": model,
+        "mode": content.mode,
+        "sensitivity": content.sensitivity,
+        "colour": content.colour,
+        "calm": bool(content.calm),
+        "parameters": parameters,
+    }
+    return CompiledMusicProfile(
+        item_id=str(item.id),
+        revision=item.revision,
+        model=model,
+        mode=content.mode,
+        sensitivity=content.sensitivity,
+        colour=content.colour,
+        calm=bool(content.calm),
+        parameters=parameters,
+        artifact_sha256=_semantic_digest(payload),
+    )
+
+
+def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile:
+    result = compatibility(item, model)
+    if result.state is not CompatibilityState.COMPATIBLE:
+        raise ValueError("; ".join(result.reasons))
+    content = item.content
+    if not isinstance(content, VideoProfile):
+        raise ValueError("content is not a video profile")
+    brightness = content.relative_brightness
+    relative_brightness = brightness.left, brightness.top, brightness.right, brightness.bottom
+    payload = {
+        "kind": "video_profile",
+        "model": model,
+        "mode": content.mode,
+        "full_screen": content.full_screen,
+        "saturation": content.saturation,
+        "sound_effects": content.sound_effects,
+        "sound_effects_softness": content.sound_effects_softness,
+        "white_balance_position": content.white_balance_position,
+        "relative_brightness": relative_brightness,
+        "blank_screen": content.blank_screen,
+    }
+    return CompiledVideoProfile(
+        item_id=str(item.id),
+        revision=item.revision,
+        model=model,
+        mode=content.mode,
+        full_screen=content.full_screen,
+        saturation=content.saturation,
+        sound_effects=content.sound_effects,
+        sound_effects_softness=content.sound_effects_softness,
+        white_balance_position=content.white_balance_position,
+        relative_brightness=relative_brightness,
+        blank_screen=content.blank_screen,
+        artifact_sha256=_semantic_digest(payload),
+    )
+
+
+def _compile_music_parameters(
+    raw: Mapping[str, Any],
+    mode_code: int,
+) -> dict[str, int | bool | str]:
+    relevant = music_params_for_mode(mode_code)
+    unsupported = sorted(set(raw).difference(spec.profile_key for spec in relevant))
+    if unsupported:
+        raise ValueError(f"music mode does not support parameter {unsupported[0]}")
+    compiled: dict[str, int | bool | str] = {}
+    for spec in relevant:
+        value = raw.get(spec.profile_key, spec.default)
+        if spec.kind == "number":
+            if not isinstance(value, int) or isinstance(value, bool) or not spec.min_value <= value <= spec.max_value:
+                raise ValueError(f"{spec.profile_key} must be an integer from {spec.min_value} to {spec.max_value}")
+        elif spec.kind == "switch":
+            if not isinstance(value, bool):
+                raise ValueError(f"{spec.profile_key} must be a boolean")
+        elif not isinstance(value, str) or value not in spec.options:
+            raise ValueError(f"{spec.profile_key} must be one of {', '.join(spec.options)}")
+        compiled[spec.profile_key] = value
+    return compiled
+
+
+def _semantic_digest(payload: Mapping[str, Any]) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return sha256(encoded).hexdigest()

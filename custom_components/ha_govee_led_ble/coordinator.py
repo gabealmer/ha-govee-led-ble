@@ -16,9 +16,15 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .ble_device_resolver import BLEDeviceResolver
-from .const import DOMAIN, default_effect_families, get_profile
-from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
+from .const import DOMAIN, MUSIC_MODE_SLUGS, default_effect_families, get_profile
+from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin, music_params_for_mode
 from .effect_deployments import PriorControlState
+from .native_profile_controls import (
+    apply_active_video_mode,
+    apply_blank_screen,
+    apply_relative_brightness,
+    apply_white_balance,
+)
 from .protocol import (
     BLANK_SCREEN_QUERY,
     BRIGHTNESS_PACKET_TYPE,
@@ -294,6 +300,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.blank_screen_detection: int | None = None
         self.blank_screen_low_brightness_duration_seconds: int | None = None
         self.blank_screen_same_tone_duration_seconds: int | None = None
+        self.music_separation_point = 1
+        self.music_separation_gradient = True
+        self.music_hopping_brightness = 50
+        self.music_piano_key_count = 15
+        self.music_fountain_direction = "clockwise"
+        self.music_daynight_segments = 1
+        self.music_daynight_speed = 10
+        self.music_daynight_gradient = False
         self.packet_log: list[dict[str, Any]] = []
         self._expected_state: dict[str, tuple[Any, float]] = {}
         self._notify_started_monotonic: float | None = None
@@ -332,20 +346,74 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             music_sensitivity=self.music_sensitivity,
             music_calm=self.music_calm,
             music_color=self.music_color,
+            music_separation_point=self.music_separation_point,
+            music_separation_gradient=self.music_separation_gradient,
+            music_hopping_brightness=self.music_hopping_brightness,
+            music_piano_key_count=self.music_piano_key_count,
+            music_fountain_direction=self.music_fountain_direction,
+            music_daynight_segments=self.music_daynight_segments,
+            music_daynight_speed=self.music_daynight_speed,
+            music_daynight_gradient=self.music_daynight_gradient,
+            video_full_screen=self.video_full_screen,
+            video_saturation=self.video_saturation,
+            video_sound_effects=self.video_sound_effects,
+            video_sound_effects_softness=self.video_sound_effects_softness,
+            white_balance_red=self.white_balance_red,
+            white_balance_blue=self.white_balance_blue,
+            relative_brightness=self.relative_brightness,
+            relative_brightness_left=self.relative_brightness_left,
+            relative_brightness_top=self.relative_brightness_top,
+            relative_brightness_right=self.relative_brightness_right,
+            relative_brightness_bottom=self.relative_brightness_bottom,
+            blank_screen=self.blank_screen,
+            blank_screen_detection=self.blank_screen_detection,
+            blank_screen_low_brightness_duration_seconds=self.blank_screen_low_brightness_duration_seconds,
+            blank_screen_same_tone_duration_seconds=self.blank_screen_same_tone_duration_seconds,
         )
 
     async def async_restore_effect_control_state(
         self,
         state: PriorControlState,
         *,
-        overwritten_diy_code: int,
+        overwritten_diy_code: int | None,
     ) -> bool:
+        if (
+            self.profile.supports_white_balance
+            and state.white_balance_red is not None
+            and state.white_balance_blue is not None
+        ):
+            self.white_balance_red = state.white_balance_red
+            self.white_balance_blue = state.white_balance_blue
+            await apply_white_balance(self)
+        if (
+            self.profile.supports_relative_brightness
+            and state.relative_brightness_left is not None
+            and state.relative_brightness_top is not None
+            and state.relative_brightness_right is not None
+            and state.relative_brightness_bottom is not None
+        ):
+            self.relative_brightness = state.relative_brightness
+            self.relative_brightness_left = state.relative_brightness_left
+            self.relative_brightness_top = state.relative_brightness_top
+            self.relative_brightness_right = state.relative_brightness_right
+            self.relative_brightness_bottom = state.relative_brightness_bottom
+            await apply_relative_brightness(self)
+        if self.profile.supports_blank_screen and state.blank_screen is not None:
+            self.blank_screen = state.blank_screen
+            self.blank_screen_detection = state.blank_screen_detection
+            self.blank_screen_low_brightness_duration_seconds = state.blank_screen_low_brightness_duration_seconds
+            self.blank_screen_same_tone_duration_seconds = state.blank_screen_same_tone_duration_seconds
+            await apply_blank_screen(self)
         if not state.is_on:
             await self.send_command(build_power(False, self.model))
             self.is_on = False
             return self.profile.state_readable and await self.refresh_state(expected_on=False)
         if state.mode == "custom":
-            if state.diy_code is None or state.diy_code == overwritten_diy_code or self.model != "H617A":
+            if (
+                state.diy_code is None
+                or (overwritten_diy_code is not None and state.diy_code == overwritten_diy_code)
+                or self.model != "H617A"
+            ):
                 return False
             await self.send_command(build_h617a_diy_activation(state.diy_code))
             self.diy_code = state.diy_code
@@ -367,11 +435,51 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.music_mode = self.video_mode = "off"
             return self.profile.state_readable and await self.refresh_state(expected_effect=state.effect)
         if state.mode == "music" and state.music_mode in self.profile.music_modes:
-            self.music_sensitivity = state.music_sensitivity
-            self.music_calm = state.music_calm
-            self.music_color = state.music_color
+            self.install_music_profile_state(
+                sensitivity=state.music_sensitivity,
+                colour=state.music_color,
+                calm=state.music_calm,
+                parameters={
+                    "point": state.music_separation_point,
+                    "gradient": (
+                        state.music_daynight_gradient
+                        if state.music_mode == "day_and_night"
+                        else state.music_separation_gradient
+                    ),
+                    "relative_brightness": state.music_hopping_brightness,
+                    "key_count": state.music_piano_key_count,
+                    "direction": state.music_fountain_direction,
+                    "segment_count": state.music_daynight_segments,
+                    "speed": state.music_daynight_speed,
+                },
+            )
             await self.async_select_music_slug(state.music_mode)
+            mode_code = MUSIC_MODE_SLUGS[state.music_mode]
+            if music_params_for_mode(mode_code):
+                await self.async_apply_music_params(mode_code)
             return self.profile.state_readable and await self.refresh_state(expected_music_mode=state.music_mode)
+        if state.mode == "video" and state.video_mode in {"movie", "game"} and self.profile.supports_video_mode:
+            self.video_mode = state.video_mode
+            self.video_full_screen = state.video_full_screen
+            self.video_saturation = state.video_saturation
+            self.video_sound_effects = state.video_sound_effects
+            self.video_sound_effects_softness = state.video_sound_effects_softness
+            return await apply_active_video_mode(self)
+        if state.mode == "scene" and state.effect is not None:
+            scene = MODEL_SCENES[self.model].get(state.effect)
+            if scene is None:
+                return False
+            packets = (
+                build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
+                if self.profile.uses_h6199_scene_protocol
+                else build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed)
+            )
+            for packet in packets:
+                await self.send_command(packet)
+            self.effect = state.effect
+            self.diy_code = None
+            self.music_mode = self.video_mode = "off"
+            return self.profile.state_readable and await self.refresh_state(expected_effect=state.effect)
         if state.mode != "colour":
             return False
         await self.send_command(build_power(True, self.model))
@@ -844,6 +952,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         expected_white_balance: tuple[int, int] | None = None,
         expected_blank_screen: bool | None = None,
         expected_relative_brightness: tuple[int, int, int, int] | None = None,
+        refresh_display_settings: bool = False,
+        refresh_relative_brightness: bool = False,
         timeout: float = 2.0,
     ) -> bool:
         if not self.profile.state_readable:
@@ -904,9 +1014,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         query_power = expected_on is not None
         query_brightness = expected_brightness is not None
         query_color = expected_music_auto_color or any(value is not None for value in color_expectations)
-        query_white_balance = expected_white_balance is not None
-        query_blank_screen = expected_blank_screen is not None
-        query_relative_brightness = expected_relative_brightness is not None
+        query_white_balance = expected_white_balance is not None or refresh_display_settings
+        query_blank_screen = expected_blank_screen is not None or refresh_display_settings
+        query_relative_brightness = expected_relative_brightness is not None or refresh_relative_brightness
         if not any(
             (
                 query_power,

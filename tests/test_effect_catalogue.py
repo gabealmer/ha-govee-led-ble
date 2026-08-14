@@ -259,6 +259,10 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
     assert h617a_scenes is not None
     assert h617a_scenes.application_route is ApplicationRoute.STUDIO_SCENE_APPLY
     assert h617a_scenes.compiler_deployer_strategy is CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION
+    assert h617a_music is not None
+    assert h617a_music.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+    assert h617a_music.compiler_deployer_strategy is CompilerDeployerStrategy.COORDINATOR_WRITER
+    assert h617a_music.verification_confidence is VerificationConfidence.SELECTION_ONLY
     assert all(
         capability is not None
         and capability.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
@@ -268,10 +272,10 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
     )
     assert all(
         capability is not None
-        and capability.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
+        and capability.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
         and capability.compiler_deployer_strategy is CompilerDeployerStrategy.COORDINATOR_WRITER
         and capability.verification_confidence is VerificationConfidence.STATE_CONFIRMED
-        for capability in (h617a_music, h6199_music, h6199_video)
+        for capability in (h6199_music, h6199_video)
     )
     assert h6199_diy is not None
     assert h6199_diy.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY

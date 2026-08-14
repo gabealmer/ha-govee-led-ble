@@ -15,8 +15,11 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     ActivationMode,
     CompatibilityState,
     compatibility,
+    compile_application,
     compile_effect,
     compile_h617a,
+    compile_music_profile,
+    compile_video_profile,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import (
     EFFECT_COMPILER_VERSION,
@@ -434,6 +437,100 @@ def test_h6199_is_explicitly_incompatible() -> None:
 
     assert result.state is CompatibilityState.INCOMPATIBLE
     assert "not supported" in result.reasons[0]
+
+
+@pytest.mark.parametrize(
+    ("item", "model", "reason"),
+    [
+        (
+            LibraryItem.new("Music", MusicProfile("H617A", "separation", 50)),
+            "H6199",
+            "targets H617A",
+        ),
+        (
+            LibraryItem.new("Music", MusicProfile("H617A", "future_mode", 50)),
+            "H617A",
+            "does not support music mode",
+        ),
+        (
+            LibraryItem.new(
+                "Video",
+                VideoProfile(
+                    "H6199",
+                    "movie",
+                    True,
+                    70,
+                    False,
+                    50,
+                    10,
+                    RelativeBrightness(80, 80, 80, 80),
+                    False,
+                ),
+            ),
+            "H617A",
+            "video-profile application is not supported",
+        ),
+    ],
+)
+def test_profile_compatibility_rejects_model_or_mode_mismatches(item, model, reason) -> None:
+    result = compatibility(item, model)
+
+    assert result.state is CompatibilityState.INCOMPATIBLE
+    assert reason in result.reasons[0]
+
+
+def test_compile_application_requires_the_matching_application_route() -> None:
+    custom = LibraryItem.new("Custom", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+
+    with pytest.raises(ValueError, match="H6199 custom-effect upload is not supported"):
+        compile_application(custom, "H6199", diy_code=24)
+    with pytest.raises(ValueError, match="requires a DIY code"):
+        compile_application(custom, "H617A")
+
+
+def test_profile_compilers_reject_the_wrong_content_type() -> None:
+    custom = LibraryItem.new("Custom", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+
+    with pytest.raises(ValueError, match="content is not a music profile"):
+        compile_music_profile(custom, "H617A")
+    with pytest.raises(ValueError, match="content is not a video profile"):
+        compile_video_profile(custom, "H617A")
+
+
+@pytest.mark.parametrize(
+    ("mode", "calm", "parameters", "message"),
+    [
+        ("rolling", False, {}, "does not support a style setting"),
+        ("separation", None, {"point": 6}, "point must be an integer from 1 to 5"),
+        ("separation", None, {"gradient": 1}, "gradient must be a boolean"),
+        ("fountain", None, {"direction": "sideways"}, "direction must be one of"),
+    ],
+)
+def test_music_profile_compiler_rejects_invalid_mode_settings(mode, calm, parameters, message) -> None:
+    item = LibraryItem.new(
+        "Music",
+        MusicProfile("H617A", mode, 50, None, calm, parameters),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        compile_music_profile(item, "H617A")
+
+
+def test_music_profile_compiler_applies_parameter_defaults_and_select_values() -> None:
+    separation = compile_music_profile(
+        LibraryItem.new("Separation", MusicProfile("H617A", "separation", 50)),
+        "H617A",
+    )
+    fountain = compile_music_profile(
+        LibraryItem.new(
+            "Fountain",
+            MusicProfile("H617A", "fountain", 50, parameters={"direction": "two_way"}),
+        ),
+        "H617A",
+    )
+
+    assert separation.parameters == {"point": 1, "gradient": True}
+    assert fountain.parameters == {"direction": "two_way"}
 
 
 def test_editor_contract_reports_first_slice_boundaries() -> None:

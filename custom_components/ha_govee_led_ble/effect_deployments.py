@@ -65,6 +65,8 @@ class DeploymentPhase(StrEnum):
 class ObservationConfidence(StrEnum):
     EXACT_SESSION = "exact_session"
     ACTIVATION_MATCH = "activation_match"
+    SETTINGS_MATCH = "settings_match"
+    MODE_MATCH = "mode_match"
     UNKNOWN = "unknown"
 
 
@@ -82,6 +84,29 @@ class PriorControlState:
     music_sensitivity: int = 100
     music_calm: bool = False
     music_color: tuple[int, int, int] | None = None
+    music_separation_point: int = 1
+    music_separation_gradient: bool = True
+    music_hopping_brightness: int = 50
+    music_piano_key_count: int = 15
+    music_fountain_direction: str = "clockwise"
+    music_daynight_segments: int = 1
+    music_daynight_speed: int = 10
+    music_daynight_gradient: bool = False
+    video_full_screen: bool = True
+    video_saturation: int = 100
+    video_sound_effects: bool = False
+    video_sound_effects_softness: int = 100
+    white_balance_red: int | None = None
+    white_balance_blue: int | None = None
+    relative_brightness: int | None = None
+    relative_brightness_left: int | None = None
+    relative_brightness_top: int | None = None
+    relative_brightness_right: int | None = None
+    relative_brightness_bottom: int | None = None
+    blank_screen: bool | None = None
+    blank_screen_detection: int | None = None
+    blank_screen_low_brightness_duration_seconds: int | None = None
+    blank_screen_same_tone_duration_seconds: int | None = None
 
     def __post_init__(self) -> None:
         validate_bounded_string(
@@ -131,6 +156,64 @@ class PriorControlState:
             raise EffectStorageError("prior music style must be a boolean")
         if self.music_color is not None:
             _validate_rgb(self.music_color, "prior music colour")
+        numeric_values: tuple[tuple[int, str, int, int], ...] = (
+            (self.music_separation_point, "prior separation point", 1, 5),
+            (self.music_hopping_brightness, "prior hopping brightness", 0, 50),
+            (self.music_piano_key_count, "prior piano key count", 8, 15),
+            (self.music_daynight_segments, "prior day-and-night segment count", 1, 7),
+            (self.music_daynight_speed, "prior day-and-night speed", 1, 50),
+            (self.video_saturation, "prior video saturation", 0, 100),
+            (self.video_sound_effects_softness, "prior video sound-effects softness", 1, 100),
+        )
+        for numeric_value, numeric_name, minimum, maximum in numeric_values:
+            if (
+                not isinstance(numeric_value, int)
+                or isinstance(numeric_value, bool)
+                or not minimum <= numeric_value <= maximum
+            ):
+                raise EffectStorageError(f"{numeric_name} must be from {minimum} to {maximum}")
+        boolean_values: tuple[tuple[bool, str], ...] = (
+            (self.music_separation_gradient, "prior separation gradient"),
+            (self.music_daynight_gradient, "prior day-and-night gradient"),
+            (self.video_full_screen, "prior video capture area"),
+            (self.video_sound_effects, "prior video sound effects"),
+        )
+        for boolean_value, boolean_name in boolean_values:
+            if not isinstance(boolean_value, bool):
+                raise EffectStorageError(f"{boolean_name} must be a boolean")
+        if self.music_fountain_direction not in {"clockwise", "counterclockwise", "two_way"}:
+            raise EffectStorageError("prior fountain direction is invalid")
+        optional_numeric_values: tuple[tuple[int | None, str, int, int], ...] = (
+            (self.white_balance_red, "prior white-balance red", 0, 255),
+            (self.white_balance_blue, "prior white-balance blue", 0, 255),
+            (self.relative_brightness, "prior relative brightness", 1, 100),
+            (self.relative_brightness_left, "prior left relative brightness", 1, 100),
+            (self.relative_brightness_top, "prior top relative brightness", 1, 100),
+            (self.relative_brightness_right, "prior right relative brightness", 1, 100),
+            (self.relative_brightness_bottom, "prior bottom relative brightness", 1, 100),
+            (self.blank_screen_detection, "prior blank-screen detection", 0, 255),
+            (
+                self.blank_screen_low_brightness_duration_seconds,
+                "prior blank-screen low-brightness duration",
+                0,
+                65535,
+            ),
+            (
+                self.blank_screen_same_tone_duration_seconds,
+                "prior blank-screen same-tone duration",
+                0,
+                65535,
+            ),
+        )
+        for optional_value, optional_name, minimum, maximum in optional_numeric_values:
+            if optional_value is not None and (
+                not isinstance(optional_value, int)
+                or isinstance(optional_value, bool)
+                or not minimum <= optional_value <= maximum
+            ):
+                raise EffectStorageError(f"{optional_name} must be from {minimum} to {maximum}")
+        if self.blank_screen is not None and not isinstance(self.blank_screen, bool):
+            raise EffectStorageError("prior blank-screen state must be a boolean or null")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -146,6 +229,29 @@ class PriorControlState:
             "music_sensitivity": self.music_sensitivity,
             "music_calm": self.music_calm,
             "music_color": list(self.music_color) if self.music_color is not None else None,
+            "music_separation_point": self.music_separation_point,
+            "music_separation_gradient": self.music_separation_gradient,
+            "music_hopping_brightness": self.music_hopping_brightness,
+            "music_piano_key_count": self.music_piano_key_count,
+            "music_fountain_direction": self.music_fountain_direction,
+            "music_daynight_segments": self.music_daynight_segments,
+            "music_daynight_speed": self.music_daynight_speed,
+            "music_daynight_gradient": self.music_daynight_gradient,
+            "video_full_screen": self.video_full_screen,
+            "video_saturation": self.video_saturation,
+            "video_sound_effects": self.video_sound_effects,
+            "video_sound_effects_softness": self.video_sound_effects_softness,
+            "white_balance_red": self.white_balance_red,
+            "white_balance_blue": self.white_balance_blue,
+            "relative_brightness": self.relative_brightness,
+            "relative_brightness_left": self.relative_brightness_left,
+            "relative_brightness_top": self.relative_brightness_top,
+            "relative_brightness_right": self.relative_brightness_right,
+            "relative_brightness_bottom": self.relative_brightness_bottom,
+            "blank_screen": self.blank_screen,
+            "blank_screen_detection": self.blank_screen_detection,
+            "blank_screen_low_brightness_duration_seconds": self.blank_screen_low_brightness_duration_seconds,
+            "blank_screen_same_tone_duration_seconds": self.blank_screen_same_tone_duration_seconds,
         }
 
     @classmethod
@@ -163,6 +269,35 @@ class PriorControlState:
             music_sensitivity=_optional_int(raw, "music_sensitivity", default=100),
             music_calm=_optional_bool(raw, "music_calm", default=False),
             music_color=_optional_rgb(raw, "music_color"),
+            music_separation_point=_optional_int(raw, "music_separation_point", default=1),
+            music_separation_gradient=_optional_bool(raw, "music_separation_gradient", default=True),
+            music_hopping_brightness=_optional_int(raw, "music_hopping_brightness", default=50),
+            music_piano_key_count=_optional_int(raw, "music_piano_key_count", default=15),
+            music_fountain_direction=_optional_str(raw, "music_fountain_direction") or "clockwise",
+            music_daynight_segments=_optional_int(raw, "music_daynight_segments", default=1),
+            music_daynight_speed=_optional_int(raw, "music_daynight_speed", default=10),
+            music_daynight_gradient=_optional_bool(raw, "music_daynight_gradient", default=False),
+            video_full_screen=_optional_bool(raw, "video_full_screen", default=True),
+            video_saturation=_optional_int(raw, "video_saturation", default=100),
+            video_sound_effects=_optional_bool(raw, "video_sound_effects", default=False),
+            video_sound_effects_softness=_optional_int(raw, "video_sound_effects_softness", default=100),
+            white_balance_red=_optional_int(raw, "white_balance_red"),
+            white_balance_blue=_optional_int(raw, "white_balance_blue"),
+            relative_brightness=_optional_int(raw, "relative_brightness"),
+            relative_brightness_left=_optional_int(raw, "relative_brightness_left"),
+            relative_brightness_top=_optional_int(raw, "relative_brightness_top"),
+            relative_brightness_right=_optional_int(raw, "relative_brightness_right"),
+            relative_brightness_bottom=_optional_int(raw, "relative_brightness_bottom"),
+            blank_screen=_optional_bool(raw, "blank_screen"),
+            blank_screen_detection=_optional_int(raw, "blank_screen_detection"),
+            blank_screen_low_brightness_duration_seconds=_optional_int(
+                raw,
+                "blank_screen_low_brightness_duration_seconds",
+            ),
+            blank_screen_same_tone_duration_seconds=_optional_int(
+                raw,
+                "blank_screen_same_tone_duration_seconds",
+            ),
         )
 
 
@@ -170,11 +305,12 @@ class PriorControlState:
 class DeploymentRecord:
     operation_id: UUID
     config_entry_id: str
-    diy_code: int
+    diy_code: int | None
     phase: DeploymentPhase
     compiler_version: int
     artifact_sha256: str
     updated_at: str
+    content_kind: str = "custom_effect"
     target_mode: str = "custom"
     target_effect: str | None = None
     evidence_codes: tuple[str, ...] = ()
@@ -195,10 +331,18 @@ class DeploymentRecord:
             maximum=MAX_IDENTIFIER_LENGTH,
             error_type=EffectStorageError,
         )
-        if not isinstance(self.diy_code, int) or not 0 <= self.diy_code <= 0xFFFF:
+        if self.diy_code is not None and (
+            not isinstance(self.diy_code, int) or isinstance(self.diy_code, bool) or not 0 <= self.diy_code <= 0xFFFF
+        ):
             raise EffectStorageError("deployment DIY code must be from 0 to 65535")
-        if self.target_mode not in {"custom", "scene"}:
-            raise EffectStorageError("deployment target mode must be custom or scene")
+        validate_bounded_string(
+            self.content_kind,
+            "deployment content kind",
+            maximum=MAX_IDENTIFIER_LENGTH,
+            error_type=EffectStorageError,
+        )
+        if self.target_mode not in {"custom", "scene", "music", "video"}:
+            raise EffectStorageError("deployment target mode must be custom, scene, music or video")
         if self.target_effect is not None:
             validate_bounded_string(
                 self.target_effect,
@@ -209,9 +353,7 @@ class DeploymentRecord:
         if self.target_mode == "scene" and self.target_effect is None:
             raise EffectStorageError("scene deployment must include a target effect")
         if len(self.evidence_codes) > MAX_DEPLOYMENT_EVIDENCE_CODES:
-            raise EffectStorageError(
-                f"deployment must not exceed {MAX_DEPLOYMENT_EVIDENCE_CODES} evidence codes"
-            )
+            raise EffectStorageError(f"deployment must not exceed {MAX_DEPLOYMENT_EVIDENCE_CODES} evidence codes")
         for code in self.evidence_codes:
             validate_bounded_string(
                 code,
@@ -265,6 +407,7 @@ class DeploymentRecord:
             "operation_id": str(self.operation_id),
             "config_entry_id": self.config_entry_id,
             "diy_code": self.diy_code,
+            "content_kind": self.content_kind,
             "phase": self.phase.value,
             "compiler_version": self.compiler_version,
             "artifact_sha256": self.artifact_sha256,
@@ -288,6 +431,7 @@ class DeploymentRecord:
             "operation_id": str(self.operation_id),
             "config_entry_id": self.config_entry_id,
             "diy_code": self.diy_code,
+            "content_kind": self.content_kind,
             "target_mode": self.target_mode,
             "target_effect": self.target_effect,
             "phase": self.phase.value,
@@ -326,7 +470,8 @@ class DeploymentRecord:
         return cls(
             operation_id=operation_id,
             config_entry_id=_required_str(raw, "config_entry_id"),
-            diy_code=_required_int(raw, "diy_code"),
+            diy_code=_optional_int(raw, "diy_code"),
+            content_kind=_optional_str(raw, "content_kind") or "custom_effect",
             phase=phase,
             compiler_version=_required_int(raw, "compiler_version"),
             artifact_sha256=_required_str(raw, "artifact_sha256"),

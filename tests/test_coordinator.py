@@ -153,11 +153,7 @@ async def test_restore_effect_control_state_cannot_recover_overwritten_diy_slot(
 
 async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
     for coordinator in (coord, h6199):
-        effect, scene = next(
-            (name, entry)
-            for name, entry in MODEL_SCENES[coordinator.model].items()
-            if entry.param
-        )
+        effect, scene = next((name, entry) for name, entry in MODEL_SCENES[coordinator.model].items() if entry.param)
         state = PriorControlState(
             mode="scene",
             is_on=True,
@@ -184,6 +180,186 @@ async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
         assert send.await_args_list == [call(packet) for packet in expected]
         refresh.assert_awaited_once_with(expected_effect=effect)
         assert coordinator.active_mode == "scene"
+
+
+async def test_restore_effect_control_state_reapplies_powered_off_state(coord):
+    state = PriorControlState(
+        mode="colour",
+        is_on=False,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+    )
+
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=None,
+        )
+
+    assert recovered is True
+    send.assert_awaited_once_with(proto.build_power(False))
+    refresh.assert_awaited_once_with(expected_on=False)
+
+
+async def test_restore_effect_control_state_reactivates_unmodified_diy_slot(coord):
+    state = PriorControlState(
+        mode="custom",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        diy_code=700,
+    )
+
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=800,
+        )
+
+    assert recovered is True
+    send.assert_awaited_once_with(proto.build_h617a_diy_activation(700))
+    refresh.assert_awaited_once_with()
+    assert coord.diy_code == 700
+
+
+async def test_restore_effect_control_state_reapplies_complete_music_profile(coord):
+    state = PriorControlState(
+        mode="music",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        music_mode="separation",
+        music_sensitivity=50,
+        music_color=(4, 5, 6),
+        music_separation_point=4,
+        music_separation_gradient=False,
+    )
+
+    with (
+        patch.object(coord, "install_music_profile_state") as install,
+        patch.object(coord, "async_select_music_slug", new_callable=AsyncMock) as select,
+        patch.object(coord, "async_apply_music_params", new_callable=AsyncMock) as parameters,
+        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=None,
+        )
+
+    assert recovered is True
+    install.assert_called_once_with(
+        sensitivity=50,
+        colour=(4, 5, 6),
+        calm=False,
+        parameters={
+            "point": 4,
+            "gradient": False,
+            "relative_brightness": 50,
+            "key_count": 15,
+            "direction": "clockwise",
+            "segment_count": 1,
+            "speed": 10,
+        },
+    )
+    select.assert_awaited_once_with("separation")
+    parameters.assert_awaited_once_with(0x32)
+    refresh.assert_awaited_once_with(expected_music_mode="separation")
+
+
+async def test_restore_effect_control_state_reapplies_complete_video_profile(h6199):
+    state = PriorControlState(
+        mode="video",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        video_mode="game",
+        video_full_screen=False,
+        video_saturation=63,
+        video_sound_effects=True,
+        video_sound_effects_softness=27,
+        white_balance_red=21,
+        white_balance_blue=5,
+        relative_brightness_left=20,
+        relative_brightness_top=30,
+        relative_brightness_right=40,
+        relative_brightness_bottom=50,
+        blank_screen=True,
+        blank_screen_detection=2,
+        blank_screen_low_brightness_duration_seconds=10,
+        blank_screen_same_tone_duration_seconds=120,
+    )
+
+    with (
+        patch(f"{M}.apply_white_balance", new_callable=AsyncMock, return_value=True) as white_balance,
+        patch(f"{M}.apply_relative_brightness", new_callable=AsyncMock, return_value=True) as relative_brightness,
+        patch(f"{M}.apply_blank_screen", new_callable=AsyncMock, return_value=True) as blank_screen,
+        patch(f"{M}.apply_active_video_mode", new_callable=AsyncMock, return_value=True) as video_mode,
+    ):
+        recovered = await h6199.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=None,
+        )
+
+    assert recovered is True
+    white_balance.assert_awaited_once_with(h6199)
+    relative_brightness.assert_awaited_once_with(h6199)
+    blank_screen.assert_awaited_once_with(h6199)
+    video_mode.assert_awaited_once_with(h6199)
+    assert (
+        h6199.video_mode,
+        h6199.video_full_screen,
+        h6199.video_saturation,
+        h6199.video_sound_effects,
+        h6199.video_sound_effects_softness,
+    ) == ("game", False, 63, True, 27)
+    assert (h6199.white_balance_red, h6199.white_balance_blue) == (21, 5)
+    assert (
+        h6199.relative_brightness_left,
+        h6199.relative_brightness_top,
+        h6199.relative_brightness_right,
+        h6199.relative_brightness_bottom,
+    ) == (20, 30, 40, 50)
+    assert h6199.blank_screen is True
+
+
+async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):
+    state = PriorControlState(
+        mode="scene",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        effect="forest",
+    )
+    scene = MODEL_SCENES["H6199"]["forest"]
+
+    with (
+        patch.object(h6199, "send_command", new_callable=AsyncMock) as send,
+        patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await h6199.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=None,
+        )
+
+    assert recovered is True
+    assert send.await_args_list == [
+        call(packet)
+        for packet in proto.build_h6199_scene_multi(
+            scene.param,
+            scene.code,
+            scene.scene_type,
+            scene.music_code,
+        )
+    ]
+    refresh.assert_awaited_once_with(expected_effect="forest")
+    assert h6199.effect == "forest"
+    assert (h6199.diy_code, h6199.music_mode, h6199.video_mode) == (None, "off", "off")
 
 
 async def test_send_command(coord):
