@@ -29,10 +29,49 @@ import type {
 } from "./types";
 import { isCompatibleEditorInfo } from "./validation";
 
-type StudioSection = "scenes" | "custom" | "advanced";
+type StudioSection = "scenes" | "custom";
 type AdvancedEditableContent = AdvancedContent | LayeredSceneContent;
 type EditableEffectContent = CustomEffectContent | AdvancedEditableContent;
 type NewEffectKind = CustomEffectContent["kind"] | AdvancedContent["kind"];
+type CustomEffectCategory =
+  | "all"
+  | "single-layer"
+  | "multi-layer"
+  | "advanced";
+type CustomEffectListEntry =
+  | {
+      kind: "paint";
+      key: "template:paint";
+      label: "Paint";
+      category: "single-layer";
+    }
+  | {
+      kind: "single";
+      key: string;
+      label: string;
+      category: "single-layer";
+      family: number;
+      variant: number;
+    }
+  | {
+      kind: "multi";
+      key: "template:mix";
+      label: "Mix";
+      category: "multi-layer";
+    }
+  | {
+      kind: "advanced";
+      key: "template:advanced";
+      label: "Layered";
+      category: "advanced";
+    }
+  | {
+      kind: "saved";
+      key: string;
+      label: string;
+      category: Exclude<CustomEffectCategory, "all">;
+      item: LibrarySummary;
+    };
 
 const SEGMENT_COUNT = 15;
 
@@ -60,6 +99,12 @@ export class GoveeLedEffectStudio extends LitElement {
 
   @state()
   private section: StudioSection = "custom";
+
+  @state()
+  private customEffectCategory: CustomEffectCategory = "all";
+
+  @state()
+  private customTemplateSelection?: string;
 
   @state()
   private library: LibrarySnapshot = {
@@ -226,11 +271,14 @@ export class GoveeLedEffectStudio extends LitElement {
         ? html`<div class="notice" role="status">${this.notice}</div>`
         : nothing}
 
-      <main class="studio ${this.section === "scenes" ? "scenes-mode" : ""}">
+      <main
+        class="studio ${this.section === "scenes"
+          ? "scenes-mode"
+          : "custom-mode"}"
+      >
         <nav class="primary-nav" aria-label="Create">
           ${this.navButton("scenes", "Scenes")}
-          ${this.navButton("custom", "Custom Effects")}
-          ${this.navButton("advanced", "Advanced")}
+          ${this.navButton("custom", "My Effects")}
         </nav>
 
         <govee-scene-browser
@@ -242,11 +290,7 @@ export class GoveeLedEffectStudio extends LitElement {
           @library-item-saved=${this.sceneLibraryItemSaved}
           @scene-template-selected=${this.sceneTemplateSelected}
         ></govee-scene-browser>
-        ${this.section === "custom"
-          ? this.renderCustomEffects()
-          : this.section === "advanced"
-            ? this.renderAdvancedEffects()
-            : nothing}
+        ${this.section === "custom" ? this.renderCustomEffects() : nothing}
       </main>
     `;
   }
@@ -279,110 +323,17 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderCustomEffects() {
     return html`
-      <aside class="library" aria-label="Custom effects">
-        <div class="library-heading">
-          <div>
-            <h2>Custom effects</h2>
-          </div>
-          ${this.isAdmin
-            ? html`
-                <button
-                  class="new-kind"
-                  type="button"
-                  @click=${() => this.resumeOrCreateEffect("custom")}
-                >
-                  New effect
-                </button>
-              `
-            : nothing}
-        </div>
+      <aside class="effect-categories" aria-label="Effect categories">
+        ${this.customEffectCategoryButton("all", "All")}
+        ${this.customEffectCategoryButton("single-layer", "Single Layer")}
+        ${this.customEffectCategoryButton("multi-layer", "Multi Layer")}
+        ${this.customEffectCategoryButton("advanced", "Advanced")}
+      </aside>
 
-        <p class="eyebrow">Painted</p>
-        ${this.customCatalogue?.painted_effects.map(
-          (effect) => html`
-            <button
-              class="selector"
-              type="button"
-              ?disabled=${!this.isAdmin}
-              @click=${() =>
-                void this.newEffect("h617a_painted", undefined, {
-                  name: `New ${effect.label} effect`,
-                  content: {
-                    ...blankPainted(),
-                    effect: effect.id,
-                  },
-                })}
-            >
-              <span>${effect.label}</span>
-              <small>Painted</small>
-            </button>
-          `,
+      <aside class="library" aria-label="My effects">
+        ${this.customEffectEntries.map((entry) =>
+          this.customEffectListButton(entry),
         )}
-
-        <p class="eyebrow">Single</p>
-        ${this.customCatalogue?.effects.map(
-          (effect) => html`
-            <button
-              class="selector"
-              type="button"
-              ?disabled=${!this.isAdmin}
-              @click=${() => {
-                const content = blankCustomEffect(
-                  "h617a_single",
-                  this.customCatalogue!,
-                );
-                void this.newEffect("h617a_single", undefined, {
-                  name: `New ${effect.label} effect`,
-                  content: {
-                    ...content,
-                    family: effect.family,
-                    variant: effect.variant,
-                  },
-                });
-              }}
-            >
-              <span>${effect.label}</span>
-              <small>Single</small>
-            </button>
-          `,
-        )}
-
-        <p class="eyebrow">Multi</p>
-        <button
-          class="selector"
-          type="button"
-          ?disabled=${!this.isAdmin}
-          @click=${() =>
-            void this.newEffect("h617a_multi", undefined, {
-              name: "New Mix effect",
-              content: blankCustomEffect(
-                "h617a_multi",
-                this.customCatalogue!,
-              ),
-            })}
-        >
-          <span>Mix</span>
-          <small>Multi</small>
-        </button>
-
-        ${this.library.items.some((item) => isCustomEffectKind(item.kind))
-          ? html`
-              <p class="eyebrow saved-heading">Saved</p>
-              ${this.renderLibraryGroup("h617a_painted", "Painted")}
-              ${this.renderLibraryGroup("h617a_single", "Single")}
-              ${this.renderLibraryGroup("h617a_multi", "Multi")}
-            `
-          : nothing}
-
-        ${!this.library.items.some((item) => isCustomEffectKind(item.kind))
-          ? html`
-              <p class="empty">
-                ${this.isAdmin
-                  ? "Choose an effect to begin."
-                  : "No custom effects have been saved yet."}
-              </p>
-            `
-          : nothing}
       </aside>
 
       <section class="editor">
@@ -391,13 +342,17 @@ export class GoveeLedEffectStudio extends LitElement {
             ? this.content.kind === "h617a_painted"
               ? this.renderPaintedEditor()
               : this.renderPaletteEffectEditor()
-            : this.renderEmptyEditor(
-                "Select a custom effect",
-                "Choose a saved effect to inspect it.",
-              )
+            : isAdvancedEditableContent(this.content)
+              ? this.renderAdvancedEditor()
+              : this.content.kind === "opaque"
+                ? this.renderOpaqueEditor(this.content)
+                : this.renderEmptyEditor(
+                    "Select an effect",
+                    "Choose a saved effect to inspect it.",
+                  )
           : html`
               <div class="empty-editor">
-                <h2>Select a custom effect</h2>
+                <h2>Select an effect</h2>
                 <p>Choose a saved effect to inspect it.</p>
               </div>
             `}
@@ -405,100 +360,136 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
-  private renderAdvancedEffects() {
-    const advancedItems = this.library.items.filter(
-      (item) => isAdvancedEditableKind(item.kind),
-    );
-    const opaqueItems = this.library.items.filter(
-      (item) => !isKnownEffectKind(item.kind),
-    );
+  private get customEffectEntries(): CustomEffectListEntry[] {
+    const entries: CustomEffectListEntry[] = [
+      {
+        kind: "paint",
+        key: "template:paint",
+        label: "Paint",
+        category: "single-layer",
+      },
+      ...(this.customCatalogue?.effects.map(
+        (effect): CustomEffectListEntry => ({
+          kind: "single",
+          key: `template:single:${effect.family}:${effect.variant}`,
+          label: effect.label,
+          category: "single-layer",
+          family: effect.family,
+          variant: effect.variant,
+        }),
+      ) ?? []),
+      {
+        kind: "multi",
+        key: "template:mix",
+        label: "Mix",
+        category: "multi-layer",
+      },
+      {
+        kind: "advanced",
+        key: "template:advanced",
+        label: "Layered",
+        category: "advanced",
+      },
+      ...this.library.items
+        .filter((item) => isMyEffectKind(item.kind))
+        .map(
+          (item): CustomEffectListEntry => ({
+            kind: "saved",
+            key: `saved:${item.id}`,
+            label: item.name,
+            category: customEffectCategoryForKind(item.kind),
+            item,
+          }),
+        ),
+    ];
+    return entries
+      .filter(
+        (entry) =>
+          this.customEffectCategory === "all" ||
+          entry.category === this.customEffectCategory,
+      )
+      .sort((left, right) => compareLabels(left.label, right.label));
+  }
+
+  private customEffectCategoryButton(
+    category: CustomEffectCategory,
+    label: string,
+  ) {
+    const selected = this.customEffectCategory === category;
     return html`
-      <aside class="library" aria-label="Advanced effects">
-        <div class="library-heading">
-          <div>
-            <p class="eyebrow">Library</p>
-            <h2>Advanced effects</h2>
-          </div>
-          ${this.isAdmin
-            ? html`
-                <button
-                  class="new-kind"
-                  type="button"
-                  @click=${() => this.resumeOrCreateEffect("advanced")}
-                >
-                  New layered effect
-                </button>
-              `
-            : nothing}
-        </div>
-
-        ${advancedItems.length
-          ? html`
-              <p class="list-label">Layered</p>
-              ${advancedItems.map(
-                (item) => html`
-                  <button
-                    class="selector item ${this.currentItem?.id === item.id
-                      ? "selected"
-                      : ""}"
-                    type="button"
-                    @click=${() => this.selectItem(item.id)}
-                  >
-                    <span>${item.name}</span>
-                    <small>${advancedKindLabel(item.kind)}</small>
-                  </button>
-                `,
-              )}
-            `
-          : nothing}
-
-        ${opaqueItems.length
-          ? html`
-              <p class="list-label">Other</p>
-              ${opaqueItems.map(
-                (item) => html`
-                  <button
-                    class="selector item ${this.currentItem?.id === item.id
-                      ? "selected"
-                      : ""}"
-                    type="button"
-                    @click=${() => this.selectItem(item.id)}
-                  >
-                    <span>${item.name}</span>
-                    <small>${item.kind}</small>
-                  </button>
-                `,
-              )}
-            `
-          : nothing}
-
-        ${!advancedItems.length && !opaqueItems.length
-          ? html`
-              <p class="empty">
-                ${this.isAdmin
-                  ? "Create your first layered effect."
-                  : "No layered effects have been saved yet."}
-              </p>
-            `
-          : nothing}
-      </aside>
-
-      <section class="editor">
-        ${this.name || this.currentItem
-          ? isAdvancedEditableContent(this.content)
-            ? this.renderAdvancedEditor()
-            : this.content.kind === "opaque"
-              ? this.renderOpaqueEditor(this.content)
-              : this.renderEmptyEditor(
-                  "Select an advanced effect",
-                  "Choose a saved layered effect to inspect it.",
-                )
-          : this.renderEmptyEditor(
-              "Select an advanced effect",
-              "Choose a saved layered effect to inspect it.",
-            )}
-      </section>
+      <button
+        class="selector ${selected ? "selected" : ""}"
+        type="button"
+        aria-current=${selected ? "page" : nothing}
+        @click=${() => {
+          this.customEffectCategory = category;
+        }}
+      >
+        ${label}
+      </button>
     `;
+  }
+
+  private customEffectListButton(entry: CustomEffectListEntry) {
+    const selected =
+      entry.kind === "saved"
+        ? this.currentItem?.id === entry.item.id
+        : !this.currentItem && this.customTemplateSelection === entry.key;
+    return html`
+      <button
+        class="selector item ${selected ? "selected" : ""}"
+        type="button"
+        ?disabled=${entry.kind !== "saved" && !this.isAdmin}
+        @click=${() => this.selectCustomEffectEntry(entry)}
+      >
+        <span>${entry.label}</span>
+        <small>${customEffectCategoryLabel(entry.category)}</small>
+      </button>
+    `;
+  }
+
+  private selectCustomEffectEntry(entry: CustomEffectListEntry): void {
+    if (entry.kind === "saved") {
+      void this.selectItem(entry.item.id);
+      return;
+    }
+    if (entry.kind === "advanced") {
+      this.newEffect("advanced");
+      this.customTemplateSelection = entry.key;
+      return;
+    }
+    if (!this.customCatalogue) {
+      return;
+    }
+    if (entry.kind === "paint") {
+      this.newEffect("h617a_painted", undefined, {
+        name: "New Paint effect",
+        content: blankPainted(),
+        selectionIdentity: entry.key,
+      });
+      return;
+    }
+    if (entry.kind === "single") {
+      const content = blankCustomEffect(
+        "h617a_single",
+        this.customCatalogue,
+      );
+      this.newEffect("h617a_single", undefined, {
+        name: `New ${entry.label} effect`,
+        content: {
+          ...content,
+          family: entry.family,
+          variant: entry.variant,
+        },
+        selectionIdentity: entry.key,
+      });
+      return;
+    }
+    this.newEffect("h617a_multi", undefined, {
+      name: "New Mix effect",
+      content: blankCustomEffect("h617a_multi", this.customCatalogue),
+      selectionIdentity: entry.key,
+    });
   }
 
   private renderAdvancedEditor() {
@@ -627,33 +618,6 @@ export class GoveeLedEffectStudio extends LitElement {
         <h2>${title}</h2>
         <p>${body}</p>
       </div>
-    `;
-  }
-
-  private renderLibraryGroup(
-    kind: CustomEffectContent["kind"],
-    label: string,
-  ) {
-    const items = this.library.items.filter((item) => item.kind === kind);
-    if (!items.length) {
-      return nothing;
-    }
-    return html`
-      <p class="list-label">${label}</p>
-      ${items.map(
-        (item) => html`
-          <button
-            class="selector item ${this.currentItem?.id === item.id
-              ? "selected"
-              : ""}"
-            type="button"
-            @click=${() => this.selectItem(item.id)}
-          >
-            <span>${item.name}</span>
-            <small>${label}</small>
-          </button>
-        `,
-      )}
     `;
   }
 
@@ -898,7 +862,7 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     return html`
       <div class="custom-mode-tabs" role="tablist" aria-label="Custom effect type">
-        ${this.customModeButton("h617a_painted", "Painted")}
+        ${this.customModeButton("h617a_painted", "Paint")}
         ${this.customModeButton("h617a_single", "Single")}
         ${this.customModeButton("h617a_multi", "Multi")}
       </div>
@@ -982,39 +946,25 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     if (
-      (section === "custom" && isCustomEffectContent(this.content)) ||
-      (section === "advanced" &&
-        (isAdvancedEditableContent(this.content) ||
-          this.content.kind === "opaque"))
+      isCustomEffectContent(this.content) ||
+      isAdvancedEditableContent(this.content) ||
+      this.content.kind === "opaque"
     ) {
       return;
     }
     const item = this.library.items.find((candidate) =>
-      section === "advanced"
-        ? isAdvancedEditableKind(candidate.kind)
-        : isCustomEffectKind(candidate.kind),
+      isMyEffectKind(candidate.kind),
     );
     if (item) {
       await this.selectItem(item.id, transitionEpoch);
       return;
     }
     if (this.isAdmin) {
-      this.newEffect(
-        section === "advanced" ? "advanced" : "h617a_painted",
-        transitionEpoch,
-      );
+      this.newEffect("h617a_painted", transitionEpoch);
     } else {
       this.currentItem = undefined;
       this.name = "";
     }
-  }
-
-  private resumeOrCreateEffect(
-    section: "custom" | "advanced",
-  ): void {
-    this.newEffect(
-      section === "advanced" ? "advanced" : "h617a_painted",
-    );
   }
 
   private async load(): Promise<void> {
@@ -1213,7 +1163,9 @@ export class GoveeLedEffectStudio extends LitElement {
     this.name = event.detail.name.trim() || "Layered scene template";
     this.content = cloneLayeredSceneContent(event.detail.content);
     this.savedBaseline = undefined;
-    this.section = "advanced";
+    this.section = "custom";
+    this.customEffectCategory = "advanced";
+    this.customTemplateSelection = undefined;
     this.notice = undefined;
   }
 
@@ -1326,7 +1278,9 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     this.content = next;
-    if (/^New (Painted|Single|Multi) effect$/.test(this.name)) {
+    this.customTemplateSelection =
+      kind === "h617a_painted" ? "template:paint" : undefined;
+    if (/^New (Paint|Painted|Single|Multi) effect$/.test(this.name)) {
       this.name = `New ${customKindLabel(kind)} effect`;
     }
     this.notice = this.applyAvailabilityNotice();
@@ -1338,6 +1292,7 @@ export class GoveeLedEffectStudio extends LitElement {
     initial?: {
       name: string;
       content: CustomEffectContent;
+      selectionIdentity?: string;
     },
   ): void {
     const transitionEpoch =
@@ -1350,6 +1305,11 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     this.currentItem = undefined;
+    this.customTemplateSelection =
+      kind === "advanced"
+        ? undefined
+        : initial?.selectionIdentity ??
+          (kind === "h617a_painted" ? "template:paint" : undefined);
     this.name = initial?.name ?? `New ${customKindLabel(kind)} effect`;
     this.content =
       initial?.content ??
@@ -1376,6 +1336,7 @@ export class GoveeLedEffectStudio extends LitElement {
       }
       if (item.content.kind === "opaque") {
         this.currentItem = item;
+        this.customTemplateSelection = undefined;
         this.name = item.name;
         this.content = cloneOpaqueContent(item.content);
         this.savedBaseline = undefined;
@@ -1388,6 +1349,7 @@ export class GoveeLedEffectStudio extends LitElement {
         return false;
       }
       this.currentItem = item;
+      this.customTemplateSelection = undefined;
       this.name = item.name;
       this.content = cloneEditableEffect(item.content);
       this.savedBaseline = serialiseEditable(
@@ -1529,6 +1491,7 @@ export class GoveeLedEffectStudio extends LitElement {
           serialiseEditable(name, content);
       if (originIsCurrent) {
         this.currentItem = result.item;
+        this.customTemplateSelection = undefined;
         this.name = result.item.name;
         this.content = cloneEditableEffect(savedContent);
         this.savedBaseline = serialiseEditable(this.name, this.content);
@@ -1724,8 +1687,7 @@ export class GoveeLedEffectStudio extends LitElement {
       font-size: 16px;
     }
 
-    .eyebrow,
-    .list-label {
+    .eyebrow {
       margin-bottom: 6px;
       color: var(--studio-muted);
       font-size: 12px;
@@ -1767,11 +1729,13 @@ export class GoveeLedEffectStudio extends LitElement {
       min-height: calc(100vh - 90px);
     }
 
-    .studio.scenes-mode {
+    .studio.scenes-mode,
+    .studio.custom-mode {
       grid-template-columns: 190px 190px 230px minmax(0, 1fr);
     }
 
     .primary-nav,
+    .effect-categories,
     .library {
       padding: 22px 16px;
       border-inline-end: 1px solid var(--studio-border);
@@ -1782,6 +1746,10 @@ export class GoveeLedEffectStudio extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
+    }
+
+    .effect-categories {
+      overflow: auto;
     }
 
     .selector {
@@ -1815,28 +1783,6 @@ export class GoveeLedEffectStudio extends LitElement {
       background: var(--primary-background-color);
     }
 
-    .library-heading {
-      display: grid;
-      gap: 12px;
-      margin-bottom: 22px;
-    }
-
-    .new-kind {
-      min-height: 44px;
-      padding: 8px 4px;
-      border: 1px solid var(--studio-border);
-      border-radius: 7px;
-      color: var(--studio-blue);
-      background: var(--studio-card);
-      font-size: 12px;
-      font-weight: 650;
-      cursor: pointer;
-    }
-
-    .library-heading > .new-kind {
-      width: 100%;
-    }
-
     .icon-button {
       width: 40px;
       padding: 0;
@@ -1846,10 +1792,6 @@ export class GoveeLedEffectStudio extends LitElement {
       background: var(--studio-card);
       font-size: 24px;
       cursor: pointer;
-    }
-
-    .list-label {
-      margin: 20px 10px 6px;
     }
 
     .item {
@@ -2138,11 +2080,34 @@ export class GoveeLedEffectStudio extends LitElement {
         grid-template-columns: 170px minmax(0, 1fr);
       }
 
-      .studio.scenes-mode {
+      .studio.scenes-mode,
+      .studio.custom-mode {
         grid-template-columns: 170px minmax(0, 1fr);
       }
 
+      .custom-mode .effect-categories,
+      .custom-mode .library,
+      .custom-mode .editor {
+        grid-column: 2;
+      }
+
+      .effect-categories {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 12px 16px;
+        border-inline-end: 0;
+        border-bottom: 1px solid var(--studio-border);
+      }
+
+      .effect-categories .selector {
+        flex: 0 0 auto;
+        width: auto;
+        white-space: nowrap;
+      }
+
       .library {
+        max-height: 340px;
         border-inline-end: 0;
         border-bottom: 1px solid var(--studio-border);
       }
@@ -2172,7 +2137,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       .primary-nav {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
         padding: 10px 16px;
         border-inline-end: 0;
         border-bottom: 1px solid var(--studio-border);
@@ -2184,6 +2149,10 @@ export class GoveeLedEffectStudio extends LitElement {
 
       .library {
         padding-block: 18px;
+      }
+
+      .effect-categories .selector {
+        text-align: start;
       }
 
       .library .selector {
@@ -2534,14 +2503,10 @@ function isKnownEffectKind(kind: string): boolean {
   );
 }
 
-function advancedKindLabel(kind: unknown): string {
-  return kind === "scene_layered" ? "Scene template" : "Layered";
-}
-
 function customKindLabel(kind: unknown): string {
   switch (kind) {
     case "h617a_painted":
-      return "Painted";
+      return "Paint";
     case "h617a_single":
       return "Single";
     case "h617a_multi":
@@ -2550,6 +2515,43 @@ function customKindLabel(kind: unknown): string {
       return "Layered";
     default:
       return "Custom";
+  }
+}
+
+function compareLabels(left: string, right: string): number {
+  return left.localeCompare(right, "en-AU", { sensitivity: "base" });
+}
+
+function isMyEffectKind(kind: string): boolean {
+  return (
+    isCustomEffectKind(kind) ||
+    isAdvancedEditableKind(kind) ||
+    !isKnownEffectKind(kind)
+  );
+}
+
+function customEffectCategoryForKind(
+  kind: string,
+): Exclude<CustomEffectCategory, "all"> {
+  if (kind === "h617a_multi") {
+    return "multi-layer";
+  }
+  if (kind === "h617a_painted" || kind === "h617a_single") {
+    return "single-layer";
+  }
+  return "advanced";
+}
+
+function customEffectCategoryLabel(
+  category: Exclude<CustomEffectCategory, "all">,
+): string {
+  switch (category) {
+    case "single-layer":
+      return "Single Layer";
+    case "multi-layer":
+      return "Multi Layer";
+    case "advanced":
+      return "Advanced";
   }
 }
 

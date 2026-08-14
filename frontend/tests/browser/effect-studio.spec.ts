@@ -129,19 +129,24 @@ test("default harness uses complete production H617A catalogues", async ({
   ]);
 
   await studio
-    .getByRole("button", { name: "Custom Effects", exact: true })
+    .getByRole("button", { name: "My Effects", exact: true })
     .click();
+  await expect(
+    studio
+      .getByRole("complementary", { name: "Effect categories" })
+      .getByRole("button"),
+  ).toHaveText(["All", "Single Layer", "Multi Layer", "Advanced"]);
   const effectList = studio.getByRole("complementary", {
-    name: "Custom effects",
+    name: "My effects",
   });
   await expect(
-    effectList.getByRole("button", { name: "Cycle Painted" }),
+    effectList.getByRole("button", { name: "Paint Single Layer" }),
   ).toBeVisible();
   await expect(
-    effectList.getByRole("button", { name: "Fade Single" }),
+    effectList.getByRole("button", { name: "Fade Single Layer" }),
   ).toBeVisible();
   await expect(
-    effectList.getByRole("button", { name: "Mix Multi" }),
+    effectList.getByRole("button", { name: "Mix Multi Layer" }),
   ).toBeVisible();
   await expect(
     effectList.getByRole("button", { name: "Unsupported special DIY pair" }),
@@ -172,7 +177,7 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     studio.getByRole("navigation", { name: "Create" }),
   ).toBeVisible();
   const modes = studio.getByRole("tablist", { name: "Custom effect type" });
-  await expect(modes.getByRole("tab", { name: "Painted" })).toHaveAttribute(
+  await expect(modes.getByRole("tab", { name: "Paint" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -186,7 +191,7 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     "aria-selected",
     "true",
   );
-  await modes.getByRole("tab", { name: "Painted" }).click();
+  await modes.getByRole("tab", { name: "Paint" }).click();
   await expect(
     studio.locator(".editor").getByRole("button", { name: "Apply" }),
   ).toBeEnabled();
@@ -194,7 +199,14 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     studio.getByRole("button", { name: "Segment 1, #2f6fed" }),
   ).toBeEnabled();
 
-  await studio.getByRole("button", { name: "Advanced" }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "My effects" })
+    .getByRole("button", { name: "Layered Advanced", exact: true })
+    .click();
   const apply = studio
     .locator(".editor")
     .getByRole("button", { name: "Apply" });
@@ -734,7 +746,7 @@ test("a temporarily unavailable URL device is not reported as unsupported", asyn
     }),
   ).toBeVisible();
   await expect(
-    studio.getByText("Painted effects cannot be applied to this device."),
+    studio.getByText("Paint effects cannot be applied to this device."),
   ).toHaveCount(0);
   await expect(
     studio.locator(".editor").getByRole("button", { name: "Apply" }),
@@ -785,7 +797,10 @@ test("non-admin users cannot inspect opaque library bodies", async ({
 }) => {
   const studio = await openStudio(page, "?admin=0");
 
-  await studio.getByRole("button", { name: "Advanced" }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
   await studio.getByRole("button", { name: "Future backend effect" }).click();
 
   await expect(
@@ -1145,7 +1160,17 @@ test("advanced layer and palette keyboard focus follows edits", async ({
   page,
 }) => {
   const studio = await openStudio(page);
-  await studio.getByRole("button", { name: "Advanced" }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "My effects" })
+    .getByRole("button", {
+      name: "Layered library effect Advanced",
+      exact: true,
+    })
+    .click();
   const advanced = studio.locator("govee-advanced-effect-editor");
   const layerTabs = advanced.getByRole("tab", { name: /Layer \d/ });
 
@@ -1213,7 +1238,10 @@ test("unknown layered values stay raw", async ({
   page,
 }) => {
   const studio = await openStudio(page);
-  await studio.getByRole("button", { name: "Advanced" }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
   await studio.getByRole("button", { name: "Raw layered values" }).click();
   const advanced = studio.locator("govee-advanced-effect-editor");
   const selection = advanced.getByLabel("Selection type");
@@ -1265,7 +1293,10 @@ test("opaque backend content is inspectable but cannot be edited or applied", as
   page,
 }) => {
   const studio = await openStudio(page);
-  await studio.getByRole("button", { name: "Advanced" }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
   await studio.getByRole("button", { name: "Future backend effect" }).click();
 
   await expect(
@@ -1587,7 +1618,14 @@ for (const direction of ["ltr", "rtl"] as const) {
       page,
       direction === "rtl" ? "?rtl=1" : "",
     );
-    await studio.getByRole("button", { name: "Advanced" }).click();
+    await studio
+      .getByRole("complementary", { name: "Effect categories" })
+      .getByRole("button", { name: "Advanced", exact: true })
+      .click();
+    await studio
+      .getByRole("complementary", { name: "My effects" })
+      .getByRole("button", { name: "Layered Advanced", exact: true })
+      .click();
     await expect(
       studio.getByRole("note").filter({
         hasText: "Layered effects can be saved, but Apply is unavailable",
