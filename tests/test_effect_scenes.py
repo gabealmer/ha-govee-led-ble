@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.ha_govee_led_ble import scene_preview_profiles as runtime_profiles
 from custom_components.ha_govee_led_ble.const import EFFECT_FAMILY_SCENES
 from custom_components.ha_govee_led_ble.effect_scenes import (
     SceneUnavailableError,
@@ -20,22 +19,10 @@ from custom_components.ha_govee_led_ble.effect_scenes import (
     scene_catalogue_payload,
     scene_detail_payload,
 )
-from custom_components.ha_govee_led_ble.scene_preview_profiles import (
-    PreviewProfileValidationError,
-    warm_preview_profile_index,
-)
 from custom_components.ha_govee_led_ble.scenes import (
     MODEL_SCENES,
     SCENE_ENTRIES,
 )
-
-REVIEWED_PREVIEW_IDENTITIES = {
-    ("H617A", 1011, 1073): "static",
-    ("H617A", 1012, 1074): "static",
-    ("H617A", 1051, 1113): "static",
-    ("H617A", 1068, 1130): "directional_sweep",
-    ("H617A", 8860, 13920): "static",
-}
 
 
 def test_catalogue_and_identity_errors() -> None:
@@ -104,67 +91,6 @@ def test_type_0_scene_detail_remains_builtin() -> None:
     content = cast(dict[str, Any], detail["content"])
 
     assert content["kind"] == "scene_builtin"
-
-
-def test_scene_detail_optionally_exposes_only_reviewed_capture_profiles() -> None:
-    warm_preview_profile_index()
-    exposed: dict[tuple[str, int, int], dict[str, Any]] = {}
-    for entry in SCENE_ENTRIES["H617A"]:
-        detail = scene_detail_payload("H617A", entry.scene_id, entry.effect_id)
-        profile = detail.get("preview_profile")
-        if profile is not None:
-            exposed[("H617A", entry.scene_id, entry.effect_id)] = cast(dict[str, Any], profile)
-
-    assert {identity: profile["primitive"] for identity, profile in exposed.items()} == REVIEWED_PREVIEW_IDENTITIES
-    for identity, exposed_profile in exposed.items():
-        profile = cast(Any, exposed_profile)
-        assert profile["fidelity"] == "capture_backed"
-        assert profile["review_state"] == "reviewed"
-        assert profile["review_confidence"] >= profile["minimum_review_confidence"]
-        assert "name" not in profile
-        assert profile["sku"] == identity[0]
-        assert profile["scene_id"] == identity[1]
-        assert profile["effect_id"] == identity[2]
-        if profile["primitive"] == "static":
-            assert len(profile["palette"]["segment_rgb"]) == 15
-        else:
-            assert profile["direction"] == "towards_first_segment"
-            assert profile["period_seconds"] == 3.953
-
-    pending = scene_detail_payload("H617A", 1013, 11836)
-    assert "preview_profile" not in pending
-    assert cast(dict[str, Any], pending["content"])["kind"] == "scene_layered"
-
-
-def test_reviewed_sweep_detail_keeps_real_layered_content_and_speed() -> None:
-    warm_preview_profile_index()
-    detail = scene_detail_payload("H617A", 1068, 1130)
-    content = cast(dict[str, Any], detail["content"])
-    profile = cast(dict[str, Any], detail["preview_profile"])
-
-    assert cast(dict[str, Any], detail["scene"])["speed"] == {"option_count": 3, "default_index": 2}
-    assert content["kind"] == "scene_layered"
-    assert content["speed_index"] == 2
-    assert content["effect"]["layers"]
-    assert profile["primitive"] == "directional_sweep"
-    assert "period holds for that setting only" in profile["limitations"][0]
-
-
-def test_unavailable_optional_preview_asset_keeps_scene_detail_usable(monkeypatch) -> None:
-    runtime_profiles._reset_preview_profile_cache()
-
-    def fail_load() -> tuple[dict[str, Any], ...]:
-        raise PreviewProfileValidationError("missing profile asset")
-
-    monkeypatch.setattr(runtime_profiles, "load_preview_profiles", fail_load)
-    warm_preview_profile_index()
-
-    detail = scene_detail_payload("H617A", 1068, 1130)
-
-    assert "preview_profile" not in detail
-    assert cast(dict[str, Any], detail["content"])["kind"] == "scene_layered"
-    assert cast(dict[str, Any], detail["scene"])["speed"] == {"option_count": 3, "default_index": 2}
-    runtime_profiles._reset_preview_profile_cache()
 
 
 async def test_scene_speed_request_is_validated_before_service_call(

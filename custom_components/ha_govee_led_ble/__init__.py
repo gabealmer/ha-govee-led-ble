@@ -21,7 +21,6 @@ from .const import (
 from .coordinator import GoveeBLECoordinator
 from .editor import async_register_editor_panel, editor_url
 from .effect_setup import async_setup_effects
-from .scene_preview_profiles import warm_preview_profile_index
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
@@ -74,7 +73,6 @@ def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    await hass.async_add_executor_job(warm_preview_profile_index)
     effects = await async_setup_effects(hass)
     await async_register_editor_panel(hass, advanced_available=effects is not None)
     return True

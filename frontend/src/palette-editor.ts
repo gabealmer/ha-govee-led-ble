@@ -3,16 +3,29 @@ import { property, state } from "lit/decorators.js";
 
 import type { RGB } from "./types";
 
-const PRESET_COLOURS: RGB[] = [
+const RECENT_COLOUR_LIMIT = 17;
+const RECENT_COLOURS_STORAGE_KEY =
+  "ha_govee_led_ble/effect_studio/recent_colours";
+const DEFAULT_RECENT_COLOURS: RGB[] = [
   [255, 69, 58],
   [255, 159, 10],
   [255, 214, 10],
   [48, 209, 88],
+  [99, 230, 226],
+  [100, 210, 255],
   [10, 132, 255],
   [94, 92, 230],
   [191, 90, 242],
   [255, 45, 85],
+  [172, 142, 104],
+  [255, 255, 255],
+  [174, 174, 178],
+  [99, 99, 102],
+  [28, 28, 30],
+  [255, 127, 0],
+  [139, 0, 255],
 ];
+let recentColours = loadRecentColours();
 
 export class GoveePaletteEditor extends LitElement {
   @property({ attribute: false })
@@ -37,6 +50,24 @@ export class GoveePaletteEditor extends LitElement {
   private pointerY = 0;
   private pointerMoved = false;
   private suppressClick = false;
+  private readonly windowPointerDown = (event: PointerEvent): void => {
+    if (
+      this.editingIndex !== undefined &&
+      !event.composedPath().includes(this)
+    ) {
+      this.editingIndex = undefined;
+    }
+  };
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    window.addEventListener("pointerdown", this.windowPointerDown);
+  }
+
+  public disconnectedCallback(): void {
+    window.removeEventListener("pointerdown", this.windowPointerDown);
+    super.disconnectedCallback();
+  }
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (
@@ -54,7 +85,10 @@ export class GoveePaletteEditor extends LitElement {
         ${this.palette.map(
           (colour, index) => html`
             <li
-              class="swatch-item"
+              class="swatch-item ${this.editingIndex === index &&
+              this.palette.length > this.minColours
+                ? "remove-ready"
+                : ""}"
               data-colour-index=${index}
               draggable=${this.disabled ? "false" : "true"}
               @dragstart=${(event: DragEvent) =>
@@ -76,11 +110,14 @@ export class GoveePaletteEditor extends LitElement {
                 type="button"
                 data-colour-index=${index}
                 style="--swatch-colour: ${rgbToHex(colour)}"
-                aria-label="Edit colour ${index + 1}, ${rgbToHex(
-                  colour,
-                )}. Drag to reorder or use arrow keys."
+                aria-label=${this.editingIndex === index &&
+                this.palette.length > this.minColours
+                  ? `Remove colour ${index + 1}`
+                  : `Edit colour ${index + 1}, ${rgbToHex(
+                      colour,
+                    )}. Drag to reorder or use arrow keys.`}
                 ?disabled=${this.disabled}
-                @click=${() => this.toggleEditor(index)}
+                @click=${() => this.swatchClicked(index)}
                 @keydown=${(event: KeyboardEvent) =>
                   this.keyPressed(index, event)}
               ></button>
@@ -109,59 +146,56 @@ export class GoveePaletteEditor extends LitElement {
 
   private renderPopover(index: number, colour: RGB) {
     return html`
-      <div class="colour-popover" role="dialog" aria-label="Edit colour">
+      <div
+        class="colour-popover"
+        role="dialog"
+        aria-label="Edit colour"
+        @keydown=${(event: KeyboardEvent) =>
+          this.popoverKeyPressed(index, event)}
+      >
         <div class="preset-grid">
-          ${PRESET_COLOURS.map(
-            (preset) => html`
+          ${recentColours.map(
+            (recent) => html`
               <button
                 type="button"
-                style="--preset-colour: ${rgbToHex(preset)}"
-                aria-label="Use ${rgbToHex(preset)}"
+                style="--preset-colour: ${rgbToHex(recent)}"
+                aria-label="Use ${rgbToHex(recent)}"
                 ?disabled=${this.disabled}
-                @click=${() => this.updateColour(index, preset)}
+                @click=${() => this.commitColour(index, recent)}
               ></button>
             `,
           )}
-        </div>
-        <label class="custom-colour">
-          <span>Custom colour</span>
-          <input
-            type="color"
-            .value=${rgbToHex(colour)}
-            ?disabled=${this.disabled}
-            @input=${(event: Event) =>
-              this.updateColour(
-                index,
-                hexToRgb((event.target as HTMLInputElement).value),
-              )}
-          />
-        </label>
-        <div class="colour-actions">
-          <button
-            type="button"
-            ?disabled=${this.disabled || index === 0}
-            @click=${() => this.moveColour(index, -1, true)}
+          <label
+            class="custom-colour"
+            style="--custom-colour: ${rgbToHex(colour)}"
           >
-            Move left
-          </button>
-          <button
-            type="button"
-            ?disabled=${this.disabled || index === this.palette.length - 1}
-            @click=${() => this.moveColour(index, 1, true)}
-          >
-            Move right
-          </button>
-          <button
-            class="danger"
-            type="button"
-            ?disabled=${this.disabled || this.palette.length <= this.minColours}
-            @click=${() => this.removeColour(index)}
-          >
-            Remove
-          </button>
+            <input
+              type="color"
+              aria-label="Custom colour"
+              .value=${rgbToHex(colour)}
+              ?disabled=${this.disabled}
+              @input=${(event: Event) =>
+                this.updateColour(
+                  index,
+                  hexToRgb((event.target as HTMLInputElement).value),
+                )}
+              @change=${(event: Event) =>
+                this.commitColour(
+                  index,
+                  hexToRgb((event.target as HTMLInputElement).value),
+                )}
+            />
+          </label>
         </div>
       </div>
     `;
+  }
+
+  private commitColour(index: number, colour: RGB): void {
+    rememberColour(colour);
+    this.updateColour(index, colour);
+    this.editingIndex = undefined;
+    this.focusSwatchAfterUpdate(index);
   }
 
   private updateColour(index: number, colour: RGB): void {
@@ -176,7 +210,7 @@ export class GoveePaletteEditor extends LitElement {
     }
     const previous =
       this.palette[this.palette.length - 1] ??
-      PRESET_COLOURS[this.palette.length % PRESET_COLOURS.length];
+      recentColours[this.palette.length % recentColours.length];
     const palette = [...clonePalette(this.palette), [...previous] as RGB];
     this.editingIndex = palette.length - 1;
     this.emitPalette(palette);
@@ -274,9 +308,26 @@ export class GoveePaletteEditor extends LitElement {
     );
   }
 
-  private toggleEditor(index: number): void {
+  private popoverKeyPressed(index: number, event: KeyboardEvent): void {
+    if (event.key !== "Escape") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.editingIndex = undefined;
+    this.focusSwatchAfterUpdate(index);
+  }
+
+  private swatchClicked(index: number): void {
     if (this.suppressClick) {
       this.suppressClick = false;
+      return;
+    }
+    if (
+      this.editingIndex === index &&
+      this.palette.length > this.minColours
+    ) {
+      this.removeColour(index);
       return;
     }
     this.editingIndex =
@@ -406,6 +457,25 @@ export class GoveePaletteEditor extends LitElement {
       background: var(--swatch-colour);
     }
 
+    .remove-ready .swatch {
+      position: relative;
+      outline: 2px solid rgb(255 255 255 / 95%);
+      outline-offset: -4px;
+    }
+
+    .remove-ready .swatch::after {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 26px;
+      font-weight: 500;
+      text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
+      content: "×";
+      pointer-events: none;
+    }
+
     .palette-add {
       display: grid;
       place-items: center;
@@ -426,7 +496,7 @@ export class GoveePaletteEditor extends LitElement {
       z-index: 25;
       top: 52px;
       left: 0;
-      width: min(300px, calc(100vw - 48px));
+      width: min(280px, calc(100vw - 48px));
       padding: 10px;
       border: 1px solid var(--studio-border);
       border-radius: 9px;
@@ -436,57 +506,46 @@ export class GoveePaletteEditor extends LitElement {
 
     .preset-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+    }
+
+    .preset-grid button,
+    .custom-colour {
+      position: relative;
+      min-height: 40px;
+      border: 1px solid rgb(0 0 0 / 12%);
+      border-radius: 6px;
+      cursor: pointer;
     }
 
     .preset-grid button {
-      min-height: 52px;
-      border: 1px solid rgb(0 0 0 / 12%);
-      border-radius: 6px;
       background: var(--preset-colour);
-      cursor: pointer;
     }
 
     .custom-colour {
-      display: grid;
-      grid-template-columns: 1fr 64px;
-      align-items: center;
-      gap: 10px;
-      margin-top: 10px;
-      color: var(--studio-muted);
-      font-size: 13px;
-      font-weight: 600;
+      overflow: hidden;
+      background: var(--custom-colour);
+      box-shadow:
+        inset 0 0 0 3px var(--studio-card),
+        inset 0 0 0 5px rgb(0 0 0 / 32%);
     }
 
     .custom-colour input {
-      width: 64px;
-      height: 44px;
-      padding: 3px;
-      border: 1px solid var(--studio-border);
-      border-radius: 7px;
-      background: var(--studio-card);
-    }
-
-    .colour-actions {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 6px;
-      margin-top: 10px;
-    }
-
-    .colour-actions button {
-      padding: 8px 10px;
-      border: 1px solid var(--studio-border);
-      border-radius: 7px;
-      color: var(--primary-text-color);
-      background: var(--studio-card);
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      padding: 0;
+      border: 0;
+      opacity: 0;
       cursor: pointer;
     }
 
-    .colour-actions .danger {
-      grid-column: 1 / -1;
-      color: var(--studio-danger);
+    .custom-colour:focus-within {
+      outline: 3px solid var(--studio-blue);
+      outline-offset: 2px;
     }
 
     button:disabled,
@@ -512,6 +571,67 @@ export class GoveePaletteEditor extends LitElement {
 
 function clonePalette(palette: RGB[]): RGB[] {
   return palette.map((colour) => [...colour]);
+}
+
+function loadRecentColours(): RGB[] {
+  const stored = localStorage.getItem(RECENT_COLOURS_STORAGE_KEY);
+  if (!stored) {
+    return clonePalette(DEFAULT_RECENT_COLOURS);
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(stored);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return clonePalette(DEFAULT_RECENT_COLOURS);
+    }
+    throw error;
+  }
+  if (!Array.isArray(value)) {
+    return clonePalette(DEFAULT_RECENT_COLOURS);
+  }
+  const loaded = value
+    .filter(isRGB)
+    .map((colour) => [...colour] as RGB)
+    .slice(0, RECENT_COLOUR_LIMIT);
+  return fillRecentColours(loaded);
+}
+
+function rememberColour(colour: RGB): void {
+  const hex = rgbToHex(colour);
+  recentColours = fillRecentColours([
+    [...colour],
+    ...recentColours.filter((recent) => rgbToHex(recent) !== hex),
+  ]);
+  localStorage.setItem(
+    RECENT_COLOURS_STORAGE_KEY,
+    JSON.stringify(recentColours),
+  );
+}
+
+function fillRecentColours(colours: RGB[]): RGB[] {
+  const filled = colours.map((colour) => [...colour] as RGB);
+  for (const fallback of DEFAULT_RECENT_COLOURS) {
+    if (
+      filled.length >= RECENT_COLOUR_LIMIT ||
+      filled.some((colour) => rgbToHex(colour) === rgbToHex(fallback))
+    ) {
+      continue;
+    }
+    filled.push([...fallback]);
+  }
+  return filled.slice(0, RECENT_COLOUR_LIMIT);
+}
+
+function isRGB(value: unknown): value is RGB {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every(
+      (channel) =>
+        Number.isInteger(channel) && channel >= 0 && channel <= 255,
+    )
+  );
 }
 
 function relocatedIndex(

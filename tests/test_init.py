@@ -154,11 +154,9 @@ async def test_async_setup_registers_hidden_editor_fallback():
             "custom_components.ha_govee_led_ble.async_setup_effects",
             new_callable=AsyncMock,
         ) as setup_effects,
-        patch("custom_components.ha_govee_led_ble.warm_preview_profile_index") as warm_profiles,
     ):
         assert await async_setup(hass, {}) is True
 
-    hass.async_add_executor_job.assert_awaited_once_with(warm_profiles)
     setup_effects.assert_awaited_once_with(hass)
     hass.http.async_register_static_paths.assert_awaited_once()
     (static_path,) = hass.http.async_register_static_paths.await_args.args[0]

@@ -1,9 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import "./effect-preview";
 import "./palette-editor";
-import { customEffectPreviewModel } from "./preview-model";
 import type {
   CustomEffectCatalogue,
   EffectPair,
@@ -20,9 +18,6 @@ export class GoveeCustomEffectEditor extends LitElement {
 
   @property({ attribute: false })
   public catalogue?: CustomEffectCatalogue;
-
-  @property({ type: Number })
-  public segmentCount = 15;
 
   @property({ type: Boolean })
   public disabled = false;
@@ -72,15 +67,6 @@ export class GoveeCustomEffectEditor extends LitElement {
           ? this.effectRow(this.content, 0)
           : this.renderSequence(this.content)}
       </section>
-
-      <govee-effect-preview
-        class="effect-preview"
-        .model=${customEffectPreviewModel(
-          this.content,
-          this.catalogue,
-          this.segmentCount,
-        )}
-      ></govee-effect-preview>
 
       <section class="card parameters-card">
         <h3>Parameters</h3>
@@ -483,7 +469,6 @@ export class GoveeCustomEffectEditor extends LitElement {
       padding: 18px;
     }
 
-    .effect-preview,
     .parameters-card {
       margin-top: 16px;
     }

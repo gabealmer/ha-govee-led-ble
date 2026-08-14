@@ -116,8 +116,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # The attributable H6199 static reply carries mode 0x15 followed only by zeros
         # (h6199_status_reply::colour_mode_body). It identifies static mode but echoes neither
         # colour nor white brightness, so the verified white-brightness service cannot be offered.
-        # Fifteen segments, and this now carries a protocol claim rather than sizing a preview
-        # image. A whole-strip write from the app addresses fifteen bits (0x7fff) and the app draws
+        # The H6199 segment count is fifteen. A whole-strip write from the app addresses fifteen
+        # bits (0x7fff), and the app draws
         # fifteen tiles for this model, captured 2026-08-03; colouring one segment, then a second,
         # then both gave 0x0001, 0x0004 and their OR, which is what makes it a mask rather than an
         # index (h6199_command_write::static_colour_body::segment_mask).

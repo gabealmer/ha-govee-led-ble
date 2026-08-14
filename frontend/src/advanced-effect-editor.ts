@@ -1,9 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import "./effect-preview";
 import "./palette-editor";
-import { advancedPreviewModel } from "./preview-model";
 import type {
   AdvancedContent,
   BrightnessOrder,
@@ -184,8 +182,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         role="tabpanel"
         aria-labelledby="advanced-layer-tab-${this.activeLayerIndex}"
       >
-        ${this.renderPreview()}
-
         <div class="control-grid">
           ${this.renderAppliedArea(layer)}
           ${this.renderSelection(layer)}
@@ -231,15 +227,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
 
   private get activeLayer(): EffectLayer {
     return this.content!.layers[this.activeLayerIndex];
-  }
-
-  private renderPreview() {
-    return html`
-      <govee-effect-preview
-        class="effect-preview"
-        .model=${advancedPreviewModel(this.content!, this.activeLayerIndex)}
-      ></govee-effect-preview>
-    `;
   }
 
   private renderAppliedArea(layer: EffectLayer) {
@@ -1449,11 +1436,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
 
     .empty-state .add-button {
       margin-top: 12px;
-    }
-
-    .effect-preview {
-      display: block;
-      margin-bottom: 18px;
     }
 
     .control-grid {
