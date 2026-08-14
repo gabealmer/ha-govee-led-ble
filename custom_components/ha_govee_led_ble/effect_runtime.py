@@ -1,4 +1,4 @@
-"""Coordinator-owned custom-effect deployment transactions."""
+"""Coordinator-owned Effect Studio deployment transactions."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 from .coordinator import GoveeBLECoordinator
 from .effect_catalogue import H617A_TYPE04_APPLY_CODE, H6199_PALETTE_DIY_APPLY_CODE
-from .effect_compiler import CompiledEffect, VerificationStrategy, compile_effect
+from .effect_compiler import ActivationMode, CompiledEffect, VerificationStrategy, compile_effect
 from .effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
@@ -30,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EffectDeploymentEngine:
-    """Apply immutable custom-effect definitions through one coordinator transaction."""
+    """Apply immutable definitions through one coordinator transaction."""
 
     def __init__(
         self,
@@ -53,8 +53,13 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        diy_code = resolve_diy_code(self._deployments, item, config_entry_id) if diy_code is None else diy_code
-        compiled = compile_effect(item, coordinator.model, diy_code)
+        resolved_diy_code = _resolve_compiler_diy_code(
+            self._deployments,
+            item,
+            config_entry_id,
+            diy_code,
+        )
+        compiled = compile_effect(item, coordinator.model, diy_code=resolved_diy_code)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -76,8 +81,13 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        diy_code = resolve_diy_code(self._deployments, item, config_entry_id) if diy_code is None else diy_code
-        compiled = compile_effect(item, coordinator.model, diy_code)
+        resolved_diy_code = _resolve_compiler_diy_code(
+            self._deployments,
+            item,
+            config_entry_id,
+            diy_code,
+        )
+        compiled = compile_effect(item, coordinator.model, diy_code=resolved_diy_code)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -124,6 +134,9 @@ class EffectDeploymentEngine:
             compiler_version=compiled.compiler_version,
             artifact_sha256=compiled.artifact_sha256,
             updated_at=updated_at,
+            target_mode=compiled.activation_mode.value,
+            target_effect=compiled.expected_effect,
+            evidence_codes=compiled.evidence_codes,
             item_id=item_id,
             item_revision=item_revision,
             snapshot_id=snapshot_id,
@@ -319,7 +332,7 @@ class EffectDeploymentEngine:
                 if attempt + 1 == VERIFICATION_ATTEMPTS:
                     raise
                 continue
-            if refreshed and coordinator.diy_code == record.diy_code:
+            if refreshed and _activation_matches(coordinator, record):
                 return True, current
             if refreshed and attempt + 1 < VERIFICATION_ATTEMPTS:
                 current = replace(current, phase=DeploymentPhase.ACTIVATING)
@@ -383,7 +396,9 @@ class EffectDeploymentEngine:
                 try:
                     recovered = await restore(
                         recovering.prior_state,
-                        overwritten_diy_code=recovering.diy_code,
+                        overwritten_diy_code=(
+                            recovering.diy_code if recovering.target_mode == ActivationMode.CUSTOM.value else -1
+                        ),
                     )
                 except Exception:
                     _LOGGER.exception(
@@ -494,11 +509,16 @@ class EffectDeploymentEngine:
     ) -> ObservedDeviceState:
         mode = _coordinator_mode(coordinator)
         diy_code = coordinator.diy_code if mode == "custom" else None
+        effect = coordinator.effect if mode == "scene" else None
         if diy_code is not None and matched_record is None:
             latest = self._deployments.latest_for_diy_code(config_entry_id, diy_code)
             if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
                 matched_record = latest
-        if diy_code is not None:
+        if effect is not None and matched_record is None:
+            latest = self._deployments.latest_for_effect(config_entry_id, effect)
+            if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
+                matched_record = latest
+        if diy_code is not None or effect is not None:
             confidence = (
                 ObservationConfidence.ACTIVATION_MATCH if matched_record is not None else ObservationConfidence.UNKNOWN
             )
@@ -512,6 +532,7 @@ class EffectDeploymentEngine:
             observed_at=observed_at,
             confidence=confidence,
             diy_code=diy_code,
+            effect=effect,
             matched_operation_id=(
                 matched_record.operation_id
                 if confidence is ObservationConfidence.ACTIVATION_MATCH and matched_record is not None
@@ -554,3 +575,23 @@ def resolve_diy_code(
     if isinstance(item.content, PaletteDiyEffect):
         return H6199_PALETTE_DIY_APPLY_CODE
     raise ValueError("this content kind has no custom-effect selector allocation")
+
+
+def _resolve_compiler_diy_code(
+    deployments: EffectDeploymentRepository,
+    item: LibraryItem,
+    config_entry_id: str,
+    diy_code: int | None,
+) -> int | None:
+    if not isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect):
+        return None
+    return resolve_diy_code(deployments, item, config_entry_id) if diy_code is None else diy_code
+
+
+def _activation_matches(
+    coordinator: GoveeBLECoordinator,
+    record: DeploymentRecord,
+) -> bool:
+    if record.target_mode == ActivationMode.SCENE.value:
+        return record.target_effect is not None and coordinator.effect == record.target_effect
+    return coordinator.diy_code == record.diy_code

@@ -404,6 +404,8 @@ export interface DeploymentRecord {
   operation_id: string;
   config_entry_id: string;
   diy_code: number;
+  target_mode: "custom" | "scene";
+  target_effect: string | null;
   phase: DeploymentPhase;
   updated_at: string;
   item_id: string | null;

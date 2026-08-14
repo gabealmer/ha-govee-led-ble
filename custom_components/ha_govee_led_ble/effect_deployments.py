@@ -37,12 +37,13 @@ from .effect_storage import (
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 DEPLOYMENT_STORE_VERSION: Final = 1
-DEPLOYMENT_STORE_MINOR_VERSION: Final = 2
+DEPLOYMENT_STORE_MINOR_VERSION: Final = 3
 DEPLOYMENT_STORE_KEY: Final = f"{DOMAIN}.effect_deployments"
 DEVICE_CACHE_STORE_VERSION: Final = 1
-DEVICE_CACHE_STORE_MINOR_VERSION: Final = 1
+DEVICE_CACHE_STORE_MINOR_VERSION: Final = 2
 DEVICE_CACHE_STORE_KEY: Final = f"{DOMAIN}.effect_device_cache"
 MAX_DEPLOYMENT_PROGRESS: Final = 1024
+MAX_DEPLOYMENT_EVIDENCE_CODES: Final = 8
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -174,6 +175,9 @@ class DeploymentRecord:
     compiler_version: int
     artifact_sha256: str
     updated_at: str
+    target_mode: str = "custom"
+    target_effect: str | None = None
+    evidence_codes: tuple[str, ...] = ()
     item_id: UUID | None = None
     item_revision: int | None = None
     snapshot_id: UUID | None = None
@@ -193,6 +197,28 @@ class DeploymentRecord:
         )
         if not isinstance(self.diy_code, int) or not 0 <= self.diy_code <= 0xFFFF:
             raise EffectStorageError("deployment DIY code must be from 0 to 65535")
+        if self.target_mode not in {"custom", "scene"}:
+            raise EffectStorageError("deployment target mode must be custom or scene")
+        if self.target_effect is not None:
+            validate_bounded_string(
+                self.target_effect,
+                "deployment target effect",
+                maximum=MAX_IDENTIFIER_LENGTH,
+                error_type=EffectStorageError,
+            )
+        if self.target_mode == "scene" and self.target_effect is None:
+            raise EffectStorageError("scene deployment must include a target effect")
+        if len(self.evidence_codes) > MAX_DEPLOYMENT_EVIDENCE_CODES:
+            raise EffectStorageError(
+                f"deployment must not exceed {MAX_DEPLOYMENT_EVIDENCE_CODES} evidence codes"
+            )
+        for code in self.evidence_codes:
+            validate_bounded_string(
+                code,
+                "deployment evidence code",
+                maximum=MAX_IDENTIFIER_LENGTH,
+                error_type=EffectStorageError,
+            )
         if self.compiler_version < 1:
             raise EffectStorageError("deployment compiler version must be positive")
         if len(self.artifact_sha256) != 64 or any(
@@ -243,6 +269,9 @@ class DeploymentRecord:
             "compiler_version": self.compiler_version,
             "artifact_sha256": self.artifact_sha256,
             "updated_at": self.updated_at,
+            "target_mode": self.target_mode,
+            "target_effect": self.target_effect,
+            "evidence_codes": list(self.evidence_codes),
             "item_id": str(self.item_id) if self.item_id is not None else None,
             "item_revision": self.item_revision,
             "snapshot_id": (str(self.snapshot_id) if self.snapshot_id is not None else None),
@@ -259,6 +288,8 @@ class DeploymentRecord:
             "operation_id": str(self.operation_id),
             "config_entry_id": self.config_entry_id,
             "diy_code": self.diy_code,
+            "target_mode": self.target_mode,
+            "target_effect": self.target_effect,
             "phase": self.phase.value,
             "updated_at": self.updated_at,
             "item_id": str(self.item_id) if self.item_id is not None else None,
@@ -300,6 +331,9 @@ class DeploymentRecord:
             compiler_version=_required_int(raw, "compiler_version"),
             artifact_sha256=_required_str(raw, "artifact_sha256"),
             updated_at=_required_str(raw, "updated_at"),
+            target_mode=_optional_str(raw, "target_mode") or "custom",
+            target_effect=_optional_str(raw, "target_effect"),
+            evidence_codes=_string_tuple(raw.get("evidence_codes", ()), "deployment evidence codes"),
             item_id=item_id,
             item_revision=_optional_int(raw, "item_revision"),
             snapshot_id=snapshot_id,
@@ -395,7 +429,23 @@ class EffectDeploymentRepository:
         matching = tuple(
             record
             for record in self.snapshot().records
-            if record.config_entry_id == config_entry_id and record.diy_code == diy_code
+            if record.config_entry_id == config_entry_id
+            and record.target_mode == "custom"
+            and record.diy_code == diy_code
+        )
+        return max(matching, key=lambda record: record.updated_at, default=None)
+
+    def latest_for_effect(
+        self,
+        config_entry_id: str,
+        effect: str,
+    ) -> DeploymentRecord | None:
+        matching = tuple(
+            record
+            for record in self.snapshot().records
+            if record.config_entry_id == config_entry_id
+            and record.target_mode == "scene"
+            and record.target_effect == effect
         )
         return max(matching, key=lambda record: record.updated_at, default=None)
 
@@ -459,6 +509,7 @@ class ObservedDeviceState:
     observed_at: str
     confidence: ObservationConfidence = ObservationConfidence.UNKNOWN
     diy_code: int | None = None
+    effect: str | None = None
     matched_operation_id: UUID | None = None
 
     def __post_init__(self) -> None:
@@ -481,6 +532,13 @@ class ObservedDeviceState:
         )
         if self.diy_code is not None and not 0 <= self.diy_code <= 0xFFFF:
             raise EffectStorageError("observed DIY code must be from 0 to 65535")
+        if self.effect is not None:
+            validate_bounded_string(
+                self.effect,
+                "observed effect",
+                maximum=MAX_IDENTIFIER_LENGTH,
+                error_type=EffectStorageError,
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -489,6 +547,7 @@ class ObservedDeviceState:
             "observed_at": self.observed_at,
             "confidence": self.confidence.value,
             "diy_code": self.diy_code,
+            "effect": self.effect,
             "matched_operation_id": (str(self.matched_operation_id) if self.matched_operation_id is not None else None),
         }
 
@@ -506,6 +565,7 @@ class ObservedDeviceState:
             observed_at=_required_str(raw, "observed_at"),
             confidence=confidence,
             diy_code=_optional_int(raw, "diy_code"),
+            effect=_optional_str(raw, "effect"),
             matched_operation_id=operation_id,
         )
 
@@ -734,6 +794,14 @@ def _required_str(raw: Mapping[str, Any], key: str) -> str:
     if not isinstance(value, str):
         raise EffectStorageError(f"{key} must be a string")
     return value
+
+
+def _string_tuple(value: object, name: str) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple):
+        raise EffectStorageError(f"{name} must be a sequence")
+    if any(not isinstance(item, str) for item in value):
+        raise EffectStorageError(f"{name} must contain strings")
+    return tuple(value)
 
 
 def _optional_str(raw: Mapping[str, Any], key: str) -> str | None:

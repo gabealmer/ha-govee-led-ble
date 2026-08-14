@@ -77,6 +77,17 @@ class EffectDeploymentDiagnosticBridge:
                 config_entry_id=record.config_entry_id,
                 operation_id=operation_id,
             )
+            for code in record.evidence_codes:
+                self._history.record_evidence_gap(
+                    code,
+                    details={
+                        "target_mode": record.target_mode,
+                        "target_effect": record.target_effect,
+                    },
+                    correlation_id=operation_id,
+                    config_entry_id=record.config_entry_id,
+                    operation_id=operation_id,
+                )
         elif record.phase is DeploymentPhase.PENDING:
             self._history.record(
                 DiagnosticStage.COMPILATION,

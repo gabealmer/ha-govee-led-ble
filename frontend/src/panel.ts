@@ -265,10 +265,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private get applyCapability() {
-    if (
-      !isCustomEffectContent(this.content) &&
-      this.content.kind !== "palette_diy"
-    ) {
+    if (!isDeployableEffectContent(this.content)) {
       return undefined;
     }
     const capabilities = this.selectedDevice?.custom_effects;
@@ -284,15 +281,18 @@ export class GoveeLedEffectStudio extends LitElement {
         return capabilities.multi;
       case "palette_diy":
         return capabilities.palette_diy;
+      case "advanced":
+      case "scene_layered":
+        return capabilities.advanced;
     }
   }
 
   private get canApply(): boolean {
     return (
-      (isCustomEffectContent(this.content) ||
-        this.content.kind === "palette_diy") &&
+      isDeployableEffectContent(this.content) &&
       this.isAdmin &&
       !this.applying &&
+      !this.saving &&
       !this.deletingCurrentItem &&
       this.name.trim().length > 0 &&
       this.applyCapability === "supported"
@@ -374,6 +374,7 @@ export class GoveeLedEffectStudio extends LitElement {
           .library=${this.library}
           .isAdmin=${this.isAdmin}
           @library-item-saved=${this.sceneLibraryItemSaved}
+          @library-item-delete-requested=${this.sceneLibraryItemDeleteRequested}
           @scene-edit-selected=${this.sceneTemplateSelected}
         ></govee-scene-browser>
         ${this.section === "video" ? this.renderVideo() : nothing}
@@ -1075,8 +1076,13 @@ export class GoveeLedEffectStudio extends LitElement {
         : nothing}
       ${this.renderEditorHeading(
         html`
-          <button class="secondary" type="button" disabled>
-            Apply
+          <button
+            class="secondary"
+            type="button"
+            ?disabled=${!this.canApply}
+            @click=${this.apply}
+          >
+            ${this.applying ? "Applying..." : "Apply"}
           </button>
         `,
       )}
@@ -1117,6 +1123,9 @@ export class GoveeLedEffectStudio extends LitElement {
           );
         }}
       ></govee-advanced-effect-editor>
+      ${this.activeDeployment
+        ? this.renderDeployment(this.activeDeployment)
+        : nothing}
     `;
   }
 
@@ -1476,6 +1485,7 @@ export class GoveeLedEffectStudio extends LitElement {
             type="button"
             ?disabled=${!this.isAdmin ||
             this.saving ||
+            this.applying ||
             this.deletingCurrentItem}
             @click=${this.saveAsCustom}
           >
@@ -1489,6 +1499,7 @@ export class GoveeLedEffectStudio extends LitElement {
             ?disabled=${!this.isAdmin ||
             !this.dirty ||
             this.saving ||
+            this.applying ||
             this.deletingCurrentItem}
             @click=${this.save}
           >
@@ -1664,7 +1675,10 @@ export class GoveeLedEffectStudio extends LitElement {
         message = `Checking the selected effect on ${deviceName}.`;
         break;
       case "confirmed":
-        message = `Applied to ${deviceName}. The selected custom-effect code was confirmed, but exact effect contents cannot be read back.`;
+        message =
+          deployment.target_mode === "scene"
+            ? `Applied to ${deviceName}. The selected scene identity was confirmed, but authored scene contents cannot be read back.`
+            : `Applied to ${deviceName}. The selected custom-effect code was confirmed, but exact effect contents cannot be read back.`;
         break;
       case "uncertain":
         message =
@@ -2035,6 +2049,7 @@ export class GoveeLedEffectStudio extends LitElement {
     event: CustomEvent<{
       content: LayeredSceneContent;
       config_entry_id: string;
+      item?: LibraryItem;
       name: string;
     }>,
   ): void {
@@ -2045,17 +2060,27 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     const transitionEpoch = this.beginEditorTransition();
-    this.currentItem = undefined;
+    this.currentItem = event.detail.item;
     this.templateSourceLabel = undefined;
-    this.customCopyStarted = true;
+    this.customCopyStarted = event.detail.item === undefined;
     this.name = event.detail.name.trim() || "Layered scene template";
     this.content = cloneLayeredSceneContent(event.detail.content);
-    this.savedBaseline = undefined;
+    this.savedBaseline = event.detail.item
+      ? serialiseEditable(this.name, this.content)
+      : undefined;
     this.section = "custom";
     this.customEffectCategory = "all";
     this.customTemplateSelection = undefined;
     this.notice = undefined;
-    this.selectNewEffectName(transitionEpoch);
+    if (!event.detail.item) {
+      this.selectNewEffectName(transitionEpoch);
+    }
+  }
+
+  private sceneLibraryItemDeleteRequested(
+    event: CustomEvent<DeleteCandidate>,
+  ): void {
+    this.requestDelete(event.detail, event.target as HTMLElement);
   }
 
   private backToScenes(): void {
@@ -2503,7 +2528,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private saveAsCustom(): void {
     const source = this.templateSourceLabel;
-    if (!source || !this.isAdmin) {
+    if (!source || !this.isAdmin || this.applying) {
       return;
     }
     const transitionEpoch = this.beginEditorTransition();
@@ -2681,6 +2706,7 @@ export class GoveeLedEffectStudio extends LitElement {
       !this.isAdmin ||
       !this.dirty ||
       this.saving ||
+      this.applying ||
       this.deletingCurrentItem ||
       !isEditableEffectContent(this.content)
     ) {
@@ -2774,8 +2800,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (
       !this.api ||
       !this.canApply ||
-      (!isCustomEffectContent(this.content) &&
-        this.content.kind !== "palette_diy") ||
+      !isDeployableEffectContent(this.content) ||
       !this.selectedDeviceId
     ) {
       return;
@@ -2821,9 +2846,6 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private applyAvailabilityNotice(): string | undefined {
-    if (isAdvancedEditableContent(this.content)) {
-      return undefined;
-    }
     if (this.selectedDeviceId && !this.selectedDevice) {
       return "This device is temporarily unavailable in Home Assistant. Apply is disabled until it is loaded.";
     }
@@ -3548,6 +3570,22 @@ function isCustomEffectContent(
     content !== null &&
     "kind" in content &&
     isCustomEffectKind(content.kind)
+  );
+}
+
+function isDeployableEffectContent(
+  content: unknown,
+): content is
+  | CustomEffectContent
+  | PaletteDiyEffectContent
+  | AdvancedEditableContent {
+  return (
+    isCustomEffectContent(content) ||
+    (typeof content === "object" &&
+      content !== null &&
+      "kind" in content &&
+      (content.kind === "palette_diy" ||
+        isAdvancedEditableKind(content.kind)))
   );
 }
 

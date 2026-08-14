@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import base64
 from collections import Counter
+from dataclasses import replace
 from typing import Any, cast
 
 import pytest
 
+from custom_components.ha_govee_led_ble import protocol
 from custom_components.ha_govee_led_ble.effect_compiler import (
+    ActivationMode,
     CompatibilityState,
     compatibility,
-    compile_h617a,
+    compile_effect,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     CatalogueRef,
@@ -191,11 +194,95 @@ def test_unknown_flags_and_excess_survive_decode_and_json() -> None:
     assert decode_layered_scene(_reference("H617A", entry), encode_layered_scene(decoded)) == decoded
 
 
-def test_decoded_layered_scene_remains_non_compilable() -> None:
-    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == _LAYERED_SCENE_TYPE)
-    content = decode_layered_scene(_reference("H617A", entry), _raw_param(entry))
-    item = LibraryItem.new("Layered template", content)
+def test_decoded_layered_scenes_compile_to_byte_exact_model_frames() -> None:
+    for model in ("H617A", "H6199"):
+        entry = next(scene for scene in SCENE_ENTRIES[model] if scene.scene_type == _LAYERED_SCENE_TYPE)
+        content = decode_layered_scene(
+            _reference(model, entry),
+            _raw_param(entry),
+            speed_index=entry.speed.default_index if entry.speed is not None else None,
+        )
+        item = LibraryItem.new("Layered template", content)
 
-    assert compatibility(item, "H617A").state is CompatibilityState.UNKNOWN
-    with pytest.raises(ValueError, match="no H617A compiler"):
-        compile_h617a(item, 800)
+        assert compatibility(item, model).state is CompatibilityState.COMPATIBLE
+        compiled = compile_effect(item, model)
+        expected = (
+            protocol.build_h6199_scene_multi(entry.param, entry.code, entry.scene_type, entry.music_code)
+            if model == "H6199"
+            else protocol.build_scene_multi(
+                entry.param,
+                entry.code,
+                entry.scene_type,
+                entry.speed,
+                speed_index=content.speed_index,
+            )
+        )
+
+        assert compiled.activation_mode is ActivationMode.SCENE
+        assert compiled.packets == tuple(expected)
+        assert compiled.evidence_codes == (
+            "scene_payload_readback_unavailable",
+            "layered_field_semantics_uncalibrated",
+        )
+
+
+def test_empty_imported_layers_compile_without_reusing_source_only_bytes() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == _LAYERED_SCENE_TYPE)
+    decoded = decode_layered_scene(_reference("H617A", entry), _raw_param(entry))
+    empty = replace(
+        decoded,
+        effect=replace(decoded.effect, layers=()),
+        raw_param=b"\xaa\xbb\xcc",
+        trailing_padding=0,
+    )
+
+    compiled = compile_effect(LibraryItem.new("Empty imported scene", empty), "H617A")
+    encoded = encode_layered_scene(empty)
+
+    assert encoded == b"\x00"
+    assert compiled.upload_packets == tuple(protocol.build_a3_multi(_LAYERED_SCENE_TYPE, encoded))
+
+
+def test_edited_layered_scene_compiles_authored_layers_not_source_bytes() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == _LAYERED_SCENE_TYPE)
+    decoded = decode_layered_scene(_reference("H617A", entry), _raw_param(entry))
+    first = decoded.effect.layers[0]
+    edited = replace(
+        decoded,
+        effect=replace(
+            decoded.effect,
+            layers=(
+                replace(first, palette=((1, 2, 3), *first.palette[1:])),
+                *decoded.effect.layers[1:],
+            ),
+        ),
+    )
+    encoded = encode_layered_scene(edited)
+
+    compiled = compile_effect(LibraryItem.new("Edited layered scene", edited), "H617A")
+
+    assert encoded != decoded.raw_param
+    assert compiled.upload_packets == tuple(
+        protocol.build_a3_multi(
+            _LAYERED_SCENE_TYPE,
+            protocol.apply_scene_speed(encoded, entry.speed, entry.speed.default_index)
+            if entry.speed is not None
+            else encoded,
+        )
+    )
+
+
+def test_layered_scene_rejects_a_palette_scene_identity() -> None:
+    layered_entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == _LAYERED_SCENE_TYPE)
+    palette_entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 1)
+    decoded = decode_layered_scene(_reference("H617A", layered_entry), _raw_param(layered_entry))
+    mismatched = replace(
+        decoded,
+        template=_reference("H617A", palette_entry),
+        speed_index=None,
+    )
+    item = LibraryItem.new("Mismatched layered scene", mismatched)
+
+    assert compatibility(item, "H617A").state is CompatibilityState.INCOMPATIBLE
+    with pytest.raises(ValueError, match="uses type 1, not type 2"):
+        compile_effect(item, "H617A")

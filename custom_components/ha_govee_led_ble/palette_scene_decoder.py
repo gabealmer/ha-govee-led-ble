@@ -1,4 +1,4 @@
-"""Decode and encode catalogue palette scenes as canonical, non-compilable values."""
+"""Decode and encode catalogue palette scenes as canonical values."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def decode_palette_scene(
     *,
     speed_index: int | None = None,
 ) -> PaletteScene:
-    """Decode a type-1 parameter without adding an application or compilation path."""
+    """Decode a type-1 parameter into its lossless authored representation."""
     parsed, trailing_padding = parse_scene_type1_body(raw_param)
     layout = int(parsed.layout)
     return PaletteScene(

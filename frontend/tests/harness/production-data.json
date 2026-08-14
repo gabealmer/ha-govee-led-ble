@@ -440,7 +440,7 @@
         ],
         "sku": "H617A",
         "supports": {
-          "advanced": "evidence_gap",
+          "advanced": "supported",
           "multi": "supported"
         },
         "video_modes": [],
@@ -452,13 +452,13 @@
             "label": "Scenes"
           },
           {
-            "application": "planned",
+            "application": "studio",
             "content_kind": "scene_palette",
             "id": "edited_palette_scenes",
             "label": "Edited palette scenes"
           },
           {
-            "application": "planned",
+            "application": "studio",
             "content_kind": "scene_layered",
             "id": "layered_scenes",
             "label": "Layered scenes"
@@ -488,7 +488,7 @@
             "label": "Music"
           },
           {
-            "application": "planned",
+            "application": "studio",
             "content_kind": "advanced",
             "id": "advanced",
             "label": "Advanced"
@@ -661,7 +661,7 @@
         "painted_effects": [],
         "sku": "H6199",
         "supports": {
-          "advanced": "evidence_gap",
+          "advanced": "supported",
           "multi": "unsupported"
         },
         "video_modes": [
@@ -682,13 +682,13 @@
             "label": "Scenes"
           },
           {
-            "application": "planned",
+            "application": "studio",
             "content_kind": "scene_palette",
             "id": "edited_palette_scenes",
             "label": "Edited palette scenes"
           },
           {
-            "application": "planned",
+            "application": "studio",
             "content_kind": "scene_layered",
             "id": "layered_scenes",
             "label": "Layered scenes"
@@ -712,7 +712,7 @@
             "label": "Video"
           },
           {
-            "application": "planned",
+            "application": "studio",
             "content_kind": "advanced",
             "id": "advanced",
             "label": "Advanced"
@@ -807,7 +807,7 @@
     "schema_version": 4,
     "sku": "H617A",
     "supports": {
-      "advanced": "evidence_gap",
+      "advanced": "supported",
       "multi": "supported"
     },
     "video_modes": [],
@@ -819,13 +819,13 @@
         "label": "Scenes"
       },
       {
-        "application": "planned",
+        "application": "studio",
         "content_kind": "scene_palette",
         "id": "edited_palette_scenes",
         "label": "Edited palette scenes"
       },
       {
-        "application": "planned",
+        "application": "studio",
         "content_kind": "scene_layered",
         "id": "layered_scenes",
         "label": "Layered scenes"
@@ -855,7 +855,7 @@
         "label": "Music"
       },
       {
-        "application": "planned",
+        "application": "studio",
         "content_kind": "advanced",
         "id": "advanced",
         "label": "Advanced"
@@ -878,7 +878,7 @@
     {
       "config_entry_id": "h617a-main",
       "custom_effects": {
-        "advanced": "evidence_gap",
+        "advanced": "supported",
         "multi": "supported",
         "painted": "supported",
         "palette_diy": "unsupported",
@@ -892,7 +892,7 @@
     {
       "config_entry_id": "h6199-main",
       "custom_effects": {
-        "advanced": "evidence_gap",
+        "advanced": "supported",
         "multi": "unsupported",
         "painted": "unsupported",
         "palette_diy": "supported",

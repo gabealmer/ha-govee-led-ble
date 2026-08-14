@@ -167,7 +167,7 @@ def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries
     assert catalogue["video_modes"] == [mode.to_dict() for mode in H6199_VIDEO_MODES]
     assert catalogue["supports"] == {
         "multi": "unsupported",
-        "advanced": "evidence_gap",
+        "advanced": "supported",
     }
     assert catalogue["apply"] == {
         "painted": "unsupported",
@@ -234,6 +234,15 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
     h617a_single = release_capability("H617A", CapabilityWorkflow.SINGLE)
     h617a_multi = release_capability("H617A", CapabilityWorkflow.MULTI)
     h617a_scenes = release_capability("H617A", CapabilityWorkflow.NATIVE_SCENES)
+    compiled_scenes = tuple(
+        release_capability(model, workflow)
+        for model in ("H617A", "H6199")
+        for workflow in (
+            CapabilityWorkflow.EDITED_PALETTE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
+            CapabilityWorkflow.ADVANCED,
+        )
+    )
     h617a_music = release_capability("H617A", CapabilityWorkflow.NATIVE_MUSIC)
     h6199_music = release_capability("H6199", CapabilityWorkflow.NATIVE_MUSIC)
     h6199_video = release_capability("H6199", CapabilityWorkflow.VIDEO)
@@ -250,6 +259,13 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
     assert h617a_scenes is not None
     assert h617a_scenes.application_route is ApplicationRoute.STUDIO_SCENE_APPLY
     assert h617a_scenes.compiler_deployer_strategy is CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION
+    assert all(
+        capability is not None
+        and capability.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+        and capability.compiler_deployer_strategy is CompilerDeployerStrategy.MODEL_SCENE_ENGINE
+        and capability.verification_confidence is VerificationConfidence.SELECTION_ONLY
+        for capability in compiled_scenes
+    )
     assert all(
         capability is not None
         and capability.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
@@ -292,6 +308,6 @@ def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contr
 
 
 def test_capability_state_distinguishes_visibility_from_deployability() -> None:
-    assert workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED) is CapabilityState.EVIDENCE_GAP
-    assert workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED) is CapabilityState.EVIDENCE_GAP
+    assert workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED) is CapabilityState.SUPPORTED
+    assert workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED) is CapabilityState.SUPPORTED
     assert studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY) is CapabilityState.SUPPORTED
