@@ -168,6 +168,16 @@ test("default harness uses complete production H617A catalogues", async ({
   await expect(
     sceneBrowser.getByText("No scenes in this category."),
   ).toHaveCount(0);
+  await sceneBrowser.getByRole("button", { name: "Aurora", exact: true }).click();
+  const sceneSpeed = sceneBrowser.getByRole("group", { name: "Speed" });
+  await expect(sceneSpeed.getByRole("button")).toHaveText([
+    "2 steps lower",
+    "1 step lower",
+    "Default",
+  ]);
+  await expect(
+    sceneBrowser.getByRole("slider", { name: "Scene speed" }),
+  ).toHaveCount(0);
   const orderedSceneNames = await sceneBrowser
     .locator("aside.scenes button.scene > span:first-child")
     .allTextContents();
@@ -266,20 +276,22 @@ test("default harness uses complete production H617A catalogues", async ({
     musicEditor.getByRole("heading", { name: "Mode-specific controls" }),
   ).toHaveCount(0);
   await expect(musicEditor.locator(".mode-parameters")).toHaveCount(0);
-  const musicParameterLabels = musicEditor.locator(
-    ".parameter-stack > .range-field > .parameter-label, .parameter-stack > .parameter-group > .parameter-label, .parameter-stack > .check-field > .parameter-label",
-  );
-  await expect(musicParameterLabels).toHaveText([
+  const musicParameterLabels = [
     "Sensitivity",
     "Colour mode",
     "Point",
     "Gradient",
-  ]);
-  const musicLabelStyles = await musicParameterLabels.evaluateAll((labels) =>
-    labels.map((label) => {
-      const style = getComputedStyle(label);
-      return `${style.fontSize}|${style.fontWeight}|${style.color}`;
-    }),
+  ].map((label) => musicEditor.getByText(label, { exact: true }));
+  for (const label of musicParameterLabels) {
+    await expect(label).toHaveCount(1);
+  }
+  const musicLabelStyles = await Promise.all(
+    musicParameterLabels.map((label) =>
+      label.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return `${style.fontSize}|${style.fontWeight}|${style.color}`;
+      }),
+    ),
   );
   expect(new Set(musicLabelStyles).size).toBe(1);
   const colourModeOptions = musicEditor
@@ -835,6 +847,15 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   await expect(
     studio.getByRole("list", { name: "Colours" }),
   ).toBeVisible();
+  const distribution = studio.getByRole("group", { name: "Distribution" });
+  await expect(distribution.getByRole("button")).toHaveText([
+    "Unified",
+    "Gradient",
+  ]);
+  await distribution.getByRole("button", { name: "Gradient" }).click();
+  await expect(
+    distribution.getByRole("button", { name: "Gradient" }),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 
 test("device catalogues expose complete model-specific effect families", async ({ page }) => {
@@ -971,6 +992,15 @@ test("H6199 Video exposes complete reusable profile controls", async ({ page }) 
   await expect(
     editor.getByRole("group", { name: "Capture area" }),
   ).toBeVisible();
+  await editor
+    .getByRole("group", { name: "Capture area" })
+    .getByRole("button", { name: "Part screen" })
+    .click();
+  await expect(
+    editor
+      .getByRole("group", { name: "Capture area" })
+      .getByRole("button", { name: "Part screen" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(editor.getByRole("slider", { name: "Saturation" })).toBeVisible();
   await expect(
     editor.getByRole("slider", { name: "White balance" }),
@@ -1466,10 +1496,20 @@ test("palette scenes copy on Edit, save losslessly and cannot Apply", async ({
   const sceneBrowser = await openPaletteScene(page, "Festival", /^Halloween/);
   const nativeApply = sceneBrowser.getByRole("button", { name: "Apply" });
   const edit = sceneBrowser.getByRole("button", { name: "Edit" });
+  const heading = sceneBrowser.locator(".editor-heading");
 
+  await expect(heading).toBeVisible();
+  await expect(heading.locator(":scope > .actions")).toHaveCount(1);
   await expect(nativeApply).toBeEnabled();
   await expect(nativeApply).toHaveClass("secondary");
   await expect(edit).toHaveClass("primary");
+  await expect(edit).toHaveCSS("min-height", "44px");
+  await expect(nativeApply).toHaveCSS("min-height", "44px");
+  const [editBox, applyBox] = await Promise.all([
+    edit.boundingBox(),
+    nativeApply.boundingBox(),
+  ]);
+  expect(editBox?.y).toBe(applyBox?.y);
   await nativeApply.click();
   await expect(
     sceneBrowser
@@ -2484,7 +2524,8 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
 }) => {
   const studio = await openStudio(page);
   const sceneBrowser = await openLayeredScene(page);
-  await sceneBrowser.getByLabel("Scene speed").press("End");
+  const speed = sceneBrowser.getByRole("group", { name: "Speed" });
+  await speed.getByRole("button", { name: "1 step higher" }).click();
   await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
 
   const advancedApply = studio
@@ -2532,8 +2573,8 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
     sceneBrowser.getByRole("button", { name: /Aurora Layers/ }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    sceneBrowser.getByLabel("Scene speed"),
-  ).toHaveValue("2");
+    speed.getByRole("button", { name: "1 step higher" }),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 
 test("Back navigation discards an unsaved scene template", async ({ page }) => {
