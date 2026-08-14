@@ -18,6 +18,11 @@ export const studioBaseStyles = css`
     --studio-card-radius: 10px;
     --studio-card-padding: 20px;
     --studio-section-gap: 18px;
+    --studio-parameter-gap: 18px;
+    --studio-parameter-label-size: 13px;
+    --studio-parameter-label-weight: 600;
+    --studio-section-title-size: 16px;
+    --studio-section-title-weight: 600;
     --studio-action-padding: 8px 17px;
     --studio-disabled-opacity: 0.52;
     --studio-focus-width: 3px;
@@ -57,6 +62,13 @@ export const studioCardStyles = css`
     border: 1px solid var(--studio-border);
     border-radius: var(--studio-card-radius);
     background: var(--studio-card);
+  }
+
+  .section-title {
+    margin: 0 0 14px;
+    font-size: var(--studio-section-title-size);
+    font-weight: var(--studio-section-title-weight);
+    line-height: 1.35;
   }
 `;
 
@@ -131,15 +143,65 @@ export const studioSelectorStyles = css`
 `;
 
 export const studioFormStyles = css`
+  .parameter-stack {
+    display: grid;
+    gap: var(--studio-parameter-gap);
+  }
+
+  .parameter-stack > .field,
+  .parameter-stack > .range-field,
+  .parameter-stack > .parameter-group,
+  .parameter-stack > .check-field {
+    margin-top: 0;
+  }
+
+  .parameter-group {
+    display: grid;
+    gap: 10px;
+  }
+
+  .parameter-label,
+  .field > span:first-child,
+  .range-field > span:first-child,
+  .check-field > span:last-child {
+    color: var(--studio-muted);
+    font-size: var(--studio-parameter-label-size);
+    font-weight: var(--studio-parameter-label-weight);
+    line-height: 1.35;
+  }
+
+  .parameter-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .parameter-options button {
+    min-width: 0;
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--studio-border);
+    border-radius: var(--studio-control-radius);
+    color: var(--primary-text-color);
+    background: var(--studio-card);
+    font-size: var(--studio-parameter-label-size);
+    font-weight: var(--studio-parameter-label-weight);
+    cursor: pointer;
+  }
+
+  .parameter-options button.selected,
+  .parameter-options button[aria-pressed="true"] {
+    color: var(--studio-blue);
+    border-color: var(--studio-blue);
+    background: var(--studio-blue-soft);
+  }
+
   .field,
   .range-field {
     display: grid;
     align-items: center;
     gap: 10px;
     margin-top: 14px;
-    color: var(--studio-muted);
-    font-size: 13px;
-    font-weight: 600;
   }
 
   .field input,

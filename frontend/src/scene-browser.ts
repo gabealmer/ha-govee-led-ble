@@ -9,6 +9,7 @@ import {
   studioCardStyles,
   studioEditorStyles,
   studioFeedbackStyles,
+  studioFormStyles,
   studioSelectorStyles,
   studioVisuallyHiddenStyles,
   studioWorkspaceStyles,
@@ -417,7 +418,7 @@ export class GoveeSceneBrowser extends LitElement {
             ? html`
                 <label class="speed-parameter">
                   <span class="parameter-heading">
-                    <span>Speed</span>
+                    <span class="parameter-label">Speed</span>
                     <output>
                       ${speedLabel(speedIndex, speed.default_index)}
                     </output>
@@ -466,7 +467,7 @@ export class GoveeSceneBrowser extends LitElement {
       ${content.palette.length > 0
         ? html`
             <section class="parameter-entry visual-parameter">
-              <h4>Palette</h4>
+              <span class="parameter-label">Palette</span>
               <div class="scene-palette" role="list" aria-label="Scene palette">
                 ${content.palette.map(
                   (colour, index) => html`
@@ -482,7 +483,7 @@ export class GoveeSceneBrowser extends LitElement {
           `
         : nothing}
       <section class="parameter-entry visual-parameter">
-        <h4>Sequence</h4>
+        <span class="parameter-label">Sequence</span>
         <ol class="scene-steps" aria-label="Ordered scene steps">
           ${content.steps.map(
             (step, index) => html`
@@ -874,6 +875,7 @@ export class GoveeSceneBrowser extends LitElement {
     studioSelectorStyles,
     studioEditorStyles,
     studioFeedbackStyles,
+    studioFormStyles,
     studioVisuallyHiddenStyles,
     studioWorkspaceStyles,
     css`
@@ -893,11 +895,6 @@ export class GoveeSceneBrowser extends LitElement {
     h2 {
       margin-bottom: 0;
       font-size: 20px;
-    }
-
-    h4 {
-      margin: 0;
-      font-size: 13px;
     }
 
     .scene-search {
@@ -974,9 +971,6 @@ export class GoveeSceneBrowser extends LitElement {
       align-items: baseline;
       justify-content: space-between;
       gap: 16px;
-      color: var(--primary-text-color);
-      font-size: 13px;
-      font-weight: 700;
     }
 
     .parameter-heading output {

@@ -245,9 +245,49 @@ test("default harness uses complete production H617A catalogues", async ({
     "Spectrum",
   ]);
   await effectList.getByRole("button", { name: "Bloom", exact: true }).click();
+  const musicEditor = studio.locator("govee-music-profile-editor");
+  await expect(musicEditor).toBeVisible();
   await expect(
-    studio.locator("govee-music-profile-editor"),
+    musicEditor.locator(".parameter-stack").first(),
+  ).toHaveCSS("row-gap", "18px");
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("heading", { name: "Bloom", exact: true }),
   ).toBeVisible();
+  await expect(studio.locator(".editor-heading .eyebrow")).toHaveCount(0);
+  await effectList
+    .getByRole("button", { name: "Separation", exact: true })
+    .click();
+  await expect(
+    musicEditor.getByRole("heading", { name: "Music profile" }),
+  ).toHaveCount(0);
+  await expect(
+    musicEditor.getByRole("heading", { name: "Mode-specific controls" }),
+  ).toHaveCount(0);
+  await expect(musicEditor.locator(".mode-parameters")).toHaveCount(0);
+  const musicParameterLabels = musicEditor.locator(
+    ".parameter-stack > .range-field > .parameter-label, .parameter-stack > .parameter-group > .parameter-label, .parameter-stack > .check-field > .parameter-label",
+  );
+  await expect(musicParameterLabels).toHaveText([
+    "Sensitivity",
+    "Colour mode",
+    "Point",
+    "Gradient",
+  ]);
+  const musicLabelStyles = await musicParameterLabels.evaluateAll((labels) =>
+    labels.map((label) => {
+      const style = getComputedStyle(label);
+      return `${style.fontSize}|${style.fontWeight}|${style.color}`;
+    }),
+  );
+  expect(new Set(musicLabelStyles).size).toBe(1);
+  const colourModeOptions = musicEditor
+    .getByRole("group", { name: "Colour mode" })
+    .getByRole("button");
+  await expect(colourModeOptions).toHaveText(["Automatic", "Fixed"]);
+  await expect(colourModeOptions.first()).toHaveCSS("font-size", "13px");
+  await expect(colourModeOptions.first()).toHaveCSS("font-weight", "600");
   await categories
     .getByRole("button", { name: "All", exact: true })
     .click();
@@ -309,15 +349,32 @@ test("default harness uses complete production H617A catalogues", async ({
   await expect(
     studio.locator("govee-painted-segment-editor"),
   ).toHaveCount(0);
-  await expect(
-    studio
-      .locator("govee-custom-effect-editor")
-      .getByRole("heading", { name: "Speed", exact: true }),
-  ).toBeVisible();
   const speedParameters = studio.locator("govee-custom-effect-editor");
+  await expect(
+    speedParameters.locator(".parameter-stack"),
+  ).toHaveCSS("row-gap", "18px");
   await expect(
     speedParameters.getByText("Speed", { exact: true }),
   ).toHaveCount(1);
+  await expect(
+    speedParameters.getByRole("heading", { name: "Parameters" }),
+  ).toHaveCount(0);
+  const paletteParameterLabels = speedParameters.locator(
+    ".parameter-stack > .parameter-group > .parameter-label",
+  );
+  await expect(paletteParameterLabels).toHaveText([
+    "Variation",
+    "Colours",
+    "Speed",
+  ]);
+  const paletteLabelStyles = await paletteParameterLabels.evaluateAll(
+    (labels) =>
+      labels.map((label) => {
+        const style = getComputedStyle(label);
+        return `${style.fontSize}|${style.fontWeight}|${style.color}`;
+      }),
+  );
+  expect(new Set(paletteLabelStyles).size).toBe(1);
   await expect(
     speedParameters.getByRole("slider", { name: "Speed" }),
   ).toBeVisible();
@@ -346,8 +403,8 @@ test("default harness uses complete production H617A catalogues", async ({
   await expect(
     studio
       .locator("govee-custom-effect-editor")
-      .getByRole("heading", { name: "Sensitivity", exact: true }),
-  ).toBeVisible();
+      .getByText("Sensitivity", { exact: true }),
+  ).toHaveCount(1);
   await studio
     .locator(".editor")
     .getByRole("button", { name: "Save as Custom" })
@@ -626,7 +683,7 @@ test("Painted effects keep multiple brushes and their picker visible", async ({
   await expect(firstSegment).toHaveAccessibleName("Segment 1, #ff9f0a");
 });
 
-test("saved effects can be deleted from the editor or item list", async ({
+test("saved effects can be deleted from the editor", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -644,13 +701,14 @@ test("saved effects can be deleted from the editor or item list", async ({
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(editorDelete).toBeFocused();
-
-  await effectList
-    .getByRole("button", {
+  await expect(
+    effectList.getByRole("button", {
       name: "Delete Supported painted effect",
       exact: true,
-    })
-    .click();
+    }),
+  ).toHaveCount(0);
+
+  await editorDelete.click();
   dialog = studio.getByRole("dialog", { name: "Delete effect?" });
   await dialog.getByRole("button", { name: "Delete effect" }).click();
 
@@ -758,6 +816,12 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     .getByRole("complementary", { name: "Effects" })
     .getByRole("button", { name: "Layered", exact: true })
     .click();
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("heading", { name: "Layered", exact: true }),
+  ).toBeVisible();
+  await expect(studio.locator(".editor-heading .eyebrow")).toHaveCount(0);
   const apply = studio
     .locator(".editor")
     .getByRole("button", { name: "Apply" });
@@ -787,15 +851,20 @@ test("device catalogues expose complete model-specific effect families", async (
     .getByRole("button", { name: "Music", exact: true })
     .click();
   await effects.getByRole("button", { name: "Bloom", exact: true }).click();
-  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveValue(
-    "bloom",
-  );
+  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveCount(0);
   await expect(
     studio.getByRole("slider", { name: "Sensitivity" }),
   ).toHaveAttribute("min", "0");
   await expect(
     studio.getByRole("slider", { name: "Sensitivity" }),
   ).toHaveAttribute("max", "99");
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Save as Custom" })
+    .click();
+  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveValue(
+    "bloom",
+  );
   await devicePicker.selectOption("h6199-main");
 
   await expect(
@@ -810,9 +879,7 @@ test("device catalogues expose complete model-specific effect families", async (
     "Single Layer",
     "Advanced",
   ]);
-  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveValue(
-    "energetic",
-  );
+  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveCount(0);
   await expect(
     studio.getByRole("slider", { name: "Sensitivity" }),
   ).toHaveAttribute("min", "1");
@@ -886,6 +953,19 @@ test("H6199 Video exposes complete reusable profile controls", async ({ page }) 
 
   const editor = studio.locator("govee-video-profile-editor");
   await expect(
+    editor.getByRole("heading", { name: "Profile", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    editor.locator(".parameter-stack").first(),
+  ).toHaveCSS("row-gap", "18px");
+  await expect(
+    editor.getByRole("group", { name: "Mode" }),
+  ).toHaveCount(0);
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Save as Custom" })
+    .click();
+  await expect(
     editor.getByRole("group", { name: "Mode" }),
   ).toBeVisible();
   await expect(
@@ -952,12 +1032,8 @@ test("palette scene parameters preserve decoded order", async ({
   await expect(halloween.getByText("0", { exact: true })).toBeVisible();
   await expect(halloween.getByText("Brightness flag")).toBeVisible();
   await expect(halloween.getByText("Set", { exact: true })).toBeVisible();
-  await expect(
-    halloween.getByRole("heading", { name: "Palette" }),
-  ).toBeVisible();
-  await expect(
-    halloween.getByRole("heading", { name: "Sequence" }),
-  ).toBeVisible();
+  await expect(halloween.getByText("Palette", { exact: true })).toBeVisible();
+  await expect(halloween.getByText("Sequence", { exact: true })).toBeVisible();
   await expect(
     halloween
       .getByRole("list", { name: "Ordered scene steps" })
@@ -1539,7 +1615,7 @@ test("non-admin profile templates and controls remain read-only", async ({
     studio
       .locator("govee-video-profile-editor")
       .getByRole("button", { name: "Game", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     studio
       .locator("govee-video-profile-editor")
@@ -1950,7 +2026,7 @@ test("advanced layer and palette keyboard focus follows edits", async ({
 
   await expect(appliedArea.locator("span")).toHaveCount(15);
   await expect(
-    advanced.getByRole("heading", { name: "Selection" }),
+    advanced.getByText("Selection", { exact: true }),
   ).toBeVisible();
   const areaTrack = advanced.locator(".area-track");
   const areaStart = advanced.getByRole("slider", {

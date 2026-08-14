@@ -228,7 +228,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   private renderEmptyLayers() {
     return html`
       <section class="card empty-state" role="status">
-        <h3>No layer records</h3>
+        <h3 class="section-title">No layer records</h3>
         <p class="muted">
           This layered content contains no layer records. It remains preserved
           until you add one.
@@ -264,7 +264,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     const segmentColour = rgbToHex(layer.palette[0] ?? [47, 111, 237]);
     return html`
       <section class="card wide-card">
-        <h3>Applied area</h3>
+        <h3 class="section-title">Applied area</h3>
         <div class="area-control">
           <div
             class="area-track"
@@ -551,7 +551,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     const knownType = isKnownSelectionType(selection.type);
     return html`
       <div class="selection-controls">
-        <h4>Selection</h4>
+        <span class="parameter-label">Selection</span>
         <label class="field">
           <span>Type</span>
           <select
@@ -665,7 +665,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   private renderPalette(layer: EffectLayer) {
     return html`
       <section class="card">
-        <h3>Colours</h3>
+        <h3 class="section-title">Colours</h3>
         <govee-palette-editor
           .palette=${layer.palette}
           .minColours=${1}
@@ -694,7 +694,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     const method = layer.distribution.method;
     return html`
       <section class="card">
-        <h3>Distribution</h3>
+        <h3 class="section-title">Distribution</h3>
         <label class="field">
           <span>Method</span>
           <select
@@ -782,7 +782,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     if (layer.brightness_patterns.length === 0) {
       return html`
         <section class="card wide-card empty-state" role="status">
-          <h3>No brightness pattern records</h3>
+          <h3 class="section-title">No brightness pattern records</h3>
           <p class="muted">
             This layer contains no brightness pattern records. It remains
             preserved until you add one.
@@ -807,9 +807,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     const knownOrder = isKnownBrightnessOrder(pattern.order);
     return html`
       <section class="card wide-card">
-        <h3>Brightness</h3>
+        <h3 class="section-title">Brightness</h3>
         <div
-          class="segmented"
+          class="parameter-options"
           role="group"
           aria-label="Brightness distribution"
         >
@@ -983,7 +983,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     return html`
       <section class="card">
         <div class="card-heading">
-          <h3>${label}</h3>
+          <h3 class="section-title">${label}</h3>
           <button
             class="switch ${movement.enabled ? "on" : ""}"
             type="button"
@@ -1075,7 +1075,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     return html`
       <section class="card">
         <div class="card-heading">
-          <h3>Priority</h3>
+          <h3 class="section-title">Priority</h3>
           <button
             class="switch ${enabled ? "on" : ""}"
             type="button"
@@ -1545,14 +1545,8 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       --area-trim: var(--warning-color, #f4c542);
     }
 
-    h3,
     p {
       margin-top: 0;
-    }
-
-    h3 {
-      margin-bottom: 16px;
-      font-size: 16px;
     }
 
     .layer-card {
@@ -1577,8 +1571,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     }
 
     .pattern-tabs button,
-    .priority-row button,
-    .segmented button {
+    .priority-row button {
       flex: 0 0 auto;
       padding: 8px 14px;
       border: 1px solid var(--studio-border);
@@ -1589,8 +1582,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     }
 
     .pattern-tabs button.selected,
-    .priority-row button.selected,
-    .segmented button.selected {
+    .priority-row button.selected {
       color: var(--studio-blue);
       border-color: var(--studio-blue);
       background: var(--studio-blue-soft);
@@ -1772,10 +1764,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       border-top: 1px solid var(--studio-border);
     }
 
-    .selection-controls h4 {
-      margin: 0 0 4px;
-      color: var(--primary-text-color);
-      font-size: 15px;
+    .selection-controls > .parameter-label {
+      display: block;
+      margin-bottom: 4px;
     }
 
     .range-field {
@@ -1783,15 +1774,10 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       font-variant-numeric: tabular-nums;
     }
 
-    .segmented,
     .priority-row {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-    }
-
-    .segmented button {
-      flex: 1;
     }
 
     .pattern-toolbar {
@@ -1873,9 +1859,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       gap: 10px;
       min-height: 44px;
       margin-top: 12px;
-      color: var(--primary-text-color);
-      font-size: 13px;
-      font-weight: 600;
     }
 
     .check-field input {

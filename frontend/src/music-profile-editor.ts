@@ -5,7 +5,6 @@ import { live } from "lit/directives/live.js";
 import { recentColour } from "./colour-picker";
 import "./colour-picker";
 import {
-  studioActionStyles,
   studioBaseStyles,
   studioCardStyles,
   studioFormStyles,
@@ -64,6 +63,9 @@ export class GoveeMusicProfileEditor extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
+  @property({ type: Boolean })
+  public showModeSelector = true;
+
   private lastFixedColour?: RGB;
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
@@ -90,87 +92,91 @@ export class GoveeMusicProfileEditor extends LitElement {
 
     return html`
       <section class="card">
-        <h3>Music profile</h3>
+        <div class="parameter-stack">
+          ${this.showModeSelector
+            ? html`
+                <label class="field">
+                  <span class="parameter-label">Mode</span>
+                  <select
+                    aria-label="Mode"
+                    .value=${live(this.content.mode)}
+                    ?disabled=${this.disabled}
+                    @change=${this.modeChanged}
+                  >
+                    ${modeOptions.map(
+                      (mode) => html`
+                        <option
+                          value=${mode.id}
+                          .selected=${mode.id === this.content?.mode}
+                        >
+                          ${mode.label}
+                        </option>
+                      `,
+                    )}
+                  </select>
+                </label>
+              `
+            : nothing}
 
-        <label class="field">
-          <span>Mode</span>
-          <select
-            aria-label="Mode"
-            .value=${live(this.content.mode)}
-            ?disabled=${this.disabled}
-            @change=${this.modeChanged}
-          >
-            ${modeOptions.map(
-              (mode) => html`
-                <option
-                  value=${mode.id}
-                  .selected=${mode.id === this.content?.mode}
-                >
-                  ${mode.label}
-                </option>
-              `,
-            )}
-          </select>
-        </label>
+          ${this.renderRangeField(
+            "Sensitivity",
+            "Sensitivity",
+            sensitivity,
+            sensitivityMinimum,
+            sensitivityMaximum,
+            (value) =>
+              this.updateContent((content) => {
+                content.sensitivity = value;
+                return content;
+              }),
+          )}
 
-        ${this.renderRangeField(
-          "Sensitivity",
-          "Sensitivity",
-          sensitivity,
-          sensitivityMinimum,
-          sensitivityMaximum,
-          (value) =>
-            this.updateContent((content) => {
-              content.sensitivity = value;
-              return content;
-            }),
-        )}
+          ${this.renderSegmentedField("Colour mode", "Colour mode", [
+            {
+              label: "Automatic",
+              selected: colourMode === "automatic",
+              activate: () => this.colourModeChanged(false),
+            },
+            {
+              label: "Fixed",
+              selected: colourMode === "fixed",
+              activate: () => this.colourModeChanged(true),
+            },
+          ])}
 
-        ${this.renderSegmentedField("Colour mode", "Colour mode", [
-          {
-            label: "Automatic",
-            selected: colourMode === "automatic",
-            activate: () => this.colourModeChanged(false),
-          },
-          {
-            label: "Fixed",
-            selected: colourMode === "fixed",
-            activate: () => this.colourModeChanged(true),
-          },
-        ])}
+          ${colourMode === "fixed"
+            ? html`
+                <div class="parameter-group fixed-colour">
+                  <span class="parameter-label">Fixed colour</span>
+                  <govee-colour-picker
+                    .colour=${fixedColour}
+                    .disabled=${this.disabled}
+                    @colour-changing=${(event: CustomEvent<{ colour: RGB }>) =>
+                      this.fixedColourChanged(event.detail.colour)}
+                    @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
+                      this.fixedColourChanged(event.detail.colour)}
+                  ></govee-colour-picker>
+                </div>
+              `
+            : nothing}
 
-        ${colourMode === "fixed"
-          ? html`
-              <div class="parameter-group fixed-colour">
-                <span class="field-label">Fixed colour</span>
-                <govee-colour-picker
-                  .colour=${fixedColour}
-                  .disabled=${this.disabled}
-                  @colour-changing=${(event: CustomEvent<{ colour: RGB }>) =>
-                    this.fixedColourChanged(event.detail.colour)}
-                  @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
-                    this.fixedColourChanged(event.detail.colour)}
-                ></govee-colour-picker>
-              </div>
-            `
-          : nothing}
+          ${isStyleMode(this.content.mode)
+            ? this.renderSegmentedField("Style", "Style", [
+                {
+                  label: "Dynamic",
+                  selected: !this.content.calm,
+                  activate: () => this.styleChanged(false),
+                },
+                {
+                  label: "Calm",
+                  selected: Boolean(this.content.calm),
+                  activate: () => this.styleChanged(true),
+                },
+              ])
+            : nothing}
 
-        ${isStyleMode(this.content.mode)
-          ? this.renderSegmentedField("Style", "Style", [
-              {
-                label: "Dynamic",
-                selected: !this.content.calm,
-                activate: () => this.styleChanged(false),
-              },
-              {
-                label: "Calm",
-                selected: Boolean(this.content.calm),
-                activate: () => this.styleChanged(true),
-              },
-            ])
-          : nothing}
-
-        ${this.renderModeParameters(this.content)}
+          ${this.renderModeParameters(this.content)}
+        </div>
       </section>
     `;
   }
@@ -182,12 +188,12 @@ export class GoveeMusicProfileEditor extends LitElement {
   ) {
     return html`
       <div class="parameter-group">
-        <span class="field-label">${label}</span>
-        <div class="segmented" role="group" aria-label=${ariaLabel}>
+        <span class="parameter-label">${label}</span>
+        <div class="parameter-options" role="group" aria-label=${ariaLabel}>
           ${options.map(
             (option) => html`
               <button
-                class=${`secondary ${option.selected ? "active" : ""}`}
+                class=${option.selected ? "selected" : ""}
                 type="button"
                 aria-pressed=${option.selected ? "true" : "false"}
                 ?disabled=${this.disabled}
@@ -212,7 +218,7 @@ export class GoveeMusicProfileEditor extends LitElement {
   ) {
     return html`
       <label class="range-field">
-        <span>${label}</span>
+        <span class="parameter-label">${label}</span>
         <input
           type="range"
           aria-label=${ariaLabel}
@@ -250,13 +256,10 @@ export class GoveeMusicProfileEditor extends LitElement {
     const gradient = booleanParameter(parameters, "gradient", true);
 
     return html`
-      <div class="mode-parameters">
-        <h4>Mode-specific controls</h4>
-        ${this.renderRangeField("Point", "Point", point, 0, 100, (value) =>
-          this.updateParameter("point", value))}
-        ${this.renderCheckboxField("Gradient", gradient, (checked) =>
-          this.updateParameter("gradient", checked))}
-      </div>
+      ${this.renderRangeField("Point", "Point", point, 0, 100, (value) =>
+        this.updateParameter("point", value))}
+      ${this.renderCheckboxField("Gradient", gradient, (checked) =>
+        this.updateParameter("gradient", checked))}
     `;
   }
 
@@ -270,17 +273,14 @@ export class GoveeMusicProfileEditor extends LitElement {
     );
 
     return html`
-      <div class="mode-parameters">
-        <h4>Mode-specific controls</h4>
-        ${this.renderRangeField(
-          "Relative brightness",
-          "Relative brightness",
-          relativeBrightness,
-          0,
-          100,
-          (value) => this.updateParameter("relative_brightness", value),
-        )}
-      </div>
+      ${this.renderRangeField(
+        "Relative brightness",
+        "Relative brightness",
+        relativeBrightness,
+        0,
+        100,
+        (value) => this.updateParameter("relative_brightness", value),
+      )}
     `;
   }
 
@@ -288,11 +288,8 @@ export class GoveeMusicProfileEditor extends LitElement {
     const keyCount = numberParameter(parameters, "key_count", 15, 1, 15);
 
     return html`
-      <div class="mode-parameters">
-        <h4>Mode-specific controls</h4>
-        ${this.renderRangeField("Key count", "Key count", keyCount, 1, 15, (value) =>
-          this.updateParameter("key_count", value))}
-      </div>
+      ${this.renderRangeField("Key count", "Key count", keyCount, 1, 15, (value) =>
+        this.updateParameter("key_count", value))}
     `;
   }
 
@@ -300,33 +297,30 @@ export class GoveeMusicProfileEditor extends LitElement {
     const direction = directionParameter(parameters, "direction", "clockwise");
 
     return html`
-      <div class="mode-parameters">
-        <h4>Mode-specific controls</h4>
-        <label class="field">
-          <span>Direction</span>
-          <select
-            aria-label="Direction"
-            .value=${live(direction)}
-            ?disabled=${this.disabled}
-            @change=${(event: Event) =>
-              this.updateParameter(
-                "direction",
-                (event.target as HTMLSelectElement).value as FountainDirection,
-              )}
-          >
-            ${FOUNTAIN_DIRECTIONS.map(
-              (option) => html`
-                <option
-                  value=${option.id}
-                  .selected=${option.id === direction}
-                >
-                  ${option.label}
-                </option>
-              `,
+      <label class="field">
+        <span class="parameter-label">Direction</span>
+        <select
+          aria-label="Direction"
+          .value=${live(direction)}
+          ?disabled=${this.disabled}
+          @change=${(event: Event) =>
+            this.updateParameter(
+              "direction",
+              (event.target as HTMLSelectElement).value as FountainDirection,
             )}
-          </select>
-        </label>
-      </div>
+        >
+          ${FOUNTAIN_DIRECTIONS.map(
+            (option) => html`
+              <option
+                value=${option.id}
+                .selected=${option.id === direction}
+              >
+                ${option.label}
+              </option>
+            `,
+          )}
+        </select>
+      </label>
     `;
   }
 
@@ -336,21 +330,18 @@ export class GoveeMusicProfileEditor extends LitElement {
     const gradient = booleanParameter(parameters, "gradient", false);
 
     return html`
-      <div class="mode-parameters">
-        <h4>Mode-specific controls</h4>
-        ${this.renderRangeField(
-          "Segment count",
-          "Segment count",
-          segmentCount,
-          1,
-          15,
-          (value) => this.updateParameter("segment_count", value),
-        )}
-        ${this.renderRangeField("Speed", "Speed", speed, 0, 100, (value) =>
-          this.updateParameter("speed", value))}
-        ${this.renderCheckboxField("Gradient", gradient, (checked) =>
-          this.updateParameter("gradient", checked))}
-      </div>
+      ${this.renderRangeField(
+        "Segment count",
+        "Segment count",
+        segmentCount,
+        1,
+        15,
+        (value) => this.updateParameter("segment_count", value),
+      )}
+      ${this.renderRangeField("Speed", "Speed", speed, 0, 100, (value) =>
+        this.updateParameter("speed", value))}
+      ${this.renderCheckboxField("Gradient", gradient, (checked) =>
+        this.updateParameter("gradient", checked))}
     `;
   }
 
@@ -368,7 +359,7 @@ export class GoveeMusicProfileEditor extends LitElement {
           @change=${(event: Event) =>
             commit((event.target as HTMLInputElement).checked)}
         />
-        <span>${label}</span>
+        <span class="parameter-label">${label}</span>
       </label>
     `;
   }
@@ -449,53 +440,17 @@ export class GoveeMusicProfileEditor extends LitElement {
   static styles = [
     studioBaseStyles,
     studioCardStyles,
-    studioActionStyles,
     studioFormStyles,
     css`
       :host {
         display: block;
       }
 
-      h3,
-      h4 {
-        margin-top: 0;
-      }
-
-      h3 {
-        margin-bottom: 14px;
-        font-size: 16px;
-      }
-
-      h4 {
-        margin-bottom: 12px;
-        font-size: 14px;
-      }
-
       input[type="range"] {
         width: 100%;
       }
 
-      .parameter-group + .parameter-group,
-      .mode-parameters {
-        margin-top: 18px;
-      }
-
-      .field-label {
-        display: block;
-        margin-bottom: 10px;
-        color: var(--studio-muted);
-        font-size: 13px;
-        font-weight: 600;
-      }
-
-      .segmented {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .segmented button {
-        flex: 1;
+      .parameter-options button {
         min-width: 120px;
       }
 
@@ -504,25 +459,11 @@ export class GoveeMusicProfileEditor extends LitElement {
         font-variant-numeric: tabular-nums;
       }
 
-      .range-field span,
-      .check-field {
-        color: var(--primary-text-color);
-      }
-
-      .mode-parameters {
-        padding-top: 18px;
-        border-top: 1px solid var(--studio-border);
-      }
-
       .check-field {
         display: flex;
         align-items: center;
         gap: 10px;
         min-height: 44px;
-        margin-top: 14px;
-        color: var(--primary-text-color);
-        font-size: 13px;
-        font-weight: 600;
       }
 
       .check-field input {
@@ -531,7 +472,7 @@ export class GoveeMusicProfileEditor extends LitElement {
       }
 
       @media (max-width: 560px) {
-        .segmented button {
+        .parameter-options button {
           min-width: 0;
         }
 
@@ -539,7 +480,7 @@ export class GoveeMusicProfileEditor extends LitElement {
           grid-template-columns: 1fr 56px;
         }
 
-        .range-field span {
+        .range-field > span:first-child {
           grid-column: 1 / -1;
         }
       }

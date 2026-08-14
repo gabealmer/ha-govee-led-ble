@@ -80,36 +80,37 @@ export class GoveeCustomEffectEditor extends LitElement {
       ${this.content.kind === "h617a_multi"
         ? html`
             <section class="card effect-card">
-              <h3>Effects</h3>
+              <h3 class="section-title">Effects</h3>
               ${this.renderSequence(this.content)}
             </section>
           `
         : nothing}
 
       <section class="card parameters-card">
-        <h3>Parameters</h3>
-        ${this.renderSingleVariation()}
-        <div class="parameter-group">
-          <h4>Colours</h4>
-          ${this.renderPalette()}
-        </div>
-        <div class="parameter-group speed-group">
-          <h4>${rateLabel}</h4>
-          <div class="range-field">
-            <input
-              aria-label=${rateLabel}
-              type="range"
-              min="0"
-              max="100"
-              .value=${String(this.content.speed)}
-              ?disabled=${this.disabled}
-              @input=${(event: Event) =>
-                this.emitContent({
-                  ...this.content!,
-                  speed: Number((event.target as HTMLInputElement).value),
-                })}
-            />
-            <output>${this.content.speed}</output>
+        <div class="parameter-stack">
+          ${this.renderSingleVariation()}
+          <div class="parameter-group">
+            <span class="parameter-label">Colours</span>
+            ${this.renderPalette()}
+          </div>
+          <div class="parameter-group speed-group">
+            <span class="parameter-label">${rateLabel}</span>
+            <div class="range-field">
+              <input
+                aria-label=${rateLabel}
+                type="range"
+                min="0"
+                max="100"
+                .value=${String(this.content.speed)}
+                ?disabled=${this.disabled}
+                @input=${(event: Event) =>
+                  this.emitContent({
+                    ...this.content!,
+                    speed: Number((event.target as HTMLInputElement).value),
+                  })}
+              />
+              <output>${this.content.speed}</output>
+            </div>
           </div>
         </div>
       </section>
@@ -134,37 +135,35 @@ export class GoveeCustomEffectEditor extends LitElement {
       return nothing;
     }
     return html`
-      <div class="parameter-group">
-        <label class="field">
-          <span>Variation</span>
-          <select
-            aria-label="Variation"
-            data-single-variation
-            .value=${String(content.variant)}
-            ?disabled=${this.disabled}
-            @change=${(event: Event) =>
-              this.emitContent({
-                ...content,
-                variant: Number((event.target as HTMLSelectElement).value),
-              })}
-          >
-            ${knownVariation
-              ? nothing
-              : html`
-                  <option value=${String(content.variant)}>
-                    Unknown variation ${content.variant}
-                  </option>
-                `}
-            ${variations.map(
-              (variation) => html`
-                <option value=${String(variation.variant)}>
-                  ${variation.label}
+      <label class="field parameter-group">
+        <span class="parameter-label">Variation</span>
+        <select
+          aria-label="Variation"
+          data-single-variation
+          .value=${String(content.variant)}
+          ?disabled=${this.disabled}
+          @change=${(event: Event) =>
+            this.emitContent({
+              ...content,
+              variant: Number((event.target as HTMLSelectElement).value),
+            })}
+        >
+          ${knownVariation
+            ? nothing
+            : html`
+                <option value=${String(content.variant)}>
+                  Unknown variation ${content.variant}
                 </option>
-              `,
-            )}
-          </select>
-        </label>
-      </div>
+              `}
+          ${variations.map(
+            (variation) => html`
+              <option value=${String(variation.variant)}>
+                ${variation.label}
+              </option>
+            `,
+          )}
+        </select>
+      </label>
     `;
   }
 
@@ -463,20 +462,8 @@ export class GoveeCustomEffectEditor extends LitElement {
       display: block;
     }
 
-    h3,
-    h4,
     p {
       margin-top: 0;
-    }
-
-    h3 {
-      margin-bottom: 14px;
-      font-size: 16px;
-    }
-
-    h4 {
-      margin-bottom: 12px;
-      font-size: 14px;
     }
 
     .parameters-card {
@@ -589,10 +576,6 @@ export class GoveeCustomEffectEditor extends LitElement {
       background: transparent;
       cursor: pointer;
       font-size: 24px;
-    }
-
-    .parameter-group + .parameter-group {
-      margin-top: 18px;
     }
 
     .range-field {
