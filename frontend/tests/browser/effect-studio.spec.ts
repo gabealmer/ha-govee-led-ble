@@ -131,14 +131,25 @@ test("default harness uses complete production H617A catalogues", async ({
     studio.getByRole("navigation", { name: "Create" }),
   ).toBeVisible();
   await expect(studio.locator("header.topbar")).toHaveCount(0);
+  const devicePicker = studio
+    .getByRole("navigation", { name: "Create" })
+    .getByRole("combobox", { name: "Development device" });
+  await expect(devicePicker).toBeVisible();
+  await expect(devicePicker.locator("option")).toHaveText([
+    "H617A LED Strip / H617A",
+    "H6199 DreamView T1 / H6199",
+  ]);
   await expect(
     studio
       .getByRole("navigation", { name: "Create" })
-      .getByLabel("Device"),
-  ).toBeVisible();
+      .getByText("Device", { exact: true }),
+  ).toHaveCount(0);
   await expect(
     studio.getByRole("navigation", { name: "Create" }).locator(":scope > :last-child"),
   ).toHaveClass(/device-picker/);
+  await expect(
+    studio.getByRole("navigation", { name: "Create" }).locator(".device-picker"),
+  ).toHaveCSS("border-top-width", "0px");
 
   await studio.getByRole("button", { name: "Scenes", exact: true }).click();
   const sceneBrowser = studio.locator("govee-scene-browser");
@@ -199,12 +210,17 @@ test("default harness uses complete production H617A catalogues", async ({
   await categories
     .getByRole("button", { name: "Single Layer", exact: true })
     .click();
-  await expect(
-    effectList.getByRole("button", { name: "Paint", exact: true }),
-  ).toBeVisible();
-  await expect(
-    effectList.getByRole("button", { name: "Jumping", exact: true }),
-  ).toBeVisible();
+  await expect(effectList.getByRole("button")).toHaveText([
+    "Blinking",
+    "Chase",
+    "Fade",
+    "Flow",
+    "Jumping",
+    "Marquee",
+    "Music",
+    "Paint",
+    "Stream",
+  ]);
   await categories
     .getByRole("button", { name: "All", exact: true })
     .click();
@@ -218,13 +234,41 @@ test("default harness uses complete production H617A catalogues", async ({
   await expect(
     effectList.getByRole("button", { name: "Unsupported special DIY pair" }),
   ).toHaveCount(0);
-  const paintedEffect = studio.getByRole("combobox", {
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("heading", { name: "Paint", exact: true }),
+  ).toBeVisible();
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio.locator(".editor").getByRole("button", {
+      name: "Save as Custom",
+    }),
+  ).toBeVisible();
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  const effect = studio.getByRole("combobox", {
     name: "Effect",
     exact: true,
   });
-  await expect(
-    paintedEffect.locator("option"),
-  ).toHaveText([
+  await expect(effect.locator("option")).toHaveText([
+    "Paint",
+    "Fade",
+    "Jumping",
+    "Blinking",
+    "Marquee",
+    "Music",
+    "Stream",
+    "Flow",
+    "Chase",
+  ]);
+  await expect(effect).toHaveValue("paint");
+  const variation = studio.getByRole("combobox", {
+    name: "Variation",
+    exact: true,
+  });
+  await expect(variation.locator("option")).toHaveText([
     "Cycle",
     "Clockwise",
     "Counterclockwise",
@@ -232,28 +276,69 @@ test("default harness uses complete production H617A catalogues", async ({
     "Gradient",
     "Breathe",
   ]);
-  await expect(paintedEffect).toHaveValue("clockwise");
+  await expect(variation).toHaveValue("clockwise");
+
+  await effect.selectOption("fade");
+  await expect(variation.locator("option")).toHaveText([
+    "Whole strip",
+    "Sections",
+    "Cycle",
+  ]);
+  await expect(variation).toHaveValue("0");
+  await expect(
+    studio.locator("govee-painted-segment-editor"),
+  ).toHaveCount(0);
+  await expect(
+    studio
+      .locator("govee-custom-effect-editor")
+      .getByRole("heading", { name: "Speed", exact: true }),
+  ).toBeVisible();
+
+  await effect.selectOption("music");
+  await expect(
+    studio.locator(".editor").getByRole("heading", { name: "Music" }),
+  ).toBeVisible();
+  await expect(variation.locator("option")).toHaveText([
+    "Rhythm",
+    "Spectrum",
+    "Rolling",
+  ]);
+  await expect(variation).toHaveValue("8");
+  await expect(
+    studio
+      .locator("govee-custom-effect-editor")
+      .getByRole("heading", { name: "Sensitivity", exact: true }),
+  ).toBeVisible();
+
+  await effect.selectOption("paint");
+  await expect(
+    studio.locator("govee-painted-segment-editor"),
+  ).toBeVisible();
+  await expect(studio.getByRole("dialog")).toHaveCount(0);
+
+  await devicePicker.selectOption("h6199-main");
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  await expect(
+    sceneBrowser.locator("aside.scenes").getByRole("button"),
+  ).toHaveCount(240);
+  await expect(
+    sceneBrowser.getByRole("button", {
+      name: "House of the Dragon",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Zootopia 2", exact: true }),
+  ).toBeVisible();
 });
 
-test("new effects stay in their category with the generated name selected", async ({
+test("templates become named custom effects only after Save as Custom", async ({
   page,
 }) => {
   const studio = await openStudio(page);
   const categories = studio.getByRole("complementary", {
     name: "Effect categories",
   });
-
-  await categories.getByRole("button", { name: "New", exact: true }).click();
-  const types = studio.getByRole("tablist", { name: "Custom effect type" });
-  await expect(types.getByRole("tab")).toHaveText([
-    "Single",
-    "Multi",
-    "Advanced",
-  ]);
-  await expect(types.getByRole("tab", { name: "Single" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
 
   await categories
     .getByRole("button", { name: "Single Layer", exact: true })
@@ -267,9 +352,22 @@ test("new effects stay in their category with the generated name selected", asyn
     categories.getByRole("button", { name: "Single Layer", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   await expect(jumping).toHaveClass(/selected/);
+  await expect(
+    studio.locator(".editor").getByRole("heading", { name: "Jumping" }),
+  ).toBeVisible();
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  const saveAsCustom = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Save as Custom" });
+  await saveAsCustom.click();
+  await expect(jumping).not.toHaveClass(/selected/);
+
   const name = studio.getByLabel("Effect name");
   await expect(name).toBeFocused();
-  await expect(name).toHaveValue("New Jumping effect");
+  await expect(name).toHaveValue("Custom Jumping");
   await expect
     .poll(() =>
       name.evaluate((input: HTMLInputElement) => ({
@@ -277,7 +375,10 @@ test("new effects stay in their category with the generated name selected", asyn
         end: input.selectionEnd,
       })),
     )
-    .toEqual({ start: 0, end: "New Jumping effect".length });
+    .toEqual({ start: 0, end: "Custom Jumping".length });
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
   await studio
     .locator(".editor")
     .getByRole("button", { name: "Save", exact: true })
@@ -288,6 +389,111 @@ test("new effects stay in their category with the generated name selected", asyn
   await expect(
     categories.getByRole("button", { name: "Single Layer", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+});
+
+test("Single and Multi variation selects track same-sized family changes", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+
+  await categories.getByRole("button", { name: "New", exact: true }).click();
+  const types = studio.getByRole("tablist", { name: "Custom effect type" });
+  const singleEffect = studio.getByRole("combobox", {
+    name: "Effect",
+    exact: true,
+  });
+  const singleVariation = studio.getByRole("combobox", {
+    name: "Variation",
+    exact: true,
+  });
+
+  await singleEffect.selectOption("paint");
+  await expect(types).toBeVisible();
+  await expect(types.getByRole("tab", { name: "Single" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await singleEffect.selectOption("fade");
+  await singleEffect.selectOption("music");
+  await expect(singleVariation).toHaveValue("8");
+  await singleEffect.selectOption("blinking");
+  await expect(singleVariation).toHaveValue("0");
+  await singleEffect.selectOption("stream");
+  await expect(singleVariation).toHaveValue("9");
+  await singleEffect.selectOption("flow");
+  await expect(singleVariation).toHaveValue("9");
+
+  await types.getByRole("tab", { name: "Multi" }).click();
+  const multiEditor = studio.locator("govee-custom-effect-editor");
+  const multiEffect = multiEditor.getByRole("combobox", { name: "Effect 1" });
+  const multiVariation = multiEditor.getByRole("combobox", {
+    name: "Variation 1",
+  });
+  await multiEffect.selectOption("marquee");
+  await expect(multiVariation).toHaveValue("3");
+  await multiEffect.selectOption("blinking");
+  await expect(multiVariation).toHaveValue("0");
+  await multiEffect.selectOption("stream");
+  await expect(multiVariation).toHaveValue("9");
+  await multiEffect.selectOption("flow");
+  await expect(multiVariation).toHaveValue("9");
+});
+
+test("saved Painted effects retain their content kind", async ({ page }) => {
+  const studio = await openStudio(page);
+  const effect = studio.getByRole("combobox", {
+    name: "Effect",
+    exact: true,
+  });
+
+  await expect(effect.locator("option")).toHaveText(["Paint"]);
+  await expect(
+    studio.locator("govee-painted-segment-editor"),
+  ).toBeVisible();
+});
+
+test("custom catalogues reject families without variations", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const rejected = await page.evaluate(() => {
+    try {
+      window.testHarness.backend.validateCustomCatalogue({
+        schema_version: 1,
+        sku: "H617A",
+        painted_effects: [
+          { id: "cycle", label: "Cycle" },
+        ],
+        effects: [
+          {
+            id: "empty",
+            label: "Empty",
+            family: 1,
+            variations: [],
+            supports_multi: false,
+            rate: "speed",
+          },
+        ],
+        limits: {
+          palette_min: 1,
+          palette_max: 8,
+          multi_max: 4,
+        },
+        apply: {
+          single: "supported",
+          multi: "supported",
+        },
+      });
+      return false;
+    } catch {
+      return true;
+    }
+  });
+
+  expect(rejected).toBe(true);
 });
 
 test("Painted effects keep multiple brushes and their picker visible", async ({
@@ -395,6 +601,13 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     "aria-selected",
     "true",
   );
+  const newEffect = studio.getByRole("combobox", {
+    name: "Effect",
+    exact: true,
+  });
+  await newEffect.selectOption("paint");
+  await expect(modes).toBeVisible();
+  await newEffect.selectOption("fade");
   await modes.getByRole("tab", { name: "Multi" }).click();
   await expect(modes.getByRole("tab", { name: "Multi" })).toHaveAttribute(
     "aria-selected",
@@ -412,9 +625,23 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     .getByRole("complementary", { name: "Effects" })
     .getByRole("button", { name: "Paint", exact: true })
     .click();
-  await expect(modes.getByRole("tab", { name: "Single" })).toHaveAttribute(
-    "aria-selected",
-    "true",
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  await expect(
+    studio.locator(".editor").getByRole("button", {
+      name: "Save as Custom",
+    }),
+  ).toBeVisible();
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("heading", { name: "Paint", exact: true }),
+  ).toBeVisible();
+  await expect(
+    studio.getByLabel("Effect name"),
+  ).toHaveCount(
+    0,
   );
   await expect(
     studio.locator(".editor").getByRole("button", { name: "Apply" }),
@@ -448,7 +675,9 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
 test("Home Assistant mode omits the fixture device picker", async ({ page }) => {
   const studio = await openStudio(page, "?devicePicker=0");
 
-  await expect(studio.getByLabel("Device")).toHaveCount(0);
+  await expect(
+    studio.getByRole("combobox", { name: "Development device" }),
+  ).toHaveCount(0);
   await expect(
     studio.getByRole("heading", { name: "Effect Studio" }),
   ).toBeAttached();
@@ -884,7 +1113,9 @@ test("palette copies save losslessly, reload under Custom and cannot Apply", asy
   await expect(saveCopy).toHaveClass("primary");
   await nativeApply.click();
   await expect(
-    sceneBrowser.getByRole("status").filter({ hasText: "Applied to Test strip" }),
+    sceneBrowser
+      .getByRole("status")
+      .filter({ hasText: "Applied to H617A LED Strip" }),
   ).toBeVisible();
   await saveCopy.click();
   await expect(
@@ -1174,7 +1405,7 @@ test("stale subscription snapshots cannot roll back visible state", async ({
     .click();
   await expect(
     studio.getByRole("status").filter({
-      hasText: "Applied to Test strip.",
+      hasText: "Applied to H617A LED Strip.",
     }),
   ).toBeVisible();
 
@@ -1188,7 +1419,7 @@ test("stale subscription snapshots cannot roll back visible state", async ({
   ).toBeVisible();
   await expect(
     studio.getByRole("status").filter({
-      hasText: "Applied to Test strip.",
+      hasText: "Applied to H617A LED Strip.",
     }),
   ).toBeVisible();
 });

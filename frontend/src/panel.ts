@@ -17,6 +17,7 @@ import type {
   CustomEffectContent,
   DeploymentRecord,
   DeviceCapabilities,
+  DiyEffectFamily,
   EffectContent,
   HomeAssistant,
   LayeredSceneContent,
@@ -111,6 +112,12 @@ export class GoveeLedEffectStudio extends LitElement {
 
   @state()
   private customTemplateSelection?: string;
+
+  @state()
+  private templateSourceLabel?: string;
+
+  @state()
+  private customCopyStarted = false;
 
   @state()
   private library: LibrarySnapshot = {
@@ -252,6 +259,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (changed.has("hass") && this.hass && !this.api) {
       void this.load();
     }
+    this.syncSingleEffectSelects();
   }
 
   protected render() {
@@ -297,9 +305,9 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderDevicePicker() {
     return html`
-      <label class="device-picker">
-        <span>Device</span>
+      <div class="device-picker">
         <select
+          aria-label="Development device"
           .value=${this.selectedDeviceId ?? ""}
           @change=${this.deviceChanged}
         >
@@ -318,7 +326,7 @@ export class GoveeLedEffectStudio extends LitElement {
               `
             : nothing}
         </select>
-      </label>
+      </div>
     `;
   }
 
@@ -398,11 +406,11 @@ export class GoveeLedEffectStudio extends LitElement {
       ...(this.customCatalogue?.effects.map(
         (effect): CustomEffectListEntry => ({
           kind: "single",
-          key: `template:single:${effect.family}:${effect.variant}`,
+          key: `template:single:${effect.family}:${effect.variations[0].variant}`,
           label: effect.label,
           category: "single-layer",
           family: effect.family,
-          variant: effect.variant,
+          variant: effect.variations[0].variant,
         }),
       ) ?? []),
       {
@@ -545,7 +553,12 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     if (entry.kind === "advanced") {
-      this.newEffect("advanced");
+      this.newEffect("advanced", undefined, {
+        name: entry.label,
+        content: blankAdvancedContent(),
+        selectionIdentity: entry.key,
+        templateLabel: entry.label,
+      });
       this.customTemplateSelection = entry.key;
       return;
     }
@@ -554,9 +567,10 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     if (entry.kind === "paint") {
       this.newEffect("h617a_painted", undefined, {
-        name: "New Paint effect",
+        name: entry.label,
         content: blankPainted(),
         selectionIdentity: entry.key,
+        templateLabel: entry.label,
       });
       return;
     }
@@ -566,20 +580,22 @@ export class GoveeLedEffectStudio extends LitElement {
         this.customCatalogue,
       );
       this.newEffect("h617a_single", undefined, {
-        name: `New ${entry.label} effect`,
+        name: entry.label,
         content: {
           ...content,
           family: entry.family,
           variant: entry.variant,
         },
         selectionIdentity: entry.key,
+        templateLabel: entry.label,
       });
       return;
     }
     this.newEffect("h617a_multi", undefined, {
-      name: "New Mix effect",
+      name: entry.label,
       content: blankCustomEffect("h617a_multi", this.customCatalogue),
       selectionIdentity: entry.key,
+      templateLabel: entry.label,
     });
   }
 
@@ -605,27 +621,10 @@ export class GoveeLedEffectStudio extends LitElement {
           <p class="eyebrow">
             Advanced / ${layeredScene ? "Scene template" : "Layered"}
           </p>
-          <input
-            class="name-input"
-            aria-label="Effect name"
-            maxlength="128"
-            .value=${this.name}
-            ?disabled=${!this.isAdmin}
-            @input=${this.nameChanged}
-          />
+          ${this.renderEffectName()}
         </div>
         <div class="actions">
-          <button
-            class="primary"
-            type="button"
-            ?disabled=${!this.isAdmin ||
-            !this.dirty ||
-            this.saving ||
-            this.deletingCurrentItem}
-            @click=${this.save}
-          >
-            ${this.saving ? "Saving..." : "Save"}
-          </button>
+          ${this.renderSaveAction()}
           <button
             class="secondary"
             type="button"
@@ -709,32 +708,14 @@ export class GoveeLedEffectStudio extends LitElement {
     if (this.content.kind !== "h617a_painted") {
       return nothing;
     }
-    const selectedEffect = this.content.effect;
     const deployment = this.activeDeployment;
     return html`
       <div class="editor-heading">
         <div>
-          <input
-            class="name-input"
-            aria-label="Effect name"
-            maxlength="128"
-            .value=${this.name}
-            ?disabled=${!this.isAdmin}
-            @input=${this.nameChanged}
-          />
+          ${this.renderEffectName()}
         </div>
         <div class="actions">
-          <button
-            class="primary"
-            type="button"
-            ?disabled=${!this.isAdmin ||
-            !this.dirty ||
-            this.saving ||
-            this.deletingCurrentItem}
-            @click=${this.save}
-          >
-            ${this.saving ? "Saving..." : "Save"}
-          </button>
+          ${this.renderSaveAction()}
           <button
             class="secondary"
             type="button"
@@ -757,6 +738,8 @@ export class GoveeLedEffectStudio extends LitElement {
             </div>
           `
         : nothing}
+
+      ${this.renderSingleEffectSettings()}
 
       <govee-painted-segment-editor
         .colours=${coloursForSegments(this.content)}
@@ -825,25 +808,7 @@ export class GoveeLedEffectStudio extends LitElement {
         </section>
 
         <section class="card">
-          <h3>Effect</h3>
-          <label class="field">
-            <span>Effect</span>
-            <select
-              ?disabled=${!this.isAdmin}
-              @change=${this.effectChanged}
-            >
-              ${this.customCatalogue?.painted_effects.map(
-                (effect) => html`
-                  <option
-                    value=${effect.id}
-                    ?selected=${effect.id === selectedEffect}
-                  >
-                    ${effect.label}
-                  </option>
-                `,
-              )}
-            </select>
-          </label>
+          <h3>Parameters</h3>
           ${this.rangeField("Speed", "speed", this.content.speed)}
           ${this.rangeField(
             "Brightness",
@@ -869,27 +834,10 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       <div class="editor-heading">
         <div>
-          <input
-            class="name-input"
-            aria-label="Effect name"
-            maxlength="128"
-            .value=${this.name}
-            ?disabled=${!this.isAdmin}
-            @input=${this.nameChanged}
-          />
+          ${this.renderEffectName()}
         </div>
         <div class="actions">
-          <button
-            class="primary"
-            type="button"
-            ?disabled=${!this.isAdmin ||
-            !this.dirty ||
-            this.saving ||
-            this.deletingCurrentItem}
-            @click=${this.save}
-          >
-            ${this.saving ? "Saving..." : "Save"}
-          </button>
+          ${this.renderSaveAction()}
           <button
             class="secondary"
             type="button"
@@ -913,6 +861,8 @@ export class GoveeLedEffectStudio extends LitElement {
           `
         : nothing}
 
+      ${this.renderSingleEffectSettings()}
+
       <govee-custom-effect-editor
         .content=${content}
         .catalogue=${this.customCatalogue}
@@ -926,6 +876,196 @@ export class GoveeLedEffectStudio extends LitElement {
 
       ${deployment ? this.renderDeployment(deployment) : nothing}
     `;
+  }
+
+  private renderSingleEffectSettings() {
+    if (
+      !this.customCatalogue ||
+      (this.content.kind !== "h617a_painted" &&
+        this.content.kind !== "h617a_single")
+    ) {
+      return nothing;
+    }
+    const family = this.selectedSingleEffectFamily;
+    const selectedEffect =
+      this.content.kind === "h617a_painted"
+        ? "paint"
+        : family?.id ?? `unknown:${this.content.family}`;
+    const selectedVariation =
+      this.content.kind === "h617a_painted"
+        ? this.content.effect
+        : String(this.content.variant);
+    const variations =
+      this.content.kind === "h617a_painted"
+        ? this.customCatalogue.painted_effects.map((effect) => ({
+            value: effect.id,
+            label: effect.label,
+          }))
+        : (family?.variations.map((variation) => ({
+            value: String(variation.variant),
+            label: variation.label,
+          })) ?? []);
+    const includePaint = this.currentItem?.content.kind !== "h617a_single";
+    const effectFamilies =
+      this.currentItem?.content.kind === "h617a_painted"
+        ? []
+        : this.customCatalogue.effects;
+    const knownVariation = variations.some(
+      (variation) => variation.value === selectedVariation,
+    );
+    return html`
+      <section class="card single-effect-settings">
+        <h3>Effect</h3>
+        <div class="single-effect-fields">
+          <label>
+            <span>Effect</span>
+            <select
+              aria-label="Effect"
+              .value=${selectedEffect}
+              ?disabled=${!this.isAdmin}
+              @change=${this.singleEffectChanged}
+            >
+              ${this.content.kind === "h617a_single" && !family
+                ? html`
+                    <option value=${selectedEffect}>
+                      Unknown effect ${this.content.family}
+                    </option>
+                  `
+                : nothing}
+              ${includePaint
+                ? html`
+                    <option
+                      value="paint"
+                      ?selected=${selectedEffect === "paint"}
+                    >
+                      Paint
+                    </option>
+                  `
+                : nothing}
+              ${effectFamilies.map(
+                (effect) => html`
+                  <option
+                    value=${effect.id}
+                    ?selected=${selectedEffect === effect.id}
+                  >
+                    ${effect.label}
+                  </option>
+                `,
+              )}
+            </select>
+          </label>
+          <label>
+            <span>Variation</span>
+            <select
+              aria-label="Variation"
+              .value=${selectedVariation}
+              ?disabled=${!this.isAdmin}
+              @change=${this.singleEffectVariationChanged}
+            >
+              ${knownVariation
+                ? nothing
+                : html`
+                    <option value=${selectedVariation}>
+                      Unknown variation ${selectedVariation}
+                    </option>
+                  `}
+              ${variations.map(
+                (variation) => html`
+                  <option
+                    value=${variation.value}
+                    ?selected=${variation.value === selectedVariation}
+                  >
+                    ${variation.label}
+                  </option>
+                `,
+              )}
+            </select>
+          </label>
+        </div>
+      </section>
+    `;
+  }
+
+  private renderEffectName() {
+    return this.templateSourceLabel
+      ? html`<h2>${this.templateSourceLabel}</h2>`
+      : html`
+          <input
+            class="name-input"
+            aria-label="Effect name"
+            maxlength="128"
+            .value=${this.name}
+            ?disabled=${!this.isAdmin}
+            @input=${this.nameChanged}
+          />
+        `;
+  }
+
+  private renderSaveAction() {
+    return this.templateSourceLabel
+      ? html`
+          <button
+            class="primary"
+            type="button"
+            ?disabled=${!this.isAdmin ||
+            this.saving ||
+            this.deletingCurrentItem}
+            @click=${this.saveAsCustom}
+          >
+            Save as Custom
+          </button>
+        `
+      : html`
+          <button
+            class="primary"
+            type="button"
+            ?disabled=${!this.isAdmin ||
+            !this.dirty ||
+            this.saving ||
+            this.deletingCurrentItem}
+            @click=${this.save}
+          >
+            ${this.saving ? "Saving..." : "Save"}
+          </button>
+        `;
+  }
+
+  private get selectedSingleEffectFamily(): DiyEffectFamily | undefined {
+    if (this.content.kind !== "h617a_single") {
+      return undefined;
+    }
+    const family = this.content.family;
+    return this.customCatalogue?.effects.find(
+      (effect) => effect.family === family,
+    );
+  }
+
+  private syncSingleEffectSelects(): void {
+    if (
+      this.content.kind !== "h617a_painted" &&
+      this.content.kind !== "h617a_single"
+    ) {
+      return;
+    }
+    const effect = this.shadowRoot?.querySelector<HTMLSelectElement>(
+      'select[aria-label="Effect"]',
+    );
+    const variation = this.shadowRoot?.querySelector<HTMLSelectElement>(
+      'select[aria-label="Variation"]',
+    );
+    if (effect) {
+      effect.value =
+        this.content.kind === "h617a_painted"
+          ? "paint"
+          : this.selectedSingleEffectFamily?.id ??
+            `unknown:${this.content.family}`;
+    }
+    if (variation) {
+      variation.value =
+        this.content.kind === "h617a_painted"
+          ? this.content.effect
+          : String(this.content.variant);
+    }
   }
 
   private rangeField(
@@ -953,7 +1093,12 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderNewEffectTypeTabs() {
-    if (this.currentItem || !isEditableEffectContent(this.content)) {
+    if (
+      this.currentItem ||
+      this.templateSourceLabel ||
+      this.customCopyStarted ||
+      !isEditableEffectContent(this.content)
+    ) {
       return nothing;
     }
     return html`
@@ -1055,7 +1200,7 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     if (this.isAdmin) {
-      this.newEffect("h617a_painted", transitionEpoch);
+      this.openDefaultTemplate(transitionEpoch);
     } else {
       this.currentItem = undefined;
       this.name = "";
@@ -1080,6 +1225,7 @@ export class GoveeLedEffectStudio extends LitElement {
       if (!this.loadIsCurrent(loadEpoch, api)) {
         return;
       }
+
       if (!isCompatibleEditorInfo(info)) {
         throw new Error(
           "This editor bundle is not compatible with the installed backend.",
@@ -1138,7 +1284,7 @@ export class GoveeLedEffectStudio extends LitElement {
       if (firstCustom) {
         await this.selectItem(firstCustom.id);
       } else if (this.isAdmin) {
-        this.newEffect("h617a_painted");
+        this.openDefaultTemplate();
       }
     } catch (error) {
       if (this.loadIsCurrent(loadEpoch, api)) {
@@ -1150,6 +1296,15 @@ export class GoveeLedEffectStudio extends LitElement {
         this.loading = false;
       }
     }
+  }
+
+  private openDefaultTemplate(existingTransitionEpoch?: number): void {
+    this.newEffect("h617a_painted", existingTransitionEpoch, {
+      name: "Paint",
+      content: blankPainted(),
+      selectionIdentity: "template:paint",
+      templateLabel: "Paint",
+    });
   }
 
   private loadIsCurrent(epoch: number, api: EffectStudioApi): boolean {
@@ -1258,6 +1413,8 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     const transitionEpoch = this.beginEditorTransition();
     this.currentItem = undefined;
+    this.templateSourceLabel = undefined;
+    this.customCopyStarted = true;
     this.name = event.detail.name.trim() || "Layered scene template";
     this.content = cloneLayeredSceneContent(event.detail.content);
     this.savedBaseline = undefined;
@@ -1300,6 +1457,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (
       !this.isAdmin ||
       this.currentItem ||
+      this.templateSourceLabel ||
       !isEditableEffectContent(this.content) ||
       newEffectTypeForContent(this.content) === type
     ) {
@@ -1402,8 +1560,6 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     this.content = next;
-    this.customTemplateSelection =
-      kind === "h617a_painted" ? "template:paint" : undefined;
     if (/^New (Paint|Painted|Single|Multi) effect$/.test(this.name)) {
       this.name = `New ${customKindLabel(kind)} effect`;
     }
@@ -1415,8 +1571,9 @@ export class GoveeLedEffectStudio extends LitElement {
     existingTransitionEpoch?: number,
     initial?: {
       name: string;
-      content: CustomEffectContent;
+      content: EditableEffectContent;
       selectionIdentity?: string;
+      templateLabel?: string;
     },
   ): void {
     const transitionEpoch =
@@ -1429,6 +1586,8 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     this.currentItem = undefined;
+    this.templateSourceLabel = initial?.templateLabel;
+    this.customCopyStarted = initial?.templateLabel !== undefined;
     this.customTemplateSelection =
       kind === "advanced"
         ? undefined
@@ -1452,7 +1611,8 @@ export class GoveeLedEffectStudio extends LitElement {
     void this.updateComplete.then(() => {
       if (
         !this.editorTransitionIsCurrent(transitionEpoch) ||
-        this.currentItem
+        this.currentItem ||
+        this.templateSourceLabel
       ) {
         return;
       }
@@ -1564,6 +1724,8 @@ export class GoveeLedEffectStudio extends LitElement {
       ) {
         this.beginEditorTransition();
         this.currentItem = undefined;
+        this.templateSourceLabel = undefined;
+        this.customCopyStarted = false;
         this.customTemplateSelection = undefined;
         this.name = "";
         this.content = blankPainted();
@@ -1606,6 +1768,8 @@ export class GoveeLedEffectStudio extends LitElement {
       }
       if (item.content.kind === "opaque") {
         this.currentItem = item;
+        this.templateSourceLabel = undefined;
+        this.customCopyStarted = false;
         this.customTemplateSelection = undefined;
         this.name = item.name;
         this.content = cloneOpaqueContent(item.content);
@@ -1619,6 +1783,8 @@ export class GoveeLedEffectStudio extends LitElement {
         return false;
       }
       this.currentItem = item;
+      this.templateSourceLabel = undefined;
+      this.customCopyStarted = false;
       this.customTemplateSelection = undefined;
       this.name = item.name;
       this.content = cloneEditableEffect(item.content);
@@ -1641,6 +1807,20 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private nameChanged(event: Event): void {
     this.name = (event.target as HTMLInputElement).value;
+  }
+
+  private saveAsCustom(): void {
+    const source = this.templateSourceLabel;
+    if (!source || !this.isAdmin) {
+      return;
+    }
+    const transitionEpoch = this.beginEditorTransition();
+    this.templateSourceLabel = undefined;
+    this.customTemplateSelection = undefined;
+    this.customCopyStarted = true;
+    this.name = `Custom ${source}`;
+    this.savedBaseline = undefined;
+    this.selectNewEffectName(transitionEpoch);
   }
 
   private paintBrushesChanged(
@@ -1680,11 +1860,80 @@ export class GoveeLedEffectStudio extends LitElement {
     });
   }
 
-  private effectChanged(event: Event): void {
-    this.updateContent({
-      effect: (event.target as HTMLSelectElement)
-        .value as PaintedContent["effect"],
-    });
+  private singleEffectChanged(event: Event): void {
+    if (!this.customCatalogue || this.currentItem?.content.kind === "opaque") {
+      return;
+    }
+    const selected = (event.target as HTMLSelectElement).value;
+    if (
+      this.currentItem &&
+      ((this.content.kind === "h617a_painted" && selected !== "paint") ||
+        (this.content.kind === "h617a_single" && selected === "paint"))
+    ) {
+      return;
+    }
+    const selectingTemplate =
+      this.templateSourceLabel !== undefined ||
+      this.customTemplateSelection !== undefined;
+    if (selected === "paint") {
+      if (this.content.kind !== "h617a_painted") {
+        this.switchCustomMode("h617a_painted");
+      }
+      if (selectingTemplate) {
+        this.customTemplateSelection = "template:paint";
+      }
+      this.updateGeneratedEffectName("Paint");
+      return;
+    }
+    const family = this.customCatalogue.effects.find(
+      (effect) => effect.id === selected,
+    );
+    const variation = family?.variations[0];
+    if (!family || !variation) {
+      return;
+    }
+    if (this.content.kind === "h617a_painted") {
+      this.switchCustomMode("h617a_single");
+    }
+    if (this.content.kind !== "h617a_single") {
+      return;
+    }
+    this.content = {
+      ...this.content,
+      family: family.family,
+      variant: variation.variant,
+    };
+    if (selectingTemplate) {
+      this.customTemplateSelection = `template:single:${family.family}:${variation.variant}`;
+    }
+    this.updateGeneratedEffectName(family.label);
+  }
+
+  private singleEffectVariationChanged(event: Event): void {
+    const selected = (event.target as HTMLSelectElement).value;
+    if (this.content.kind === "h617a_painted") {
+      this.updateContent({
+        effect: selected as PaintedContent["effect"],
+      });
+      return;
+    }
+    if (this.content.kind === "h617a_single") {
+      this.content = {
+        ...this.content,
+        variant: Number(selected),
+      };
+    }
+  }
+
+  private updateGeneratedEffectName(label: string): void {
+    if (this.templateSourceLabel) {
+      this.templateSourceLabel = label;
+      this.name = label;
+      return;
+    }
+    if (!this.currentItem && /^New .+ effect$/.test(this.name)) {
+      this.name = `New ${label} effect`;
+    }
   }
 
   private setSegmentColour(index: number): void {
@@ -1987,14 +2236,11 @@ export class GoveeLedEffectStudio extends LitElement {
     }
 
     .device-picker {
-      display: grid;
-      gap: 6px;
       margin-top: auto;
-      padding-top: 18px;
-      border-top: 1px solid var(--studio-border);
-      color: var(--studio-muted);
-      font-size: 12px;
-      font-weight: 600;
+    }
+
+    .device-picker select {
+      width: 100%;
     }
 
     select,
@@ -2338,6 +2584,24 @@ export class GoveeLedEffectStudio extends LitElement {
       padding: 20px;
     }
 
+    .single-effect-settings {
+      margin-bottom: 18px;
+    }
+
+    .single-effect-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .single-effect-fields label {
+      display: grid;
+      gap: 7px;
+      color: var(--studio-muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
     .opaque-content h3 {
       margin: 0 0 8px;
     }
@@ -2469,6 +2733,10 @@ export class GoveeLedEffectStudio extends LitElement {
       .controls {
         grid-template-columns: 1fr;
       }
+
+      .single-effect-fields {
+        grid-template-columns: 1fr;
+      }
     }
 
     @media (max-width: 760px) {
@@ -2588,10 +2856,17 @@ function blankCustomEffect(
   if (kind === "h617a_painted") {
     return blankPainted();
   }
-  const first = catalogue.effects[0];
+  const first =
+    kind === "h617a_multi"
+      ? catalogue.effects.find((effect) => effect.supports_multi)
+      : catalogue.effects[0];
+  if (!first) {
+    throw new Error("The custom-effect catalogue has no compatible effects.");
+  }
+  const variation = first.variations[0];
   const pair = {
     family: first.family,
-    variant: first.variant,
+    variant: variation.variant,
   };
   if (kind === "h617a_single") {
     return {

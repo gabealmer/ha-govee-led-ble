@@ -1,5 +1,9 @@
 import { blankAdvancedContent, cloneAdvancedContent } from "../../src/advanced-effect-editor";
-import { decodeEffectContent, decodeSceneDetail } from "../../src/validation";
+import {
+  decodeCustomCatalogue,
+  decodeEffectContent,
+  decodeSceneDetail,
+} from "../../src/validation";
 import type {
   CustomEffectCatalogue,
   DeploymentRecord,
@@ -15,7 +19,7 @@ import type {
   SceneDetail,
   SceneSummary,
 } from "../../src/types";
-import h617aData from "./h617a-data.json";
+import productionData from "./production-data.json";
 
 const PREFIX = "ha_govee_led_ble/editor/";
 const STORAGE_KEY = "effect-studio-playwright-backend";
@@ -163,14 +167,19 @@ export class MockHomeAssistantBackend {
     };
   }
 
-  private get sceneCatalogue(): SceneCatalogue {
-    return this.useTestFixtures
+  private sceneCatalogue(configEntryId: string): SceneCatalogue {
+    const device = requiredDevice(configEntryId);
+    return this.useTestFixtures && device.model === "H617A"
       ? TEST_SCENE_CATALOGUE
-      : REAL_SCENE_CATALOGUE;
+      : requiredRealSceneCatalogue(device.model);
   }
 
   public validateEffectContent(value: unknown): EffectContent {
     return decodeEffectContent(value);
+  }
+
+  public validateCustomCatalogue(value: unknown): CustomEffectCatalogue {
+    return decodeCustomCatalogue(value);
   }
 
   public validateSceneDetail(value: unknown): SceneDetail {
@@ -271,13 +280,19 @@ export class MockHomeAssistantBackend {
       case "draft/delete":
         return this.deleteDraft<T>(message);
       case "scene/catalogue/list":
-        return this.result<T>({ catalogue: this.sceneCatalogue });
+        return this.result<T>({
+          catalogue: this.sceneCatalogue(String(message.config_entry_id)),
+        });
       case "scene/catalogue/get":
         return this.sceneDetail<T>(message);
       case "scene/apply":
+        {
+          const catalogue = this.sceneCatalogue(
+            String(message.config_entry_id),
+          );
         return this.result<T>({
           scene: requiredScene(
-            this.sceneCatalogue.scenes,
+            catalogue.scenes,
             Number(message.scene_id),
             Number(message.effect_id),
           ),
@@ -285,6 +300,7 @@ export class MockHomeAssistantBackend {
             typeof message.speed_index === "number" ? message.speed_index : null,
           readback: "scene_identity_only",
         });
+        }
       case "apply":
       case "apply_snapshot":
         return this.apply<T>(message);
@@ -505,14 +521,16 @@ export class MockHomeAssistantBackend {
   private async sceneDetail<T>(
     message: Record<string, unknown>,
   ): Promise<T> {
+    const device = requiredDevice(String(message.config_entry_id));
+    const catalogue = this.sceneCatalogue(device.config_entry_id);
     const scene = requiredScene(
-      this.sceneCatalogue.scenes,
+      catalogue.scenes,
       Number(message.scene_id),
       Number(message.effect_id),
     );
-    const detail = this.useTestFixtures
+    const detail = this.useTestFixtures && device.model === "H617A"
       ? testSceneDetail(scene)
-      : requiredRealSceneDetail(scene);
+      : requiredRealSceneDetail(device.model, scene);
     await delay(scene.scene_id === 1 ? 300 : 10);
     return this.result<T>(detail);
   }
@@ -617,28 +635,17 @@ export class MockHomeAssistantBackend {
   }
 }
 
-const DEVICES: DeviceCapabilities[] = [
-  {
-    config_entry_id: "h617a-main",
-    model: "H617A",
-    display_name: "Test strip",
-    segment_count: 15,
-    custom_effects: {
-      painted: "supported",
-      single: "supported",
-      multi: "supported",
-      advanced: "evidence_gap",
-    },
-    readback: "custom_effect_identity",
-  },
-];
+const DEVICES = productionData.devices as DeviceCapabilities[];
 
 const REAL_CUSTOM_CATALOGUE =
-  h617aData.custom_catalogue as CustomEffectCatalogue;
-const REAL_SCENE_CATALOGUE =
-  h617aData.scene_catalogue as SceneCatalogue;
+  productionData.custom_catalogue as CustomEffectCatalogue;
+const REAL_SCENE_CATALOGUES =
+  productionData.scene_catalogues as Record<string, SceneCatalogue>;
 const REAL_SCENE_DETAILS =
-  h617aData.scene_details as Record<string, SceneDetail>;
+  productionData.scene_details as Record<
+    string,
+    Record<string, SceneDetail>
+  >;
 
 const TEST_SCENES: SceneSummary[] = [
   {
@@ -1049,12 +1056,33 @@ function testSceneDetail(scene: SceneSummary): SceneDetail {
   });
 }
 
-function requiredRealSceneDetail(scene: SceneSummary): SceneDetail {
+function requiredDevice(configEntryId: string): DeviceCapabilities {
+  const device = DEVICES.find(
+    (candidate) => candidate.config_entry_id === configEntryId,
+  );
+  if (!device) {
+    throw new Error(`Unknown device: ${configEntryId}`);
+  }
+  return device;
+}
+
+function requiredRealSceneCatalogue(model: string): SceneCatalogue {
+  const catalogue = REAL_SCENE_CATALOGUES[model];
+  if (!catalogue) {
+    throw new Error(`Missing real scene catalogue: ${model}`);
+  }
+  return catalogue;
+}
+
+function requiredRealSceneDetail(
+  model: string,
+  scene: SceneSummary,
+): SceneDetail {
   const detail =
-    REAL_SCENE_DETAILS[`${scene.scene_id}:${scene.effect_id}`];
+    REAL_SCENE_DETAILS[model]?.[`${scene.scene_id}:${scene.effect_id}`];
   if (!detail) {
     throw new Error(
-      `Missing real scene detail: ${scene.scene_id}/${scene.effect_id}`,
+      `Missing real scene detail: ${model} ${scene.scene_id}/${scene.effect_id}`,
     );
   }
   return detail;

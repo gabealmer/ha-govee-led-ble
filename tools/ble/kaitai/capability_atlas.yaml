@@ -238,18 +238,18 @@ capabilities:
         note: "diy_type03 fixtures define a background colour plus explicit colour groups over the 15 H617A segment indices, so the authored static segment map is exactly computable. The effect enum and speed remain visible parameters; movement is not inferred or animated."
       - label: type04_fixture_catalogue
         preview_level: structural
-        note: "The committed authoring catalogue contains four family/variant identities, each backed by a diy_type04 flat fixture. The schema defines palette, speed and Single/Multi ordering, but no mapping from those fields to device animation or per-position output, so only catalogue identity, palette and order are previewable."
+        note: "The basic authoring roster and variation bytes are independently named by GoveeHome V7.5.30 dreamcolorlightv1.adjust.Diy and use diy_type04's captured family/variant structure. Four exact family/variant identities also have committed flat fixtures. Neither source maps those fields to device animation or per-position output."
       - label: workshop_layers
         preview_level: structural
         note: "workshop_body exposes palettes, layer order and applied-area fields, but selection, brightness and movement/timing semantics are not calibrated well enough to infer rendered cells or animation."
       - label: uncaptured_special_templates
         preview_level: opaque
-        note: "A special/vendor Type04 family/variant absent from the four-entry committed authoring catalogue has no fixture-backed identity or rendering semantics. Preserve its raw family, variant and palette without inventing a label, layout or animation."
+        note: "Special DIY templates use parser-specific grammars outside the basic Type04 roster. Until those payloads have committed schemas and fixtures, preserve their raw content without inventing a layout or animation."
     known_gaps:
       - "workshop_body remains decode-only and has no runtime encoder."
       - "Type03 Painted upload is connected to the evidenced code 800. Type04 Single/Multi Apply uses an explicit caller-supplied code; no automatic allocation rule is evidenced."
       - "Selector readback confirms the accepted code, not the exact uploaded body identity or device-side overwrite/alias semantics."
-      - "See pipeline_known_issues: preview_fidelity_ceiling. diy_type03's explicit 15-segment paint map supports a deterministic static preview. The four fixture-backed diy_type04 catalogue identities and workshop layers are structural-only because their rendering, selection and motion semantics are uncalibrated. A special/vendor Type04 pair absent from the committed catalogue, or any other DIY/workshop code without committed fixture coverage, is opaque and must not be labelled or animated by a preview engine. See preview_variants for the per-product breakdown."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. diy_type03's explicit 15-segment paint map supports a deterministic static preview. The vendor-named basic Type04 roster has captured structure, with four exact pairs fixture-backed, but rendering and motion semantics remain uncalibrated. Special DIY and other parser-specific payloads remain opaque until modelled. See preview_variants for the per-product breakdown."
 
   - model: H617A
     capability: music_mode

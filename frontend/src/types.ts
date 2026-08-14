@@ -135,11 +135,19 @@ export type CustomEffectContent =
   | SingleContent
   | MultiContent;
 
-export interface DiyEffectTemplate {
+export interface DiyEffectVariation {
+  id: string;
+  label: string;
+  variant: number;
+}
+
+export interface DiyEffectFamily {
   id: string;
   label: string;
   family: number;
-  variant: number;
+  variations: DiyEffectVariation[];
+  supports_multi: boolean;
+  rate: "speed" | "sensitivity";
 }
 
 export interface CustomEffectCatalogue {
@@ -149,7 +157,7 @@ export interface CustomEffectCatalogue {
     id: PaintedContent["effect"];
     label: string;
   }[];
-  effects: DiyEffectTemplate[];
+  effects: DiyEffectFamily[];
   limits: {
     palette_min: number;
     palette_max: number;
