@@ -69,6 +69,9 @@ export class GoveeSceneBrowser extends LitElement {
   @property({ type: Boolean })
   public isAdmin = false;
 
+  @property({ attribute: false })
+  public savedSceneSelection?: LibraryItem;
+
   @state()
   private catalogue?: SceneCatalogue;
 
@@ -127,6 +130,9 @@ export class GoveeSceneBrowser extends LitElement {
       this.notice = undefined;
       this.error = undefined;
       this.loading = Boolean(this.api && this.device);
+    }
+    if (changed.has("savedSceneSelection") && this.savedSceneSelection) {
+      this.synchroniseSavedSelection(this.savedSceneSelection);
     }
     if (changed.has("library") && this.selectedItem) {
       const summary = this.library.items.find(
@@ -695,18 +701,53 @@ export class GoveeSceneBrowser extends LitElement {
       ) {
         return;
       }
-      this.selectedScene = scene;
-      this.selectedItem = item;
-      this.editingCopy = false;
-      this.content = content;
-      this.name = item.name;
-      this.speedIndex =
-        content.speed_index ?? scene.speed?.default_index ?? null;
+      this.commitCustomSelection(item, scene, content);
     } catch (error) {
       if (this.requestIsCurrent(request)) {
         this.notice = errorMessage(error);
       }
     }
+  }
+
+  private synchroniseSavedSelection(item: LibraryItem): void {
+    const content = item.content;
+    if (
+      this.selectedItem?.id !== item.id ||
+      !this.catalogue ||
+      (content.kind !== "scene_builtin" &&
+        content.kind !== "scene_palette" &&
+        content.kind !== "scene_layered") ||
+      content.template.sku !== this.catalogue.sku
+    ) {
+      return;
+    }
+    const scene = this.catalogue.scenes.find(
+      (candidate) =>
+        candidate.scene_id === content.template.scene_id &&
+        candidate.effect_id === content.template.effect_id,
+    );
+    if (!scene) {
+      return;
+    }
+    this.requestGeneration += 1;
+    this.activeSelectionIdentity = `custom:${item.id}`;
+    this.commitCustomSelection(item, scene, content);
+    this.notice = undefined;
+  }
+
+  private commitCustomSelection(
+    item: LibraryItem,
+    scene: SceneSummary,
+    content: SceneContent,
+  ): void {
+    const selectedContent = cloneSceneContent(content);
+    this.selectedScene = scene;
+    this.selectedItem = item;
+    this.editingCopy = false;
+    this.content = selectedContent;
+    this.name = item.name;
+    this.speedIndex =
+      selectedContent.speed_index ?? scene.speed?.default_index ?? null;
   }
 
   private async save(): Promise<void> {
@@ -1235,6 +1276,19 @@ function clonePaletteSceneContent(
         step.inline_colour === null ? null : [...step.inline_colour],
     })),
     palette: content.palette.map((colour) => [...colour]),
+  };
+}
+
+function cloneSceneContent(content: SceneContent): SceneContent {
+  if (content.kind === "scene_palette") {
+    return clonePaletteSceneContent(content);
+  }
+  if (content.kind === "scene_layered") {
+    return cloneLayeredSceneContent(content);
+  }
+  return {
+    ...content,
+    template: { ...content.template },
   };
 }
 
