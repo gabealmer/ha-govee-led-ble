@@ -235,9 +235,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.NATIVE_MUSIC,
         "Music",
         "music_profile",
-        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        ApplicationRoute.STUDIO_CUSTOM_APPLY,
         CompilerDeployerStrategy.COORDINATOR_WRITER,
-        VerificationConfidence.STATE_CONFIRMED,
+        VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.APPLICATION_VALIDATED,
         EvidenceClassification.LIVE,
     ),
@@ -323,7 +323,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.NATIVE_MUSIC,
         "Music",
         "music_profile",
-        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        ApplicationRoute.STUDIO_CUSTOM_APPLY,
         CompilerDeployerStrategy.COORDINATOR_WRITER,
         VerificationConfidence.STATE_CONFIRMED,
         PhysicalValidationState.APPLICATION_VALIDATED,
@@ -334,7 +334,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.VIDEO,
         "Video",
         "video_profile",
-        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        ApplicationRoute.STUDIO_CUSTOM_APPLY,
         CompilerDeployerStrategy.COORDINATOR_WRITER,
         VerificationConfidence.STATE_CONFIRMED,
         PhysicalValidationState.APPLICATION_VALIDATED,
@@ -463,6 +463,8 @@ class DeviceEffectCapabilities:
     multi: CapabilityState
     palette_diy: CapabilityState
     advanced: CapabilityState
+    music: CapabilityState
+    video: CapabilityState
     readback: str
 
     def to_dict(self) -> dict[str, JsonValue]:
@@ -477,6 +479,10 @@ class DeviceEffectCapabilities:
                 "multi": self.multi.value,
                 "palette_diy": self.palette_diy.value,
                 "advanced": self.advanced.value,
+            },
+            "profiles": {
+                "music": self.music.value,
+                "video": self.video.value,
             },
             "readback": self.readback,
         }
@@ -498,5 +504,7 @@ def device_effect_capabilities(
         multi=studio_apply_capability_state(model, CapabilityWorkflow.MULTI),
         palette_diy=studio_apply_capability_state(model, CapabilityWorkflow.PALETTE_DIY),
         advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED),
+        music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC),
+        video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO),
         readback="diy_code_only" if model == "H617A" else "mode_only",
     )

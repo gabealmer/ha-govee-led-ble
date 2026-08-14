@@ -25,3 +25,14 @@ apply_custom_effect:
       selector: {text:}
     revision:
       selector: {number: {min: 1, step: 1, mode: box}}
+apply_effect_snapshot:
+  fields:
+    entity_id:
+      required: true
+      selector: {entity: {integration: ha_govee_led_ble, domain: light}}
+    name:
+      required: true
+      selector: {text:}
+    content:
+      required: true
+      selector: {object:}

@@ -184,6 +184,10 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
       device.custom_effects,
       `devices[${index}].custom_effects`,
     );
+    const profiles = objectValue(
+      device.profiles,
+      `devices[${index}].profiles`,
+    );
     return {
       config_entry_id: boundedString(
         device.config_entry_id,
@@ -215,6 +219,10 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
           "palette DIY capability",
         ),
         advanced: capabilityValue(effects.advanced, "advanced capability"),
+      },
+      profiles: {
+        music: capabilityValue(profiles.music, "music profile capability"),
+        video: capabilityValue(profiles.video, "video profile capability"),
       },
       readback: boundedString(
         device.readback,
@@ -703,10 +711,18 @@ export function decodeDeployment(value: unknown): DeploymentRecord {
       "deployment config entry ID",
       MAX_IDENTIFIER_LENGTH,
     ),
-    diy_code: integerValue(deployment.diy_code, "deployment DIY code", 0, 65_535),
+    diy_code:
+      deployment.diy_code === null
+        ? null
+        : integerValue(deployment.diy_code, "deployment DIY code", 0, 65_535),
+    content_kind: boundedString(
+      deployment.content_kind,
+      "deployment content kind",
+      MAX_IDENTIFIER_LENGTH,
+    ),
     target_mode: enumString(
       deployment.target_mode,
-      ["custom", "scene"] as const,
+      ["custom", "scene", "music", "video"] as const,
       "deployment target mode",
     ),
     target_effect: nullableBoundedString(

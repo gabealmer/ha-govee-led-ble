@@ -224,6 +224,7 @@ export class MockHomeAssistantBackend {
         operation_id: "phase-contract-operation",
         config_entry_id: "h617a-main",
         diy_code: 800,
+        content_kind: "h617a_painted",
         target_mode: "custom",
         target_effect: null,
         phase,
@@ -585,11 +586,18 @@ export class MockHomeAssistantBackend {
     const device = requiredDevice(String(message.config_entry_id));
     const h6199PaletteDiy =
       device.model === "H6199" && content.kind === "palette_diy";
+    const profileTarget =
+      content.kind === "music_profile"
+        ? "music"
+        : content.kind === "video_profile"
+          ? "video"
+          : undefined;
     const deployment: DeploymentRecord = {
       operation_id: operationId,
       config_entry_id: String(message.config_entry_id),
-      diy_code: h6199PaletteDiy ? 401 : 1,
-      target_mode: sceneTarget ? "scene" : "custom",
+      diy_code: profileTarget ? null : h6199PaletteDiy ? 401 : 1,
+      content_kind: content.kind,
+      target_mode: profileTarget ?? (sceneTarget ? "scene" : "custom"),
       target_effect: sceneTarget ? "compiled-scene" : null,
       phase: h6199PaletteDiy ? "uncertain" : "confirmed",
       updated_at: new Date().toISOString(),
@@ -601,8 +609,10 @@ export class MockHomeAssistantBackend {
       progress_current: h6199PaletteDiy ? 3 : 1,
       progress_total: h6199PaletteDiy ? 3 : 1,
       verification_confidence: h6199PaletteDiy
-      ? "unknown"
-      : "activation_match",
+        ? "unknown"
+        : profileTarget
+          ? "settings_match"
+          : "activation_match",
     };
     state.deployments.unshift(deployment);
     this.writeState(state);
@@ -860,6 +870,56 @@ function initialState(useTestFixtures: boolean): BackendState {
           },
         ],
       }),
+      "music-h617a": libraryItem(
+        "music-h617a",
+        "Saved separation profile",
+        {
+          kind: "music_profile",
+          model: "H617A",
+          mode: "separation",
+          sensitivity: 50,
+          colour: null,
+          calm: null,
+          parameters: {
+            point: 3,
+            gradient: true,
+          },
+        },
+      ),
+      "music-h6199": libraryItem(
+        "music-h6199",
+        "Saved rolling profile",
+        {
+          kind: "music_profile",
+          model: "H6199",
+          mode: "rolling",
+          sensitivity: 75,
+          colour: [47, 111, 237],
+          calm: null,
+          parameters: {},
+        },
+      ),
+      "video-h6199": libraryItem(
+        "video-h6199",
+        "Saved movie profile",
+        {
+          kind: "video_profile",
+          model: "H6199",
+          mode: "movie",
+          full_screen: true,
+          saturation: 70,
+          sound_effects: true,
+          sound_effects_softness: 40,
+          white_balance_position: 12,
+          relative_brightness: {
+            left: 80,
+            top: 60,
+            right: 55,
+            bottom: 45,
+          },
+          blank_screen: false,
+        },
+      ),
       "single-unknown": libraryItem(
         "single-unknown",
         "Unknown Type04 pair",

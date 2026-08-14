@@ -1002,6 +1002,134 @@ async def test_h6199_palette_diy_saved_and_snapshot_apply_cover_every_visible_op
     assert snapshot_mock.await_count == len(H6199_DIY_EFFECTS)
 
 
+async def test_profile_websocket_routes_apply_saved_and_snapshot_content(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+    coordinator = SimpleNamespace(
+        model="H6199",
+        profile=SimpleNamespace(segment_count=0),
+    )
+    entry = SimpleNamespace(
+        entry_id="entry-video",
+        domain="ha_govee_led_ble",
+        state=ConfigEntryState.LOADED,
+        runtime_data=coordinator,
+        title="Television",
+    )
+    music = LibraryItem.new(
+        "Rolling",
+        MusicProfile("H6199", "rolling", 75, None, None, {}),
+    )
+    await backend.library.async_create(music, expected_library_revision=0)
+    saved_deployment = DeploymentRecord(
+        operation_id=uuid4(),
+        config_entry_id=entry.entry_id,
+        diy_code=None,
+        content_kind="music_profile",
+        phase=DeploymentPhase.CONFIRMED,
+        compiler_version=1,
+        artifact_sha256=sha256(b"music").hexdigest(),
+        updated_at="2026-08-11T00:00:00Z",
+        item_id=music.id,
+        item_revision=music.revision,
+    )
+    snapshot_deployment = DeploymentRecord(
+        operation_id=uuid4(),
+        config_entry_id=entry.entry_id,
+        diy_code=None,
+        content_kind="video_profile",
+        phase=DeploymentPhase.CONFIRMED,
+        compiler_version=1,
+        artifact_sha256=sha256(b"video").hexdigest(),
+        updated_at="2026-08-11T00:01:00Z",
+        snapshot_id=uuid4(),
+        snapshot=LibraryItem.new(
+            "Movie",
+            VideoProfile(
+                "H6199",
+                "movie",
+                True,
+                70,
+                True,
+                40,
+                12,
+                RelativeBrightness(80, 60, 55, 45),
+                False,
+            ),
+        ),
+    )
+    saved_mock = AsyncMock(return_value=saved_deployment)
+    snapshot_mock = AsyncMock(return_value=snapshot_deployment)
+    monkeypatch.setattr(backend.engine, "async_apply_saved", saved_mock)
+    monkeypatch.setattr(backend.engine, "async_apply_snapshot", snapshot_mock)
+    assert snapshot_deployment.snapshot is not None
+    expected_snapshot_content = snapshot_deployment.snapshot.content
+    snapshot_content = effect_content_to_dict(expected_snapshot_content)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            hass.config_entries,
+            "async_entries",
+            lambda domain=None: [entry],
+        )
+        context.setattr(
+            hass.config_entries,
+            "async_get_entry",
+            lambda entry_id: entry if entry_id == entry.entry_id else None,
+        )
+
+        await client.send_json_auto_id({"type": WS_DEVICES})
+        devices = await client.receive_json()
+        await client.send_json_auto_id(
+            {
+                "type": WS_APPLY,
+                "config_entry_id": entry.entry_id,
+                "item_id": str(music.id),
+                "updated_at": "2026-08-11T00:00:00Z",
+            }
+        )
+        saved = await client.receive_json()
+        await client.send_json_auto_id(
+            {
+                "type": WS_APPLY_SNAPSHOT,
+                "config_entry_id": entry.entry_id,
+                "name": "Movie",
+                "content": snapshot_content,
+                "updated_at": "2026-08-11T00:01:00Z",
+            }
+        )
+        snapshot = await client.receive_json()
+        snapshot_mock.side_effect = RuntimeError("video write failed")
+        await client.send_json_auto_id(
+            {
+                "type": WS_APPLY_SNAPSHOT,
+                "config_entry_id": entry.entry_id,
+                "name": "Movie",
+                "content": snapshot_content,
+                "updated_at": "2026-08-11T00:02:00Z",
+            }
+        )
+        failed_snapshot = await client.receive_json()
+
+    assert devices["result"]["devices"][0]["profiles"] == {
+        "music": "supported",
+        "video": "supported",
+    }
+    assert saved["result"]["deployment"]["content_kind"] == "music_profile"
+    assert saved["result"]["deployment"]["diy_code"] is None
+    assert snapshot["result"]["deployment"]["content_kind"] == "video_profile"
+    assert snapshot["result"]["deployment"]["diy_code"] is None
+    assert failed_snapshot["error"]["code"] == "apply_failed"
+    assert saved_mock.await_args is not None
+    assert snapshot_mock.await_args is not None
+    assert saved_mock.await_args.args[1] == music
+    assert snapshot_mock.await_args.args[1].content == expected_snapshot_content
+
+
 async def test_scene_catalogue_and_native_apply(
     hass: HomeAssistant,
     hass_ws_client,

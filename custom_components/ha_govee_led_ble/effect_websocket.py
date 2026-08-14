@@ -796,6 +796,9 @@ async def ws_apply(
     except EffectStorageError as exc:
         connection.send_error(msg["id"], "storage_unavailable", str(exc))
         return
+    except Exception as exc:
+        connection.send_error(msg["id"], "apply_failed", str(exc))
+        return
     connection.send_result(msg["id"], {"deployment": result.to_public_dict()})
 
 
@@ -840,6 +843,9 @@ async def ws_apply_snapshot(
         return
     except EffectStorageError as exc:
         connection.send_error(msg["id"], "storage_unavailable", str(exc))
+        return
+    except Exception as exc:
+        connection.send_error(msg["id"], "apply_failed", str(exc))
         return
     connection.send_result(msg["id"], {"deployment": result.to_public_dict()})
 

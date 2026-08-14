@@ -268,22 +268,26 @@ export class GoveeLedEffectStudio extends LitElement {
     if (!isDeployableEffectContent(this.content)) {
       return undefined;
     }
-    const capabilities = this.selectedDevice?.custom_effects;
-    if (!capabilities) {
+    const device = this.selectedDevice;
+    if (!device) {
       return undefined;
     }
     switch (this.content.kind) {
       case "h617a_painted":
-        return capabilities.painted;
+        return device.custom_effects.painted;
       case "h617a_single":
-        return capabilities.single;
+        return device.custom_effects.single;
       case "h617a_multi":
-        return capabilities.multi;
+        return device.custom_effects.multi;
       case "palette_diy":
-        return capabilities.palette_diy;
+        return device.custom_effects.palette_diy;
       case "advanced":
       case "scene_layered":
-        return capabilities.advanced;
+        return device.custom_effects.advanced;
+      case "music_profile":
+        return device.profiles.music;
+      case "video_profile":
+        return device.profiles.video;
     }
   }
 
@@ -593,6 +597,9 @@ export class GoveeLedEffectStudio extends LitElement {
           this.content = cloneVideoProfile(event.detail.content);
         }}
       ></govee-video-profile-editor>
+      ${this.activeDeployment
+        ? this.renderDeployment(this.activeDeployment)
+        : nothing}
     `;
   }
 
@@ -613,13 +620,23 @@ export class GoveeLedEffectStudio extends LitElement {
           this.content = cloneMusicProfile(event.detail.content);
         }}
       ></govee-music-profile-editor>
+      ${this.activeDeployment
+        ? this.renderDeployment(this.activeDeployment)
+        : nothing}
     `;
   }
 
   private renderProfileHeading() {
-    return this.renderEditorHeading(
-      html`<button class="secondary" type="button" disabled>Apply</button>`,
-    );
+    return this.renderEditorHeading(html`
+      <button
+        class="secondary"
+        type="button"
+        ?disabled=${!this.canApply}
+        @click=${this.apply}
+      >
+        ${this.applying ? "Applying..." : "Apply"}
+      </button>
+    `);
   }
 
   private get customEffectEntries(): CustomEffectListEntry[] {
@@ -1676,9 +1693,13 @@ export class GoveeLedEffectStudio extends LitElement {
         break;
       case "confirmed":
         message =
-          deployment.target_mode === "scene"
-            ? `Applied to ${deviceName}. The selected scene identity was confirmed, but authored scene contents cannot be read back.`
-            : `Applied to ${deviceName}. The selected custom-effect code was confirmed, but exact effect contents cannot be read back.`;
+          deployment.content_kind === "music_profile"
+            ? `Applied to ${deviceName}. The result responds to live audio.`
+            : deployment.content_kind === "video_profile"
+              ? `Applied to ${deviceName}. The result follows the live screen input.`
+              : deployment.target_mode === "scene"
+                ? `Applied to ${deviceName}. The selected scene identity was confirmed, but authored scene contents cannot be read back.`
+                : `Applied to ${deviceName}. The selected custom-effect code was confirmed, but exact effect contents cannot be read back.`;
         break;
       case "uncertain":
         message =
@@ -1686,13 +1707,13 @@ export class GoveeLedEffectStudio extends LitElement {
             ? `${deviceName} reported the selected H6199 user-effect slot, but the uploaded effect content cannot be read back. The result remains uncertain.`
             : deployment.error_code === "activation_readback_unproven"
               ? `The H6199 effect upload was sent to ${deviceName}, but activation and readback remain unproven. The result is uncertain.`
-              : `The final state of ${deviceName} is uncertain. The selected effect could not be confirmed.`;
+              : `The final state of ${deviceName} is uncertain. The requested settings could not be confirmed.`;
         break;
       case "recovering":
         message = `Restoring the previous state on ${deviceName} after the apply failed.`;
         break;
       case "unknown":
-        message = `Applied to ${deviceName}, but the selected effect could not be confirmed.`;
+        message = `Applied to ${deviceName}, but the requested settings could not be confirmed.`;
         break;
       case "interrupted":
         message = `Apply to ${deviceName} was interrupted by a Home Assistant restart.`;
@@ -3578,14 +3599,18 @@ function isDeployableEffectContent(
 ): content is
   | CustomEffectContent
   | PaletteDiyEffectContent
-  | AdvancedEditableContent {
+  | AdvancedEditableContent
+  | MusicProfileContent
+  | VideoProfileContent {
   return (
     isCustomEffectContent(content) ||
     (typeof content === "object" &&
       content !== null &&
       "kind" in content &&
       (content.kind === "palette_diy" ||
-        isAdvancedEditableKind(content.kind)))
+        isAdvancedEditableKind(content.kind) ||
+        content.kind === "music_profile" ||
+        content.kind === "video_profile"))
   );
 }
 

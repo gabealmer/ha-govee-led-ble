@@ -17,11 +17,17 @@ from .const import ModelProfile
 from .coordinator import GoveeBLECoordinator
 from .entity import GoveeBLEEntity
 from .light import apply_active_video_mode
+from .native_profile_controls import (
+    apply_blank_screen as _apply_blank_screen,
+)
+from .native_profile_controls import (
+    apply_relative_brightness as _apply_relative_brightness,
+)
+from .native_profile_controls import (
+    apply_white_balance as _apply_white_balance,
+)
 from .protocol import (
     WHITE_BALANCE_POSITIONS,
-    build_blank_screen,
-    build_relative_brightness_edges,
-    build_video_white_balance,
 )
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
@@ -38,55 +44,6 @@ _READ_BACKED_KEYS = frozenset(
         "blank_screen",
     }
 )
-
-
-async def _apply_white_balance(coordinator: GoveeBLECoordinator) -> bool:
-    expected = coordinator.white_balance
-    fields = {"white_balance_red": expected[0], "white_balance_blue": expected[1]}
-    for _ in range(2):
-        coordinator._arm_expected_values(fields)
-        await coordinator.send_command(build_video_white_balance(*expected))
-        if await coordinator.refresh_state(expected_white_balance=expected):
-            return True
-    raise RuntimeError("White-balance write was not confirmed by the device")
-
-
-async def _apply_relative_brightness(coordinator: GoveeBLECoordinator) -> bool:
-    values = tuple(getattr(coordinator, f"relative_brightness_{edge}") for edge in ("left", "top", "right", "bottom"))
-    if any(value is None for value in values):
-        raise ValueError("Relative-brightness edge state has not been read; set all edges first")
-    left, top, right, bottom = values
-    assert left is not None and top is not None and right is not None and bottom is not None
-    expected = left, top, right, bottom
-    aggregate = left if len(set(expected)) == 1 else None
-    fields = {
-        "relative_brightness": aggregate,
-        "relative_brightness_left": left,
-        "relative_brightness_top": top,
-        "relative_brightness_right": right,
-        "relative_brightness_bottom": bottom,
-    }
-    for _ in range(2):
-        coordinator._arm_expected_values(fields)
-        await coordinator.send_command(build_relative_brightness_edges(*expected))
-        if await coordinator.refresh_state(expected_relative_brightness=expected):
-            return True
-    raise RuntimeError("Relative-brightness write was not confirmed by the device")
-
-
-async def _apply_blank_screen(coordinator: GoveeBLECoordinator) -> bool:
-    expected = bool(coordinator.blank_screen)
-    detection = coordinator.blank_screen_detection
-    low_duration = coordinator.blank_screen_low_brightness_duration_seconds
-    same_duration = coordinator.blank_screen_same_tone_duration_seconds
-    if detection is None or low_duration is None or same_duration is None:
-        raise ValueError("Blank-screen policy state has not been read; refresh the device first")
-    for _ in range(2):
-        coordinator._arm_expected_values({"blank_screen": expected})
-        await coordinator.send_command(build_blank_screen(expected, detection, low_duration, same_duration))
-        if await coordinator.refresh_state(expected_blank_screen=expected):
-            return True
-    raise RuntimeError("Blank-screen write was not confirmed by the device")
 
 
 @dataclass(frozen=True)

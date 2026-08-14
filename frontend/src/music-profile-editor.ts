@@ -235,11 +235,11 @@ export class GoveeMusicProfileEditor extends LitElement {
   }
 
   private renderSeparationParameters(parameters: JsonObject) {
-    const point = numberParameter(parameters, "point", 1, 0, 100);
+    const point = numberParameter(parameters, "point", 1, 1, 5);
     const gradient = booleanParameter(parameters, "gradient", true);
 
     return html`
-      ${this.renderRangeField("Point", point, 0, 100, (value) =>
+      ${this.renderRangeField("Point", point, 1, 5, (value) =>
         this.updateParameter("point", value))}
       ${this.renderCheckboxField("Gradient", gradient, (checked) =>
         this.updateParameter("gradient", checked))}
@@ -252,7 +252,7 @@ export class GoveeMusicProfileEditor extends LitElement {
       "relative_brightness",
       50,
       0,
-      100,
+      50,
     );
 
     return html`
@@ -260,17 +260,17 @@ export class GoveeMusicProfileEditor extends LitElement {
         "Relative brightness",
         relativeBrightness,
         0,
-        100,
+        50,
         (value) => this.updateParameter("relative_brightness", value),
       )}
     `;
   }
 
   private renderPianoKeysParameters(parameters: JsonObject) {
-    const keyCount = numberParameter(parameters, "key_count", 15, 1, 15);
+    const keyCount = numberParameter(parameters, "key_count", 15, 8, 15);
 
     return html`
-      ${this.renderRangeField("Key count", keyCount, 1, 15, (value) =>
+      ${this.renderRangeField("Key count", keyCount, 8, 15, (value) =>
         this.updateParameter("key_count", value))}
     `;
   }
@@ -307,8 +307,8 @@ export class GoveeMusicProfileEditor extends LitElement {
   }
 
   private renderDayAndNightParameters(parameters: JsonObject) {
-    const segmentCount = numberParameter(parameters, "segment_count", 1, 1, 15);
-    const speed = numberParameter(parameters, "speed", 10, 0, 100);
+    const segmentCount = numberParameter(parameters, "segment_count", 1, 1, 7);
+    const speed = numberParameter(parameters, "speed", 10, 1, 50);
     const gradient = booleanParameter(parameters, "gradient", false);
 
     return html`
@@ -316,11 +316,11 @@ export class GoveeMusicProfileEditor extends LitElement {
         "Segment count",
         segmentCount,
         1,
-        15,
+        7,
         (value) => this.updateParameter("segment_count", value),
         true,
       )}
-      ${this.renderRangeField("Speed", speed, 0, 100, (value) =>
+      ${this.renderRangeField("Speed", speed, 1, 50, (value) =>
         this.updateParameter("speed", value))}
       ${this.renderCheckboxField("Gradient", gradient, (checked) =>
         this.updateParameter("gradient", checked))}
