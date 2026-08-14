@@ -7,6 +7,23 @@ export interface JsonObject {
 
 export type CapabilityState = "supported" | "unsupported" | "evidence_gap";
 export type ModelSku = "H617A" | "H6199";
+export type ReleaseWorkflowId =
+  | "native_scenes"
+  | "edited_palette_scenes"
+  | "layered_scenes"
+  | "painted"
+  | "single"
+  | "multi"
+  | "native_music"
+  | "video"
+  | "palette_diy"
+  | "advanced"
+  | "workshop"
+  | "special_diy";
+export type ReleaseWorkflowApplication =
+  | "studio"
+  | "home_assistant"
+  | "planned";
 
 export interface EditorApiInfo {
   api_version: number;
@@ -209,12 +226,20 @@ export interface EffectStudioModeOption {
   label: string;
 }
 
+export interface ReleaseWorkflowCapability {
+  id: ReleaseWorkflowId;
+  label: string;
+  content_kind: string;
+  application: ReleaseWorkflowApplication;
+}
+
 export interface ModelEffectCatalogue {
   sku: ModelSku;
   painted_effects: PaintedEffectTemplate[];
   effects: PaletteDiyFamily[];
   music_modes: EffectStudioModeOption[];
   video_modes: EffectStudioModeOption[];
+  workflows: ReleaseWorkflowCapability[];
   supports: {
     multi: CapabilityState;
     advanced: CapabilityState;
@@ -227,13 +252,14 @@ export interface ModelEffectCatalogue {
     music_sensitivity_max: number;
   };
   apply: {
+    painted: CapabilityState;
     single: CapabilityState;
     multi: CapabilityState;
   };
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 2;
+  schema_version: 3;
   sku: "H617A";
   models: Record<ModelSku, ModelEffectCatalogue>;
 }
@@ -347,14 +373,30 @@ export interface DraftSummary {
   selected_config_entry_id: string | null;
 }
 
-export type DeploymentPhase =
-  | "pending"
-  | "uploading"
-  | "verifying"
-  | "confirmed"
-  | "failed"
-  | "interrupted"
-  | "unknown";
+export const DEPLOYMENT_PHASES = [
+  "compiling",
+  "pending",
+  "uploading",
+  "activating",
+  "verifying",
+  "confirmed",
+  "uncertain",
+  "recovering",
+  "failed",
+  "interrupted",
+  "unknown",
+] as const;
+
+export type DeploymentPhase = (typeof DEPLOYMENT_PHASES)[number];
+
+export const IN_FLIGHT_DEPLOYMENT_PHASES = [
+  "compiling",
+  "pending",
+  "uploading",
+  "activating",
+  "verifying",
+  "recovering",
+] as const satisfies readonly DeploymentPhase[];
 
 export interface DeploymentRecord {
   operation_id: string;

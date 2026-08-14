@@ -51,6 +51,7 @@ import type {
   RGB,
   VideoProfileContent,
 } from "./types";
+import { IN_FLIGHT_DEPLOYMENT_PHASES } from "./types";
 import {
   compareLabels,
   errorCode,
@@ -306,11 +307,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (selected || !this.applying) {
       return selected;
     }
-    return this.latestDeployment([
-      "pending",
-      "uploading",
-      "verifying",
-    ]);
+    return this.latestDeployment(IN_FLIGHT_DEPLOYMENT_PHASES);
   }
 
   public connectedCallback(): void {
@@ -1647,17 +1644,27 @@ export class GoveeLedEffectStudio extends LitElement {
       )?.display_name ?? "device";
     let message: string;
     switch (deployment.phase) {
+      case "compiling":
       case "pending":
         message = `Preparing to apply to ${deviceName}.`;
         break;
       case "uploading":
         message = `Applying to ${deviceName}: ${deployment.progress_current} of ${deployment.progress_total}.`;
         break;
+      case "activating":
+        message = `Activating the selected effect on ${deviceName}.`;
+        break;
       case "verifying":
         message = `Checking the selected effect on ${deviceName}.`;
         break;
       case "confirmed":
         message = `Applied to ${deviceName}. The selected custom-effect code was confirmed, but exact effect contents cannot be read back.`;
+        break;
+      case "uncertain":
+        message = `The final state of ${deviceName} is uncertain. The selected effect could not be confirmed.`;
+        break;
+      case "recovering":
+        message = `Restoring the previous state on ${deviceName} after the apply failed.`;
         break;
       case "unknown":
         message = `Applied to ${deviceName}, but the selected effect could not be confirmed.`;
@@ -1672,7 +1679,11 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       <div
         class="feedback deployment ${deployment.phase}"
-        role=${deployment.phase === "failed" ? "alert" : "status"}
+        role=${["failed", "uncertain", "interrupted", "unknown"].includes(
+          deployment.phase,
+        )
+          ? "alert"
+          : "status"}
       >
         ${message}
       </div>
@@ -1790,12 +1801,9 @@ export class GoveeLedEffectStudio extends LitElement {
             this.deploymentRevision = snapshot.revision;
             this.deployments = snapshot.deployments;
             if (!this.activeOperationId) {
-              this.activeOperationId = this.latestDeployment([
-                "pending",
-                "uploading",
-                "verifying",
-                "interrupted",
-              ])?.operation_id;
+              this.activeOperationId = this.latestDeployment(
+                IN_FLIGHT_DEPLOYMENT_PHASES,
+              )?.operation_id;
             }
           },
           (error) => this.subscriptionFailed(error, loadEpoch, api),
@@ -2058,12 +2066,9 @@ export class GoveeLedEffectStudio extends LitElement {
     const transitionEpoch = this.beginEditorTransition();
     this.selectedDeviceId = (event.target as HTMLSelectElement).value;
     this.activeOperationId = undefined;
-    this.activeOperationId = this.latestDeployment([
-      "pending",
-      "uploading",
-      "verifying",
-      "interrupted",
-    ])?.operation_id;
+    this.activeOperationId = this.latestDeployment(
+      IN_FLIGHT_DEPLOYMENT_PHASES,
+    )?.operation_id;
     this.notice = undefined;
     if (this.section === "video" && !this.videoAvailable) {
       this.section = "scenes";
@@ -2814,7 +2819,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private latestDeployment(
-    phases: DeploymentRecord["phase"][],
+    phases: readonly DeploymentRecord["phase"][],
   ): DeploymentRecord | undefined {
     return [...this.deployments]
       .filter(
@@ -3095,7 +3100,10 @@ export class GoveeLedEffectStudio extends LitElement {
       background: var(--studio-blue-soft);
     }
 
-    .deployment.failed {
+    .deployment.failed,
+    .deployment.uncertain,
+    .deployment.interrupted,
+    .deployment.unknown {
       border-color: var(--error-color, #db4437);
       color: var(--error-color, #db4437);
       background: color-mix(

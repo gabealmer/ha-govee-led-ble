@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from hashlib import sha256
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call
 from uuid import uuid4
@@ -13,7 +14,10 @@ from homeassistant.core import HomeAssistant
 from custom_components.ha_govee_led_ble.effect_compiler import compile_h617a
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
+    DeploymentRecord,
     EffectDeploymentRepository,
+    EffectDeviceCache,
+    ObservationConfidence,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
@@ -24,6 +28,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
     resolve_diy_code,
 )
+from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
 def _item() -> LibraryItem:
@@ -38,77 +43,144 @@ def _type04_item() -> LibraryItem:
 
 
 def _coordinator(*, readable: bool = True):
-    coordinator = SimpleNamespace(
+    return SimpleNamespace(
         _control_lock=asyncio.Lock(),
+        address="AA:BB:CC:DD:EE:FF",
         model="H617A",
         profile=SimpleNamespace(state_readable=readable),
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        color_temp_kelvin=None,
+        effect=None,
         diy_code=None,
+        music_mode="off",
+        video_mode="off",
+        music_sensitivity=50,
+        music_calm=False,
+        music_color=None,
         send_command=AsyncMock(),
-        refresh_state=AsyncMock(),
+        refresh_state=AsyncMock(return_value=True),
     )
-    return coordinator
 
 
-async def test_saved_effect_uploads_then_confirms_readback(
-    hass: HomeAssistant,
-) -> None:
-    repository = EffectDeploymentRepository(hass)
-    await repository.async_load()
-    engine = EffectDeploymentEngine(repository)
-    coordinator = _coordinator()
+class YieldingVersionedDocumentStore(InMemoryVersionedDocumentStore):
+    async def async_save(self, data) -> None:
+        await asyncio.sleep(0)
+        await super().async_save(data)
 
-    async def confirm() -> bool:
-        coordinator.diy_code = 800
+
+def _confirm_on_call(coordinator, call_number: int, diy_code: int) -> None:
+    async def refresh() -> bool:
+        if coordinator.refresh_state.await_count >= call_number:
+            coordinator.diy_code = diy_code
         return True
 
-    coordinator.refresh_state.side_effect = confirm
+    coordinator.refresh_state.side_effect = refresh
 
-    result = await engine.async_apply_saved(
+
+async def _repositories(hass: HomeAssistant):
+    deployments = EffectDeploymentRepository(hass)
+    cache = EffectDeviceCache(hass)
+    await deployments.async_load()
+    await cache.async_load()
+    return deployments, cache
+
+
+async def test_saved_effect_uploads_activates_then_confirms_selector(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    _confirm_on_call(coordinator, 2, 800)
+    item = _item()
+    compiled = compile_h617a(item, 800)
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
-        _item(),
+        item,
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
     )
 
     assert result.phase is DeploymentPhase.CONFIRMED
-    assert coordinator.send_command.await_count >= 2
+    assert result.verification_confidence is ObservationConfidence.ACTIVATION_MATCH
+    assert result.prior_state is not None
+    assert result.prior_state.rgb_color == (1, 2, 3)
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
     assert repository.get(result.operation_id) == result
-    assert result.progress_current == result.progress_total
+    assert cache.get("entry-a") is not None
+    assert cache.get("entry-a").confidence is ObservationConfidence.ACTIVATION_MATCH
+    assert cache.get("entry-a").matched_operation_id == result.operation_id
 
 
-async def test_unconfirmed_upload_retries_complete_packet_sequence(
+async def test_verification_retry_only_repeats_safe_activation(
     hass: HomeAssistant,
 ) -> None:
-    repository = EffectDeploymentRepository(hass)
-    await repository.async_load()
-    engine = EffectDeploymentEngine(repository)
+    repository, cache = await _repositories(hass)
     coordinator = _coordinator()
-    coordinator.refresh_state.return_value = False
     item = _item()
-    packets = compile_h617a(item, 800).packets
+    compiled = compile_h617a(item, 800)
 
-    result = await engine.async_apply_snapshot(
+    async def refresh() -> bool:
+        if coordinator.refresh_state.await_count == 2:
+            coordinator.diy_code = 999
+        elif coordinator.refresh_state.await_count >= 3:
+            coordinator.diy_code = 800
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
         item,
         config_entry_id="entry-a",
-        snapshot_id=uuid4(),
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert result.phase is DeploymentPhase.UNKNOWN
-    assert result.snapshot == item
-    assert result.error_code == "device_state_unconfirmed"
-    assert coordinator.refresh_state.await_count == 2
-    assert coordinator.send_command.await_args_list == [call(packet) for packet in (*packets, *packets)]
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert coordinator.send_command.await_args_list == [
+        *[call(packet) for packet in compiled.upload_packets],
+        call(compiled.activation_packet),
+        call(compiled.activation_packet),
+    ]
+    assert coordinator.refresh_state.await_count == 3
+
+
+async def test_activation_retry_does_not_repeat_upload(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    item = _item()
+    compiled = compile_h617a(item, 800)
+    coordinator.send_command.side_effect = [
+        *([None] * len(compiled.upload_packets)),
+        RuntimeError("ambiguous activation write"),
+        None,
+    ]
+    _confirm_on_call(coordinator, 2, 800)
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert coordinator.send_command.await_args_list == [
+        *[call(packet) for packet in compiled.upload_packets],
+        call(compiled.activation_packet),
+        call(compiled.activation_packet),
+    ]
 
 
 async def test_upload_does_not_start_if_uploading_phase_cannot_be_persisted(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    repository = EffectDeploymentRepository(hass)
-    await repository.async_load()
-    engine = EffectDeploymentEngine(repository)
+    repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     operation_id = uuid4()
     original_put = repository.async_put
@@ -121,6 +193,205 @@ async def test_upload_does_not_start_if_uploading_phase_cannot_be_persisted(
     monkeypatch.setattr(repository, "async_put", fail_uploading)
 
     with pytest.raises(OSError, match="storage unavailable"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            _item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+            operation_id=operation_id,
+        )
+
+    failed = repository.get(operation_id)
+    assert failed.phase is DeploymentPhase.FAILED
+    assert failed.error_code == "OSError"
+    coordinator.send_command.assert_not_awaited()
+
+
+async def test_mid_upload_failure_is_uncertain_without_supported_recovery(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    item = _item()
+    compiled = compile_h617a(item, 800)
+    coordinator.send_command.side_effect = [None, RuntimeError("write failed")]
+    operation_id = uuid4()
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            item,
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+            operation_id=operation_id,
+        )
+
+    failed = repository.get(operation_id)
+    assert failed.phase is DeploymentPhase.UNCERTAIN
+    assert failed.error_code == "RuntimeError"
+    assert failed.progress_current == 1
+    assert failed.progress_total == len(compiled.packets)
+    assert coordinator.send_command.await_args_list == [
+        call(compiled.upload_packets[0]),
+        call(compiled.upload_packets[1]),
+    ]
+
+
+async def test_mid_upload_failure_recovers_prior_state_and_fails_cleanly(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+    coordinator.send_command.side_effect = [None, RuntimeError("write failed")]
+    operation_id = uuid4()
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            _item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+            operation_id=operation_id,
+        )
+
+    failed = repository.get(operation_id)
+    assert failed.phase is DeploymentPhase.FAILED
+    coordinator.async_restore_effect_control_state.assert_awaited_once()
+    assert coordinator.async_restore_effect_control_state.await_args.kwargs == {"overwritten_diy_code": 800}
+
+
+async def test_queued_user_command_runs_after_recovery_under_original_lock(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    failed_write_started = asyncio.Event()
+    release_failed_write = asyncio.Event()
+    order: list[str] = []
+    write_count = 0
+
+    async def send_command(_packet: bytes) -> None:
+        nonlocal write_count
+        write_count += 1
+        if write_count == 2:
+            failed_write_started.set()
+            await release_failed_write.wait()
+            raise RuntimeError("write failed")
+
+    async def restore_prior_state(*_args, **_kwargs) -> bool:
+        order.append("recovery")
+        coordinator.brightness_pct = 72
+        return True
+
+    coordinator.send_command.side_effect = send_command
+    coordinator.async_restore_effect_control_state = AsyncMock(side_effect=restore_prior_state)
+    deployment_task = asyncio.create_task(
+        EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            _item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+        )
+    )
+    await failed_write_started.wait()
+
+    async def queued_user_command() -> None:
+        async with coordinator._control_lock:
+            order.append("user")
+            coordinator.brightness_pct = 10
+
+    user_task = asyncio.create_task(queued_user_command())
+    await asyncio.sleep(0)
+    release_failed_write.set()
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        await deployment_task
+    await user_task
+
+    assert order == ["recovery", "user"]
+    assert coordinator.brightness_pct == 10
+
+
+async def test_verification_failure_retries_reads_then_recovers(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+
+    async def refresh() -> bool:
+        if coordinator.refresh_state.await_count == 1:
+            return True
+        raise RuntimeError("read failed")
+
+    coordinator.refresh_state.side_effect = refresh
+    item = _item()
+    compiled = compile_h617a(item, 800)
+    operation_id = uuid4()
+
+    with pytest.raises(RuntimeError, match="read failed"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            item,
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+            operation_id=operation_id,
+        )
+
+    failed = repository.get(operation_id)
+    assert failed.phase is DeploymentPhase.FAILED
+    assert failed.progress_current == len(compiled.packets)
+    assert coordinator.refresh_state.await_count == 3
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
+    coordinator.async_restore_effect_control_state.assert_awaited_once()
+
+
+async def test_cancelled_partial_upload_is_not_resumed(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=False)
+    coordinator.send_command.side_effect = [None, asyncio.CancelledError()]
+    operation_id = uuid4()
+
+    with pytest.raises(asyncio.CancelledError):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            _item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+            operation_id=operation_id,
+        )
+
+    interrupted = repository.get(operation_id)
+    assert interrupted.phase is DeploymentPhase.UNCERTAIN
+    assert interrupted.error_code == "operation_cancelled"
+    assert interrupted.progress_current == 1
+    assert coordinator.send_command.await_count == 2
+
+
+async def test_same_operation_id_does_not_repeat_uncertain_upload(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.send_command.side_effect = RuntimeError("write failed")
+    operation_id = uuid4()
+    engine = EffectDeploymentEngine(repository, cache)
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        await engine.async_apply_saved(
+            coordinator,
+            _item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+            operation_id=operation_id,
+        )
+    writes_after_failure = coordinator.send_command.await_count
+
+    with pytest.raises(RuntimeError, match="already exists"):
         await engine.async_apply_saved(
             coordinator,
             _item(),
@@ -129,160 +400,148 @@ async def test_upload_does_not_start_if_uploading_phase_cannot_be_persisted(
             operation_id=operation_id,
         )
 
-    pending = repository.get(operation_id)
-    assert pending.phase is DeploymentPhase.PENDING
-    assert pending.progress_current == 0
-    assert pending.progress_total == 0
-    coordinator.send_command.assert_not_awaited()
+    assert coordinator.send_command.await_count == writes_after_failure
 
 
-async def test_mid_upload_failure_preserves_progress_and_propagates(
-    hass: HomeAssistant,
-) -> None:
-    repository = EffectDeploymentRepository(hass)
+async def test_simultaneous_same_operation_id_shares_one_device_transaction() -> None:
+    deployment_store = YieldingVersionedDocumentStore()
+    repository = EffectDeploymentRepository(deployment_store)
     await repository.async_load()
-    engine = EffectDeploymentEngine(repository)
     coordinator = _coordinator()
     item = _item()
-    packets = compile_h617a(item, 800).packets
-    coordinator.send_command.side_effect = [None, RuntimeError("write failed")]
+    compiled = compile_h617a(item, 800)
+    _confirm_on_call(coordinator, 2, 800)
     operation_id = uuid4()
+    engine = EffectDeploymentEngine(repository)
 
-    with pytest.raises(RuntimeError, match="write failed"):
-        await engine.async_apply_saved(
+    first, second = await asyncio.gather(
+        engine.async_apply_saved(
             coordinator,
             item,
             config_entry_id="entry-a",
             updated_at="2026-08-11T00:00:00Z",
             operation_id=operation_id,
-        )
-
-    failed = repository.get(operation_id)
-    assert failed.phase is DeploymentPhase.FAILED
-    assert failed.error_code == "RuntimeError"
-    assert failed.progress_current == 1
-    assert failed.progress_total == len(packets)
-    assert coordinator.send_command.await_args_list == [
-        call(packets[0]),
-        call(packets[1]),
-    ]
-
-
-async def test_verification_failure_preserves_completed_upload(
-    hass: HomeAssistant,
-) -> None:
-    repository = EffectDeploymentRepository(hass)
-    await repository.async_load()
-    engine = EffectDeploymentEngine(repository)
-    coordinator = _coordinator()
-    item = _item()
-    packets = compile_h617a(item, 800).packets
-    coordinator.refresh_state.side_effect = RuntimeError("read failed")
-    operation_id = uuid4()
-
-    with pytest.raises(RuntimeError, match="read failed"):
-        await engine.async_apply_saved(
+        ),
+        engine.async_apply_saved(
             coordinator,
             item,
             config_entry_id="entry-a",
             updated_at="2026-08-11T00:00:00Z",
             operation_id=operation_id,
-        )
-
-    failed = repository.get(operation_id)
-    assert failed.phase is DeploymentPhase.FAILED
-    assert failed.error_code == "RuntimeError"
-    assert failed.progress_current == len(packets)
-    assert failed.progress_total == len(packets)
-    assert coordinator.send_command.await_args_list == [call(packet) for packet in packets]
-
-
-@pytest.mark.parametrize(
-    ("prior_outcome", "prior_phase"),
-    [
-        ("failed", DeploymentPhase.FAILED),
-        ("unknown", DeploymentPhase.UNKNOWN),
-    ],
-)
-async def test_fresh_operation_recovers_after_unsuccessful_operation(
-    hass: HomeAssistant,
-    prior_outcome: str,
-    prior_phase: DeploymentPhase,
-) -> None:
-    repository = EffectDeploymentRepository(hass)
-    await repository.async_load()
-    engine = EffectDeploymentEngine(repository)
-    item = _item()
-    prior_coordinator = _coordinator()
-    prior_operation_id = uuid4()
-
-    if prior_outcome == "failed":
-        prior_coordinator.send_command.side_effect = RuntimeError("write failed")
-        with pytest.raises(RuntimeError, match="write failed"):
-            await engine.async_apply_saved(
-                prior_coordinator,
-                item,
-                config_entry_id="entry-a",
-                updated_at="2026-08-11T00:00:00Z",
-                operation_id=prior_operation_id,
-            )
-    else:
-        prior_coordinator.refresh_state.return_value = False
-        prior = await engine.async_apply_saved(
-            prior_coordinator,
-            item,
-            config_entry_id="entry-a",
-            updated_at="2026-08-11T00:00:00Z",
-            operation_id=prior_operation_id,
-        )
-        assert prior.phase is DeploymentPhase.UNKNOWN
-
-    recovered_coordinator = _coordinator()
-
-    async def confirm() -> bool:
-        recovered_coordinator.diy_code = 800
-        return True
-
-    recovered_coordinator.refresh_state.side_effect = confirm
-    recovered = await engine.async_apply_saved(
-        recovered_coordinator,
-        item,
-        config_entry_id="entry-a",
-        updated_at="2026-08-11T00:01:00Z",
+        ),
     )
 
-    assert recovered.phase is DeploymentPhase.CONFIRMED
-    assert recovered.operation_id != prior_operation_id
-    assert repository.get(prior_operation_id).phase is prior_phase
-    assert len(repository.snapshot().records) == 2
+    assert first == second
+    assert first.phase is DeploymentPhase.CONFIRMED
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
+    assert repository.snapshot().records == (first,)
+    assert engine._operation_locks == {}
+    assert engine._operation_lock_users == {}
 
 
-async def test_unreadable_device_is_never_reported_confirmed(
+async def test_custom_writes_wait_for_coordinator_control_lock(
     hass: HomeAssistant,
 ) -> None:
-    repository = EffectDeploymentRepository(hass)
-    await repository.async_load()
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    _confirm_on_call(coordinator, 2, 800)
+    engine = EffectDeploymentEngine(repository, cache)
+    await coordinator._control_lock.acquire()
+
+    task = asyncio.create_task(
+        engine.async_apply_saved(
+            coordinator,
+            _item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+        )
+    )
+    await asyncio.sleep(0)
+    coordinator.send_command.assert_not_awaited()
+
+    coordinator._control_lock.release()
+    result = await task
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+
+
+async def test_reconciliation_matches_only_latest_confirmed_selector(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    confirmed = DeploymentRecord(
+        operation_id=uuid4(),
+        config_entry_id="entry-a",
+        diy_code=800,
+        phase=DeploymentPhase.CONFIRMED,
+        compiler_version=1,
+        artifact_sha256=sha256(b"confirmed").hexdigest(),
+        updated_at="2026-08-11T00:00:00Z",
+        item_id=uuid4(),
+        item_revision=1,
+        verification_confidence=ObservationConfidence.ACTIVATION_MATCH,
+    )
+    await repository.async_put(confirmed, expected_revision=None)
+    coordinator = _coordinator()
+    coordinator.diy_code = 800
+
+    matched = await EffectDeploymentEngine(repository, cache).async_reconcile(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-11T00:01:00Z",
+    )
+
+    assert matched.confidence is ObservationConfidence.ACTIVATION_MATCH
+    assert matched.matched_operation_id == confirmed.operation_id
+
+    uncertain = DeploymentRecord(
+        operation_id=uuid4(),
+        config_entry_id="entry-a",
+        diy_code=800,
+        phase=DeploymentPhase.UNCERTAIN,
+        compiler_version=1,
+        artifact_sha256=sha256(b"uncertain").hexdigest(),
+        updated_at="2026-08-11T00:02:00Z",
+        item_id=uuid4(),
+        item_revision=1,
+    )
+    await repository.async_put(uncertain, expected_revision=None)
+
+    unmatched = await EffectDeploymentEngine(repository, cache).async_reconcile(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-11T00:03:00Z",
+    )
+
+    assert unmatched.confidence is ObservationConfidence.UNKNOWN
+    assert unmatched.matched_operation_id is None
+
+
+async def test_unreadable_device_is_uncertain_not_confirmed(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
     coordinator = _coordinator(readable=False)
 
-    result = await EffectDeploymentEngine(repository).async_apply_saved(
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
         _item(),
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert result.phase is DeploymentPhase.UNKNOWN
+    assert result.phase is DeploymentPhase.UNCERTAIN
+    assert result.verification_confidence is ObservationConfidence.UNKNOWN
     coordinator.refresh_state.assert_not_awaited()
 
 
 async def test_h6199_is_rejected_before_any_write(hass: HomeAssistant) -> None:
-    repository = EffectDeploymentRepository(hass)
-    await repository.async_load()
+    repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     coordinator.model = "H6199"
 
     with pytest.raises(ValueError, match="not supported"):
-        await EffectDeploymentEngine(repository).async_apply_saved(
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
             coordinator,
             _item(),
             config_entry_id="entry-a",
@@ -295,17 +554,11 @@ async def test_h6199_is_rejected_before_any_write(hass: HomeAssistant) -> None:
 async def test_type04_uses_evidenced_code_and_confirms_readback(
     hass: HomeAssistant,
 ) -> None:
-    repository = EffectDeploymentRepository(hass)
-    await repository.async_load()
+    repository, cache = await _repositories(hass)
     coordinator = _coordinator()
+    _confirm_on_call(coordinator, 2, 24)
 
-    async def confirm() -> bool:
-        coordinator.diy_code = 24
-        return True
-
-    coordinator.refresh_state.side_effect = confirm
-
-    result = await EffectDeploymentEngine(repository).async_apply_saved(
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
         _type04_item(),
         config_entry_id="entry-a",
@@ -314,17 +567,12 @@ async def test_type04_uses_evidenced_code_and_confirms_readback(
 
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.diy_code == 24
-    assert coordinator.send_command.await_count >= 2
 
 
 def test_painted_effect_uses_evidenced_code(hass: HomeAssistant) -> None:
     repository = EffectDeploymentRepository(hass)
-    item = LibraryItem.new(
-        "Paint",
-        PaintedEffect("clockwise", 50, 100, (0, 0, 0)),
-    )
 
-    assert resolve_diy_code(repository, item, "entry-a") == 800
+    assert resolve_diy_code(repository, _item(), "entry-a") == 800
 
 
 def test_type04_effect_uses_evidenced_code(hass: HomeAssistant) -> None:

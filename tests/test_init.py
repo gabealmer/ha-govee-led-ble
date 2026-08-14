@@ -54,6 +54,25 @@ async def test_setup_entry(hass: HomeAssistant):
     fwd.assert_awaited_once()
 
 
+async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):
+    entry = _entry()
+    backend = MagicMock(async_reconcile_coordinator=AsyncMock())
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble.get_effect_setup", return_value=MagicMock(backend=backend)),
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
+    ):
+        cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.profile = MODEL_PROFILES["H617A"]
+
+        assert await async_setup_entry(hass, entry) is True
+
+    backend.async_reconcile_coordinator.assert_awaited_once()
+    assert backend.async_reconcile_coordinator.await_args.args == (cls.return_value,)
+    assert backend.async_reconcile_coordinator.await_args.kwargs["config_entry_id"] == entry.entry_id
+
+
 @pytest.mark.parametrize("data", [{}, {CONF_MODEL: "H9999"}])
 async def test_setup_entry_rejects_unknown_model(hass: HomeAssistant, data):
     entry = _entry(data=data)

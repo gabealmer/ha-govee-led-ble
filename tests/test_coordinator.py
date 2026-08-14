@@ -24,6 +24,7 @@ from custom_components.ha_govee_led_ble.coordinator import (
     _expectations_from_packet,
     _expected_color_mode_from_packet,
 )
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
 
 M = "custom_components.ha_govee_led_ble.coordinator"
@@ -85,6 +86,69 @@ async def test_initial_state_and_update(coord, h6199):
         patch.object(coord, "_send_state_queries", new_callable=AsyncMock),
     ):
         assert await coord._async_update_data() == exp
+
+
+def test_capture_effect_control_state(coord):
+    coord.is_on = True
+    coord.brightness_pct = 72
+    coord.rgb_color = (1, 2, 3)
+    coord.music_sensitivity = 50
+
+    state = coord.capture_effect_control_state()
+
+    assert state == PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        music_sensitivity=50,
+    )
+
+
+async def test_restore_effect_control_state_reapplies_static_state(coord):
+    state = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+    )
+
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=800,
+        )
+
+    assert recovered is True
+    assert send.await_args_list == [
+        call(proto.build_power(True)),
+        call(proto.build_brightness(72)),
+        call(proto.build_color_rgb(1, 2, 3)),
+    ]
+    refresh.assert_awaited_once_with()
+    assert coord.active_mode == "colour"
+
+
+async def test_restore_effect_control_state_cannot_recover_overwritten_diy_slot(coord):
+    state = PriorControlState(
+        mode="custom",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        diy_code=800,
+    )
+
+    with patch.object(coord, "send_command", new_callable=AsyncMock) as send:
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=800,
+        )
+
+    assert recovered is False
+    send.assert_not_awaited()
 
 
 async def test_send_command(coord):

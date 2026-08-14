@@ -2,25 +2,46 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from uuid import UUID, uuid4
 
 from .coordinator import GoveeBLECoordinator
 from .effect_catalogue import H617A_TYPE04_APPLY_CODE
-from .effect_compiler import compile_h617a
+from .effect_compiler import CompiledEffect, compile_h617a
 from .effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
     EffectDeploymentRepository,
+    EffectDeviceCache,
+    ObservationConfidence,
+    ObservedDeviceState,
+    PriorControlState,
 )
 from .effect_domain import LibraryItem, MultiEffect, PaintedEffect, SingleEffect
 
+ACTIVATION_ATTEMPTS = 2
+VERIFICATION_ATTEMPTS = 2
+
+_LOGGER = logging.getLogger(__name__)
+
 
 class EffectDeploymentEngine:
-    """Apply immutable H617A definitions without changing existing light paths."""
+    """Apply immutable H617A definitions through one coordinator transaction."""
 
-    def __init__(self, deployments: EffectDeploymentRepository) -> None:
+    def __init__(
+        self,
+        deployments: EffectDeploymentRepository,
+        device_cache: EffectDeviceCache | None = None,
+    ) -> None:
         self._deployments = deployments
+        self._device_cache = device_cache
+        self._operation_locks_guard = asyncio.Lock()
+        self._operation_locks: dict[UUID, asyncio.Lock] = {}
+        self._operation_lock_users: dict[UUID, int] = {}
 
     async def async_apply_saved(
         self,
@@ -35,18 +56,15 @@ class EffectDeploymentEngine:
         _require_h617a(coordinator)
         diy_code = resolve_diy_code(self._deployments, item, config_entry_id) if diy_code is None else diy_code
         compiled = compile_h617a(item, diy_code)
-        record = DeploymentRecord(
-            operation_id=operation_id or uuid4(),
+        record = self._new_record(
+            compiled,
             config_entry_id=config_entry_id,
-            diy_code=diy_code,
-            phase=DeploymentPhase.PENDING,
-            compiler_version=compiled.compiler_version,
-            artifact_sha256=compiled.artifact_sha256,
             updated_at=updated_at,
+            operation_id=operation_id,
             item_id=item.id,
             item_revision=item.revision,
         )
-        return await self._async_apply(coordinator, compiled.packets, record)
+        return await self._async_apply(coordinator, compiled, record)
 
     async def async_apply_snapshot(
         self,
@@ -62,78 +80,426 @@ class EffectDeploymentEngine:
         _require_h617a(coordinator)
         diy_code = resolve_diy_code(self._deployments, item, config_entry_id) if diy_code is None else diy_code
         compiled = compile_h617a(item, diy_code)
-        record = DeploymentRecord(
-            operation_id=operation_id or uuid4(),
+        record = self._new_record(
+            compiled,
             config_entry_id=config_entry_id,
-            diy_code=diy_code,
-            phase=DeploymentPhase.PENDING,
-            compiler_version=compiled.compiler_version,
-            artifact_sha256=compiled.artifact_sha256,
             updated_at=updated_at,
+            operation_id=operation_id,
             snapshot_id=snapshot_id,
             snapshot=item,
         )
-        return await self._async_apply(coordinator, compiled.packets, record)
+        return await self._async_apply(coordinator, compiled, record)
+
+    async def async_reconcile(
+        self,
+        coordinator: GoveeBLECoordinator,
+        *,
+        config_entry_id: str,
+        observed_at: str,
+    ) -> ObservedDeviceState:
+        async with coordinator._control_lock:
+            refreshed = await self._async_refresh_for_reconciliation(coordinator)
+            return self._reconcile_observation(
+                coordinator,
+                config_entry_id=config_entry_id,
+                observed_at=observed_at,
+                refreshed=refreshed,
+            )
+
+    def _new_record(
+        self,
+        compiled: CompiledEffect,
+        *,
+        config_entry_id: str,
+        updated_at: str,
+        operation_id: UUID | None,
+        item_id: UUID | None = None,
+        item_revision: int | None = None,
+        snapshot_id: UUID | None = None,
+        snapshot: LibraryItem | None = None,
+    ) -> DeploymentRecord:
+        return DeploymentRecord(
+            operation_id=operation_id or uuid4(),
+            config_entry_id=config_entry_id,
+            diy_code=compiled.diy_code,
+            phase=DeploymentPhase.COMPILING,
+            compiler_version=compiled.compiler_version,
+            artifact_sha256=compiled.artifact_sha256,
+            updated_at=updated_at,
+            item_id=item_id,
+            item_revision=item_revision,
+            snapshot_id=snapshot_id,
+            snapshot=snapshot,
+            progress_total=len(compiled.upload_packets) + 1,
+        )
 
     async def _async_apply(
         self,
         coordinator: GoveeBLECoordinator,
-        packets: tuple[bytes, ...],
+        compiled: CompiledEffect,
         record: DeploymentRecord,
     ) -> DeploymentRecord:
-        await self._deployments.async_put(record, expected_revision=None)
-        uploading = replace(record, phase=DeploymentPhase.UPLOADING)
-        await self._deployments.async_put(uploading, expected_revision=None)
-        try:
-            async with coordinator._control_lock:
-                confirmed = await self._async_send_and_verify(
-                    coordinator,
-                    packets,
-                    uploading,
-                )
-        except Exception as exc:
-            current = self._deployments.get(record.operation_id)
-            failed = replace(
-                current,
-                phase=DeploymentPhase.FAILED,
-                error_code=type(exc).__name__,
-            )
-            await self._deployments.async_put(failed, expected_revision=None)
-            raise
-        current = self._deployments.get(record.operation_id)
-        completed = replace(
-            current,
-            phase=(DeploymentPhase.CONFIRMED if confirmed else DeploymentPhase.UNKNOWN),
-            error_code=None if confirmed else "device_state_unconfirmed",
-        )
-        await self._deployments.async_put(completed, expected_revision=None)
-        return completed
+        async with self._operation_lock(record.operation_id):
+            return await self._async_apply_serialised(coordinator, compiled, record)
 
-    async def _async_send_and_verify(
+    async def _async_apply_serialised(
         self,
         coordinator: GoveeBLECoordinator,
-        packets: tuple[bytes, ...],
+        compiled: CompiledEffect,
         record: DeploymentRecord,
-    ) -> bool:
-        for _attempt in range(2):
-            progress = replace(
-                record,
-                phase=DeploymentPhase.UPLOADING,
-                progress_current=0,
-                progress_total=len(packets),
+    ) -> DeploymentRecord:
+        if existing := self._deployments.get_optional(record.operation_id):
+            if (
+                existing.config_entry_id == record.config_entry_id
+                and existing.artifact_sha256 == record.artifact_sha256
+                and existing.phase is DeploymentPhase.CONFIRMED
+            ):
+                return existing
+            raise RuntimeError(
+                f"deployment operation {record.operation_id} already exists in phase {existing.phase.value}"
             )
-            await self._deployments.async_put(progress, expected_revision=None)
-            for index, packet in enumerate(packets, start=1):
-                await coordinator.send_command(packet)
-                progress = replace(progress, progress_current=index)
-                await self._deployments.async_put(progress, expected_revision=None)
-            if not coordinator.profile.state_readable:
-                return False
-            verifying = replace(progress, phase=DeploymentPhase.VERIFYING)
-            await self._deployments.async_put(verifying, expected_revision=None)
-            if await coordinator.refresh_state() and coordinator.diy_code == record.diy_code:
-                return True
-        return False
+        current = record
+        lock_acquired = False
+        try:
+            await self._deployments.async_put(record, expected_revision=None)
+            async with coordinator._control_lock:
+                lock_acquired = True
+                try:
+                    refreshed = await self._async_refresh_for_reconciliation(coordinator)
+                    self._reconcile_observation(
+                        coordinator,
+                        config_entry_id=record.config_entry_id,
+                        observed_at=record.updated_at,
+                        refreshed=refreshed,
+                    )
+                    prior_state = self._capture_prior_state(coordinator)
+                    next_record = replace(current, prior_state=prior_state)
+                    await self._deployments.async_put(next_record, expected_revision=None)
+                    current = next_record
+
+                    next_record = replace(current, phase=DeploymentPhase.UPLOADING)
+                    await self._deployments.async_put(next_record, expected_revision=None)
+                    current = next_record
+                    for index, packet in enumerate(compiled.upload_packets, start=1):
+                        await coordinator.send_command(packet)
+                        current = replace(current, progress_current=index)
+                        await self._deployments.async_put(current, expected_revision=None)
+
+                    next_record = replace(current, phase=DeploymentPhase.ACTIVATING)
+                    await self._deployments.async_put(next_record, expected_revision=None)
+                    current = next_record
+                    await self._async_activate(coordinator, compiled.activation_packet)
+                    current = replace(current, progress_current=current.progress_total)
+                    await self._deployments.async_put(current, expected_revision=None)
+
+                    next_record = replace(current, phase=DeploymentPhase.VERIFYING)
+                    await self._deployments.async_put(next_record, expected_revision=None)
+                    current = next_record
+                    confirmed, current = await self._async_verify(
+                        coordinator,
+                        compiled.activation_packet,
+                        current,
+                    )
+                    if not confirmed:
+                        return await self._async_finish_failure(
+                            coordinator,
+                            current,
+                            error_code="device_state_unconfirmed",
+                        )
+                    completed = replace(
+                        current,
+                        phase=DeploymentPhase.CONFIRMED,
+                        error_code=None,
+                        verification_confidence=ObservationConfidence.ACTIVATION_MATCH,
+                    )
+                    await self._deployments.async_put(completed, expected_revision=None)
+                    self._reconcile_observation(
+                        coordinator,
+                        config_entry_id=record.config_entry_id,
+                        observed_at=record.updated_at,
+                        refreshed=True,
+                        matched_record=completed,
+                    )
+                    return completed
+                except asyncio.CancelledError:
+                    await self._async_finish_failure_while_locked_best_effort(
+                        coordinator,
+                        current,
+                        error_code="operation_cancelled",
+                    )
+                    raise
+                except Exception as exc:
+                    await self._async_finish_failure_while_locked_best_effort(
+                        coordinator,
+                        current,
+                        error_code=type(exc).__name__,
+                    )
+                    raise
+        except asyncio.CancelledError:
+            if not lock_acquired:
+                await self._async_finish_failure_best_effort(
+                    coordinator,
+                    current,
+                    error_code="operation_cancelled",
+                )
+            raise
+        except Exception as exc:
+            if not lock_acquired:
+                await self._async_finish_failure_best_effort(
+                    coordinator,
+                    current,
+                    error_code=type(exc).__name__,
+                )
+            raise
+
+    @asynccontextmanager
+    async def _operation_lock(self, operation_id: UUID) -> AsyncIterator[None]:
+        async with self._operation_locks_guard:
+            lock = self._operation_locks.setdefault(operation_id, asyncio.Lock())
+            self._operation_lock_users[operation_id] = self._operation_lock_users.get(operation_id, 0) + 1
+        try:
+            async with lock:
+                yield
+        finally:
+            async with self._operation_locks_guard:
+                remaining = self._operation_lock_users[operation_id] - 1
+                if remaining:
+                    self._operation_lock_users[operation_id] = remaining
+                else:
+                    self._operation_lock_users.pop(operation_id, None)
+                    self._operation_locks.pop(operation_id, None)
+
+    async def _async_activate(
+        self,
+        coordinator: GoveeBLECoordinator,
+        activation_packet: bytes,
+    ) -> None:
+        for attempt in range(ACTIVATION_ATTEMPTS):
+            try:
+                await coordinator.send_command(activation_packet)
+                return
+            except Exception:
+                if attempt + 1 == ACTIVATION_ATTEMPTS:
+                    raise
+
+    async def _async_verify(
+        self,
+        coordinator: GoveeBLECoordinator,
+        activation_packet: bytes,
+        record: DeploymentRecord,
+    ) -> tuple[bool, DeploymentRecord]:
+        if not coordinator.profile.state_readable:
+            return False, record
+        current = record
+        for attempt in range(VERIFICATION_ATTEMPTS):
+            try:
+                refreshed = await coordinator.refresh_state()
+            except Exception:
+                if attempt + 1 == VERIFICATION_ATTEMPTS:
+                    raise
+                continue
+            if refreshed and coordinator.diy_code == record.diy_code:
+                return True, current
+            if refreshed and attempt + 1 < VERIFICATION_ATTEMPTS:
+                current = replace(current, phase=DeploymentPhase.ACTIVATING)
+                await self._deployments.async_put(current, expected_revision=None)
+                await self._async_activate(coordinator, activation_packet)
+                current = replace(current, phase=DeploymentPhase.VERIFYING)
+                await self._deployments.async_put(current, expected_revision=None)
+        return False, current
+
+    async def _async_finish_failure(
+        self,
+        coordinator: GoveeBLECoordinator,
+        record: DeploymentRecord,
+        *,
+        error_code: str,
+    ) -> DeploymentRecord:
+        writes_may_have_started = record.phase in {
+            DeploymentPhase.UPLOADING,
+            DeploymentPhase.ACTIVATING,
+            DeploymentPhase.VERIFYING,
+            DeploymentPhase.RECOVERING,
+        }
+        if not writes_may_have_started:
+            failed = replace(
+                record,
+                phase=DeploymentPhase.FAILED,
+                error_code=error_code,
+                verification_confidence=ObservationConfidence.UNKNOWN,
+            )
+            await self._deployments.async_put(failed, expected_revision=None)
+            return failed
+
+        recovering = replace(
+            record,
+            phase=DeploymentPhase.RECOVERING,
+            error_code=error_code,
+            verification_confidence=ObservationConfidence.UNKNOWN,
+        )
+        await self._deployments.async_put(recovering, expected_revision=None)
+        recovered = False
+        if recovering.prior_state is not None:
+            restore = getattr(coordinator, "async_restore_effect_control_state", None)
+            if restore is not None:
+                try:
+                    recovered = await restore(
+                        recovering.prior_state,
+                        overwritten_diy_code=recovering.diy_code,
+                    )
+                except Exception:
+                    _LOGGER.exception(
+                        "Failed to recover the prior state after Effect Studio deployment %s",
+                        recovering.operation_id,
+                    )
+        final = replace(
+            recovering,
+            phase=DeploymentPhase.FAILED if recovered else DeploymentPhase.UNCERTAIN,
+        )
+        await self._deployments.async_put(final, expected_revision=None)
+        self._reconcile_observation(
+            coordinator,
+            config_entry_id=record.config_entry_id,
+            observed_at=record.updated_at,
+            refreshed=recovered,
+        )
+        return final
+
+    async def _async_finish_failure_best_effort(
+        self,
+        coordinator: GoveeBLECoordinator,
+        record: DeploymentRecord,
+        *,
+        error_code: str,
+    ) -> None:
+        try:
+            async with coordinator._control_lock:
+                await self._async_finish_failure(
+                    coordinator,
+                    record,
+                    error_code=error_code,
+                )
+        except Exception:
+            _LOGGER.exception(
+                "Failed to persist the terminal state for Effect Studio deployment %s",
+                record.operation_id,
+            )
+
+    async def _async_finish_failure_while_locked_best_effort(
+        self,
+        coordinator: GoveeBLECoordinator,
+        record: DeploymentRecord,
+        *,
+        error_code: str,
+    ) -> None:
+        try:
+            await self._async_finish_failure(
+                coordinator,
+                record,
+                error_code=error_code,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Failed to persist the terminal state for Effect Studio deployment %s",
+                record.operation_id,
+            )
+
+    async def _async_refresh_for_reconciliation(
+        self,
+        coordinator: GoveeBLECoordinator,
+    ) -> bool:
+        if not coordinator.profile.state_readable:
+            return False
+        try:
+            return await coordinator.refresh_state()
+        except Exception:
+            _LOGGER.debug(
+                "Could not refresh %s before Effect Studio reconciliation",
+                getattr(coordinator, "address", coordinator.model),
+                exc_info=True,
+            )
+            return False
+
+    def _capture_prior_state(
+        self,
+        coordinator: GoveeBLECoordinator,
+    ) -> PriorControlState:
+        capture = getattr(coordinator, "capture_effect_control_state", None)
+        if capture is not None:
+            captured = capture()
+            if not isinstance(captured, PriorControlState):
+                raise TypeError("coordinator returned an invalid prior control state")
+            return captured
+        return PriorControlState(
+            mode=_coordinator_mode(coordinator),
+            is_on=getattr(coordinator, "is_on", True),
+            brightness_pct=getattr(coordinator, "brightness_pct", 100),
+            rgb_color=getattr(coordinator, "rgb_color", (255, 255, 255)),
+            color_temp_kelvin=getattr(coordinator, "color_temp_kelvin", None),
+            effect=getattr(coordinator, "effect", None),
+            diy_code=coordinator.diy_code,
+            music_mode=getattr(coordinator, "music_mode", "off"),
+            video_mode=getattr(coordinator, "video_mode", "off"),
+            music_sensitivity=getattr(coordinator, "music_sensitivity", 100),
+            music_calm=getattr(coordinator, "music_calm", False),
+            music_color=getattr(coordinator, "music_color", None),
+        )
+
+    def _reconcile_observation(
+        self,
+        coordinator: GoveeBLECoordinator,
+        *,
+        config_entry_id: str,
+        observed_at: str,
+        refreshed: bool,
+        matched_record: DeploymentRecord | None = None,
+    ) -> ObservedDeviceState:
+        mode = _coordinator_mode(coordinator)
+        diy_code = coordinator.diy_code if mode == "custom" else None
+        if diy_code is not None and matched_record is None:
+            latest = self._deployments.latest_for_diy_code(config_entry_id, diy_code)
+            if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
+                matched_record = latest
+        if diy_code is not None:
+            confidence = (
+                ObservationConfidence.ACTIVATION_MATCH if matched_record is not None else ObservationConfidence.UNKNOWN
+            )
+        elif refreshed:
+            confidence = ObservationConfidence.EXACT_SESSION
+        else:
+            confidence = ObservationConfidence.UNKNOWN
+        state = ObservedDeviceState(
+            config_entry_id=config_entry_id,
+            mode=mode,
+            observed_at=observed_at,
+            confidence=confidence,
+            diy_code=diy_code,
+            matched_operation_id=(
+                matched_record.operation_id
+                if confidence is ObservationConfidence.ACTIVATION_MATCH and matched_record is not None
+                else None
+            ),
+        )
+        if self._device_cache is not None:
+            self._device_cache.set(state)
+        return state
+
+
+def _coordinator_mode(coordinator: GoveeBLECoordinator) -> str:
+    mode = getattr(coordinator, "active_mode", None)
+    if isinstance(mode, str):
+        return mode
+    if not getattr(coordinator, "is_on", True):
+        return "off"
+    if coordinator.diy_code is not None:
+        return "custom"
+    if getattr(coordinator, "effect", None) is not None:
+        return "scene"
+    if getattr(coordinator, "music_mode", "off") not in (None, "off"):
+        return "music"
+    if getattr(coordinator, "video_mode", "off") not in (None, "off"):
+        return "video"
+    return "colour"
 
 
 def _require_h617a(coordinator: GoveeBLECoordinator) -> None:

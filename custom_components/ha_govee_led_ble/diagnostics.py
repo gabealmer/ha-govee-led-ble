@@ -1,5 +1,6 @@
 """Diagnostics for HA Govee LED BLE."""
 
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -7,6 +8,8 @@ from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
+from .effect_contracts import diagnostics_release_capabilities
+from .effect_diagnostics import empty_effect_diagnostic_snapshot
 from .protocol import WHITE_BALANCE_POSITIONS
 
 REDACT_KEYS = {"address", "unique_id"}
@@ -37,6 +40,7 @@ async def async_get_config_entry_diagnostics(
     coordinator_data = {
         "address": coordinator.address,
         "model": coordinator.model,
+        "release_capabilities": diagnostics_release_capabilities(coordinator.model),
         "effect_families": sorted(coordinator.effect_families),
         "state_readable": coordinator.profile.state_readable,
         "supports_scene_speed": coordinator.profile.supports_scene_speed,
@@ -107,6 +111,7 @@ async def async_get_config_entry_diagnostics(
             REDACT_KEYS,
         ),
         "coordinator": async_redact_data(coordinator_data, REDACT_KEYS),
+        "effect_deployment_diagnostics": _effect_deployment_diagnostics(hass, entry.entry_id),
     }
 
 
@@ -118,3 +123,15 @@ def _bounded_packet_entry(entry: dict[str, Any]) -> dict[str, Any]:
         bounded["raw"] = raw[:maximum]
         bounded["truncated"] = True
     return bounded
+
+
+def _effect_deployment_diagnostics(hass: HomeAssistant, config_entry_id: str) -> dict[str, Any]:
+    data = getattr(hass, "data", None)
+    if not isinstance(data, Mapping):
+        return empty_effect_diagnostic_snapshot()
+    from .effect_setup import get_effect_setup
+
+    setup = get_effect_setup(hass)
+    if setup is None:
+        return empty_effect_diagnostic_snapshot()
+    return setup.backend.diagnostics.snapshot(config_entry_id=config_entry_id)

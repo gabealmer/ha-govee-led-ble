@@ -7,6 +7,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_EFFECT_FAMILIES,
@@ -20,7 +21,7 @@ from .const import (
 )
 from .coordinator import GoveeBLECoordinator
 from .editor import async_register_editor_panel, editor_url
-from .effect_setup import async_setup_effects
+from .effect_setup import async_setup_effects, get_effect_setup
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
@@ -196,6 +197,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
+    if effect_setup := get_effect_setup(hass):
+        await effect_setup.backend.async_reconcile_coordinator(
+            coordinator,
+            config_entry_id=entry.entry_id,
+            observed_at=dt_util.utcnow().isoformat(),
+        )
     _maybe_flag_music_mode_replaced(hass, entry)
     await _async_cleanup_legacy_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

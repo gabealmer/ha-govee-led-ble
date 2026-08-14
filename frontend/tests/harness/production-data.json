@@ -2,6 +2,7 @@
   "custom_catalogue": {
     "apply": {
       "multi": "supported",
+      "painted": "supported",
       "single": "supported"
     },
     "effects": [
@@ -184,6 +185,7 @@
       "H617A": {
         "apply": {
           "multi": "supported",
+          "painted": "supported",
           "single": "supported"
         },
         "effects": [
@@ -439,11 +441,74 @@
           "advanced": "evidence_gap",
           "multi": "supported"
         },
-        "video_modes": []
+        "video_modes": [],
+        "workflows": [
+          {
+            "application": "studio",
+            "content_kind": "scene_builtin",
+            "id": "native_scenes",
+            "label": "Scenes"
+          },
+          {
+            "application": "planned",
+            "content_kind": "scene_palette",
+            "id": "edited_palette_scenes",
+            "label": "Edited palette scenes"
+          },
+          {
+            "application": "planned",
+            "content_kind": "scene_layered",
+            "id": "layered_scenes",
+            "label": "Layered scenes"
+          },
+          {
+            "application": "studio",
+            "content_kind": "h617a_painted",
+            "id": "painted",
+            "label": "Painted"
+          },
+          {
+            "application": "studio",
+            "content_kind": "h617a_single",
+            "id": "single",
+            "label": "Single"
+          },
+          {
+            "application": "studio",
+            "content_kind": "h617a_multi",
+            "id": "multi",
+            "label": "Multi"
+          },
+          {
+            "application": "home_assistant",
+            "content_kind": "music_profile",
+            "id": "native_music",
+            "label": "Music"
+          },
+          {
+            "application": "planned",
+            "content_kind": "advanced",
+            "id": "advanced",
+            "label": "Advanced"
+          },
+          {
+            "application": "planned",
+            "content_kind": "advanced",
+            "id": "workshop",
+            "label": "Workshop"
+          },
+          {
+            "application": "planned",
+            "content_kind": "opaque",
+            "id": "special_diy",
+            "label": "Special DIY"
+          }
+        ]
       },
       "H6199": {
         "apply": {
           "multi": "unsupported",
+          "painted": "unsupported",
           "single": "unsupported"
         },
         "effects": [
@@ -605,6 +670,62 @@
             "id": "game",
             "label": "Game"
           }
+        ],
+        "workflows": [
+          {
+            "application": "studio",
+            "content_kind": "scene_builtin",
+            "id": "native_scenes",
+            "label": "Scenes"
+          },
+          {
+            "application": "planned",
+            "content_kind": "scene_palette",
+            "id": "edited_palette_scenes",
+            "label": "Edited palette scenes"
+          },
+          {
+            "application": "planned",
+            "content_kind": "scene_layered",
+            "id": "layered_scenes",
+            "label": "Layered scenes"
+          },
+          {
+            "application": "planned",
+            "content_kind": "palette_diy",
+            "id": "palette_diy",
+            "label": "Palette DIY"
+          },
+          {
+            "application": "home_assistant",
+            "content_kind": "music_profile",
+            "id": "native_music",
+            "label": "Music"
+          },
+          {
+            "application": "home_assistant",
+            "content_kind": "video_profile",
+            "id": "video",
+            "label": "Video"
+          },
+          {
+            "application": "planned",
+            "content_kind": "advanced",
+            "id": "advanced",
+            "label": "Advanced"
+          },
+          {
+            "application": "planned",
+            "content_kind": "advanced",
+            "id": "workshop",
+            "label": "Workshop"
+          },
+          {
+            "application": "planned",
+            "content_kind": "opaque",
+            "id": "special_diy",
+            "label": "Special DIY"
+          }
         ]
       }
     },
@@ -680,13 +801,75 @@
         "label": "Breathe"
       }
     ],
-    "schema_version": 2,
+    "schema_version": 3,
     "sku": "H617A",
     "supports": {
       "advanced": "evidence_gap",
       "multi": "supported"
     },
-    "video_modes": []
+    "video_modes": [],
+    "workflows": [
+      {
+        "application": "studio",
+        "content_kind": "scene_builtin",
+        "id": "native_scenes",
+        "label": "Scenes"
+      },
+      {
+        "application": "planned",
+        "content_kind": "scene_palette",
+        "id": "edited_palette_scenes",
+        "label": "Edited palette scenes"
+      },
+      {
+        "application": "planned",
+        "content_kind": "scene_layered",
+        "id": "layered_scenes",
+        "label": "Layered scenes"
+      },
+      {
+        "application": "studio",
+        "content_kind": "h617a_painted",
+        "id": "painted",
+        "label": "Painted"
+      },
+      {
+        "application": "studio",
+        "content_kind": "h617a_single",
+        "id": "single",
+        "label": "Single"
+      },
+      {
+        "application": "studio",
+        "content_kind": "h617a_multi",
+        "id": "multi",
+        "label": "Multi"
+      },
+      {
+        "application": "home_assistant",
+        "content_kind": "music_profile",
+        "id": "native_music",
+        "label": "Music"
+      },
+      {
+        "application": "planned",
+        "content_kind": "advanced",
+        "id": "advanced",
+        "label": "Advanced"
+      },
+      {
+        "application": "planned",
+        "content_kind": "advanced",
+        "id": "workshop",
+        "label": "Workshop"
+      },
+      {
+        "application": "planned",
+        "content_kind": "opaque",
+        "id": "special_diy",
+        "label": "Special DIY"
+      }
+    ]
   },
   "devices": [
     {

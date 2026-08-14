@@ -1,6 +1,7 @@
 import { blankAdvancedContent, cloneAdvancedContent } from "../../src/advanced-effect-editor";
 import {
   decodeCustomCatalogue,
+  decodeDeployment,
   decodeEffectContent,
   decodeLibrarySnapshot,
   decodeSceneDetail,
@@ -8,6 +9,7 @@ import {
 import type {
   CustomEffectCatalogue,
   DeploymentRecord,
+  DeploymentPhase,
   DeviceCapabilities,
   DraftSummary,
   EffectContent,
@@ -187,6 +189,10 @@ export class MockHomeAssistantBackend {
     return decodeLibrarySnapshot(value);
   }
 
+  public validateDeployment(value: unknown): DeploymentRecord {
+    return decodeDeployment(value);
+  }
+
   public validateSceneDetail(value: unknown): SceneDetail {
     return decodeSceneDetail(value);
   }
@@ -209,6 +215,26 @@ export class MockHomeAssistantBackend {
 
   public emitDeployments(): void {
     this.publishDeployments(this.readState());
+  }
+
+  public emitDeploymentPhase(phase: DeploymentPhase): void {
+    const state = this.readState();
+    state.deployments = [
+      {
+        operation_id: "phase-contract-operation",
+        config_entry_id: "h617a-main",
+        diy_code: 800,
+        phase,
+        updated_at: new Date().toISOString(),
+        item_id: "painted-1",
+        item_revision: 1,
+        error_code: phase === "failed" ? "test_failure" : null,
+        progress_current: phase === "compiling" || phase === "pending" ? 0 : 1,
+        progress_total: 2,
+      },
+    ];
+    this.writeState(state);
+    this.publishDeployments(state);
   }
 
   private async callWS<T>(message: Record<string, unknown>): Promise<T> {

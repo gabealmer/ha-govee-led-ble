@@ -18,6 +18,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     PaintedEffect,
 )
 from custom_components.ha_govee_led_ble.effect_services import (
+    ATTR_CORRELATION_ID,
     ATTR_EFFECT_ID,
     SERVICE_APPLY_CUSTOM_EFFECT,
     async_apply_custom_effect,
@@ -53,6 +54,7 @@ async def test_service_registration_and_apply(
     )
     apply_mock = AsyncMock()
     monkeypatch.setattr(backend.engine, "async_apply_saved", apply_mock)
+    correlation_id = "11111111-2222-4333-8444-555555555555"
 
     with monkeypatch.context() as context:
         context.setattr(
@@ -68,6 +70,7 @@ async def test_service_registration_and_apply(
                 data={
                     "entity_id": registry_entry.entity_id,
                     ATTR_EFFECT_ID: str(item.id),
+                    ATTR_CORRELATION_ID: correlation_id,
                 },
             ),
         )
@@ -76,6 +79,13 @@ async def test_service_registration_and_apply(
     apply_mock.assert_awaited_once()
     assert apply_mock.await_args is not None
     assert apply_mock.await_args.kwargs["config_entry_id"] == entry.entry_id
+    assert str(apply_mock.await_args.kwargs["operation_id"]) == correlation_id
+    events = backend.diagnostics.snapshot()["events"]
+    assert [(event["stage"], event["outcome"]) for event in events] == [
+        ("api_service", "started"),
+        ("api_service", "succeeded"),
+    ]
+    assert {event["correlation_id"] for event in events} == {correlation_id}
 
 
 async def test_service_rejects_non_govee_entity(

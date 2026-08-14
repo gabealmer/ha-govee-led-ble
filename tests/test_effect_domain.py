@@ -456,6 +456,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert h617a.multi is CapabilityState.SUPPORTED
     assert h617a.advanced is CapabilityState.EVIDENCE_GAP
     assert h6199.single is CapabilityState.UNSUPPORTED
+    assert h6199.advanced is CapabilityState.EVIDENCE_GAP
     assert h6199.to_dict()["readback"] == "mode_only"
 
 

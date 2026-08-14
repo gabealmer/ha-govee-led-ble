@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -24,6 +26,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     EffectDeviceCache,
     ObservationConfidence,
     ObservedDeviceState,
+    PriorControlState,
 )
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.effect_drafts import (
@@ -58,7 +61,7 @@ def _item() -> LibraryItem:
     return LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
 
 
-def _deployment(phase: DeploymentPhase = DeploymentPhase.PENDING) -> DeploymentRecord:
+def _deployment(phase: DeploymentPhase = DeploymentPhase.COMPILING) -> DeploymentRecord:
     return DeploymentRecord(
         operation_id=uuid4(),
         config_entry_id="entry-a",
@@ -70,6 +73,14 @@ def _deployment(phase: DeploymentPhase = DeploymentPhase.PENDING) -> DeploymentR
         item_id=_item().id,
         item_revision=1,
     )
+
+
+def test_frontend_deployment_phase_contract_matches_backend() -> None:
+    source = (Path(__file__).parents[1] / "frontend" / "src" / "types.ts").read_text(encoding="utf-8")
+    phase_block = source.split("export const DEPLOYMENT_PHASES = [", 1)[1].split("] as const;", 1)[0]
+    frontend_phases = tuple(re.findall(r'"([^"]+)"', phase_block))
+
+    assert frontend_phases == tuple(phase.value for phase in DeploymentPhase)
 
 
 async def test_personal_repositories_use_injected_stores_without_home_assistant() -> None:
@@ -112,7 +123,9 @@ async def test_deployment_repositories_use_injected_stores_without_home_assistan
     snapshot = await reloaded_deployments.async_load()
 
     assert snapshot.revision == 2
-    assert reloaded_deployments.get(pending.operation_id).phase is DeploymentPhase.INTERRUPTED
+    interrupted = reloaded_deployments.get(pending.operation_id)
+    assert interrupted.phase is DeploymentPhase.FAILED
+    assert interrupted.error_code == "home_assistant_restarted_before_write"
     assert deployment_store.save_count == 2
 
     cache_store = InMemoryVersionedDocumentStore()
@@ -161,18 +174,28 @@ async def test_deployment_transitions_are_durable(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.parametrize(
-    ("phase", "progress_current", "progress_total"),
+    ("phase", "progress_current", "progress_total", "terminal_phase", "error_code"),
     [
-        (DeploymentPhase.PENDING, 0, 0),
-        (DeploymentPhase.UPLOADING, 2, 5),
-        (DeploymentPhase.VERIFYING, 5, 5),
+        (
+            DeploymentPhase.COMPILING,
+            0,
+            5,
+            DeploymentPhase.FAILED,
+            "home_assistant_restarted_before_write",
+        ),
+        (DeploymentPhase.UPLOADING, 2, 5, DeploymentPhase.UNCERTAIN, "home_assistant_restarted"),
+        (DeploymentPhase.ACTIVATING, 4, 5, DeploymentPhase.UNCERTAIN, "home_assistant_restarted"),
+        (DeploymentPhase.VERIFYING, 5, 5, DeploymentPhase.UNCERTAIN, "home_assistant_restarted"),
+        (DeploymentPhase.RECOVERING, 5, 5, DeploymentPhase.UNCERTAIN, "home_assistant_restarted"),
     ],
 )
-async def test_inflight_deployment_becomes_interrupted_after_restart(
+async def test_inflight_deployment_gets_truthful_terminal_state_after_restart(
     hass: HomeAssistant,
     phase: DeploymentPhase,
     progress_current: int,
     progress_total: int,
+    terminal_phase: DeploymentPhase,
+    error_code: str,
 ) -> None:
     repository = EffectDeploymentRepository(hass)
     await repository.async_load()
@@ -188,10 +211,45 @@ async def test_inflight_deployment_becomes_interrupted_after_restart(
     interrupted = reloaded.get(inflight.operation_id)
 
     assert snapshot.revision == 2
-    assert interrupted.phase is DeploymentPhase.INTERRUPTED
-    assert interrupted.error_code == "home_assistant_restarted"
+    assert interrupted.phase is terminal_phase
+    assert interrupted.error_code == error_code
     assert interrupted.progress_current == progress_current
     assert interrupted.progress_total == progress_total
+
+
+@pytest.mark.parametrize(
+    ("legacy_phase", "canonical_phase"),
+    [
+        (DeploymentPhase.PENDING, DeploymentPhase.FAILED),
+        (DeploymentPhase.UNKNOWN, DeploymentPhase.UNCERTAIN),
+        (DeploymentPhase.INTERRUPTED, DeploymentPhase.UNCERTAIN),
+    ],
+)
+async def test_legacy_deployment_phases_remain_loadable(
+    hass: HomeAssistant,
+    legacy_phase: DeploymentPhase,
+    canonical_phase: DeploymentPhase,
+) -> None:
+    legacy = _deployment(legacy_phase)
+    store = Store[dict[str, Any]](
+        hass,
+        DEPLOYMENT_STORE_VERSION,
+        DEPLOYMENT_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=1,
+    )
+    await store.async_save(
+        {
+            "revision": 1,
+            "records": {str(legacy.operation_id): legacy.to_dict()},
+        }
+    )
+
+    repository = EffectDeploymentRepository(hass)
+    await repository.async_load()
+
+    assert repository.get(legacy.operation_id).phase is canonical_phase
 
 
 def test_unsaved_apply_requires_durable_snapshot() -> None:
@@ -210,6 +268,26 @@ def test_unsaved_apply_requires_durable_snapshot() -> None:
     )
 
     assert DeploymentRecord.from_dict(record.to_dict()) == record
+
+
+def test_deployment_round_trip_preserves_prior_state_and_verification_confidence() -> None:
+    prior_state = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        music_sensitivity=50,
+    )
+    record = replace(
+        _deployment(DeploymentPhase.CONFIRMED),
+        prior_state=prior_state,
+        verification_confidence=ObservationConfidence.ACTIVATION_MATCH,
+    )
+
+    restored = DeploymentRecord.from_dict(record.to_dict())
+
+    assert restored == record
+    assert restored.to_public_dict()["verification_confidence"] == "activation_match"
 
 
 @pytest.mark.parametrize(
