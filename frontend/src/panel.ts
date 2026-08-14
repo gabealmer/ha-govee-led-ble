@@ -8,6 +8,7 @@ import {
 import "./advanced-effect-editor";
 import { EffectStudioApi } from "./api";
 import "./custom-effect-editor";
+import "./palette-editor";
 import "./painted-segment-editor";
 import "./scene-browser";
 import type {
@@ -126,7 +127,10 @@ export class GoveeLedEffectStudio extends LitElement {
   private content: EffectContent = blankPainted();
 
   @state()
-  private foreground = "#2f80ed";
+  private paintBrushes = defaultPalette();
+
+  @state()
+  private selectedPaintBrush = 0;
 
   @state()
   private brushUsesBackground = false;
@@ -753,17 +757,21 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <div class="controls">
         <section class="card">
-          <h3>Colours</h3>
-          <div class="colour-row">
-            <label>
-              <span>Brush</span>
-              <input
-                type="color"
-                .value=${this.foreground}
-                ?disabled=${!this.isAdmin}
-                @input=${this.foregroundChanged}
-              />
-            </label>
+          <h3>Brushes</h3>
+          <govee-palette-editor
+            class="paint-brushes"
+            .palette=${this.paintBrushes}
+            .minColours=${2}
+            .maxColours=${8}
+            .disabled=${!this.isAdmin}
+            .persistentPicker=${true}
+            .selectedIndex=${this.selectedPaintBrush}
+            ariaLabel="Brushes"
+            itemName="brush"
+            @palette-changed=${this.paintBrushesChanged}
+            @colour-selected=${this.paintBrushSelected}
+          ></govee-palette-editor>
+          <div class="background-colour">
             <label>
               <span>Background</span>
               <input
@@ -1299,7 +1307,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (kind === "h617a_painted") {
       const colour: RGB =
         current.kind === "h617a_painted"
-          ? hexToRgb(this.foreground)
+          ? this.activePaintBrush
           : current.palette[0]
             ? [...current.palette[0]]
             : [47, 111, 237];
@@ -1313,7 +1321,11 @@ export class GoveeLedEffectStudio extends LitElement {
           },
         ],
       };
-      this.foreground = rgbToHex(colour);
+      if (current.kind !== "h617a_painted") {
+        this.paintBrushes = mergedPaintBrushes(current.palette);
+        this.selectedPaintBrush = 0;
+      }
+      this.brushUsesBackground = false;
     } else if (current.kind === "h617a_painted") {
       const paintedPalette = uniquePaintedPalette(current);
       if (kind === "h617a_single") {
@@ -1398,6 +1410,9 @@ export class GoveeLedEffectStudio extends LitElement {
       (kind === "advanced"
         ? blankAdvancedContent()
         : blankCustomEffect(kind, this.customCatalogue!));
+    if (kind === "h617a_painted") {
+      this.brushUsesBackground = false;
+    }
     this.savedBaseline = undefined;
     this.notice = this.applyAvailabilityNotice();
     this.selectNewEffectName(transitionEpoch);
@@ -1577,6 +1592,9 @@ export class GoveeLedEffectStudio extends LitElement {
       this.customTemplateSelection = undefined;
       this.name = item.name;
       this.content = cloneEditableEffect(item.content);
+      if (item.content.kind === "h617a_painted") {
+        this.brushUsesBackground = false;
+      }
       this.savedBaseline = serialiseEditable(
         item.name,
         item.content,
@@ -1595,9 +1613,35 @@ export class GoveeLedEffectStudio extends LitElement {
     this.name = (event.target as HTMLInputElement).value;
   }
 
-  private foregroundChanged(event: Event): void {
-    this.foreground = (event.target as HTMLInputElement).value;
+  private paintBrushesChanged(
+    event: CustomEvent<{ palette: RGB[] }>,
+  ): void {
+    this.paintBrushes = event.detail.palette.map(
+      (colour) => [...colour] as RGB,
+    );
+    this.selectedPaintBrush = Math.max(
+      0,
+      Math.min(
+        this.selectedPaintBrush,
+        this.paintBrushes.length - 1,
+      ),
+    );
     this.brushUsesBackground = false;
+  }
+
+  private paintBrushSelected(
+    event: CustomEvent<{ index: number }>,
+  ): void {
+    this.selectedPaintBrush = event.detail.index;
+    this.brushUsesBackground = false;
+  }
+
+  private get activePaintBrush(): RGB {
+    return [
+      ...(this.paintBrushes[this.selectedPaintBrush] ??
+        this.paintBrushes[0] ??
+        [47, 111, 237]),
+    ] as RGB;
   }
 
   private backgroundChanged(event: Event): void {
@@ -1620,7 +1664,7 @@ export class GoveeLedEffectStudio extends LitElement {
     const colours = coloursForSegments(this.content);
     colours[index] = this.brushUsesBackground
       ? [...this.content.background]
-      : hexToRgb(this.foreground);
+      : this.activePaintBrush;
     this.content = {
       ...this.content,
       groups: groupsFromColours(colours, this.content.background),
@@ -1633,7 +1677,7 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     const colour = this.brushUsesBackground
       ? this.content.background
-      : hexToRgb(this.foreground);
+      : this.activePaintBrush;
     this.content = {
       ...this.content,
       groups: groupsFromColours(
@@ -2296,13 +2340,11 @@ export class GoveeLedEffectStudio extends LitElement {
       overflow-wrap: anywhere;
     }
 
-    .colour-row {
-      display: flex;
-      gap: 20px;
-      margin-bottom: 18px;
+    .background-colour {
+      margin-top: 18px;
     }
 
-    .colour-row label {
+    .background-colour label {
       display: grid;
       gap: 7px;
       color: var(--studio-muted);
@@ -2647,6 +2689,19 @@ function defaultPalette(): RGB[] {
     [0, 255, 255],
     [139, 0, 255],
   ];
+}
+
+function mergedPaintBrushes(colours: RGB[]): RGB[] {
+  const brushes: RGB[] = [];
+  for (const colour of [...colours, ...defaultPalette()]) {
+    if (!brushes.some((brush) => sameColour(brush, colour))) {
+      brushes.push([...colour]);
+    }
+    if (brushes.length === 8) {
+      break;
+    }
+  }
+  return brushes;
 }
 
 function coloursForSegments(content: PaintedContent): RGB[] {
