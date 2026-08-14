@@ -2,6 +2,11 @@ import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
 import "./palette-editor";
+import {
+  studioBaseStyles,
+  studioCardStyles,
+  studioFormStyles,
+} from "./studio-styles";
 import type {
   CustomEffectCatalogue,
   DiyEffectFamily,
@@ -10,6 +15,7 @@ import type {
   RGB,
   SingleContent,
 } from "./types";
+import { clonePalette } from "./ui-utils";
 
 type PaletteContent = SingleContent | MultiContent;
 
@@ -131,7 +137,7 @@ export class GoveeCustomEffectEditor extends LitElement {
         @drop=${(event: DragEvent) => this.effectDropped(index, event)}
       >
         <div class="effect-fields">
-          <label>
+          <label class="field">
             <span>Effect</span>
             <select
               aria-label="Effect ${index + 1}"
@@ -158,7 +164,7 @@ export class GoveeCustomEffectEditor extends LitElement {
               )}
             </select>
           </label>
-          <label>
+          <label class="field">
             <span>Variation</span>
             <select
               aria-label="Variation ${index + 1}"
@@ -381,33 +387,13 @@ export class GoveeCustomEffectEditor extends LitElement {
     );
   }
 
-  static styles = css`
+  static styles = [
+    studioBaseStyles,
+    studioCardStyles,
+    studioFormStyles,
+    css`
     :host {
       display: block;
-      --studio-blue: var(--primary-color, #2f6fed);
-      --studio-blue-soft: color-mix(
-        in srgb,
-        var(--studio-blue) 13%,
-        transparent
-      );
-      --studio-border: var(--divider-color, #d8dce2);
-      --studio-card: var(--card-background-color, #fff);
-      --studio-muted: var(--secondary-text-color, #68707c);
-      --studio-danger: var(--error-color, #db4437);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    button,
-    input,
-    select {
-      font: inherit;
-    }
-
-    button {
-      min-height: 44px;
     }
 
     h3,
@@ -426,18 +412,8 @@ export class GoveeCustomEffectEditor extends LitElement {
       font-size: 14px;
     }
 
-    .card {
-      border: 1px solid var(--studio-border);
-      border-radius: 10px;
-      background: var(--studio-card);
-    }
-
-    .card {
-      padding: 18px;
-    }
-
     .parameters-card {
-      margin-top: 16px;
+      margin-top: var(--studio-section-gap);
     }
 
     .sequence {
@@ -467,33 +443,31 @@ export class GoveeCustomEffectEditor extends LitElement {
       min-width: 0;
     }
 
-    .effect-fields label {
-      display: grid;
-      gap: 6px;
-      color: var(--studio-muted);
+    .effect-fields .field {
+      margin-top: 0;
       font-size: 12px;
       font-weight: 650;
     }
 
     .effect-fields select {
       width: 100%;
-      min-height: 44px;
+      min-height: var(--studio-control-height);
       padding: 8px 10px;
       border: 1px solid var(--studio-border);
-      border-radius: 8px;
+      border-radius: var(--studio-control-radius);
       color: var(--primary-text-color);
       background: var(--secondary-background-color, #f5f6f8);
     }
 
     .row-menu {
       position: relative;
-      flex: 0 0 44px;
+      flex: 0 0 var(--studio-control-height);
     }
 
     .row-menu summary {
       display: grid;
-      width: 44px;
-      height: 44px;
+      width: var(--studio-control-height);
+      height: var(--studio-control-height);
       place-items: center;
       border: 1px solid var(--studio-border);
       border-radius: 50%;
@@ -517,9 +491,9 @@ export class GoveeCustomEffectEditor extends LitElement {
       width: 150px;
       padding: 6px;
       border: 1px solid var(--studio-border);
-      border-radius: 9px;
+      border-radius: var(--studio-popover-radius);
       background: var(--studio-card);
-      box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+      box-shadow: var(--studio-popover-shadow);
     }
 
     .row-menu-popover button {
@@ -536,15 +510,14 @@ export class GoveeCustomEffectEditor extends LitElement {
       color: var(--studio-danger) !important;
     }
 
-    .add-step,
-    .palette-add {
+    .add-step {
       display: grid;
-      width: 44px;
-      height: 44px;
+      width: var(--studio-control-height);
+      height: var(--studio-control-height);
       place-items: center;
       padding: 0;
       border: 1px dashed var(--studio-border);
-      border-radius: 8px;
+      border-radius: var(--studio-control-radius);
       color: var(--studio-blue);
       background: transparent;
       cursor: pointer;
@@ -557,119 +530,9 @@ export class GoveeCustomEffectEditor extends LitElement {
       border-top: 1px solid var(--studio-border);
     }
 
-    .palette-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .swatch-item {
-      position: relative;
-      touch-action: pan-y;
-    }
-
-    .swatch-item[draggable="true"] {
-      cursor: grab;
-    }
-
-    .swatch {
-      width: 44px;
-      height: 44px;
-      padding: 0;
-      border: 1px solid rgb(0 0 0 / 14%);
-      border-radius: 8px;
-      background: var(--swatch-colour);
-      cursor: pointer;
-    }
-
-    .swatch:focus-visible {
-      outline: 3px solid var(--studio-blue);
-      outline-offset: 2px;
-    }
-
-    .colour-popover {
-      position: absolute;
-      z-index: 25;
-      top: 52px;
-      left: 0;
-      width: min(300px, calc(100vw - 48px));
-      padding: 10px;
-      border: 1px solid var(--studio-border);
-      border-radius: 9px;
-      background: var(--studio-card);
-      box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
-    }
-
-    .preset-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
-    }
-
-    .preset-grid button {
-      min-height: 52px;
-      border: 1px solid rgb(0 0 0 / 12%);
-      border-radius: 6px;
-      background: var(--preset-colour);
-      cursor: pointer;
-    }
-
-    .custom-colour {
-      display: grid;
-      grid-template-columns: 1fr 64px;
-      align-items: center;
-      gap: 10px;
-      margin-top: 10px;
-      color: var(--studio-muted);
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .custom-colour input {
-      width: 64px;
-      height: 44px;
-      padding: 3px;
-      border: 1px solid var(--studio-border);
-      border-radius: 7px;
-      background: var(--studio-card);
-    }
-
-    .colour-actions {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 6px;
-      margin-top: 10px;
-    }
-
-    .colour-actions button {
-      padding: 8px 10px;
-      border: 1px solid var(--studio-border);
-      border-radius: 7px;
-      color: var(--primary-text-color);
-      background: var(--studio-card);
-      cursor: pointer;
-    }
-
-    .colour-actions .danger {
-      grid-column: 1 / -1;
-    }
-
     .range-field {
       display: grid;
       grid-template-columns: 70px minmax(100px, 1fr) 44px;
-      align-items: center;
-      gap: 10px;
-      color: var(--studio-muted);
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .range-field output {
-      color: var(--primary-text-color);
-      text-align: end;
     }
 
     @media (max-width: 560px) {
@@ -678,73 +541,7 @@ export class GoveeCustomEffectEditor extends LitElement {
       }
     }
 
-    .modal-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .effect-tile {
-      display: grid;
-      gap: 8px;
-      min-width: 0;
-      padding: 9px;
-      border: 2px solid transparent;
-      border-radius: 9px;
-      color: var(--primary-text-color);
-      background: var(--secondary-background-color, #f5f6f8);
-      text-align: start;
-      cursor: pointer;
-    }
-
-    .effect-tile.selected {
-      color: var(--studio-blue);
-      border-color: var(--studio-blue);
-      font-weight: 650;
-    }
-
-    button:disabled,
-    input:disabled {
-      cursor: not-allowed;
-      opacity: 0.52;
-    }
-
-    .effect-field:disabled,
-    .swatch:disabled {
-      cursor: default;
-      opacity: 1;
-    }
-
-    @media (max-width: 600px) {
-      .colour-popover {
-        position: fixed;
-        top: 50%;
-        right: 24px;
-        left: 24px;
-        width: auto;
-        max-height: calc(100vh - 48px);
-        overflow: auto;
-        transform: translateY(-50%);
-      }
-
-      .modal-overlay {
-        align-items: end;
-        padding: 12px;
-      }
-
-      .modal {
-        max-height: calc(100vh - 24px);
-      }
-
-      .modal-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-  `;
-}
-
-function clonePalette(palette: RGB[]): RGB[] {
-  return palette.map((colour) => [...colour] as RGB);
+  `];
 }
 
 declare global {

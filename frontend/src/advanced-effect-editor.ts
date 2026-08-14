@@ -1,21 +1,29 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import { rgbToHex } from "./palette-editor";
 import "./reorderable-strip";
 import type {
   GoveeReorderableStrip,
   ReorderableStripItem,
 } from "./reorderable-strip";
+import {
+  studioActionStyles,
+  studioBaseStyles,
+  studioCardStyles,
+  studioFormStyles,
+  studioVisuallyHiddenStyles,
+} from "./studio-styles";
 import type {
   AdvancedContent,
   BrightnessOrder,
   BrightnessPattern,
   EffectLayer,
+  LayeredSceneContent,
   Movement,
   RGB,
   SelectionType,
 } from "./types";
+import { relocatedIndex, rgbToHex } from "./ui-utils";
 
 const AUTHORING_LAYER_LIMIT = 5;
 const AUTHORING_PALETTE_LIMIT = 8;
@@ -127,7 +135,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       }),
     );
     return html`
-      <div class="movement-live" aria-live="polite">
+      <div class="visually-hidden" aria-live="polite">
         ${this.movementAnnouncement}
       </div>
 
@@ -1525,31 +1533,16 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     this.emitContent(content);
   }
 
-  static styles = css`
+  static styles = [
+    studioBaseStyles,
+    studioCardStyles,
+    studioActionStyles,
+    studioFormStyles,
+    studioVisuallyHiddenStyles,
+    css`
     :host {
       display: block;
-      --studio-blue: var(--primary-color, #2f6fed);
-      --studio-blue-soft: color-mix(
-        in srgb,
-        var(--studio-blue) 13%,
-        transparent
-      );
-      --studio-border: var(--divider-color, #d8dce2);
-      --studio-card: var(--card-background-color, #fff);
-      --studio-muted: var(--secondary-text-color, #68707c);
-      --studio-danger: var(--error-color, #db4437);
       --area-trim: var(--warning-color, #f4c542);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    button,
-    input,
-    select {
-      min-height: 44px;
-      font: inherit;
     }
 
     h3,
@@ -1562,25 +1555,8 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       font-size: 16px;
     }
 
-    .movement-live {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
-
-    .card {
-      min-width: 0;
-      padding: 20px;
-      border: 1px solid var(--studio-border);
-      border-radius: 10px;
-      background: var(--studio-card);
-    }
-
     .layer-card {
-      margin-bottom: 18px;
+      margin-bottom: var(--studio-section-gap);
     }
 
     .card-heading,
@@ -1621,12 +1597,11 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       font-weight: 650;
     }
 
-    .add-button,
-    .secondary {
+    .add-button {
       flex: 0 0 auto;
       padding: 8px 14px;
       border: 1px solid var(--studio-border);
-      border-radius: 8px;
+      border-radius: var(--studio-control-radius);
       color: var(--primary-text-color);
       background: var(--studio-card);
       font-weight: 600;
@@ -1646,10 +1621,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
 
     .layer-actions-popover .secondary {
       width: 100%;
-    }
-
-    .danger {
-      color: var(--studio-danger) !important;
     }
 
     .limit-note,
@@ -1807,36 +1778,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       font-size: 15px;
     }
 
-    .field,
-    .range-field {
-      display: grid;
-      gap: 7px;
-      margin-top: 14px;
-      color: var(--studio-muted);
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .field input,
-    .field select {
-      width: 100%;
-      min-width: 0;
-      padding: 8px 10px;
-      color: var(--primary-text-color);
-      border: 1px solid var(--studio-border);
-      border-radius: 8px;
-      background: var(--studio-card);
-    }
-
     .range-field {
       grid-template-columns: minmax(112px, auto) minmax(100px, 1fr) 74px;
-      align-items: center;
-    }
-
-    .range-field output {
-      color: var(--primary-text-color);
       font-variant-numeric: tabular-nums;
-      text-align: end;
     }
 
     .segmented,
@@ -1961,13 +1905,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       gap: 0 18px;
     }
 
-    button:disabled,
-    input:disabled,
-    select:disabled {
-      cursor: not-allowed;
-      opacity: 0.52;
-    }
-
     @media (max-width: 760px) {
       .control-grid,
       .brightness-fields,
@@ -2008,20 +1945,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         transition: none;
       }
     }
-  `;
-}
-
-function relocatedIndex(current: number, from: number, to: number): number {
-  if (current === from) {
-    return to;
-  }
-  if (from < to && current > from && current <= to) {
-    return current - 1;
-  }
-  if (to < from && current >= to && current < from) {
-    return current + 1;
-  }
-  return current;
+  `];
 }
 
 export function blankAdvancedContent(): AdvancedContent {
@@ -2037,6 +1961,21 @@ export function cloneAdvancedContent(
   return {
     kind: "advanced",
     layers: content.layers.map(cloneLayer),
+  };
+}
+
+export function cloneLayeredSceneContent(
+  content: LayeredSceneContent,
+): LayeredSceneContent {
+  return {
+    ...content,
+    template: { ...content.template },
+    effect: {
+      layers: cloneAdvancedContent({
+        kind: "advanced",
+        layers: content.effect.layers,
+      }).layers,
+    },
   };
 }
 

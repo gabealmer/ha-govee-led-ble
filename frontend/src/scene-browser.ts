@@ -1,9 +1,17 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import { cloneAdvancedContent } from "./advanced-effect-editor";
+import { cloneLayeredSceneContent } from "./advanced-effect-editor";
 import type { EffectStudioApi } from "./api";
-import { rgbToHex } from "./palette-editor";
+import {
+  studioActionStyles,
+  studioBaseStyles,
+  studioCardStyles,
+  studioEditorStyles,
+  studioFeedbackStyles,
+  studioSelectorStyles,
+  studioWorkspaceStyles,
+} from "./studio-styles";
 import type {
   BuiltinSceneContent,
   DeviceCapabilities,
@@ -15,6 +23,12 @@ import type {
   SceneCatalogue,
   SceneSummary,
 } from "./types";
+import {
+  compareLabels,
+  errorCode,
+  errorMessage,
+  rgbToHex,
+} from "./ui-utils";
 
 type CategorySelection = "all" | "custom" | number;
 type SceneContent =
@@ -133,13 +147,16 @@ export class GoveeSceneBrowser extends LitElement {
     }
 
     return html`
-      <aside class="categories" aria-label="Scene categories">
+      <aside
+        class="sidebar category-sidebar categories"
+        aria-label="Scene categories"
+      >
         ${this.sortedCategories.map((category) =>
           this.categoryButton(category.id, category.label),
         )}
       </aside>
 
-      <aside class="scenes" aria-label="Scenes">
+      <aside class="sidebar item-sidebar scenes" aria-label="Scenes">
         ${this.filteredSceneEntries.map((entry) =>
           entry.kind === "custom"
             ? this.sceneButton(
@@ -155,9 +172,9 @@ export class GoveeSceneBrowser extends LitElement {
         )}
       </aside>
 
-      <section class="detail">
+      <section class="editor-surface detail">
         ${this.notice
-          ? html`<div class="notice" role="status">${this.notice}</div>`
+          ? html`<div class="feedback notice" role="status">${this.notice}</div>`
           : nothing}
         ${this.selectedScene && this.content
           ? this.renderDetail()
@@ -289,7 +306,7 @@ export class GoveeSceneBrowser extends LitElement {
           ${custom
             ? html`
                 <input
-                  class="name"
+                  class="editor-name"
                   aria-label="Scene name"
                   maxlength="128"
                   .value=${this.name}
@@ -354,7 +371,7 @@ export class GoveeSceneBrowser extends LitElement {
 
       ${!this.catalogue?.enabled
         ? html`
-            <div class="callout" role="note">
+            <div class="feedback callout" role="note">
               Native scenes are disabled for this device in the integration
               options. Browsing and saving copies remain available.
             </div>
@@ -363,7 +380,11 @@ export class GoveeSceneBrowser extends LitElement {
 
       ${custom && this.content?.kind === "scene_palette"
         ? html`
-            <div class="callout" id="palette-apply-reason" role="note">
+            <div
+              class="feedback callout"
+              id="palette-apply-reason"
+              role="note"
+            >
               Saved palette scene copies cannot be applied. Apply the native
               catalogue scene through its scene identity instead.
             </div>
@@ -817,7 +838,15 @@ export class GoveeSceneBrowser extends LitElement {
     return this.activeSelectionIdentity === this.selectionKey;
   }
 
-  static styles = css`
+  static styles = [
+    studioBaseStyles,
+    studioCardStyles,
+    studioActionStyles,
+    studioSelectorStyles,
+    studioEditorStyles,
+    studioFeedbackStyles,
+    studioWorkspaceStyles,
+    css`
     :host {
       display: contents;
     }
@@ -826,42 +855,7 @@ export class GoveeSceneBrowser extends LitElement {
       display: none !important;
     }
 
-    * {
-      box-sizing: border-box;
-    }
-
-    button,
-    input {
-      font: inherit;
-    }
-
-    button {
-      min-height: 40px;
-    }
-
-    .categories,
-    .scenes {
-      overflow: auto;
-      padding: 22px 16px;
-      border-inline-end: 1px solid var(--studio-border);
-      background: var(--primary-background-color);
-    }
-
-    .categories {
-      background: var(--secondary-background-color, #f5f6f8);
-    }
-
-    .eyebrow {
-      margin: 0 10px 8px;
-      color: var(--studio-muted);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-
     h2,
-    h3,
     p {
       margin-top: 0;
     }
@@ -871,128 +865,19 @@ export class GoveeSceneBrowser extends LitElement {
       font-size: 20px;
     }
 
-    h3 {
-      margin-bottom: 16px;
-      font-size: 16px;
-    }
-
     h4 {
       margin: 0;
       font-size: 13px;
     }
 
-    .scenes-heading {
-      margin: 0 10px 20px;
-    }
-
-    .scenes-heading .eyebrow {
-      margin-inline: 0;
-    }
-
-    .selector {
-      width: 100%;
-      min-height: 40px;
-      padding: 9px 11px;
-      border: 0;
-      border-radius: 8px;
-      color: var(--primary-text-color);
-      background: transparent;
-      text-align: start;
-      cursor: pointer;
-    }
-
-    .selector:hover {
-      background: color-mix(
-        in srgb,
-        var(--primary-text-color) 6%,
-        transparent
-      );
-    }
-
-    .selector.selected {
-      color: var(--studio-blue);
-      background: var(--studio-blue-soft);
-      font-weight: 650;
-    }
-
-    .detail {
-      min-width: 0;
-      padding: 28px;
-      background: var(--secondary-background-color, #f5f6f8);
-    }
-
-    .detail-heading {
-      display: flex;
-      align-items: end;
-      justify-content: space-between;
-      gap: 20px;
-      margin-bottom: 22px;
-    }
-
-    .detail-heading .eyebrow {
-      margin-inline: 0;
-    }
-
-    .name {
-      width: min(460px, 100%);
-      min-height: 42px;
-      padding: 8px 0;
-      border: 0;
-      border-bottom: 1px solid var(--studio-border);
-      color: var(--primary-text-color);
-      background: transparent;
-      font-size: 24px;
-      font-weight: 600;
-    }
-
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 9px;
-    }
-
-    .actions > button {
-      min-height: 44px;
-    }
-
-    .primary,
-    .secondary {
-      padding: 8px 17px;
-      border-radius: 9px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .primary {
-      border: 1px solid var(--studio-blue);
-      color: var(--text-primary-color, #fff);
-      background: var(--studio-blue);
-    }
-
-    .secondary {
-      border: 1px solid var(--studio-border);
-      color: var(--primary-text-color);
-      background: var(--studio-card);
-    }
-
-    button:disabled,
-    input:disabled {
-      cursor: not-allowed;
-      opacity: 0.52;
-    }
-
-    .card,
-    .callout,
-    .notice,
     .empty {
       border: 1px solid var(--studio-border);
       border-radius: 10px;
       background: var(--studio-card);
     }
 
-    .card {
+    .scene-parameters {
       margin-top: 18px;
-      padding: 20px;
     }
 
     .parameter-summary {
@@ -1111,13 +996,6 @@ export class GoveeSceneBrowser extends LitElement {
       color: var(--studio-muted);
     }
 
-    .callout,
-    .notice {
-      margin-bottom: 18px;
-      padding: 12px 14px;
-      line-height: 1.45;
-    }
-
     .notice {
       border-color: color-mix(
         in srgb,
@@ -1133,16 +1011,10 @@ export class GoveeSceneBrowser extends LitElement {
       line-height: 1.55;
     }
 
-    .empty p,
-    .empty-list,
-    .muted {
+    .empty p {
       margin-bottom: 0;
       color: var(--studio-muted);
       line-height: 1.5;
-    }
-
-    .empty-list {
-      padding: 12px 10px;
     }
 
     .status {
@@ -1155,51 +1027,14 @@ export class GoveeSceneBrowser extends LitElement {
         display: block;
       }
 
-      .categories {
-        display: flex;
-        gap: 6px;
-        overflow-x: auto;
-        padding: 12px 16px;
-        border-inline-end: 0;
-        border-bottom: 1px solid var(--studio-border);
-      }
-
-      .categories .eyebrow {
-        display: none;
-      }
-
-      .categories .selector {
-        flex: 0 0 auto;
-        width: auto;
-        white-space: nowrap;
-      }
-
-      .scenes {
-        max-height: 340px;
-        border-inline-end: 0;
-        border-bottom: 1px solid var(--studio-border);
-      }
-
-      .detail {
-        padding: 20px 16px 32px;
-      }
     }
 
     @media (max-width: 600px) {
-      .detail-heading {
-        align-items: stretch;
-        flex-direction: column;
-      }
-
-      .actions > button {
-        flex: 1;
-      }
-
       .parameter-summary {
         grid-template-columns: 1fr;
       }
     }
-  `;
+  `];
 }
 
 function sceneKey(scene: SceneSummary): string {
@@ -1216,25 +1051,6 @@ function speedLabel(index: number, defaultIndex: number): string {
   return `${offset < 0 ? "Slower" : "Faster"}${magnitude > 1 ? ` ${magnitude}` : ""}`;
 }
 
-function compareLabels(left: string, right: string): number {
-  return left.localeCompare(right, "en-AU", { sensitivity: "base" });
-}
-
-function cloneLayeredSceneContent(
-  content: LayeredSceneContent,
-): LayeredSceneContent {
-  return {
-    ...content,
-    template: { ...content.template },
-    effect: {
-      layers: cloneAdvancedContent({
-        kind: "advanced",
-        layers: content.effect.layers,
-      }).layers,
-    },
-  };
-}
-
 function clonePaletteSceneContent(
   content: PaletteSceneContent,
 ): PaletteSceneContent {
@@ -1249,33 +1065,6 @@ function clonePaletteSceneContent(
     })),
     palette: content.palette.map((colour) => [...colour]),
   };
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string"
-  ) {
-    return error.message;
-  }
-  return "An unexpected error occurred.";
-}
-
-function errorCode(error: unknown): string | undefined {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof error.code === "string"
-  ) {
-    return error.code;
-  }
-  return undefined;
 }
 
 declare global {

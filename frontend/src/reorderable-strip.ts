@@ -1,6 +1,8 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
+import { studioBaseStyles } from "./studio-styles";
+
 export interface ReorderableStripItem {
   key: string;
   label: string;
@@ -262,26 +264,9 @@ export class GoveeReorderableStrip extends LitElement {
     }
   }
 
-  static styles = css`
+  static styles = [studioBaseStyles, css`
     :host {
       display: block;
-      --studio-blue: var(--primary-color, #2f6fed);
-      --studio-blue-soft: color-mix(
-        in srgb,
-        var(--studio-blue) 13%,
-        transparent
-      );
-      --studio-border: var(--divider-color, #d8dce2);
-      --studio-card: var(--card-background-color, #fff);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    button {
-      min-height: 44px;
-      font: inherit;
     }
 
     .item-list {
@@ -304,9 +289,9 @@ export class GoveeReorderableStrip extends LitElement {
 
     .item,
     .add {
-      height: 44px;
+      height: var(--studio-control-height);
       padding: 0;
-      border-radius: 8px;
+      border-radius: var(--studio-control-radius);
       cursor: pointer;
     }
 
@@ -316,7 +301,7 @@ export class GoveeReorderableStrip extends LitElement {
 
     .item.colour,
     .add {
-      width: 44px;
+      width: var(--studio-control-height);
     }
 
     .item.colour {
@@ -367,8 +352,8 @@ export class GoveeReorderableStrip extends LitElement {
 
     .item:focus-visible,
     .add:focus-visible {
-      outline: 3px solid var(--studio-blue);
-      outline-offset: 2px;
+      outline: var(--studio-focus-width) solid var(--studio-blue);
+      outline-offset: var(--studio-focus-offset);
     }
 
     ::slotted(.strip-popover) {
@@ -377,31 +362,26 @@ export class GoveeReorderableStrip extends LitElement {
       top: 52px;
       left: 0;
       width: min(var(--strip-popover-width, 280px), calc(100vw - 48px));
-      padding: 10px;
+      padding: var(--studio-popover-padding);
       border: 1px solid var(--studio-border);
-      border-radius: 9px;
+      border-radius: var(--studio-popover-radius);
       background: var(--studio-card);
-      box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
-    }
-
-    button:disabled {
-      cursor: not-allowed;
-      opacity: 0.52;
+      box-shadow: var(--studio-popover-shadow);
     }
 
     @media (max-width: 600px) {
       ::slotted(.strip-popover) {
         position: fixed;
         top: 50%;
-        right: 24px;
-        left: 24px;
+        right: var(--studio-mobile-gutter);
+        left: var(--studio-mobile-gutter);
         width: auto;
         max-height: calc(100vh - 48px);
         overflow: auto;
         transform: translateY(-50%);
       }
     }
-  `;
+  `];
 }
 
 declare global {

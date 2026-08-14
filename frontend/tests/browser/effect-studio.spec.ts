@@ -58,23 +58,6 @@ async function openPaletteScene(
   return sceneBrowser;
 }
 
-async function setCustomPalette(
-  editor: ReturnType<Page["locator"]>,
-  palette: number[][],
-) {
-  await editor
-    .locator("govee-palette-editor")
-    .evaluate((element, nextPalette) => {
-      element.dispatchEvent(
-        new CustomEvent("palette-changed", {
-          detail: { palette: nextPalette },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    }, palette);
-}
-
 async function dragAreaControlTo(
     page: Page,
     control: Locator,

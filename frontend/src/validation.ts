@@ -11,7 +11,6 @@ import type {
   EffectContent,
   EffectDraft,
   EffectLayer,
-  HomeAssistant,
   KnownEffectContent,
   LayeredSceneContent,
   LibraryItem,
@@ -24,16 +23,16 @@ import type {
   SceneSummary,
 } from "./types";
 
-export const EDITOR_API_VERSION = 1;
-export const EFFECT_SCHEMA_VERSION = 1;
-export const EFFECT_COMPILER_VERSION = 1;
-export const MAX_EFFECT_NAME_LENGTH = 128;
-export const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
-export const MAX_EDITOR_DEVICES = 512;
-export const MAX_LIBRARY_ITEMS = 256;
-export const MAX_DRAFTS_PER_OWNER = 32;
-export const MAX_DEPLOYMENT_RECORDS = 128;
-export const MAX_SCENE_CATALOGUE_ENTRIES = 512;
+const EDITOR_API_VERSION = 1;
+const EFFECT_SCHEMA_VERSION = 1;
+const EFFECT_COMPILER_VERSION = 1;
+const MAX_EFFECT_NAME_LENGTH = 128;
+const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
+const MAX_EDITOR_DEVICES = 512;
+const MAX_LIBRARY_ITEMS = 256;
+const MAX_DRAFTS_PER_OWNER = 32;
+const MAX_DEPLOYMENT_RECORDS = 128;
+const MAX_SCENE_CATALOGUE_ENTRIES = 512;
 
 const MAX_IDENTIFIER_LENGTH = 255;
 const MAX_TIMESTAMP_LENGTH = 64;
@@ -54,13 +53,7 @@ const MOVEMENT_UNKNOWN_FLAGS_MASK = 0xe8;
 const LAYER_UNKNOWN_FLAGS_MASK = 0xfd;
 
 type WireOpaqueContent = Record<string, unknown> & { kind: string };
-export type WireEffectContent = KnownEffectContent | WireOpaqueContent;
-export type WireLibraryItem = Omit<LibraryItem, "content"> & {
-  content: WireEffectContent;
-};
-export type WireEffectDraft = Omit<EffectDraft, "item"> & {
-  item: WireLibraryItem;
-};
+type WireEffectContent = KnownEffectContent | WireOpaqueContent;
 
 export function decodeEditorApiInfo(value: unknown): EditorApiInfo {
   const info = objectValue(value, "editor info");
@@ -1164,21 +1157,6 @@ function objectValue(
   return value as Record<string, unknown>;
 }
 
-function exactObjectKeys(
-  value: Record<string, unknown>,
-  expected: string[],
-  name: string,
-): void {
-  const actual = Object.keys(value).sort();
-  const keys = [...expected].sort();
-  if (
-    actual.length !== keys.length ||
-    actual.some((key, index) => key !== keys[index])
-  ) {
-    invalid(`${name} fields are invalid`);
-  }
-}
-
 function arrayValue(
   value: unknown,
   name: string,
@@ -1283,8 +1261,4 @@ export function isCompatibleEditorInfo(info: EditorApiInfo): boolean {
     info.effect_schema_version === EFFECT_SCHEMA_VERSION &&
     info.compiler_version === EFFECT_COMPILER_VERSION
   );
-}
-
-export function homeAssistantUserIsAdmin(hass: HomeAssistant): boolean {
-  return hass.user?.is_admin === true;
 }

@@ -4,13 +4,26 @@ import { property, state } from "lit/decorators.js";
 import {
   blankAdvancedContent,
   cloneAdvancedContent,
+  cloneLayeredSceneContent,
 } from "./advanced-effect-editor";
 import "./advanced-effect-editor";
 import { EffectStudioApi } from "./api";
+import "./colour-picker";
 import "./custom-effect-editor";
 import "./palette-editor";
 import "./painted-segment-editor";
 import "./scene-browser";
+import {
+  studioActionStyles,
+  studioBaseStyles,
+  studioCardStyles,
+  studioEditorStyles,
+  studioFeedbackStyles,
+  studioFormStyles,
+  studioSelectorStyles,
+  studioVisuallyHiddenStyles,
+  studioWorkspaceStyles,
+} from "./studio-styles";
 import type {
   AdvancedContent,
   CustomEffectCatalogue,
@@ -29,6 +42,11 @@ import type {
   PanelConfig,
   RGB,
 } from "./types";
+import {
+  compareLabels,
+  errorCode,
+  errorMessage,
+} from "./ui-utils";
 import { isCompatibleEditorInfo } from "./validation";
 
 type StudioSection = "scenes" | "custom";
@@ -358,7 +376,10 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderCustomEffects() {
     return html`
-      <aside class="effect-categories" aria-label="Effect categories">
+      <aside
+        class="sidebar category-sidebar effect-categories"
+        aria-label="Effect categories"
+      >
         <button
           class="selector"
           type="button"
@@ -373,13 +394,13 @@ export class GoveeLedEffectStudio extends LitElement {
         ${this.customEffectCategoryButton("advanced", "Advanced")}
       </aside>
 
-      <aside class="library" aria-label="Effects">
+      <aside class="sidebar item-sidebar library" aria-label="Effects">
         ${this.customEffectEntries.map((entry) =>
           this.customEffectListButton(entry),
         )}
       </aside>
 
-      <section class="editor">
+      <section class="editor-surface editor">
         ${this.name || this.currentItem
           ? isCustomEffectContent(this.content)
             ? this.content.kind === "h617a_painted"
@@ -640,7 +661,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       ${!this.isAdmin
         ? html`
-            <div class="read-only" role="note">
+            <div class="feedback read-only" role="note">
               You can inspect shared effects. An administrator is required to
               edit or save them.
             </div>
@@ -649,7 +670,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       ${layeredScene
         ? html`
-            <div class="source-note" role="note">
+            <div class="feedback source-note" role="note">
               Source parameter bytes remain immutable provenance. Layer edits
               are saved separately and may diverge from those bytes.
             </div>
@@ -687,7 +708,7 @@ export class GoveeLedEffectStudio extends LitElement {
           ${this.renderEditorDeleteButton()}
         </div>
       </div>
-      <div class="read-only" role="note">
+      <div class="feedback read-only" role="note">
         This effect definition can be inspected, but this editor cannot change,
         save or apply it.
       </div>
@@ -732,7 +753,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       ${!this.isAdmin
         ? html`
-            <div class="read-only" role="note">
+            <div class="feedback read-only" role="note">
               You can inspect shared effects. An administrator is required to
               edit or apply them.
             </div>
@@ -766,15 +787,13 @@ export class GoveeLedEffectStudio extends LitElement {
             @colour-selected=${this.paintBrushSelected}
           ></govee-palette-editor>
           <div class="background-colour">
-            <label>
-              <span>Background</span>
-              <input
-                type="color"
-                .value=${rgbToHex(this.content.background)}
-                ?disabled=${!this.isAdmin}
-                @input=${this.backgroundChanged}
-              />
-            </label>
+            <h4>Background</h4>
+            <govee-colour-picker
+              .colour=${this.content.background}
+              .disabled=${!this.isAdmin}
+              @colour-changing=${this.backgroundChanged}
+              @colour-changed=${this.backgroundChanged}
+            ></govee-colour-picker>
           </div>
           <div class="button-row">
             <button
@@ -854,7 +873,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       ${!this.isAdmin
         ? html`
-            <div class="read-only" role="note">
+            <div class="feedback read-only" role="note">
               You can inspect shared effects. An administrator is required to
               edit them.
             </div>
@@ -917,7 +936,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <section class="card single-effect-settings">
         <h3>Effect</h3>
         <div class="single-effect-fields">
-          <label>
+          <label class="field">
             <span>Effect</span>
             <select
               aria-label="Effect"
@@ -954,7 +973,7 @@ export class GoveeLedEffectStudio extends LitElement {
               )}
             </select>
           </label>
-          <label>
+          <label class="field">
             <span>Variation</span>
             <select
               aria-label="Variation"
@@ -991,7 +1010,7 @@ export class GoveeLedEffectStudio extends LitElement {
       ? html`<h2>${this.templateSourceLabel}</h2>`
       : html`
           <input
-            class="name-input"
+            class="editor-name"
             aria-label="Effect name"
             maxlength="128"
             .value=${this.name}
@@ -1167,7 +1186,7 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     return html`
       <div
-        class="deployment ${deployment.phase}"
+        class="feedback deployment ${deployment.phase}"
         role=${deployment.phase === "failed" ? "alert" : "status"}
       >
         ${message}
@@ -1617,7 +1636,7 @@ export class GoveeLedEffectStudio extends LitElement {
         return;
       }
       const input =
-        this.shadowRoot?.querySelector<HTMLInputElement>(".editor .name-input");
+        this.shadowRoot?.querySelector<HTMLInputElement>(".editor .editor-name");
       input?.focus();
       input?.select();
     });
@@ -1854,9 +1873,9 @@ export class GoveeLedEffectStudio extends LitElement {
     ] as RGB;
   }
 
-  private backgroundChanged(event: Event): void {
+  private backgroundChanged(event: CustomEvent<{ colour: RGB }>): void {
     this.updateContent({
-      background: hexToRgb((event.target as HTMLInputElement).value),
+      background: [...event.detail.colour],
     });
   }
 
@@ -2154,36 +2173,23 @@ export class GoveeLedEffectStudio extends LitElement {
       .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0];
   }
 
-  static styles = css`
+  static styles = [
+    studioBaseStyles,
+    studioCardStyles,
+    studioActionStyles,
+    studioSelectorStyles,
+    studioFormStyles,
+    studioEditorStyles,
+    studioFeedbackStyles,
+    studioVisuallyHiddenStyles,
+    studioWorkspaceStyles,
+    css`
     :host {
       display: block;
       min-height: 100%;
       color: var(--primary-text-color);
       background: var(--primary-background-color);
-      --studio-blue: var(--primary-color, #03a9f4);
-      --studio-blue-soft: color-mix(
-        in srgb,
-        var(--studio-blue) 13%,
-        transparent
-      );
-      --studio-border: var(--divider-color, #d8dce2);
-      --studio-card: var(--card-background-color, #fff);
-      --studio-muted: var(--secondary-text-color, #68707c);
       font-family: var(--paper-font-body1_-_font-family, sans-serif);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    button,
-    input,
-    select {
-      font: inherit;
-    }
-
-    button {
-      min-height: 44px;
     }
 
     .centred,
@@ -2243,13 +2249,12 @@ export class GoveeLedEffectStudio extends LitElement {
       width: 100%;
     }
 
-    select,
-    .name-input {
+    select {
       min-height: 42px;
       padding: 8px 12px;
-      color: var(--primary-text-color);
       border: 1px solid var(--studio-border);
-      border-radius: 9px;
+      border-radius: var(--studio-button-radius);
+      color: var(--primary-text-color);
       background: var(--studio-card);
     }
 
@@ -2272,9 +2277,7 @@ export class GoveeLedEffectStudio extends LitElement {
       grid-template-columns: 190px 190px 230px minmax(0, 1fr);
     }
 
-    .primary-nav,
-    .effect-categories,
-    .library {
+    .primary-nav {
       padding: 22px 16px;
       border-inline-end: 1px solid var(--studio-border);
       background: var(--secondary-background-color, #f5f6f8);
@@ -2284,53 +2287,6 @@ export class GoveeLedEffectStudio extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
-    }
-
-    .visually-hidden {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      margin: -1px;
-      padding: 0;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
-    .effect-categories {
-      overflow: auto;
-    }
-
-    .selector {
-      width: 100%;
-      min-height: 44px;
-      padding: 9px 11px;
-      border: 0;
-      border-radius: 8px;
-      color: var(--primary-text-color);
-      background: transparent;
-      text-align: start;
-      cursor: pointer;
-    }
-
-    .selector:hover {
-      background: color-mix(
-        in srgb,
-        var(--primary-text-color) 6%,
-        transparent
-      );
-    }
-
-    .selector.selected {
-      color: var(--studio-blue);
-      background: var(--studio-blue-soft);
-      font-weight: 650;
-    }
-
-    .library {
-      overflow: auto;
-      background: var(--primary-background-color);
     }
 
     .library-row {
@@ -2367,42 +2323,11 @@ export class GoveeLedEffectStudio extends LitElement {
       );
     }
 
-    .icon-button {
-      width: 40px;
-      padding: 0;
-      border: 1px solid var(--studio-border);
-      border-radius: 50%;
-      color: var(--studio-blue);
-      background: var(--studio-card);
-      font-size: 24px;
-      cursor: pointer;
-    }
-
     .item {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-    }
-
-    .empty {
-      padding: 12px 10px;
-      color: var(--studio-muted);
-      line-height: 1.5;
-    }
-
-    .editor {
-      min-width: 0;
-      padding: 28px;
-      background: var(--secondary-background-color, #f5f6f8);
-    }
-
-    .editor-heading {
-      display: flex;
-      align-items: end;
-      justify-content: space-between;
-      gap: 20px;
-      margin-bottom: 22px;
     }
 
     .custom-mode-tabs {
@@ -2449,17 +2374,6 @@ export class GoveeLedEffectStudio extends LitElement {
       cursor: pointer;
     }
 
-    .name-input {
-      width: min(460px, 100%);
-      padding-inline: 0;
-      border-width: 0 0 1px;
-      border-radius: 0;
-      background: transparent;
-      font-size: 24px;
-      font-weight: 600;
-    }
-
-    .actions,
     .button-row {
       display: flex;
       flex-wrap: wrap;
@@ -2468,55 +2382,6 @@ export class GoveeLedEffectStudio extends LitElement {
 
     .actions > button {
       min-height: 44px;
-    }
-
-    .primary,
-    .secondary {
-      padding: 8px 17px;
-      border-radius: 9px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .primary {
-      border: 1px solid var(--studio-blue);
-      color: var(--text-primary-color, #fff);
-      background: var(--studio-blue);
-    }
-
-    .secondary {
-      border: 1px solid var(--studio-border);
-      color: var(--primary-text-color);
-      background: var(--studio-card);
-    }
-
-    .danger {
-      padding: 8px 17px;
-      border: 1px solid var(--error-color, #db4437);
-      border-radius: 9px;
-      color: var(--error-color, #db4437);
-      background: var(--studio-card);
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .danger:hover,
-    .danger:focus-visible {
-      color: var(--text-primary-color, #fff);
-      background: var(--error-color, #db4437);
-    }
-
-    .secondary.active {
-      color: var(--studio-blue);
-      border-color: var(--studio-blue);
-      background: var(--studio-blue-soft);
-    }
-
-    button:disabled,
-    input:disabled,
-    select:disabled {
-      cursor: not-allowed;
-      opacity: 0.52;
     }
 
     .dialog-backdrop {
@@ -2552,25 +2417,8 @@ export class GoveeLedEffectStudio extends LitElement {
       margin-top: 24px;
     }
 
-    .read-only,
-    .source-note,
-    .deployment {
-      margin-bottom: 18px;
-      padding: 12px 14px;
-      border: 1px solid var(--studio-border);
-      border-radius: 9px;
-      background: var(--studio-card);
-      line-height: 1.45;
-    }
-
     .source-note {
       color: var(--studio-muted);
-    }
-
-    .card {
-      border: 1px solid var(--studio-border);
-      border-radius: 10px;
-      background: var(--studio-card);
     }
 
     .controls {
@@ -2578,10 +2426,6 @@ export class GoveeLedEffectStudio extends LitElement {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 18px;
       margin-top: 18px;
-    }
-
-    .card {
-      padding: 20px;
     }
 
     .single-effect-settings {
@@ -2594,12 +2438,8 @@ export class GoveeLedEffectStudio extends LitElement {
       gap: 14px;
     }
 
-    .single-effect-fields label {
-      display: grid;
-      gap: 7px;
-      color: var(--studio-muted);
-      font-size: 13px;
-      font-weight: 600;
+    .single-effect-fields .field {
+      margin-top: 0;
     }
 
     .opaque-content h3 {
@@ -2631,41 +2471,14 @@ export class GoveeLedEffectStudio extends LitElement {
       margin-top: 18px;
     }
 
-    .background-colour label {
-      display: grid;
-      gap: 7px;
+    .background-colour h4 {
+      margin: 0 0 10px;
       color: var(--studio-muted);
       font-size: 13px;
-      font-weight: 600;
-    }
-
-    input[type="color"] {
-      width: 72px;
-      height: 44px;
-      padding: 3px;
-      border: 1px solid var(--studio-border);
-      border-radius: 8px;
-      background: var(--studio-card);
-    }
-
-    .field,
-    .range-field {
-      display: grid;
-      align-items: center;
-      gap: 10px;
-      margin-top: 14px;
-      color: var(--studio-muted);
-      font-size: 13px;
-      font-weight: 600;
     }
 
     .range-field {
       grid-template-columns: 80px minmax(100px, 1fr) 44px;
-    }
-
-    .range-field output {
-      color: var(--primary-text-color);
-      text-align: end;
     }
 
     .deployment {
@@ -2703,27 +2516,6 @@ export class GoveeLedEffectStudio extends LitElement {
       .custom-mode .library,
       .custom-mode .editor {
         grid-column: 2;
-      }
-
-      .effect-categories {
-        display: flex;
-        gap: 6px;
-        overflow-x: auto;
-        padding: 12px 16px;
-        border-inline-end: 0;
-        border-bottom: 1px solid var(--studio-border);
-      }
-
-      .effect-categories .selector {
-        flex: 0 0 auto;
-        width: auto;
-        white-space: nowrap;
-      }
-
-      .library {
-        max-height: 340px;
-        border-inline-end: 0;
-        border-bottom: 1px solid var(--studio-border);
       }
 
       .editor {
@@ -2775,33 +2567,11 @@ export class GoveeLedEffectStudio extends LitElement {
         text-align: start;
       }
 
-      .editor {
-        padding: 20px 16px 32px;
-      }
-
-      .editor-heading {
-        align-items: stretch;
-        flex-direction: column;
-      }
-
-      .actions > button {
-        flex: 1;
-      }
-
     }
 
     @media (max-width: 480px) {
-      .topbar {
-        padding: 18px 16px;
-      }
-
       .notice {
         padding-inline: 16px;
-      }
-
-      .colour-row {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
       }
 
       .button-row {
@@ -2819,7 +2589,7 @@ export class GoveeLedEffectStudio extends LitElement {
         scroll-behavior: auto !important;
       }
     }
-  `;
+  `];
 }
 
 function blankPainted(): PaintedContent {
@@ -2934,21 +2704,6 @@ function cloneOpaqueContent(content: OpaqueContent): OpaqueContent {
   };
 }
 
-function cloneLayeredSceneContent(
-  content: LayeredSceneContent,
-): LayeredSceneContent {
-  return {
-    ...content,
-    template: { ...content.template },
-    effect: {
-      layers: cloneAdvancedContent({
-        kind: "advanced",
-        layers: content.effect.layers,
-      }).layers,
-    },
-  };
-}
-
 function advancedEditorContent(
   content: AdvancedEditableContent,
 ): AdvancedContent {
@@ -3057,20 +2812,6 @@ function sameColour(left: RGB, right: RGB): boolean {
   );
 }
 
-function rgbToHex(colour: RGB): string {
-  return `#${colour
-    .map((channel) => channel.toString(16).padStart(2, "0"))
-    .join("")}`;
-}
-
-function hexToRgb(value: string): RGB {
-  return [
-    Number.parseInt(value.slice(1, 3), 16),
-    Number.parseInt(value.slice(3, 5), 16),
-    Number.parseInt(value.slice(5, 7), 16),
-  ];
-}
-
 function serialiseEditable(
   name: string,
   content: EditableEffectContent,
@@ -3164,10 +2905,6 @@ function customKindLabel(kind: unknown): string {
   }
 }
 
-function compareLabels(left: string, right: string): number {
-  return left.localeCompare(right, "en-AU", { sensitivity: "base" });
-}
-
 function isMyEffectKind(kind: string): boolean {
   return (
     isCustomEffectKind(kind) ||
@@ -3214,33 +2951,6 @@ function upsertSummary(
         : {}),
     },
   ].sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string"
-  ) {
-    return error.message;
-  }
-  return "An unexpected error occurred.";
-}
-
-function errorCode(error: unknown): string | undefined {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof error.code === "string"
-  ) {
-    return error.code;
-  }
-  return undefined;
 }
 
 declare global {
