@@ -169,13 +169,15 @@ test("default harness uses complete production H617A catalogues", async ({
       .getByRole("button"),
   ).toHaveText([
     "All scenes",
-    "Custom",
     "Emotion",
     "Festival",
     "Funny",
     "Life",
     "Natural",
   ]);
+  await expect(
+    sceneBrowser.getByText("No scenes in this category."),
+  ).toHaveCount(0);
   const orderedSceneNames = await sceneBrowser
     .locator("aside.scenes button.scene > span:first-child")
     .allTextContents();
@@ -1120,6 +1122,9 @@ test("palette copies save losslessly, reload under Custom and cannot Apply", asy
   await saveCopy.click();
   await expect(
     sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
+  ).toBeVisible();
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Custom", exact: true }),
   ).toBeVisible();
 
   const customApply = sceneBrowser.getByRole("button", { name: "Apply" });

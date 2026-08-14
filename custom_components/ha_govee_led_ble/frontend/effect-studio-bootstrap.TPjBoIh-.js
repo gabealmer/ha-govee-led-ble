@@ -1926,7 +1926,6 @@ const Ae=globalThis,it=Ae.ShadowRoot&&(Ae.ShadyCSS===void 0||Ae.ShadyCSS.nativeS
 
       <aside class="scenes" aria-label="Scenes">
         ${this.filteredSceneEntries.map(e=>e.kind==="custom"?this.sceneButton(`custom:${e.item.id}`,e.label,()=>this.selectCustom(e.item)):this.sceneButton(re(e.scene),e.label,()=>this.selectBuiltin(e.scene)))}
-        ${this.filteredSceneEntries.length?c:o`<p class="empty-list">No scenes in this category.</p>`}
       </aside>
 
       <section class="detail">
@@ -1938,7 +1937,7 @@ const Ae=globalThis,it=Ae.ShadowRoot&&(Ae.ShadyCSS===void 0||Ae.ShadyCSS.nativeS
           <h2>No loaded device</h2>
           <p>Load a Govee light before browsing its native scenes.</p>
         </section>
-      `}get sortedCategories(){return[{id:"all",label:"All scenes"},{id:"custom",label:"Custom"},...this.catalogue?.categories.map(e=>({id:e.id,label:e.name}))??[]].sort((e,t)=>qt(e.label,t.label))}get compatibleCustomScenes(){return this.library.items.filter(e=>(e.kind==="scene_builtin"||e.kind==="scene_palette")&&e.template?.sku===this.catalogue?.sku)}get filteredCustomScenes(){return this.category==="all"||this.category==="custom"?this.compatibleCustomScenes:[]}get filteredBuiltinScenes(){return!this.catalogue||this.category==="custom"?[]:this.category==="all"?this.catalogue.scenes:this.catalogue.scenes.filter(e=>e.category_id===this.category)}get filteredSceneEntries(){return[...this.filteredCustomScenes.map(e=>({kind:"custom",item:e,label:e.name})),...this.filteredBuiltinScenes.map(e=>({kind:"builtin",scene:e,label:e.display_name}))].sort((e,t)=>qt(e.label,t.label))}get selectionKey(){return this.selectedItem?`custom:${this.selectedItem.id}`:this.selectedScene?re(this.selectedScene):void 0}categoryButton(e,t){const i=this.category===e;return o`
+      `}get sortedCategories(){const e=[];return this.catalogue?.scenes.length&&e.push({id:"all",label:"All scenes"}),this.compatibleCustomScenes.length&&e.push({id:"custom",label:"Custom"}),e.push(...this.catalogue?.categories.filter(t=>this.catalogue?.scenes.some(i=>i.category_id===t.id)).map(t=>({id:t.id,label:t.name}))??[]),e.sort((t,i)=>qt(t.label,i.label))}get compatibleCustomScenes(){return this.library.items.filter(e=>(e.kind==="scene_builtin"||e.kind==="scene_palette")&&e.template?.sku===this.catalogue?.sku)}get filteredCustomScenes(){return this.category==="all"||this.category==="custom"?this.compatibleCustomScenes:[]}get filteredBuiltinScenes(){return!this.catalogue||this.category==="custom"?[]:this.category==="all"?this.catalogue.scenes:this.catalogue.scenes.filter(e=>e.category_id===this.category)}get filteredSceneEntries(){return[...this.filteredCustomScenes.map(e=>({kind:"custom",item:e,label:e.name})),...this.filteredBuiltinScenes.map(e=>({kind:"builtin",scene:e,label:e.display_name}))].sort((e,t)=>qt(e.label,t.label))}get selectionKey(){return this.selectedItem?`custom:${this.selectedItem.id}`:this.selectedScene?re(this.selectedScene):void 0}categoryButton(e,t){const i=this.category===e;return o`
       <button
         class="selector ${i?"selected":""}"
         type="button"
@@ -2020,7 +2019,7 @@ const Ae=globalThis,it=Ae.ShadowRoot&&(Ae.ShadyCSS===void 0||Ae.ShadyCSS.nativeS
       <div class="card scene-parameters">
         <div class="parameter-list">
           ${e?o`
-                <label class="parameter-entry speed-parameter">
+                <label class="speed-parameter">
                   <span class="parameter-heading">
                     <span>Speed</span>
                     <output>

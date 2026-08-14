@@ -153,9 +153,6 @@ export class GoveeSceneBrowser extends LitElement {
                 () => this.selectBuiltin(entry.scene),
               ),
         )}
-        ${!this.filteredSceneEntries.length
-          ? html`<p class="empty-list">No scenes in this category.</p>`
-          : nothing}
       </aside>
 
       <section class="detail">
@@ -173,14 +170,28 @@ export class GoveeSceneBrowser extends LitElement {
     id: CategorySelection;
     label: string;
   }[] {
-    return [
-      { id: "all" as const, label: "All scenes" },
-      { id: "custom" as const, label: "Custom" },
-      ...(this.catalogue?.categories.map((category) => ({
-        id: category.id,
-        label: category.name,
-      })) ?? []),
-    ].sort((left, right) => compareLabels(left.label, right.label));
+    const categories: { id: CategorySelection; label: string }[] = [];
+    if (this.catalogue?.scenes.length) {
+      categories.push({ id: "all", label: "All scenes" });
+    }
+    if (this.compatibleCustomScenes.length) {
+      categories.push({ id: "custom", label: "Custom" });
+    }
+    categories.push(
+      ...(this.catalogue?.categories
+        .filter((category) =>
+          this.catalogue?.scenes.some(
+            (scene) => scene.category_id === category.id,
+          ),
+        )
+        .map((category) => ({
+          id: category.id,
+          label: category.name,
+        })) ?? []),
+    );
+    return categories.sort((left, right) =>
+      compareLabels(left.label, right.label),
+    );
   }
 
   private get compatibleCustomScenes(): LibrarySummary[] {
@@ -376,7 +387,7 @@ export class GoveeSceneBrowser extends LitElement {
         <div class="parameter-list">
           ${speed
             ? html`
-                <label class="parameter-entry speed-parameter">
+                <label class="speed-parameter">
                   <span class="parameter-heading">
                     <span>Speed</span>
                     <output>
