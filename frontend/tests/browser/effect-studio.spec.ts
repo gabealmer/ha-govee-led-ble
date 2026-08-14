@@ -304,6 +304,19 @@ test("default harness uses complete production H617A catalogues", async ({
   await expect(colourModeOptions).toHaveText(["Automatic", "Fixed"]);
   await expect(colourModeOptions.first()).toHaveCSS("font-size", "13px");
   await expect(colourModeOptions.first()).toHaveCSS("font-weight", "600");
+  await effectList
+    .getByRole("button", { name: "Day And Night", exact: true })
+    .click();
+  const segmentCount = musicEditor.getByRole("slider", {
+    name: "Segment count",
+  });
+  const segmentCountValue = musicEditor.getByRole("status", {
+    name: "Segment count value",
+  });
+  await expect(segmentCount).toBeVisible();
+  await expect(segmentCountValue).toHaveText("1");
+  await segmentCount.press("ArrowRight");
+  await expect(segmentCountValue).toHaveText("2");
   await categories
     .getByRole("button", { name: "All", exact: true })
     .click();

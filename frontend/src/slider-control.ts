@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
 import { studioBaseStyles, studioFormStyles } from "./studio-styles";
@@ -26,11 +26,19 @@ export class GoveeSliderControl extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
+  @property({ type: Boolean })
+  public showValue = false;
+
   protected render() {
     const value = clamp(this.value, this.minimum, this.maximum);
     return html`
       <label class="slider-field">
-        <span class="parameter-label">${this.label}</span>
+        <span class="slider-heading">
+          <span class="parameter-label">${this.label}</span>
+          ${this.showValue
+            ? html`<output aria-label="${this.label} value">${value}</output>`
+            : nothing}
+        </span>
         <input
           type="range"
           min=${this.minimum}
@@ -66,6 +74,18 @@ export class GoveeSliderControl extends LitElement {
       .slider-field {
         display: grid;
         gap: 10px;
+      }
+
+      .slider-heading {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      output {
+        color: var(--primary-text-color);
+        font-variant-numeric: tabular-nums;
       }
 
       input {
