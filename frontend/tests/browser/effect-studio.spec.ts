@@ -48,7 +48,7 @@ async function openPaletteScene(
   await sceneBrowser.getByRole("button", { name: category }).click();
   await sceneBrowser.getByRole("button", { name }).click();
   await expect(
-    sceneBrowser.locator("govee-effect-preview"),
+    sceneBrowser.getByRole("heading", { name: "Scene parameters" }),
   ).toBeVisible();
   return sceneBrowser;
 }
@@ -68,34 +68,6 @@ async function setCustomPalette(
         }),
       );
     }, palette);
-}
-
-async function freezePreviewAt(
-  preview: ReturnType<Page["locator"]>,
-  elapsedMilliseconds: number,
-) {
-  await preview.evaluate(async (element, elapsed) => {
-    const target = element as HTMLElement & {
-      previewVisible: boolean;
-      customAnimationElapsedMilliseconds: number;
-      customAnimationRunningSince?: number;
-      requestUpdate(): void;
-      updateComplete: Promise<boolean>;
-    };
-    target.previewVisible = false;
-    target.customAnimationRunningSince = undefined;
-    target.customAnimationElapsedMilliseconds = elapsed;
-    target.requestUpdate();
-    await target.updateComplete;
-  }, elapsedMilliseconds);
-}
-
-async function previewColours(preview: ReturnType<Page["locator"]>) {
-  return preview.locator(".custom-animation-cell").evaluateAll((cells) =>
-    cells.map((cell) =>
-      (cell as HTMLElement).style.getPropertyValue("--preview-colour"),
-    ),
-  );
 }
 
 test("capability gates Apply while retaining supported H617A custom Apply", async ({
@@ -151,725 +123,35 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   ).toBeVisible();
 });
 
-test("known single effects animate while unknown Type04 identities remain gated", async ({
-  page,
-}) => {
-  const studio = await openStudio(page);
-  const preview = studio.locator("govee-effect-preview");
-
-  await studio.getByRole("button", { name: "Supported painted effect" }).click();
-  await expect(preview.getByText("Deterministic", { exact: true })).toBeVisible();
-  await expect(preview.getByRole("button", { name: /^Segment / })).toHaveCount(
-    15,
-  );
-  await expect(
-    preview.getByText(
-      "only the exact 15-segment background and group map is shown",
-    ),
-  ).toBeVisible();
-  await expect(preview.locator(".palette, .sequence, .scene-steps, .layers")).toHaveCount(0);
-  const paintedLabels = await preview
-    .getByRole("button", { name: /^Segment / })
-    .evaluateAll((buttons) =>
-      buttons.map((button) => button.getAttribute("aria-label")),
-    );
-  expect(paintedLabels).toEqual([
-    "Segment 1, #2f6fed",
-    "Segment 2, #2f6fed",
-    "Segment 3, #2f6fed",
-    ...Array.from(
-      { length: 12 },
-      (_, index) => `Segment ${index + 4}, #000000`,
-    ),
-  ]);
-  const firstSegment = preview.getByRole("button", {
-    name: "Segment 1, #2f6fed",
-  });
-  await firstSegment.focus();
-  await firstSegment.press("Enter");
-  await expect(
-    preview.getByRole("button", { name: "Segment 1, #2f80ed" }),
-  ).toBeVisible();
-
-  const modes = studio.getByRole("tablist", { name: "Custom effect type" });
-  await modes.getByRole("tab", { name: "Single" }).click();
-  await expect(
-    preview.getByText("Capture-backed", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    preview.getByRole("heading", { name: "Observed Fade preview" }),
-  ).toBeVisible();
-  await expect(preview.locator("[data-effect=fade]")).toBeVisible();
-  await expect(preview.locator(".custom-animation-cell")).toHaveCount(15);
-
-  const customEditor = studio.locator("govee-custom-effect-editor");
-  await customEditor
-    .getByRole("button", { name: "Choose effect, current Fade" })
-    .click();
-  await customEditor.getByRole("button", { name: "Jumping", exact: true }).click();
-  await expect(
-    preview.getByRole("heading", { name: "Observed Jumping preview" }),
-  ).toBeVisible();
-  await expect(preview.locator("[data-effect=jumping]")).toBeVisible();
-
-  await customEditor
-    .getByRole("button", { name: "Choose effect, current Jumping" })
-    .click();
-  await customEditor.getByRole("button", { name: "Marquee", exact: true }).click();
-  await expect(
-    preview.getByRole("heading", { name: "Observed Marquee preview" }),
-  ).toBeVisible();
-  await expect(preview.locator("[data-effect=marquee]")).toBeVisible();
-  await expect(preview.locator('[data-band-width="2"]')).toBeVisible();
-  await expect(preview.locator('[data-travelling-bands="4"]')).toBeVisible();
-
-  await customEditor
-    .getByRole("button", { name: "Choose effect, current Marquee" })
-    .click();
-  await customEditor.getByRole("button", { name: "Chasing", exact: true }).click();
-  await expect(
-    preview.getByRole("heading", { name: "Observed Chasing preview" }),
-  ).toBeVisible();
-  await expect(preview.locator("[data-effect=chasing]")).toBeVisible();
-  await expect(preview.locator('[data-band-width="3"]')).toBeVisible();
-  await expect(preview.locator('[data-travelling-bands="3"]')).toBeVisible();
-
-  await studio.getByRole("button", { name: "Verified fixture-backed multi effect" }).click();
-  await expect(
-    preview.getByRole("heading", { name: "Multi effect sequence" }),
-  ).toBeVisible();
-  await expect(
-    preview.getByRole("list", { name: "Preview palette" }).getByRole("listitem"),
-  ).toHaveCount(2);
-  await expect(preview.getByLabel("Colour 1, #0c2238")).toBeVisible();
-  await expect(
-    preview.getByRole("list", { name: "Catalogue effect order" }).getByRole("listitem"),
-  ).toHaveText([
-    /1\s+Fade\s+Structural/,
-    /2\s+Unknown catalogue identity\s+Raw family 254, variant 253\s+Opaque \/ unknown/,
-    /3\s+Marquee\s+Structural/,
-  ]);
-  await expect(preview.getByText("Deterministic", { exact: true })).toHaveCount(0);
-
-  await studio.getByRole("button", { name: "Unknown Type04 pair" }).click();
-  await expect(
-    preview.getByText("Opaque / unknown", { exact: true }),
-  ).toBeVisible();
-  await expect(preview.getByText("Raw family 254, variant 253")).toBeVisible();
-  await expect(preview.getByLabel("Colour 1, #ff0000")).toBeVisible();
-  await expect(preview.getByLabel("Colour 2, #0000ff")).toBeVisible();
-  await expect(preview.getByText(/Family 254|style 253/)).toHaveCount(0);
-
-  await studio.getByRole("button", { name: "Uncaptured special DIY pair" }).click();
-  await expect(
-    preview.getByText("Opaque / unknown", { exact: true }),
-  ).toBeVisible();
-  await expect(preview.getByText("Raw family 252, variant 251")).toBeVisible();
-  await expect(preview.getByLabel("Colour 1, #090807")).toBeVisible();
-  await expect(preview.getByText("Deterministic", { exact: true })).toHaveCount(0);
-  expect(
-    await preview.locator("*").evaluateAll((elements) =>
-      elements.filter(
-        (element) => getComputedStyle(element).animationName !== "none",
-      ).length,
-    ),
-  ).toBe(0);
-});
-
-test("captured Single frames retain palette order, black phases and measured geometry", async ({
-  page,
-}) => {
-  const studio = await openStudio(page);
-  await studio
-    .getByRole("tablist", { name: "Custom effect type" })
-    .getByRole("tab", { name: "Single" })
-    .click();
-  const editor = studio.locator("govee-custom-effect-editor");
-  const preview = studio.locator("govee-effect-preview");
-  const speed = editor.locator('input[type="range"]');
-  await speed.fill("80");
-  await setCustomPalette(editor, [
-    [255, 0, 0],
-    [0, 0, 0],
-    [0, 0, 255],
-  ]);
-
-  await expect(preview.locator('[data-effect="fade"]')).toHaveAttribute(
-    "data-phase-ms",
-    "5000.000",
-  );
-  await expect(preview.locator('[data-effect="fade"]')).toHaveAttribute(
-    "data-segment-phase-ms",
-    "30.000",
-  );
-  await freezePreviewAt(preview, 5_267);
-  expect(new Set(await previewColours(preview))).toEqual(new Set(["#000000"]));
-  await freezePreviewAt(preview, 10_267);
-  expect(new Set(await previewColours(preview))).toEqual(new Set(["#0000ff"]));
-
-  await editor
-    .getByRole("button", { name: "Choose effect, current Fade" })
-    .click();
-  await editor.getByRole("button", { name: "Jumping", exact: true }).click();
-  await expect(preview.locator('[data-effect="jumping"]')).toHaveAttribute(
-    "data-phase-ms",
-    "2465.000",
-  );
-  await freezePreviewAt(preview, 2_466);
-  expect(new Set(await previewColours(preview))).toEqual(new Set(["#000000"]));
-
-  await editor
-    .getByRole("button", { name: "Choose effect, current Jumping" })
-    .click();
-  await editor.getByRole("button", { name: "Marquee", exact: true }).click();
-  await expect(preview.locator('[data-effect="marquee"]')).toHaveAttribute(
-    "data-phase-ms",
-    "105.000",
-  );
-  await freezePreviewAt(preview, 0);
-  expect(await previewColours(preview)).toEqual([
-    "#000000",
-    "#ff0000",
-    "#ff0000",
-    "#0000ff",
-    "#0000ff",
-    "#ff0000",
-    "#ff0000",
-    "#000000",
-    "#000000",
-    "#ff0000",
-    "#0000ff",
-    "#0000ff",
-    "#ff0000",
-    "#ff0000",
-    "#000000",
-  ]);
-  await freezePreviewAt(preview, 106);
-  expect(await previewColours(preview)).toEqual([
-    "#000000",
-    "#000000",
-    "#ff0000",
-    "#ff0000",
-    "#0000ff",
-    "#0000ff",
-    "#ff0000",
-    "#ff0000",
-    "#000000",
-    "#000000",
-    "#ff0000",
-    "#0000ff",
-    "#0000ff",
-    "#ff0000",
-    "#ff0000",
-  ]);
-
-  await editor
-    .getByRole("button", { name: "Choose effect, current Marquee" })
-    .click();
-  await editor.getByRole("button", { name: "Chasing", exact: true }).click();
-  await expect(preview.locator('[data-effect="chasing"]')).toHaveAttribute(
-    "data-phase-ms",
-    "129.467",
-  );
-  await freezePreviewAt(preview, 0);
-  const chasingColours = await previewColours(preview);
-  expect(chasingColours).not.toContain("#000000");
-  expect(chasingColours.filter((colour) => colour === "#0000ff")).toHaveLength(
-    9,
-  );
-
-  await setCustomPalette(editor, [[255, 0, 0]]);
-  await freezePreviewAt(preview, 30_000);
-  expect(new Set(await previewColours(preview))).toEqual(new Set(["#ff0000"]));
-
-  await speed.fill("20");
-  await expect(preview.locator('[data-effect="chasing"]')).toHaveAttribute(
-    "data-phase-ms",
-    "482.667",
-  );
-});
-
-test("scene Type 0 remains opaque without a visual parameter preview", async ({
-  page,
-}) => {
-  await openStudio(page);
-  const studio = page.locator(studioSelector);
-  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
-  const sceneBrowser = studio.locator("govee-scene-browser");
-  await sceneBrowser.getByRole("button", { name: "Everyday" }).click();
-  await sceneBrowser.getByRole("button", { name: /^Reading/ }).click();
-  const preview = sceneBrowser.locator("govee-effect-preview");
-
-  await expect(
-    preview.getByRole("heading", { name: "Built-in scene identity" }),
-  ).toBeVisible();
-  await expect(
-    preview.getByText("Scene Type 0 has no documented visual parameters"),
-  ).toBeVisible();
-  await expect(preview.getByText("Scene 100, effect 200")).toBeVisible();
-  await expect(preview.getByRole("list", { name: "Preview palette" })).toHaveCount(0);
-  await expect(preview.locator(".preview-cell, .scene-steps, .layers")).toHaveCount(0);
-});
-
-test("reviewed capture-backed profiles render all five immutable scene identities", async ({
-  page,
-}) => {
-  await openStudio(page);
-  const studio = page.locator(studioSelector);
-  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
-  const sceneBrowser = studio.locator("govee-scene-browser");
-  await sceneBrowser
-    .getByRole("button", { name: "Observed captures", exact: true })
-    .click();
-
-  for (const name of ["Sunrise", "Sunset", "Blue Lagoon", "Warm Glow"]) {
-    await sceneBrowser.getByRole("button", { name: new RegExp(`^${name}`) }).click();
-    const observed = sceneBrowser
-      .locator("govee-effect-preview")
-      .filter({ hasText: "Observed static scene" });
-    await expect(
-      sceneBrowser.getByRole("heading", { name: "Observed static scene" }),
-    ).toBeVisible();
-    await expect(
-      sceneBrowser.getByText("Capture-backed", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      sceneBrowser.getByRole("img", {
-        name: /Capture-backed abstract map of 15 sampled regions/,
-      }),
-    ).toBeVisible();
-    await expect(
-      sceneBrowser.getByRole("note").filter({
-        hasText: "The abstract regions are not physical LED geometry.",
-      }),
-    ).toBeVisible();
-    await expect(
-      observed.locator(".capture-evidence").getByText(
-        "reviewed recorded capture with spatial lane calibration",
-        { exact: false },
-      ),
-    ).toBeVisible();
-    await expect(
-      observed
-        .locator(".capture-evidence")
-        .getByText("Camera colour is uncalibrated.", { exact: false }),
-    ).toBeVisible();
-    await expect(observed.locator(".preview-cell")).toHaveCount(15);
-  }
-
-  await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
-  const observedSweep = sceneBrowser
-    .locator("govee-effect-preview")
-    .filter({ hasText: "Observed directional sweep" });
-  await expect(
-    observedSweep.getByText("Capture-backed", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    observedSweep.getByRole("img", {
-      name: /towards the first sampled region, with 2 phase-separated travelling bands/,
-    }),
-  ).toBeVisible();
-  await expect(observedSweep.locator(".sweep-cell")).toHaveCount(15);
-  await expect(observedSweep.locator(".sweep-band")).toHaveCount(2);
-  expect(
-    await observedSweep.locator(".sweep-band").evaluateAll((bands) =>
-      bands.map((band) =>
-        band.closest(".sweep-cell")?.getAttribute("data-logical-lane"),
-      ),
-    ),
-  ).toEqual(["6", "14"]);
-  await expect(observedSweep.locator(".directional-sweep")).toHaveAttribute(
-    "data-phase-separation",
-    "8",
-  );
-  await expect(observedSweep.locator(".directional-sweep")).toHaveAttribute(
-    "data-motion-state",
-    "default",
-  );
-  const sweepTiming = await observedSweep.locator(".directional-sweep").evaluate(
-    (sweep) => ({
-      step: Number(sweep.getAttribute("data-step-interval-ms")),
-      fullCircuit: Number(sweep.getAttribute("data-full-circuit-ms")),
-      observedRepeat: Number(sweep.getAttribute("data-observed-repeat-ms")),
-    }),
-  );
-  expect(sweepTiming.step).toBeCloseTo(527.067, 3);
-  expect(Math.abs(sweepTiming.step * 15 - sweepTiming.fullCircuit)).toBeLessThan(
-    0.01,
-  );
-  expect(
-    Math.abs(sweepTiming.fullCircuit / 2 - sweepTiming.observedRepeat),
-  ).toBeLessThan(0.01);
-  await expect(
-    sceneBrowser.getByRole("heading", { name: "Captured layered scene structure" }),
-  ).toBeVisible();
-  const speed = sceneBrowser.getByRole("group", { name: "Scene speed" });
-  await expect(speed.getByRole("button")).toHaveCount(3);
-  await expect(speed.getByRole("button", { name: "Default" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(
-    observedSweep.getByText("reviewed visual repeat is 3.953 seconds at Default speed"),
-  ).toBeVisible();
-  await page.evaluate(() => {
-    const target = window as Window & {
-      previewSweepTimings?: number[];
-    };
-    target.previewSweepTimings = [];
-    document.addEventListener("preview-sweep-lane-change", () => {
-      target.previewSweepTimings?.push(performance.now());
-    });
-  });
-  const defaultTransitionTimings = (await page
-    .waitForFunction(
-      () => {
-        const timings = (
-          window as Window & { previewSweepTimings?: number[] }
-        ).previewSweepTimings;
-        return timings && timings.length >= 2 ? timings.slice(0, 2) : undefined;
-      },
-      undefined,
-      { timeout: 2_500 },
-    )
-    .then((handle) => handle.jsonValue())) as number[];
-  const observedStepInterval =
-    defaultTransitionTimings[1]! - defaultTransitionTimings[0]!;
-  expect(observedStepInterval).toBeGreaterThan(sweepTiming.step - 150);
-  expect(observedStepInterval).toBeLessThan(sweepTiming.step + 150);
-  await speed.getByRole("button", { name: "Slower", exact: true }).click();
-  await expect(speed.getByRole("button", { name: "Slower", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(
-    observedSweep.getByText(
-      "Timing and motion were observed only at Default speed. This non-default Speed selection freezes a phase-separated capture snapshot.",
-    ),
-  ).toBeVisible();
-  const frozenLanes = await observedSweep
-    .locator(".directional-sweep")
-    .getAttribute("data-logical-lanes");
-  await expect(observedSweep.locator(".directional-sweep")).toHaveAttribute(
-    "data-motion-state",
-    "snapshot",
-  );
-  await page.waitForTimeout(700);
-  await expect(observedSweep.locator(".directional-sweep")).toHaveAttribute(
-    "data-logical-lanes",
-    frozenLanes ?? "",
-  );
-  await expect(observedSweep.locator(".sweep-band")).toHaveCount(2);
-  const firstSeed = await observedSweep
-    .locator(".directional-sweep")
-    .getAttribute("data-preview-seed");
-
-  await sceneBrowser.getByRole("button", { name: /^Sunrise/ }).click();
-  await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
-  await expect(
-    observedSweep.locator(".directional-sweep"),
-  ).toHaveAttribute("data-preview-seed", firstSeed ?? "");
-  await expect(
-    sceneBrowser.getByRole("heading", { name: "Captured layered scene structure" }),
-  ).toBeVisible();
-
-  const sixBandLanes = await observedSweep.evaluate(async (element) => {
-    interface PreviewElement extends HTMLElement {
-      model: {
-        travellingBands: number;
-      };
-      updateComplete: Promise<unknown>;
-    }
-    const preview = element as PreviewElement;
-    preview.model = { ...preview.model, travellingBands: 6 };
-    await preview.updateComplete;
-    return [...(preview.shadowRoot?.querySelectorAll(".sweep-band") ?? [])].map(
-      (band) => band.closest(".sweep-cell")?.getAttribute("data-logical-lane"),
-    );
-  });
-  expect(sixBandLanes).toHaveLength(6);
-  expect(new Set(sixBandLanes).size).toBe(6);
-});
-
-test("capture-backed previews respect reduced motion and retain saved template identity", async ({
-  page,
-}) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await openStudio(page);
-  const studio = page.locator(studioSelector);
-  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
-  const sceneBrowser = studio.locator("govee-scene-browser");
-  await sceneBrowser
-    .getByRole("button", { name: "Observed captures", exact: true })
-    .click();
-  await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
-  const reducedSweep = sceneBrowser.locator(".directional-sweep");
-  const reducedLane = await reducedSweep.getAttribute("data-logical-lane");
-  await page.waitForTimeout(700);
-  await expect(reducedSweep).toHaveAttribute(
-    "data-logical-lane",
-    reducedLane ?? "",
-  );
-  await expect(reducedSweep.locator(".sweep-band")).toHaveCount(2);
-
-  await sceneBrowser.getByRole("button", { name: /^Sunrise/ }).click();
-  await sceneBrowser.getByRole("button", { name: "Save copy" }).click();
-  await expect(
-    sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
-  ).toBeVisible();
-  await page.reload();
-  const reloadedStudio = page.locator(studioSelector);
-  await expect(
-    reloadedStudio.getByRole("heading", { name: "Effect Studio" }),
-  ).toBeVisible();
-  await reloadedStudio.getByRole("button", { name: "Scenes", exact: true }).click();
-  const reloadedBrowser = reloadedStudio.locator("govee-scene-browser");
-  await reloadedBrowser.getByRole("button", { name: "Custom", exact: true }).click();
-  await reloadedBrowser.getByRole("button", { name: /Sunrise copy/ }).click();
-  await expect(
-    reloadedBrowser.getByRole("heading", { name: "Observed static scene" }),
-  ).toBeVisible();
-  await expect(
-    reloadedBrowser.getByRole("heading", { name: "Built-in scene identity" }),
-  ).toBeVisible();
-});
-
-for (const direction of ["ltr", "rtl"] as const) {
-  test(`directional sweep uses ordered logical lanes and wraps towards first in ${direction.toUpperCase()}`, async ({
-    page,
-  }) => {
-    await openStudio(page, direction === "rtl" ? "?rtl=1" : "");
-    const studio = page.locator(studioSelector);
-    await studio.getByRole("button", { name: "Scenes", exact: true }).click();
-    const sceneBrowser = studio.locator("govee-scene-browser");
-    await sceneBrowser
-      .getByRole("button", { name: "Observed captures", exact: true })
-      .click();
-    await page.evaluate(() => {
-      const target = window as Window & {
-        previewSweepTransitions?: {
-          lane: number;
-          previousLane: number;
-          sequence: number;
-          lanes: number[];
-          previousLanes: number[];
-        }[];
-      };
-      target.previewSweepTransitions = [];
-      document.addEventListener("preview-sweep-lane-change", (event) => {
-        const detail = (event as CustomEvent<{
-          lane: number;
-          previousLane: number;
-          sequence: number;
-          lanes: number[];
-          previousLanes: number[];
-        }>).detail;
-        target.previewSweepTransitions?.push(detail);
-      });
-    });
-    await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
-    const sweep = sceneBrowser.locator(".directional-sweep");
-    const lanes = sweep.locator(".sweep-cell");
-
-    await expect(lanes).toHaveCount(15);
-    expect(
-      await lanes.evaluateAll((elements) =>
-        elements.map((element) => element.getAttribute("data-logical-lane")),
-      ),
-    ).toEqual(Array.from({ length: 15 }, (_, index) => String(index)));
-    const positions = await lanes.evaluateAll((elements) =>
-      elements.map((element) => element.getBoundingClientRect().left),
-    );
-    expect(positions[0]).toBeLessThan(positions[14]);
-    await expect(sweep).toHaveAttribute("data-logical-lane", "6");
-    expect(
-      await sweep.locator(".sweep-band").evaluateAll((bands) =>
-        bands.map((band) =>
-          band.closest(".sweep-cell")?.getAttribute("data-logical-lane"),
-        ),
-      ),
-    ).toEqual(["6", "14"]);
-    await expect(sweep).toHaveAttribute("data-phase-separation", "8");
-    const transitions = (await page
-      .waitForFunction(
-        () => {
-          const target = window as Window & {
-            previewSweepTransitions?: {
-              lane: number;
-              previousLane: number;
-              sequence: number;
-              lanes: number[];
-              previousLanes: number[];
-            }[];
-          };
-          const transitions = target.previewSweepTransitions ?? [];
-          const wrapIndex = transitions.findIndex(
-            (transition) =>
-              transition.previousLane === 0 && transition.lane === 14,
-          );
-          return wrapIndex < 0 ? undefined : transitions.slice(0, wrapIndex + 1);
-        },
-        undefined,
-        { timeout: 5_000 },
-      )
-      .then((handle) => handle.jsonValue())) as {
-      lane: number;
-      previousLane: number;
-      sequence: number;
-      lanes: number[];
-      previousLanes: number[];
-    }[];
-    expect(transitions.map((transition) => transition.lane)).toContain(0);
-    expect(
-      transitions.some(
-        (transition) =>
-          transition.previousLane === 0 && transition.lane === 14,
-      ),
-    ).toBe(true);
-    expect(
-      transitions.every(
-        (transition, index) =>
-          transition.sequence === index &&
-          (transition.previousLane - transition.lane + 15) % 15 === 1 &&
-          transition.lanes.length === 2 &&
-          transition.previousLanes.length === 2 &&
-          transition.previousLanes.every(
-            (previousLane, laneIndex) =>
-              (previousLane - transition.lanes[laneIndex]! + 15) % 15 === 1,
-          ) &&
-          (transition.lanes[1]! - transition.lanes[0]! + 15) % 15 === 8 &&
-          (transition.previousLanes[1]! - transition.previousLanes[0]! + 15) %
-            15 ===
-            8,
-      ),
-    ).toBe(true);
-    await expect
-      .poll(async () => sweep.getAttribute("data-logical-lane"))
-      .not.toBeNull();
-    await expect(
-      sweep.locator(
-        `.sweep-cell.current[data-logical-lane="${await sweep.getAttribute(
-          "data-logical-lane",
-        )}"]`,
-      ),
-    ).toBeVisible();
-    await expect(sweep.locator(".sweep-band")).toHaveCount(2);
-  });
-}
-
-test("scene detail validation discards malformed optional capture-backed profiles", async ({
-  page,
-}) => {
-  await openStudio(page);
-  const result = await page.evaluate(() => {
-    const detail = {
-      scene: {
-        scene_id: 1011,
-        effect_id: 1073,
-        category_id: 700,
-        category: "Observed captures",
-        name: "sunrise",
-        variant: "",
-        display_name: "Sunrise",
-        scene_type: 0,
-        parameter_kind: "none",
-        speed: null,
-      },
-      content: {
-        kind: "scene_builtin",
-        template: {
-          sku: "H617A",
-          scene_id: 1011,
-          effect_id: 1073,
-          catalogue_schema_version: 1,
-        },
-        speed_index: null,
-      },
-    };
-    const profile = {
-      schema_version: 1,
-      fidelity: "capture_backed",
-      sku: "H617A",
-      scene_id: 1011,
-      effect_id: 1073,
-      review_state: "reviewed",
-      minimum_review_confidence: 0.85,
-      review_confidence: 0.9,
-      primitive: "static",
-      illuminated_segments: Array.from({ length: 15 }, (_, index) => index),
-      limitations: ["Observational evidence only."],
-      evidence: {
-        corpus_id: "20260812-h617a-scenes",
-        contact_sheet_sha256:
-          "29754d0aa2fc51e75ced394e051551797ede5a0be02b2c8bd631a302a753c2d6",
-      },
-      palette: {
-        colour_space: "uncalibrated_camera_srgb",
-        segment_rgb: Array.from({ length: 15 }, () => [1, 2, 3]),
-      },
-    };
-    const decode = (value: unknown) =>
-      window.testHarness.validateSceneDetail(value) as {
-        content: { kind: string };
-        preview_profile?: unknown;
-      };
-    const malformed = [
-      { ...profile, review_state: "pending_human_review" },
-      { ...profile, primitive: "global_pulse" },
-      { ...profile, name: "Display-only" },
-      { ...profile, scene_id: 1012 },
-      "not an object",
-    ];
-    return {
-      legacy: decode(detail),
-      malformed: malformed.map((preview_profile) =>
-        decode({ ...detail, preview_profile }),
-      ),
-    };
-  });
-
-  expect(result.legacy).toMatchObject({ content: { kind: "scene_builtin" } });
-  expect(result.legacy).not.toHaveProperty("preview_profile");
-  for (const detail of result.malformed) {
-    expect(detail).toMatchObject({ content: { kind: "scene_builtin" } });
-    expect(detail).not.toHaveProperty("preview_profile");
-  }
-});
-
-test("captured layout 0 palette scenes expose lossless structure", async ({
+test("palette scene parameters preserve decoded order", async ({
   page,
 }) => {
   await openStudio(page);
   const halloween = await openPaletteScene(page, "Festival", /^Halloween/);
-  const preview = halloween.locator("govee-effect-preview");
 
+  await expect(halloween.getByText("Layout", { exact: true })).toBeVisible();
+  await expect(halloween.getByText("0", { exact: true })).toBeVisible();
+  await expect(halloween.getByText("Brightness flag")).toBeVisible();
+  await expect(halloween.getByText("Set", { exact: true })).toBeVisible();
   await expect(
-    preview.getByRole("heading", {
-      name: "Captured palette scene structure",
-    }),
-  ).toBeVisible();
-  await expect(preview.getByText("Layout", { exact: true })).toBeVisible();
-  await expect(preview.getByText("0", { exact: true })).toBeVisible();
-  await expect(preview.getByText("Brightness flag")).toBeVisible();
-  await expect(preview.getByText("Set", { exact: true })).toBeVisible();
-  await expect(
-    preview.getByRole("list", { name: "Ordered scene steps" }).getByRole("listitem"),
+    halloween
+      .getByRole("list", { name: "Ordered scene steps" })
+      .getByRole("listitem"),
   ).toHaveCount(6);
-  await expect(preview.getByText("Raw value 5")).toHaveCount(5);
-  await expect(preview.getByText("Raw value 6")).toHaveCount(1);
+  await expect(halloween.getByText("Raw value 5")).toHaveCount(5);
+  await expect(halloween.getByText("Raw value 6")).toHaveCount(1);
   await expect(
-    preview.getByRole("list", { name: "Preview palette" }).getByRole("listitem"),
+    halloween
+      .getByRole("list", { name: "Scene palette" })
+      .getByRole("listitem"),
   ).toHaveCount(4);
-  await expect(preview.getByLabel("Colour 1, #ff1e00")).toBeVisible();
-  await expect(
-    preview.getByText("Timing, motion and device animation are not inferred."),
-  ).toBeVisible();
+  await expect(halloween.getByLabel("Colour 1, #ff1e00")).toBeVisible();
 
   await halloween.getByRole("button", { name: "Life" }).click();
   await halloween.getByRole("button", { name: /^Sweet/ }).click();
   await expect(
     halloween.getByRole("heading", {
-      name: "Captured palette scene structure",
+      name: "Scene parameters",
     }),
   ).toBeVisible();
   await expect(halloween.getByText("Raw value 50")).toBeVisible();
@@ -1236,68 +518,19 @@ test("layer and movement unknown flags reject known bits and survive round trips
   expect(result.layeredRejectsLayerBrightnessBit).toBe(true);
 });
 
-test("schema-only layout 1 remains structural and static", async ({ page }) => {
+test("schema-only layout 1 exposes decoded parameters", async ({ page }) => {
   await openStudio(page);
   const sceneBrowser = await openPaletteScene(
     page,
     "Synthetic schema-only",
     /Synthetic Layout 1/,
   );
-  const preview = sceneBrowser.locator("govee-effect-preview");
-
+  await expect(sceneBrowser.getByText("Raw value 4660")).toBeVisible();
+  await expect(sceneBrowser.getByLabel("Step colour #010203")).toBeVisible();
+  await expect(sceneBrowser.getByText("Inline colour #040506")).toBeVisible();
   await expect(
-    preview.getByRole("heading", {
-      name: "Palette scene structure (schema-only layout 1)",
-    }),
-  ).toBeVisible();
-  await expect(preview.getByText("Raw value 4660")).toBeVisible();
-  await expect(preview.getByLabel("Step colour #010203")).toBeVisible();
-  await expect(preview.getByLabel("Inline colour #040506")).toBeVisible();
-  await expect(preview.getByRole("list", { name: "Preview palette" })).toHaveCount(0);
-  await expect(
-    preview.getByText("No hardware behaviour, timing, motion or animation is inferred."),
-  ).toBeVisible();
-  const animatedElements = await preview.locator("*").evaluateAll((elements) =>
-    elements.filter(
-      (element) => getComputedStyle(element).animationName !== "none",
-    ).length,
-  );
-  expect(animatedElements).toBe(0);
-});
-
-test("scene Type 2 previews documented layer structure without geometry or animation", async ({
-  page,
-}) => {
-  await openStudio(page);
-  const sceneBrowser = await openLayeredScene(page);
-  const preview = sceneBrowser.locator("govee-effect-preview");
-
-  await expect(
-    preview.getByRole("heading", { name: "Captured layered scene structure" }),
-  ).toBeVisible();
-  await expect(preview.getByText("Structural", { exact: true })).toBeVisible();
-  await expect(preview.getByRole("article")).toHaveCount(2);
-  await expect(
-    preview.getByRole("img", {
-      name: "Layer 1 applied area: start 0 tenths, width 10 tenths",
-    }),
-  ).toBeVisible();
-  await expect(
-    preview.getByRole("list", { name: "Preview palette" }),
-  ).toHaveCount(2);
-  await expect(
-    preview.getByText(
-      "No composite animation or physical LED geometry is inferred.",
-    ),
-  ).toBeVisible();
-  await expect(preview.locator(".preview-cell, .scene-steps")).toHaveCount(0);
-  expect(
-    await preview.locator("*").evaluateAll((elements) =>
-      elements.filter(
-        (element) => getComputedStyle(element).animationName !== "none",
-      ).length,
-    ),
-  ).toBe(0);
+    sceneBrowser.getByRole("list", { name: "Scene palette" }),
+  ).toHaveCount(0);
 });
 
 test("palette copies save losslessly, reload under Custom and cannot Apply", async ({
@@ -2150,19 +1383,57 @@ test("advanced layer and palette keyboard focus follows edits", async ({
 
   const palette = advanced.locator("govee-palette-editor");
   let swatches = palette.getByRole("button", { name: /Edit colour/ });
-  await swatches.nth(1).click();
-  let dialog = palette.getByRole("dialog", { name: "Edit colour" });
-  await dialog.getByRole("button", { name: "Move right" }).click();
+  await swatches.nth(1).focus();
+  await swatches.nth(1).press("ArrowRight");
   swatches = palette.getByRole("button", { name: /Edit colour/ });
   await expect(swatches.nth(2)).toBeFocused();
-  dialog = palette.getByRole("dialog", { name: "Edit colour" });
-  await dialog.getByRole("button", { name: "Remove" }).click();
+  await swatches.nth(2).click();
+  const dialog = palette.getByRole("dialog", { name: "Edit colour" });
+  await expect(dialog.getByRole("button", { name: "Move left" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Move right" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Remove" })).toHaveCount(0);
+  await expect(dialog.getByText("Custom colour")).toHaveCount(0);
+  await palette.getByRole("button", { name: "Remove colour 3" }).click();
   swatches = palette.getByRole("button", { name: /Edit colour/ });
   await expect(swatches).toHaveCount(2);
   await expect(swatches.nth(1)).toBeFocused();
 });
 
-test("unknown layered values stay raw and use a conservative preview", async ({
+test("palette choices commit and close the colour picker", async ({ page }) => {
+  const studio = await openStudio(page);
+  await studio.getByRole("tab", { name: "Single" }).click();
+  const palette = studio
+    .locator("govee-custom-effect-editor")
+    .locator("govee-palette-editor");
+  const firstSwatch = palette.getByRole("button", {
+    name: /Edit colour 1/,
+  });
+
+  await firstSwatch.click();
+  const dialog = palette.getByRole("dialog", { name: "Edit colour" });
+  let presets = dialog.getByRole("button", { name: /^Use #/ });
+  await expect(presets).toHaveCount(17);
+  await expect(dialog.getByLabel("Custom colour")).toBeVisible();
+  await expect(dialog.locator(".preset-grid > *")).toHaveCount(18);
+  await expect(dialog.locator(".preset-grid > *").last()).toHaveClass(
+    "custom-colour",
+  );
+  await presets.nth(1).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    palette.getByRole("button", {
+      name: /Edit colour 1, #ff9f0a/,
+    }),
+  ).toBeVisible();
+  await palette.getByRole("button", { name: /Edit colour 1/ }).click();
+  presets = palette
+    .getByRole("dialog", { name: "Edit colour" })
+    .getByRole("button", { name: /^Use #/ });
+  await expect(presets.first()).toHaveAccessibleName("Use #ff9f0a");
+});
+
+test("unknown layered values stay raw", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -2182,32 +1453,13 @@ test("unknown layered values stay raw and use a conservative preview", async ({
     "Raw order 253 (0xFD)",
   );
   await expect(advanced.getByLabel("Order (raw byte)")).toHaveValue("253");
-  await expect(
-    advanced.getByText(
-      "Selection type 254 has unknown structure. Its raw parameters remain visible and no selected cells are inferred.",
-    ),
-  ).toBeVisible();
-  await expect(advanced.getByText("0x20", { exact: true })).toBeVisible();
-  await expect(
-    advanced.getByText(
-      "Selected movement flags remain visible without interpretation.",
-    ),
-  ).toBeVisible();
-  await expect(advanced.locator(".preview-cell")).toHaveCount(0);
-  await expect(
-    advanced.getByRole("img", { name: /Layer 1 applied area/ }),
-  ).toBeVisible();
+  await advanced.getByText("Preserved wire values").click();
+  await expect(advanced.getByLabel("Selected movement flags")).toHaveValue(
+    "20",
+  );
 
   await advanced.getByRole("tab", { name: "Layer 2" }).click();
-  await expect(
-    advanced
-      .getByRole("article")
-      .filter({ hasText: "Layer 2 Selected" })
-      .getByText(
-        "Brightness order 253 has unknown structure. Its raw pattern remains visible and no brightness gradient is inferred.",
-      ),
-  ).toBeVisible();
-  await expect(advanced.locator(".preview-cell")).toHaveCount(0);
+  await expect(advanced.getByLabel("Brightness order")).toHaveValue("253");
 
   await studio.getByLabel("Effect name").fill("Raw values preserved");
   await expect
@@ -2435,12 +1687,6 @@ test("empty brightness pattern imports remain inspectable and unchanged", async 
   await expect(
     advanced.getByRole("button", { name: "Add brightness pattern" }),
   ).toBeEnabled();
-  await expect(advanced.locator(".preview-cell")).toHaveCount(0);
-  await expect(
-    advanced.getByText("Brightness", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(advanced.getByText("No pattern records")).toBeVisible();
-
   const draftContent = await page.evaluate(() => {
     const calls = window.testHarness
       .snapshot()
@@ -2628,12 +1874,8 @@ for (const direction of ["ltr", "rtl"] as const) {
     ).toBeVisible();
     await studio.getByRole("button", { name: "Scenes", exact: true }).click();
     const sceneBrowser = studio.locator("govee-scene-browser");
-    await sceneBrowser
-      .getByRole("button", { name: "Observed captures", exact: true })
-      .click();
-    await sceneBrowser.getByRole("button", { name: "Blue Sweep" }).click();
     await expect(
-      sceneBrowser.getByRole("img", { name: /Capture-backed abstract directional sweep/ }),
+      sceneBrowser.getByRole("complementary", { name: "Scene categories" }),
     ).toBeVisible();
     const overflow = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

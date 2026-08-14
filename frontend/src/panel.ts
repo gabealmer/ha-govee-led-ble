@@ -8,8 +8,7 @@ import {
 import "./advanced-effect-editor";
 import { EffectStudioApi } from "./api";
 import "./custom-effect-editor";
-import "./effect-preview";
-import { paintedPreviewModel } from "./preview-model";
+import "./painted-segment-editor";
 import "./scene-browser";
 import type {
   AdvancedContent,
@@ -690,15 +689,13 @@ export class GoveeLedEffectStudio extends LitElement {
           `
         : nothing}
 
-      <govee-effect-preview
-        class="painted-preview"
-        .model=${paintedPreviewModel(this.content)}
-        .interactive=${true}
+      <govee-painted-segment-editor
+        .colours=${coloursForSegments(this.content)}
         .disabled=${!this.isAdmin}
-        @preview-cell-selected=${(
+        @segment-selected=${(
           event: CustomEvent<{ index: number }>,
         ) => this.setSegmentColour(event.detail.index)}
-      ></govee-effect-preview>
+      ></govee-painted-segment-editor>
 
       <div class="controls">
         <section class="card">
@@ -838,7 +835,6 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-custom-effect-editor
         .content=${content}
         .catalogue=${this.customCatalogue}
-        .segmentCount=${this.selectedDevice?.segment_count ?? 15}
         .disabled=${!this.isAdmin}
         @content-changed=${(
           event: CustomEvent<{ content: CustomEffectContent }>,
@@ -2491,10 +2487,6 @@ export class GoveeLedEffectStudio extends LitElement {
       border: 1px solid var(--studio-border);
       border-radius: 10px;
       background: var(--studio-card);
-    }
-
-    .painted-preview {
-      display: block;
     }
 
     .controls {

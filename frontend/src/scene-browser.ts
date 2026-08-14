@@ -3,16 +3,9 @@ import { property, state } from "lit/decorators.js";
 
 import { cloneAdvancedContent } from "./advanced-effect-editor";
 import type { EffectStudioApi } from "./api";
-import "./effect-preview";
-import {
-  builtinScenePreviewModel,
-  captureBackedPreviewModel,
-  layeredScenePreviewModel,
-  paletteScenePreviewModel,
-} from "./preview-model";
+import { rgbToHex } from "./palette-editor";
 import type {
   BuiltinSceneContent,
-  CaptureBackedPreviewProfile,
   DeviceCapabilities,
   LayeredSceneContent,
   LibraryItem,
@@ -68,9 +61,6 @@ export class GoveeSceneBrowser extends LitElement {
   private content?: SceneContent;
 
   @state()
-  private previewProfile?: CaptureBackedPreviewProfile;
-
-  @state()
   private name = "";
 
   @state()
@@ -102,7 +92,6 @@ export class GoveeSceneBrowser extends LitElement {
       this.selectedScene = undefined;
       this.selectedItem = undefined;
       this.content = undefined;
-      this.previewProfile = undefined;
       this.notice = undefined;
       this.error = undefined;
       this.loading = Boolean(this.api && this.device);
@@ -286,7 +275,6 @@ export class GoveeSceneBrowser extends LitElement {
   private renderDetail() {
     const scene = this.selectedScene!;
     const custom = this.selectedItem !== undefined;
-    const captureProfile = this.capturePreviewProfile;
     return html`
       <header class="detail-heading">
         <div>
@@ -398,40 +386,9 @@ export class GoveeSceneBrowser extends LitElement {
             `}
       </section>
 
-      ${captureProfile
-        ? html`
-            <govee-effect-preview
-              class="scene-preview"
-              .model=${captureBackedPreviewModel(captureProfile, {
-                selectedIndex: this.speedIndex,
-                defaultIndex: scene.speed?.default_index ?? null,
-              })}
-            ></govee-effect-preview>
-          `
+      ${this.content?.kind === "scene_palette"
+        ? this.renderPaletteParameters(this.content)
         : nothing}
-
-      ${this.content?.kind === "scene_builtin"
-        ? html`
-            <govee-effect-preview
-              class="scene-preview"
-              .model=${builtinScenePreviewModel(this.content)}
-            ></govee-effect-preview>
-          `
-        : this.content?.kind === "scene_palette"
-          ? html`
-              <govee-effect-preview
-                class="scene-preview"
-                .model=${paletteScenePreviewModel(this.content)}
-              ></govee-effect-preview>
-            `
-          : this.content?.kind === "scene_layered"
-            ? html`
-                <govee-effect-preview
-                  class="scene-preview"
-                  .model=${layeredScenePreviewModel(this.content)}
-                ></govee-effect-preview>
-              `
-            : nothing}
 
       ${scene.parameter_kind === "layers"
         ? html`
@@ -458,6 +415,68 @@ export class GoveeSceneBrowser extends LitElement {
     `;
   }
 
+  private renderPaletteParameters(content: PaletteSceneContent) {
+    return html`
+      <section class="card scene-parameters">
+        <h3>Scene parameters</h3>
+        <dl class="parameter-summary">
+          <div>
+            <dt>Layout</dt>
+            <dd>${content.layout}</dd>
+          </div>
+          <div>
+            <dt>Brightness flag</dt>
+            <dd>${content.brightness_flag ? "Set" : "Clear"}</dd>
+          </div>
+          <div>
+            <dt>Step count</dt>
+            <dd>${content.steps.length}</dd>
+          </div>
+        </dl>
+        ${content.palette.length > 0
+          ? html`
+              <div class="scene-palette" role="list" aria-label="Scene palette">
+                ${content.palette.map(
+                  (colour, index) => html`
+                    <span
+                      role="listitem"
+                      style="--scene-colour: ${rgbToHex(colour)}"
+                      aria-label="Colour ${index + 1}, ${rgbToHex(colour)}"
+                    ></span>
+                  `,
+                )}
+              </div>
+            `
+          : nothing}
+        <ol class="scene-steps" aria-label="Ordered scene steps">
+          ${content.steps.map(
+            (step, index) => html`
+              <li>
+                <span class="step-order">${index + 1}</span>
+                <span
+                  class="step-colour"
+                  style="--scene-colour: ${rgbToHex(step.colour)}"
+                  aria-label="Step colour ${rgbToHex(step.colour)}"
+                ></span>
+                <span>
+                  <strong>Raw value ${step.value}</strong>
+                  <small>Step colour ${rgbToHex(step.colour)}</small>
+                  ${step.inline_colour
+                    ? html`
+                        <small>
+                          Inline colour ${rgbToHex(step.inline_colour)}
+                        </small>
+                      `
+                    : nothing}
+                </span>
+              </li>
+            `,
+          )}
+        </ol>
+      </section>
+    `;
+  }
+
   private async loadCatalogue(): Promise<void> {
     if (!this.api || !this.device) {
       return;
@@ -469,7 +488,6 @@ export class GoveeSceneBrowser extends LitElement {
     this.selectedScene = undefined;
     this.selectedItem = undefined;
     this.content = undefined;
-    this.previewProfile = undefined;
     try {
       const catalogue = await request.api.sceneCatalogue(request.deviceId);
       if (!this.requestIsCurrent(request)) {
@@ -494,7 +512,6 @@ export class GoveeSceneBrowser extends LitElement {
     this.selectedScene = undefined;
     this.selectedItem = undefined;
     this.content = undefined;
-    this.previewProfile = undefined;
     this.notice = undefined;
   }
 
@@ -508,7 +525,6 @@ export class GoveeSceneBrowser extends LitElement {
     this.selectedScene = scene;
     this.selectedItem = undefined;
     this.content = undefined;
-    this.previewProfile = undefined;
     this.name = scene.display_name;
     this.speedIndex = scene.speed?.default_index ?? null;
     try {
@@ -525,7 +541,6 @@ export class GoveeSceneBrowser extends LitElement {
       }
       this.selectedScene = detail.scene;
       this.content = detail.content;
-      this.previewProfile = detail.preview_profile;
       this.name = detail.scene.display_name;
       this.speedIndex = detail.content.speed_index;
     } catch (error) {
@@ -545,7 +560,6 @@ export class GoveeSceneBrowser extends LitElement {
     this.selectedScene = undefined;
     this.selectedItem = undefined;
     this.content = undefined;
-    this.previewProfile = undefined;
     this.name = summary.name;
     try {
       const item = await request.api.item(summary.id);
@@ -586,7 +600,6 @@ export class GoveeSceneBrowser extends LitElement {
       this.selectedScene = scene;
       this.selectedItem = item;
       this.content = content;
-      this.previewProfile = detail.preview_profile;
       this.name = item.name;
       this.speedIndex =
         content.speed_index ?? scene.speed?.default_index ?? null;
@@ -797,20 +810,6 @@ export class GoveeSceneBrowser extends LitElement {
     return this.activeSelectionIdentity === this.selectionKey;
   }
 
-  private get capturePreviewProfile(): CaptureBackedPreviewProfile | undefined {
-    if (!this.previewProfile || !this.content || !this.selectedScene) {
-      return undefined;
-    }
-    const template = this.content.template;
-    return this.previewProfile.sku === template.sku &&
-      this.previewProfile.scene_id === template.scene_id &&
-      this.previewProfile.effect_id === template.effect_id &&
-      this.previewProfile.scene_id === this.selectedScene.scene_id &&
-      this.previewProfile.effect_id === this.selectedScene.effect_id
-      ? this.previewProfile
-      : undefined;
-  }
-
   static styles = css`
     :host {
       display: contents;
@@ -992,9 +991,76 @@ export class GoveeSceneBrowser extends LitElement {
       padding: 20px;
     }
 
-    .scene-preview {
+    .parameter-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0;
+    }
+
+    .parameter-summary div {
+      padding: 10px;
+      border: 1px solid var(--studio-border);
+      border-radius: 8px;
+    }
+
+    .parameter-summary dt,
+    .parameter-summary dd {
+      margin: 0;
+    }
+
+    .parameter-summary dt {
+      color: var(--studio-muted);
+      font-size: 12px;
+    }
+
+    .parameter-summary dd {
+      margin-top: 4px;
+      font-weight: 700;
+    }
+
+    .scene-palette {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .scene-palette span,
+    .step-colour {
       display: block;
-      margin-top: 18px;
+      width: 32px;
+      height: 32px;
+      border: 1px solid
+        color-mix(in srgb, var(--scene-colour) 70%, #000);
+      border-radius: 6px;
+      background: var(--scene-colour);
+    }
+
+    .scene-steps {
+      display: grid;
+      gap: 8px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .scene-steps li {
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+    }
+
+    .step-order {
+      width: 24px;
+      color: var(--studio-muted);
+      text-align: end;
+    }
+
+    .scene-steps small {
+      display: block;
+      color: var(--studio-muted);
     }
 
     .callout,
