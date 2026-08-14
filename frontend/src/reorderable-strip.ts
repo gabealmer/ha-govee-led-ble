@@ -172,11 +172,15 @@ export class GoveeReorderableStrip extends LitElement {
       return;
     }
     event.preventDefault();
-    if (this.reorderDisabled) {
-      return;
-    }
     const target = index + (event.key === "ArrowLeft" ? -1 : 1);
     if (target < 0 || target >= this.items.length) {
+      return;
+    }
+    if (this.reorderDisabled) {
+      if (this.itemRole === "tab") {
+        this.itemClicked(target);
+        this.focusItem(target);
+      }
       return;
     }
     this.reorder(index, target, true);

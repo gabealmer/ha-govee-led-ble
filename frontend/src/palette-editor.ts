@@ -45,6 +45,18 @@ export class GoveePaletteEditor extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
+  @property({ type: Boolean })
+  public persistentPicker = false;
+
+  @property({ type: Number })
+  public selectedIndex?: number;
+
+  @property()
+  public ariaLabel = "Colours";
+
+  @property()
+  public itemName = "colour";
+
   @state()
   private editingIndex?: number;
 
@@ -78,19 +90,17 @@ export class GoveePaletteEditor extends LitElement {
   }
 
   protected render() {
+    const activeIndex = this.persistentPicker
+      ? this.selectedIndex
+      : this.editingIndex;
     const items: ReorderableStripItem[] = this.palette.map(
       (colour, index) => ({
         key: `${index}-${rgbToHex(colour)}`,
-        label: `Colour ${index + 1}`,
-        ariaLabel:
-          this.editingIndex === index &&
-          this.palette.length > this.minColours
-            ? `Remove colour ${index + 1}`
-            : `Edit colour ${index + 1}, ${rgbToHex(
-                colour,
-              )}. Drag to reorder or use arrow keys.`,
+        label: `${capitalise(this.itemName)} ${index + 1}`,
+        ariaLabel: this.itemAriaLabel(colour, index),
         colour: rgbToHex(colour),
         removeReady:
+          !this.persistentPicker &&
           this.editingIndex === index &&
           this.palette.length > this.minColours,
         disabled: this.disabled,
@@ -99,12 +109,13 @@ export class GoveePaletteEditor extends LitElement {
     return html`
       <govee-reorderable-strip
         .items=${items}
-        .activeIndex=${this.editingIndex}
-        ariaLabel="Colours"
-        addLabel="Add colour"
+        .activeIndex=${activeIndex}
+        .itemRole=${this.persistentPicker ? "tab" : "button"}
+        .ariaLabel=${this.ariaLabel}
+        .addLabel=${`Add ${this.itemName}`}
         .addDisabled=${this.disabled ||
         this.palette.length >= this.maxColours}
-        .reorderDisabled=${this.disabled}
+        .reorderDisabled=${this.disabled || this.persistentPicker}
         @item-selected=${(event: CustomEvent<{ index: number }>) =>
           this.swatchClicked(event.detail.index)}
         @items-reordered=${(
@@ -112,7 +123,7 @@ export class GoveePaletteEditor extends LitElement {
         ) => this.reorder(event.detail.from, event.detail.to)}
         @item-added=${this.addColour}
       >
-        ${this.editingIndex === undefined
+        ${this.persistentPicker || this.editingIndex === undefined
           ? nothing
           : html`
               <div
@@ -130,7 +141,36 @@ export class GoveePaletteEditor extends LitElement {
               </div>
             `}
       </govee-reorderable-strip>
+      ${this.persistentPicker && activeIndex !== undefined
+        ? html`
+            <div
+              class="persistent-picker"
+              role="group"
+              aria-label="Edit ${this.itemName} ${activeIndex + 1}"
+            >
+              ${this.renderPopover(
+                activeIndex,
+                this.palette[activeIndex],
+              )}
+            </div>
+          `
+        : nothing}
     `;
+  }
+
+  private itemAriaLabel(colour: RGB, index: number): string {
+    const name = `${capitalise(this.itemName)} ${index + 1}`;
+    if (this.persistentPicker) {
+      return `${name}, ${rgbToHex(colour)}${
+        index === this.selectedIndex ? ", selected" : ""
+      }`;
+    }
+    return this.editingIndex === index &&
+      this.palette.length > this.minColours
+      ? `Remove colour ${index + 1}`
+      : `Edit colour ${index + 1}, ${rgbToHex(
+          colour,
+        )}. Drag to reorder or use arrow keys.`;
   }
 
   private renderPopover(index: number, colour: RGB) {
@@ -175,6 +215,9 @@ export class GoveePaletteEditor extends LitElement {
   private commitColour(index: number, colour: RGB): void {
     rememberColour(colour);
     this.updateColour(index, colour);
+    if (this.persistentPicker) {
+      return;
+    }
     this.editingIndex = undefined;
     this.focusSwatchAfterUpdate(index);
   }
@@ -193,7 +236,12 @@ export class GoveePaletteEditor extends LitElement {
       this.palette[this.palette.length - 1] ??
       recentColours[this.palette.length % recentColours.length];
     const palette = [...clonePalette(this.palette), [...previous] as RGB];
-    this.editingIndex = palette.length - 1;
+    const index = palette.length - 1;
+    if (this.persistentPicker) {
+      this.selectColour(index, palette[index]);
+    } else {
+      this.editingIndex = index;
+    }
     this.emitPalette(palette);
   }
 
@@ -221,6 +269,12 @@ export class GoveePaletteEditor extends LitElement {
       this.editingIndex === from
         ? to
         : relocatedIndex(this.editingIndex, from, to);
+    if (this.persistentPicker) {
+      const selectedIndex = relocatedIndex(this.selectedIndex, from, to);
+      if (selectedIndex !== undefined) {
+        this.selectColour(selectedIndex, palette[selectedIndex]);
+      }
+    }
     this.emitPalette(palette);
   }
 
@@ -243,6 +297,10 @@ export class GoveePaletteEditor extends LitElement {
   }
 
   private swatchClicked(index: number): void {
+    if (this.persistentPicker) {
+      this.selectColour(index, this.palette[index]);
+      return;
+    }
     if (
       this.editingIndex === index &&
       this.palette.length > this.minColours
@@ -252,6 +310,17 @@ export class GoveePaletteEditor extends LitElement {
     }
     this.editingIndex =
       this.editingIndex === index ? undefined : index;
+  }
+
+  private selectColour(index: number, colour: RGB): void {
+    this.selectedIndex = index;
+    this.dispatchEvent(
+      new CustomEvent<{ index: number; colour: RGB }>("colour-selected", {
+        detail: { index, colour: [...colour] },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private emitPalette(palette: RGB[]): void {
@@ -289,6 +358,12 @@ export class GoveePaletteEditor extends LitElement {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
       gap: 4px;
+    }
+
+    .persistent-picker {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--studio-border);
     }
 
     .preset-grid button,
@@ -340,6 +415,10 @@ export class GoveePaletteEditor extends LitElement {
 
 function clonePalette(palette: RGB[]): RGB[] {
   return palette.map((colour) => [...colour]);
+}
+
+function capitalise(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function loadRecentColours(): RGB[] {

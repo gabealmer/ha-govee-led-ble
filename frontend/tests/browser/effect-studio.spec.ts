@@ -199,6 +199,36 @@ test("new effects open in All with the generated name selected", async ({
     .toEqual({ start: 0, end: "New Layered effect".length });
 });
 
+test("Painted effects keep multiple brushes and their picker visible", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const brushes = studio.locator("govee-palette-editor.paint-brushes");
+  const brushTabs = brushes.getByRole("tab", { name: /^Brush / });
+
+  await expect(brushTabs).toHaveCount(7);
+  await expect(brushTabs.first()).toHaveAttribute("aria-selected", "true");
+  await expect(
+    brushes.getByRole("group", { name: "Edit brush 1" }),
+  ).toBeVisible();
+
+  await brushTabs.first().press("ArrowRight");
+  await expect(brushTabs.nth(1)).toBeFocused();
+  const picker = brushes.getByRole("group", { name: "Edit brush 2" });
+  await expect(picker).toBeVisible();
+  await picker.getByRole("button", { name: "Use #ff9f0a" }).click();
+  await expect(picker).toBeVisible();
+  await expect(
+    brushes.getByRole("tab", { name: /Brush 2, #ff9f0a, selected/ }),
+  ).toBeVisible();
+
+  const firstSegment = studio
+    .locator("govee-painted-segment-editor")
+    .getByRole("button", { name: /^Segment 1,/ });
+  await firstSegment.click();
+  await expect(firstSegment).toHaveAccessibleName("Segment 1, #ff9f0a");
+});
+
 test("saved effects can be deleted from the editor or item list", async ({
   page,
 }) => {
