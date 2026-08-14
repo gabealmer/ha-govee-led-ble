@@ -9,6 +9,7 @@
   `uv run pytest tests/test_protocol.py::test_parse -q`
 
 `check.sh` owns the stage list and the exact flags. Do not restate them here: a second copy drifts silently, and the version that lived here had already lost the `--no-sync` the script uses.
+When frontend source intentionally changes the committed bundle, stage `custom_components/ha_govee_led_ble/frontend/` before running the full preflight because its generated-asset guard compares the working tree against the index.
 
 ## High-level architecture
 
