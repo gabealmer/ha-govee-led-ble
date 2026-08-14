@@ -585,7 +585,7 @@ test("Workshop and Special DIY templates use shared editors and apply safely", a
   await expect(studio.getByText("raw_payload", { exact: false })).toHaveCount(0);
   await studio.locator(".editor").getByRole("button", { name: "Apply" }).click();
   await expect(
-    studio.getByRole("status").filter({
+    studio.getByRole("alert").filter({
       hasText:
         "The H6199 effect upload was sent to H6199 DreamView T1, but activation and readback remain unproven. The result is uncertain.",
     }),
@@ -1136,6 +1136,7 @@ test("device catalogues expose complete model-specific effect families", async (
     "Music",
     "Single Layer",
     "Advanced",
+    "Special DIY",
     "My effects",
   ]);
   await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveCount(0);

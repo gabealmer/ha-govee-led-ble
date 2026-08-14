@@ -147,11 +147,7 @@ def test_advanced_layers_compile_with_byte_exact_model_framing() -> None:
     effect = LayeredEffect((_layer(),))
 
     for model, identity in carriers.items():
-        entry = next(
-            scene
-            for scene in SCENE_ENTRIES[model]
-            if (scene.scene_id, scene.effect_id) == identity
-        )
+        entry = next(scene for scene in SCENE_ENTRIES[model] if (scene.scene_id, scene.effect_id) == identity)
         encoded = encode_layered_scene(
             LayeredScene(
                 CatalogueRef(model, entry.scene_id, entry.effect_id),

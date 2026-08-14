@@ -159,7 +159,10 @@ def test_palette_scene_rejects_a_layered_scene_identity_and_speed() -> None:
         decoded,
         template=CatalogueRef("H617A", layered_entry.scene_id, layered_entry.effect_id),
     )
-    assert compatibility(LibraryItem.new("Mismatched palette scene", mismatched), "H617A").state is CompatibilityState.INCOMPATIBLE
+    assert (
+        compatibility(LibraryItem.new("Mismatched palette scene", mismatched), "H617A").state
+        is CompatibilityState.INCOMPATIBLE
+    )
 
     with pytest.raises(ValueError, match="do not expose a documented Speed control"):
         compile_effect(
