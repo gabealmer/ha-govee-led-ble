@@ -44,7 +44,7 @@ import { DEPLOYMENT_PHASES } from "./types";
 const EDITOR_API_VERSION = 2;
 const EFFECT_SCHEMA_VERSION = 1;
 const EFFECT_COMPILER_VERSION = 2;
-const CUSTOM_CATALOGUE_SCHEMA_VERSION = 4;
+const CUSTOM_CATALOGUE_SCHEMA_VERSION = 5;
 const MAX_EFFECT_NAME_LENGTH = 128;
 const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
 const MAX_EDITOR_DEVICES = 512;
@@ -544,6 +544,11 @@ function decodePaletteDiyFamilies(
         ["speed", "sensitivity"],
         `${name}[${index}] rate parameter`,
       ) as "speed" | "sensitivity",
+      category: enumString(
+        effect.category,
+        ["single_layer"],
+        `${name}[${index}] category`,
+      ) as "single_layer",
     };
     requireUnique(
       decoded.variations,

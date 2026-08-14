@@ -153,7 +153,7 @@ async def test_authenticated_users_can_read_library(
     assert listing["success"] is True
     assert listing["result"] == {"library_revision": 0, "items": []}
     assert catalogue["success"] is True
-    assert catalogue["result"]["catalogue"]["schema_version"] == 4
+    assert catalogue["result"]["catalogue"]["schema_version"] == 5
     assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H617A", "H6199"]
     assert [effect["label"] for effect in catalogue["result"]["catalogue"]["effects"]] == [
         "Fade",

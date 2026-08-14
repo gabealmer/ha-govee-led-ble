@@ -110,9 +110,7 @@ type CustomEffectListEntry =
       key: string;
       label: string;
       category: "music";
-      mode?: string;
-      family?: number;
-      variant?: number;
+      mode: string;
     }
   | {
       kind: "multi";
@@ -255,8 +253,12 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private get selectedModel(): ModelSku | undefined {
-    const model = this.selectedDevice?.model ?? this.devices[0]?.model;
+    const model = this.selectedDevice?.model;
     return model === "H617A" || model === "H6199" ? model : undefined;
+  }
+
+  private get editorReadOnly(): boolean {
+    return !this.isAdmin || this.templateSourceLabel !== undefined;
   }
 
   private get modelCatalogue(): ModelEffectCatalogue | undefined {
@@ -621,7 +623,7 @@ export class GoveeLedEffectStudio extends LitElement {
       ${this.renderProfileHeading()}
       <govee-video-profile-editor
         .content=${this.content}
-        .disabled=${!this.isAdmin}
+        .disabled=${this.editorReadOnly}
         .showModeSelector=${!this.templateSourceLabel}
         @content-changed=${(
           event: CustomEvent<{ content: VideoProfileContent }>,
@@ -644,7 +646,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-music-profile-editor
         .content=${this.content}
         .catalogue=${this.modelCatalogue}
-        .disabled=${!this.isAdmin}
+        .disabled=${this.editorReadOnly}
         .showModeSelector=${!this.templateSourceLabel}
         @content-changed=${(
           event: CustomEvent<{ content: MusicProfileContent }>,
@@ -673,9 +675,6 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private get customEffectEntries(): CustomEffectListEntry[] {
     const catalogue = this.modelCatalogue;
-    const musicFamily = catalogue?.effects.find(
-      (effect) => effect.id === "music",
-    );
     const entries: CustomEffectListEntry[] = [
       ...(catalogue?.painted_effects.length
         ? [
@@ -696,20 +695,8 @@ export class GoveeLedEffectStudio extends LitElement {
           mode: mode.id,
         }),
       ) ?? []),
-      ...(musicFamily
-        ? [
-            {
-              kind: "music" as const,
-              key: `template:music:custom:${musicFamily.family}`,
-              label: "Custom",
-              category: "music" as const,
-              family: musicFamily.family,
-              variant: musicFamily.variations[0].variant,
-            },
-          ]
-        : []),
       ...(catalogue?.effects
-        .filter((effect) => effect.id !== "music")
+        .filter((effect) => effect.category === "single_layer")
         .map(
         (effect): CustomEffectListEntry => ({
           kind: "single",
@@ -793,10 +780,7 @@ export class GoveeLedEffectStudio extends LitElement {
             : "palette_diy",
         );
       case "music":
-        return entry.mode
-          ? this.customEffectKindAvailable("music_profile")
-          : this.customEffectKindAvailable("palette_diy") ||
-              this.customEffectKindAvailable("h617a_single");
+        return this.customEffectKindAvailable("music_profile");
       case "multi":
         return this.customEffectKindAvailable("h617a_multi");
       case "advanced":
@@ -866,8 +850,7 @@ export class GoveeLedEffectStudio extends LitElement {
         return (
           this.customEffectKindAvailable("h617a_painted") ||
           this.customEffectKindAvailable("h617a_single") ||
-          this.customEffectKindAvailable("palette_diy") ||
-          this.customEffectKindAvailable("special_diy")
+          this.customEffectKindAvailable("palette_diy")
         );
       case "multi-layer":
         return this.customEffectKindAvailable("h617a_multi");
@@ -1048,31 +1031,7 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     if (entry.kind === "music") {
-      if (entry.mode) {
-        this.openMusicTemplate(entry.mode, entry.label);
-        return;
-      }
-      if (entry.family === undefined || entry.variant === undefined) {
-        return;
-      }
-      const content =
-        this.selectedModel === "H617A"
-          ? {
-              ...blankCustomEffect("h617a_single", catalogue),
-              family: entry.family,
-              variant: entry.variant,
-            }
-          : blankPaletteDiy(
-              catalogue,
-              this.selectedModel!,
-              entry.family,
-              entry.variant,
-            );
-      this.openEditableTemplate(
-        entry.label,
-        content,
-        entry.key,
-      );
+      this.openMusicTemplate(entry.mode, entry.label);
       return;
     }
     if (entry.kind === "paint") {
@@ -1130,7 +1089,7 @@ export class GoveeLedEffectStudio extends LitElement {
     this.beginEditorTransition();
     this.currentItem = undefined;
     this.templateSourceLabel = label;
-    this.customCopyStarted = true;
+    this.customCopyStarted = false;
     this.customTemplateSelection = selectionIdentity;
     this.name = label;
     this.content = cloneEditableEffect(content);
@@ -1214,7 +1173,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <govee-advanced-effect-editor
         .content=${advancedEditorContent(this.content)}
-        .disabled=${!this.isAdmin}
+        .disabled=${this.editorReadOnly}
         .segmentCount=${this.selectedDevice?.segment_count ?? 15}
         @content-changed=${(
           event: CustomEvent<{ content: AdvancedContent }>,
@@ -1287,7 +1246,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <govee-painted-segment-editor
         .colours=${coloursForSegments(this.content)}
-        .disabled=${!this.isAdmin}
+        .disabled=${this.editorReadOnly}
         @segment-selected=${(
           event: CustomEvent<{ index: number }>,
         ) => this.setSegmentColour(event.detail.index)}
@@ -1301,7 +1260,7 @@ export class GoveeLedEffectStudio extends LitElement {
             .palette=${this.paintBrushes}
             .minColours=${2}
             .maxColours=${8}
-            .disabled=${!this.isAdmin}
+            .disabled=${this.editorReadOnly}
             .persistentPicker=${true}
             .selectedIndex=${this.selectedPaintBrush}
             ariaLabel="Brushes"
@@ -1313,7 +1272,7 @@ export class GoveeLedEffectStudio extends LitElement {
             <span class="parameter-label">Background</span>
             <govee-colour-picker
               .colour=${this.content.background}
-              .disabled=${!this.isAdmin}
+              .disabled=${this.editorReadOnly}
               @colour-changing=${this.backgroundChanged}
               @colour-changed=${this.backgroundChanged}
             ></govee-colour-picker>
@@ -1322,7 +1281,7 @@ export class GoveeLedEffectStudio extends LitElement {
             <button
               class="secondary ${this.brushUsesBackground ? "active" : ""}"
               type="button"
-              ?disabled=${!this.isAdmin}
+              ?disabled=${this.editorReadOnly}
               aria-pressed=${this.brushUsesBackground}
               @click=${() => {
                 this.brushUsesBackground = !this.brushUsesBackground;
@@ -1333,7 +1292,7 @@ export class GoveeLedEffectStudio extends LitElement {
             <button
               class="secondary"
               type="button"
-              ?disabled=${!this.isAdmin}
+              ?disabled=${this.editorReadOnly}
               @click=${this.paintAll}
             >
               Paint all
@@ -1341,7 +1300,7 @@ export class GoveeLedEffectStudio extends LitElement {
             <button
               class="secondary"
               type="button"
-              ?disabled=${!this.isAdmin}
+              ?disabled=${this.editorReadOnly}
               @click=${this.resetPaint}
             >
               Reset
@@ -1405,7 +1364,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-custom-effect-editor
         .content=${content}
         .catalogue=${this.modelCatalogue}
-        .disabled=${!this.isAdmin}
+        .disabled=${this.editorReadOnly}
         @content-changed=${(
           event: CustomEvent<{
             content:
@@ -1444,15 +1403,11 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     const family = this.selectedSingleEffectFamily;
-    const currentFamily =
-      this.content.kind === "h617a_painted" ? undefined : this.content.family;
     const effectFamilies =
       this.currentItem?.content.kind === "h617a_painted"
         ? []
         : this.modelCatalogue?.effects.filter(
-            (effect) =>
-              effect.id !== "music" ||
-              effect.family === currentFamily,
+            (effect) => effect.category === "single_layer",
           ) ?? [];
     const familyAvailable = effectFamilies.some(
       (effect) => effect.family === family?.family,
@@ -1473,7 +1428,7 @@ export class GoveeLedEffectStudio extends LitElement {
           <select
             aria-label="Effect"
             .value=${selectedEffect}
-            ?disabled=${!this.isAdmin}
+            ?disabled=${this.editorReadOnly}
             @change=${this.singleEffectChanged}
           >
             ${(this.content.kind === "h617a_single" ||
@@ -1528,7 +1483,7 @@ export class GoveeLedEffectStudio extends LitElement {
         <select
           aria-label="Variation"
           .value=${content.effect}
-          ?disabled=${!this.isAdmin}
+          ?disabled=${this.editorReadOnly}
           @change=${this.paintedEffectVariationChanged}
         >
           ${knownVariation
@@ -1585,34 +1540,39 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderSaveAction() {
-    return this.templateSourceLabel
-      ? html`
-          <button
-            class="primary"
-            type="button"
-            ?disabled=${!this.isAdmin ||
-            this.saving ||
-            this.applying ||
-            this.deletingCurrentItem}
-            @click=${this.saveAsCustom}
-          >
-            Save as Custom
-          </button>
-        `
-      : html`
-          <button
-            class="primary"
-            type="button"
-            ?disabled=${!this.isAdmin ||
-            !this.dirty ||
-            this.saving ||
-            this.applying ||
-            this.deletingCurrentItem}
-            @click=${this.save}
-          >
-            ${this.saving ? "Saving..." : "Save"}
-          </button>
-        `;
+    if (this.templateSourceLabel) {
+      return html`
+        <button
+          class="primary"
+          type="button"
+          ?disabled=${!this.isAdmin ||
+          this.saving ||
+          this.applying ||
+          this.deletingCurrentItem}
+          @click=${this.editTemplate}
+        >
+          Edit
+        </button>
+      `;
+    }
+    const saveLabel =
+      !this.currentItem && this.customCopyStarted
+        ? "Save as Custom"
+        : "Save";
+    return html`
+      <button
+        class="primary"
+        type="button"
+        ?disabled=${!this.isAdmin ||
+        !this.dirty ||
+        this.saving ||
+        this.applying ||
+        this.deletingCurrentItem}
+        @click=${this.save}
+      >
+        ${this.saving ? "Saving..." : saveLabel}
+      </button>
+    `;
   }
 
   private get selectedSingleEffectFamily(): DiyEffectFamily | undefined {
@@ -1669,7 +1629,7 @@ export class GoveeLedEffectStudio extends LitElement {
           min="0"
           max="100"
           .value=${String(value)}
-          ?disabled=${!this.isAdmin}
+          ?disabled=${this.editorReadOnly}
           @input=${(event: Event) =>
             this.updateContent({
               [key]: Number((event.target as HTMLInputElement).value),
@@ -1691,7 +1651,7 @@ export class GoveeLedEffectStudio extends LitElement {
         .value=${value}
         .minimum=${0}
         .maximum=${100}
-        .disabled=${!this.isAdmin}
+        .disabled=${this.editorReadOnly}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
           this.updateContent({ [key]: event.detail.value })}
       ></govee-slider-control>
@@ -1710,10 +1670,10 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       <div class="custom-mode-tabs" role="tablist" aria-label="Custom effect type">
         ${this.newEffectTypeAvailable("single")
-          ? this.newEffectTypeButton("single", "Single")
+          ? this.newEffectTypeButton("single", "Single Layer")
           : nothing}
         ${this.newEffectTypeAvailable("multi")
-          ? this.newEffectTypeButton("multi", "Multi")
+          ? this.newEffectTypeButton("multi", "Multi Layer")
           : nothing}
         ${this.newEffectTypeAvailable("advanced")
           ? this.newEffectTypeButton("advanced", "Advanced")
@@ -1744,6 +1704,10 @@ export class GoveeLedEffectStudio extends LitElement {
       type === "single" &&
       this.content.kind === "h617a_multi" &&
       this.content.effects.length > 1;
+    const unsupportedMultiFamily =
+      type === "multi" &&
+      this.content.kind === "h617a_single" &&
+      this.selectedSingleEffectFamily?.supports_multi === false;
     return html`
       <button
         type="button"
@@ -1751,9 +1715,13 @@ export class GoveeLedEffectStudio extends LitElement {
         aria-selected=${selected}
         class=${selected ? "selected" : ""}
         title=${wouldDiscardSequence
-          ? "Remove all but one effect before switching to Single"
-          : nothing}
-        ?disabled=${!this.isAdmin || wouldDiscardSequence}
+          ? "Remove all but one effect before switching to Single Layer"
+          : unsupportedMultiFamily
+            ? "Choose a Single Layer effect that supports Multi Layer"
+            : nothing}
+        ?disabled=${!this.isAdmin ||
+        wouldDiscardSequence ||
+        unsupportedMultiFamily}
         @click=${() => this.switchNewEffectType(type)}
       >
         ${label}
@@ -2011,7 +1979,7 @@ export class GoveeLedEffectStudio extends LitElement {
       this.modelCatalogue?.effects[0]
     ) {
       const family = this.modelCatalogue.effects.find(
-        (effect) => effect.id !== "music",
+        (effect) => effect.category === "single_layer",
       ) ?? this.modelCatalogue.effects[0];
       const variation = family.variations[0];
       const content = blankCustomEffect("h617a_single", this.modelCatalogue);
@@ -2032,7 +2000,7 @@ export class GoveeLedEffectStudio extends LitElement {
       this.modelCatalogue?.effects[0]
     ) {
       const family = this.modelCatalogue.effects.find(
-        (effect) => effect.id !== "music",
+        (effect) => effect.category === "single_layer",
       ) ?? this.modelCatalogue.effects[0];
       this.openEditableTemplate(
         family.label,
@@ -2179,9 +2147,13 @@ export class GoveeLedEffectStudio extends LitElement {
     this.customCopyStarted = event.detail.item === undefined;
     this.name = event.detail.name.trim() || "Layered scene template";
     this.content = cloneLayeredSceneContent(event.detail.content);
-    this.savedBaseline = event.detail.item
-      ? serialiseEditable(this.name, this.content)
-      : undefined;
+    this.savedBaseline =
+      event.detail.item?.content.kind === "scene_layered"
+        ? serialiseEditable(
+            event.detail.item.name,
+            event.detail.item.content,
+          )
+        : undefined;
     this.section = "custom";
     this.customEffectCategory = "all";
     this.customTemplateSelection = undefined;
@@ -2273,7 +2245,10 @@ export class GoveeLedEffectStudio extends LitElement {
       this.currentItem ||
       this.templateSourceLabel ||
       !isEditableEffectContent(this.content) ||
-      newEffectTypeForContent(this.content) === type
+      newEffectTypeForContent(this.content) === type ||
+      (type === "multi" &&
+        this.content.kind === "h617a_single" &&
+        this.selectedSingleEffectFamily?.supports_multi === false)
     ) {
       return;
     }
@@ -2413,7 +2388,7 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     this.currentItem = undefined;
     this.templateSourceLabel = initial?.templateLabel;
-    this.customCopyStarted = initial?.templateLabel !== undefined;
+    this.customCopyStarted = false;
     this.customTemplateSelection =
       kind === "advanced"
         ? undefined
@@ -2640,9 +2615,15 @@ export class GoveeLedEffectStudio extends LitElement {
     this.name = (event.target as HTMLInputElement).value;
   }
 
-  private saveAsCustom(): void {
+  private editTemplate(): void {
     const source = this.templateSourceLabel;
-    if (!source || !this.isAdmin || this.applying) {
+    if (
+      !source ||
+      !this.isAdmin ||
+      this.saving ||
+      this.applying ||
+      this.deletingCurrentItem
+    ) {
       return;
     }
     const transitionEpoch = this.beginEditorTransition();
@@ -2869,6 +2850,7 @@ export class GoveeLedEffectStudio extends LitElement {
           serialiseEditable(name, content);
       if (originIsCurrent) {
         this.currentItem = result.item;
+        this.customCopyStarted = false;
         this.customTemplateSelection = undefined;
         this.name = result.item.name;
         this.content = cloneEditableEffect(savedContent);
