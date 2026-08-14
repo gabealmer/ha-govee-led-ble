@@ -33,6 +33,7 @@ type StudioSection = "scenes" | "custom";
 type AdvancedEditableContent = AdvancedContent | LayeredSceneContent;
 type EditableEffectContent = CustomEffectContent | AdvancedEditableContent;
 type NewEffectKind = CustomEffectContent["kind"] | AdvancedContent["kind"];
+type DeleteCandidate = Pick<LibrarySummary, "id" | "revision" | "name">;
 type CustomEffectCategory =
   | "all"
   | "single-layer"
@@ -137,6 +138,12 @@ export class GoveeLedEffectStudio extends LitElement {
   private applying = false;
 
   @state()
+  private deleteCandidate?: DeleteCandidate;
+
+  @state()
+  private deletingItemId?: string;
+
+  @state()
   private deployments: DeploymentRecord[] = [];
 
   @state()
@@ -149,6 +156,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private unsubscribeDeployments?: () => void;
   private loadEpoch = 0;
   private deploymentRevision = -1;
+  private deleteReturnFocus?: HTMLElement;
 
   private get isAdmin(): boolean {
     return this.hass?.user?.is_admin === true;
@@ -190,8 +198,16 @@ export class GoveeLedEffectStudio extends LitElement {
       isCustomEffectContent(this.content) &&
       this.isAdmin &&
       !this.applying &&
+      !this.deletingCurrentItem &&
       this.name.trim().length > 0 &&
       this.applyCapability === "supported"
+    );
+  }
+
+  private get deletingCurrentItem(): boolean {
+    return (
+      this.deletingItemId !== undefined &&
+      this.currentItem?.id === this.deletingItemId
     );
   }
 
@@ -292,6 +308,7 @@ export class GoveeLedEffectStudio extends LitElement {
         ></govee-scene-browser>
         ${this.section === "custom" ? this.renderCustomEffects() : nothing}
       </main>
+      ${this.deleteCandidate ? this.renderDeleteConfirmation() : nothing}
     `;
   }
 
@@ -428,15 +445,79 @@ export class GoveeLedEffectStudio extends LitElement {
         ? this.currentItem?.id === entry.item.id
         : !this.currentItem && this.customTemplateSelection === entry.key;
     return html`
-      <button
-        class="selector item ${selected ? "selected" : ""}"
-        type="button"
-        ?disabled=${entry.kind !== "saved" && !this.isAdmin}
-        @click=${() => this.selectCustomEffectEntry(entry)}
-      >
-        <span>${entry.label}</span>
-        <small>${customEffectCategoryLabel(entry.category)}</small>
-      </button>
+      <div class="library-row">
+        <button
+          class="selector item ${selected ? "selected" : ""}"
+          type="button"
+          ?disabled=${entry.kind !== "saved" && !this.isAdmin}
+          @click=${() => this.selectCustomEffectEntry(entry)}
+        >
+          <span>${entry.label}</span>
+        </button>
+        ${entry.kind === "saved" && this.isAdmin
+          ? html`
+              <button
+                class="library-delete"
+                type="button"
+                aria-label="Delete ${entry.label}"
+                title="Delete ${entry.label}"
+                ?disabled=${this.deletingItemId !== undefined ||
+                this.saving ||
+                this.applying}
+                @click=${(event: Event) =>
+                  this.requestDelete(
+                    entry.item,
+                    event.currentTarget as HTMLElement,
+                  )}
+              >
+                <span aria-hidden="true">&times;</span>
+              </button>
+            `
+          : nothing}
+      </div>
+    `;
+  }
+
+  private renderDeleteConfirmation() {
+    const candidate = this.deleteCandidate!;
+    const discardsOpenEdits =
+      this.currentItem?.id === candidate.id && this.dirty;
+    return html`
+      <div class="dialog-backdrop" @click=${this.cancelDelete}>
+        <section
+          class="delete-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-effect-title"
+          @click=${(event: Event) => event.stopPropagation()}
+          @keydown=${this.deleteDialogKeyDown}
+        >
+          <h2 id="delete-effect-title">Delete effect?</h2>
+          <p>
+            <strong>${candidate.name}</strong> will be removed from the shared
+            Effect Studio library.
+          </p>
+          ${discardsOpenEdits
+            ? html`<p>Unsaved changes in the open effect will be discarded.</p>`
+            : nothing}
+          <div class="dialog-actions">
+            <button
+              class="secondary"
+              type="button"
+              @click=${this.cancelDelete}
+            >
+              Cancel
+            </button>
+            <button
+              class="danger"
+              type="button"
+              @click=${this.confirmDelete}
+            >
+              Delete effect
+            </button>
+          </div>
+        </section>
+      </div>
     `;
   }
 
@@ -519,7 +600,10 @@ export class GoveeLedEffectStudio extends LitElement {
           <button
             class="primary"
             type="button"
-            ?disabled=${!this.isAdmin || !this.dirty || this.saving}
+            ?disabled=${!this.isAdmin ||
+            !this.dirty ||
+            this.saving ||
+            this.deletingCurrentItem}
             @click=${this.save}
           >
             ${this.saving ? "Saving..." : "Save"}
@@ -532,6 +616,7 @@ export class GoveeLedEffectStudio extends LitElement {
           >
             Apply
           </button>
+          ${this.renderEditorDeleteButton()}
         </div>
       </div>
 
@@ -585,6 +670,7 @@ export class GoveeLedEffectStudio extends LitElement {
         </div>
         <div class="actions">
           <button class="secondary" type="button" disabled>Apply</button>
+          ${this.renderEditorDeleteButton()}
         </div>
       </div>
       <div class="read-only" role="note">
@@ -626,7 +712,10 @@ export class GoveeLedEffectStudio extends LitElement {
           <button
             class="primary"
             type="button"
-            ?disabled=${!this.isAdmin || !this.dirty || this.saving}
+            ?disabled=${!this.isAdmin ||
+            !this.dirty ||
+            this.saving ||
+            this.deletingCurrentItem}
             @click=${this.save}
           >
             ${this.saving ? "Saving..." : "Save"}
@@ -639,6 +728,7 @@ export class GoveeLedEffectStudio extends LitElement {
           >
             ${this.applying ? "Applying..." : "Apply"}
           </button>
+          ${this.renderEditorDeleteButton()}
         </div>
       </div>
 
@@ -773,7 +863,10 @@ export class GoveeLedEffectStudio extends LitElement {
           <button
             class="primary"
             type="button"
-            ?disabled=${!this.isAdmin || !this.dirty || this.saving}
+            ?disabled=${!this.isAdmin ||
+            !this.dirty ||
+            this.saving ||
+            this.deletingCurrentItem}
             @click=${this.save}
           >
             ${this.saving ? "Saving..." : "Save"}
@@ -786,6 +879,7 @@ export class GoveeLedEffectStudio extends LitElement {
           >
             ${this.applying ? "Applying..." : "Apply"}
           </button>
+          ${this.renderEditorDeleteButton()}
         </div>
       </div>
 
@@ -1092,6 +1186,9 @@ export class GoveeLedEffectStudio extends LitElement {
       (item) => item.id === this.currentItem?.id,
     );
     if (!summary) {
+      if (this.deletingItemId === this.currentItem.id) {
+        return;
+      }
       this.notice = "This effect was removed from the shared library.";
       return;
     }
@@ -1141,15 +1238,16 @@ export class GoveeLedEffectStudio extends LitElement {
     ) {
       return;
     }
-    this.beginEditorTransition();
+    const transitionEpoch = this.beginEditorTransition();
     this.currentItem = undefined;
     this.name = event.detail.name.trim() || "Layered scene template";
     this.content = cloneLayeredSceneContent(event.detail.content);
     this.savedBaseline = undefined;
     this.section = "custom";
-    this.customEffectCategory = "advanced";
+    this.customEffectCategory = "all";
     this.customTemplateSelection = undefined;
     this.notice = undefined;
+    this.selectNewEffectName(transitionEpoch);
   }
 
   private backToScenes(): void {
@@ -1288,6 +1386,7 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     this.currentItem = undefined;
+    this.customEffectCategory = "all";
     this.customTemplateSelection =
       kind === "advanced"
         ? undefined
@@ -1301,6 +1400,149 @@ export class GoveeLedEffectStudio extends LitElement {
         : blankCustomEffect(kind, this.customCatalogue!));
     this.savedBaseline = undefined;
     this.notice = this.applyAvailabilityNotice();
+    this.selectNewEffectName(transitionEpoch);
+  }
+
+  private selectNewEffectName(transitionEpoch: number): void {
+    void this.updateComplete.then(() => {
+      if (
+        !this.editorTransitionIsCurrent(transitionEpoch) ||
+        this.currentItem
+      ) {
+        return;
+      }
+      const input =
+        this.shadowRoot?.querySelector<HTMLInputElement>(".editor .name-input");
+      input?.focus();
+      input?.select();
+    });
+  }
+
+  private renderEditorDeleteButton() {
+    if (!this.isAdmin || !this.currentItem) {
+      return nothing;
+    }
+    return html`
+      <button
+        class="danger"
+        type="button"
+        ?disabled=${this.deletingItemId !== undefined ||
+        this.saving ||
+        this.applying}
+        @click=${(event: Event) =>
+          this.requestDelete(
+            {
+              id: this.currentItem!.id,
+              revision: this.currentItem!.revision,
+              name: this.currentItem!.name,
+            },
+            event.currentTarget as HTMLElement,
+          )}
+      >
+        ${this.deletingCurrentItem ? "Deleting..." : "Delete"}
+      </button>
+    `;
+  }
+
+  private requestDelete(
+    candidate: DeleteCandidate,
+    returnFocus: HTMLElement,
+  ): void {
+    if (
+      !this.api ||
+      !this.isAdmin ||
+      this.deletingItemId !== undefined ||
+      this.saving ||
+      this.applying
+    ) {
+      return;
+    }
+    this.deleteCandidate = { ...candidate };
+    this.deleteReturnFocus = returnFocus;
+    this.notice = undefined;
+    void this.updateComplete.then(() => {
+      this.shadowRoot
+        ?.querySelector<HTMLButtonElement>(".delete-dialog .danger")
+        ?.focus();
+    });
+  }
+
+  private cancelDelete(): void {
+    const returnFocus = this.deleteReturnFocus;
+    this.deleteCandidate = undefined;
+    this.deleteReturnFocus = undefined;
+    void this.updateComplete.then(() => {
+      if (returnFocus?.isConnected) {
+        returnFocus.focus();
+      }
+    });
+  }
+
+  private deleteDialogKeyDown(event: KeyboardEvent): void {
+    if (event.key !== "Escape") {
+      return;
+    }
+    event.preventDefault();
+    this.cancelDelete();
+  }
+
+  private async confirmDelete(): Promise<void> {
+    const candidate = this.deleteCandidate;
+    const api = this.api;
+    if (
+      !candidate ||
+      !api ||
+      !this.isAdmin ||
+      this.deletingItemId !== undefined
+    ) {
+      return;
+    }
+    const originatingLibraryRevision = this.library.library_revision;
+    this.deleteCandidate = undefined;
+    this.deleteReturnFocus = undefined;
+    this.deletingItemId = candidate.id;
+    this.notice = undefined;
+    try {
+      const libraryRevision = await api.deleteItem(
+        candidate,
+        originatingLibraryRevision,
+      );
+      if (libraryRevision >= this.library.library_revision) {
+        this.library = {
+          library_revision: libraryRevision,
+          items: this.library.items.filter((item) => item.id !== candidate.id),
+        };
+      }
+      if (
+        this.currentItem?.id === candidate.id &&
+        this.currentItem.revision === candidate.revision
+      ) {
+        this.beginEditorTransition();
+        this.currentItem = undefined;
+        this.customTemplateSelection = undefined;
+        this.name = "";
+        this.content = blankPainted();
+        this.savedBaseline = undefined;
+      }
+      this.notice = `Deleted ${candidate.name}.`;
+    } catch (error) {
+      const conflict = errorCode(error) === "conflict";
+      this.notice = conflict
+        ? "This effect or library changed elsewhere. Reload before deleting."
+        : `Delete failed: ${errorMessage(error)}`;
+      if (conflict) {
+        try {
+          const snapshot = await api.library();
+          if (snapshot.library_revision >= this.library.library_revision) {
+            this.library = snapshot;
+          }
+        } catch (refreshError) {
+          this.notice += ` Library refresh failed: ${errorMessage(refreshError)}`;
+        }
+      }
+    } finally {
+      this.deletingItemId = undefined;
+    }
   }
 
   private async selectItem(
@@ -1427,6 +1669,7 @@ export class GoveeLedEffectStudio extends LitElement {
       !this.isAdmin ||
       !this.dirty ||
       this.saving ||
+      this.deletingCurrentItem ||
       !isEditableEffectContent(this.content)
     ) {
       return;
@@ -1766,6 +2009,40 @@ export class GoveeLedEffectStudio extends LitElement {
       background: var(--primary-background-color);
     }
 
+    .library-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .library-row > .selector {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .library-delete {
+      width: 44px;
+      flex: 0 0 44px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      color: var(--studio-muted);
+      background: transparent;
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .library-delete:hover,
+    .library-delete:focus-visible {
+      color: var(--error-color, #db4437);
+      background: color-mix(
+        in srgb,
+        var(--error-color, #db4437) 10%,
+        transparent
+      );
+    }
+
     .icon-button {
       width: 40px;
       padding: 0;
@@ -1782,12 +2059,6 @@ export class GoveeLedEffectStudio extends LitElement {
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-    }
-
-    .item small {
-      color: var(--studio-muted);
-      font-size: 11px;
-      font-weight: 500;
     }
 
     .empty {
@@ -1895,6 +2166,22 @@ export class GoveeLedEffectStudio extends LitElement {
       background: var(--studio-card);
     }
 
+    .danger {
+      padding: 8px 17px;
+      border: 1px solid var(--error-color, #db4437);
+      border-radius: 9px;
+      color: var(--error-color, #db4437);
+      background: var(--studio-card);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .danger:hover,
+    .danger:focus-visible {
+      color: var(--text-primary-color, #fff);
+      background: var(--error-color, #db4437);
+    }
+
     .secondary.active {
       color: var(--studio-blue);
       border-color: var(--studio-blue);
@@ -1906,6 +2193,39 @@ export class GoveeLedEffectStudio extends LitElement {
     select:disabled {
       cursor: not-allowed;
       opacity: 0.52;
+    }
+
+    .dialog-backdrop {
+      position: fixed;
+      z-index: 1000;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgb(0 0 0 / 45%);
+    }
+
+    .delete-dialog {
+      width: min(440px, 100%);
+      padding: 24px;
+      border: 1px solid var(--studio-border);
+      border-radius: 12px;
+      color: var(--primary-text-color);
+      background: var(--studio-card);
+      box-shadow: 0 18px 52px rgb(0 0 0 / 28%);
+    }
+
+    .delete-dialog p {
+      margin-top: 16px;
+      margin-bottom: 0;
+      line-height: 1.5;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 9px;
+      margin-top: 24px;
     }
 
     .read-only,
@@ -2501,19 +2821,6 @@ function customEffectCategoryForKind(
     return "single-layer";
   }
   return "advanced";
-}
-
-function customEffectCategoryLabel(
-  category: Exclude<CustomEffectCategory, "all">,
-): string {
-  switch (category) {
-    case "single-layer":
-      return "Single Layer";
-    case "multi-layer":
-      return "Multi Layer";
-    case "advanced":
-      return "Advanced";
-  }
 }
 
 function sameLibraryItemRevision(

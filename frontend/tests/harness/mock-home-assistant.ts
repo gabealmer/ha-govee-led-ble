@@ -254,6 +254,8 @@ export class MockHomeAssistantBackend {
         return this.createItem<T>(message);
       case "library/update":
         return this.updateItem<T>(message);
+      case "library/delete":
+        return this.deleteItem<T>(message);
       case "draft/list":
         return this.result<T>({
           drafts: Object.values(this.readState().drafts).map(draftSummary),
@@ -410,6 +412,24 @@ export class MockHomeAssistantBackend {
     this.publishLibrary(state);
     return this.result<T>({
       item,
+      library_revision: state.libraryRevision,
+    });
+  }
+
+  private deleteItem<T>(message: Record<string, unknown>): T {
+    const state = this.readState();
+    expectRevision(
+      message.expected_library_revision,
+      state.libraryRevision,
+      "library",
+    );
+    const current = requiredItem(state, String(message.item_id));
+    expectRevision(message.expected_revision, current.revision, "item");
+    state.libraryRevision += 1;
+    delete state.items[current.id];
+    this.writeState(state);
+    this.publishLibrary(state);
+    return this.result<T>({
       library_revision: state.libraryRevision,
     });
   }
