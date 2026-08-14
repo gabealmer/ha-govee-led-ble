@@ -147,11 +147,22 @@ def test_native_music_modes_are_derived_from_profiles_and_slug_catalogue() -> No
 
     assert [mode.to_dict() for mode in H617A_NATIVE_MUSIC_MODES] == expected_modes("H617A")
     assert [mode.to_dict() for mode in H6199_NATIVE_MUSIC_MODES] == expected_modes("H6199")
+    assert all(mode.id != "custom" for mode in (*H617A_NATIVE_MUSIC_MODES, *H6199_NATIVE_MUSIC_MODES))
     models = cast(
         dict[str, dict[str, JsonValue]],
         custom_effect_catalogue_payload()["models"],
     )
     assert models["H617A"]["music_modes"] == expected_modes("H617A")
+
+
+def test_palette_music_families_remain_single_layer_effects_for_both_models() -> None:
+    for families in (H617A_TYPE04_FAMILIES, H6199_PALETTE_DIY_FAMILIES):
+        music = next(family for family in families if family.id == "music")
+
+        assert music.label == "Music"
+        assert music.rate == "sensitivity"
+        assert music.category == "single_layer"
+        assert all(family.to_dict()["category"] == "single_layer" for family in families)
 
 
 def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries() -> None:

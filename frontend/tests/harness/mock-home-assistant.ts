@@ -1055,7 +1055,13 @@ function librarySnapshot(state: BackendState): LibrarySnapshot {
 function librarySummary(item: WireLibraryItem): LibrarySummary {
   const kind = String(item.content.kind);
   const declaredModel =
-    ["palette_diy", "music_profile", "video_profile"].includes(kind) &&
+    [
+      "palette_diy",
+      "music_profile",
+      "video_profile",
+      "workshop",
+      "special_diy",
+    ].includes(kind) &&
     "model" in item.content &&
     typeof item.content.model === "string"
       ? item.content.model

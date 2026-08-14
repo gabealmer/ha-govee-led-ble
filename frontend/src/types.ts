@@ -247,6 +247,7 @@ export interface PaletteDiyFamily {
   variations: PaletteDiyVariation[];
   supports_multi: boolean;
   rate: "speed" | "sensitivity";
+  category: "single_layer";
 }
 
 export type DiyEffectFamily = PaletteDiyFamily;
@@ -310,7 +311,7 @@ export interface ModelEffectCatalogue {
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 4;
+  schema_version: 5;
   sku: "H617A";
   models: Record<ModelSku, ModelEffectCatalogue>;
 }

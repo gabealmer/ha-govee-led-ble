@@ -10,6 +10,7 @@
     },
     "effects": [
       {
+        "category": "single_layer",
         "family": 0,
         "id": "fade",
         "label": "Fade",
@@ -34,6 +35,7 @@
         ]
       },
       {
+        "category": "single_layer",
         "family": 1,
         "id": "jumping",
         "label": "Jumping",
@@ -53,6 +55,7 @@
         ]
       },
       {
+        "category": "single_layer",
         "family": 2,
         "id": "blinking",
         "label": "Blinking",
@@ -77,6 +80,7 @@
         ]
       },
       {
+        "category": "single_layer",
         "family": 3,
         "id": "marquee",
         "label": "Marquee",
@@ -101,6 +105,7 @@
         ]
       },
       {
+        "category": "single_layer",
         "family": 4,
         "id": "music",
         "label": "Music",
@@ -125,6 +130,7 @@
         ]
       },
       {
+        "category": "single_layer",
         "family": 8,
         "id": "stream",
         "label": "Stream",
@@ -144,6 +150,7 @@
         ]
       },
       {
+        "category": "single_layer",
         "family": 9,
         "id": "flow",
         "label": "Flow",
@@ -163,6 +170,7 @@
         ]
       },
       {
+        "category": "single_layer",
         "family": 10,
         "id": "chase",
         "label": "Chase",
@@ -196,6 +204,7 @@
         },
         "effects": [
           {
+            "category": "single_layer",
             "family": 0,
             "id": "fade",
             "label": "Fade",
@@ -220,6 +229,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 1,
             "id": "jumping",
             "label": "Jumping",
@@ -239,6 +249,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 2,
             "id": "blinking",
             "label": "Blinking",
@@ -263,6 +274,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 3,
             "id": "marquee",
             "label": "Marquee",
@@ -287,6 +299,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 4,
             "id": "music",
             "label": "Music",
@@ -311,6 +324,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 8,
             "id": "stream",
             "label": "Stream",
@@ -330,6 +344,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 9,
             "id": "flow",
             "label": "Flow",
@@ -349,6 +364,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 10,
             "id": "chase",
             "label": "Chase",
@@ -1920,6 +1936,7 @@
         },
         "effects": [
           {
+            "category": "single_layer",
             "family": 0,
             "id": "fade",
             "label": "Fade",
@@ -1934,6 +1951,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 1,
             "id": "jumping",
             "label": "Jumping",
@@ -1948,6 +1966,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 2,
             "id": "twinkle",
             "label": "Twinkle",
@@ -1962,6 +1981,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 3,
             "id": "marquee",
             "label": "Marquee",
@@ -1976,6 +1996,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 4,
             "id": "music",
             "label": "Music",
@@ -1990,6 +2011,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 8,
             "id": "chasing",
             "label": "Chasing",
@@ -2009,6 +2031,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 9,
             "id": "rainbow",
             "label": "Rainbow",
@@ -2023,6 +2046,7 @@
             ]
           },
           {
+            "category": "single_layer",
             "family": 10,
             "id": "crossing",
             "label": "Crossing",
@@ -3951,7 +3975,7 @@
         "label": "Breathe"
       }
     ],
-    "schema_version": 4,
+    "schema_version": 5,
     "sku": "H617A",
     "special_diy_templates": [],
     "supports": {

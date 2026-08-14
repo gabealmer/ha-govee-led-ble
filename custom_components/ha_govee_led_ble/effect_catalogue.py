@@ -29,7 +29,7 @@ from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-define
 from .generated_protocol.h6199_effect_upload import H6199EffectUpload  # type: ignore[attr-defined]
 from .layered_scene_decoder import decode_workshop_effect
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 4
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 5
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # PR #156 proves code 24 immediately follows and reads back after both Flat and Combo uploads.
@@ -76,6 +76,7 @@ class DiyEffectFamily:
     supports_multi: bool
     rate: str = "speed"
     source_reference: str = "GoveeHome V7.5.30 dreamcolorlightv1.adjust.Diy"
+    category: str = "single_layer"
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
@@ -85,6 +86,7 @@ class DiyEffectFamily:
             "variations": [variation.to_dict() for variation in self.variations],
             "supports_multi": self.supports_multi,
             "rate": self.rate,
+            "category": self.category,
         }
 
 

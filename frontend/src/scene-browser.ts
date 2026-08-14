@@ -364,6 +364,9 @@ export class GoveeSceneBrowser extends LitElement {
     const layered = this.content?.kind === "scene_layered";
     const nativeSelection =
       this.selectedItem === undefined && !this.editingCopy;
+    const savingCopy = this.selectedItem === undefined && this.editingCopy;
+    const saveDisabled =
+      !this.name.trim() || (this.selectedItem !== undefined && !this.sceneDirty);
     const snapshotApply =
       !nativeSelection &&
       this.content?.kind !== "scene_builtin" &&
@@ -397,16 +400,19 @@ export class GoveeSceneBrowser extends LitElement {
             ?disabled=${!this.isAdmin ||
             this.saving ||
             this.applying ||
-            !this.hasCurrentSceneContent()}
-            @click=${layered ? this.edit : custom ? this.save : this.edit}
+            !this.hasCurrentSceneContent() ||
+            (!layered && custom && saveDisabled)}
+            @click=${layered || nativeSelection ? this.edit : this.save}
           >
             ${this.saving
               ? "Saving..."
               : layered
                 ? "Edit"
-                : custom
-                  ? "Save"
-                  : "Edit"}
+                : nativeSelection
+                  ? "Edit"
+                  : savingCopy
+                    ? "Save as Custom"
+                    : "Save"}
           </button>
           <button
             class="secondary"
