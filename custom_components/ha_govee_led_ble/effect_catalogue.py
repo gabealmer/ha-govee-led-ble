@@ -6,11 +6,17 @@ from dataclasses import dataclass
 from typing import Final
 
 from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS
-from .effect_contracts import CapabilityState
+from .effect_contracts import (
+    CapabilityState,
+    CapabilityWorkflow,
+    frontend_release_capabilities,
+    studio_apply_capability_state,
+    workflow_capability_state,
+)
 from .effect_domain import MAX_MULTI_EFFECTS, MAX_PALETTE_COLOURS, JsonValue
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 2
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 3
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # PR #156 proves code 24 immediately follows and reads back after both Flat and Combo uploads.
@@ -95,11 +101,13 @@ class CatalogueSupport:
 
 @dataclass(frozen=True, slots=True)
 class ApplySupport:
+    painted: CapabilityState
     single: CapabilityState
     multi: CapabilityState
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
+            "painted": self.painted.value,
             "single": self.single.value,
             "multi": self.multi.value,
         }
@@ -123,6 +131,7 @@ class ModelEffectCatalogue:
             "effects": [effect.to_dict() for effect in self.effects],
             "music_modes": [mode.to_dict() for mode in self.music_modes],
             "video_modes": [mode.to_dict() for mode in self.video_modes],
+            "workflows": frontend_release_capabilities(self.sku),
             "supports": self.supports.to_dict(),
             "limits": {
                 "palette_min": 1,
@@ -436,12 +445,13 @@ MODEL_EFFECT_CATALOGUES: Final = {
         music_modes=H617A_NATIVE_MUSIC_MODES,
         video_modes=(),
         supports=CatalogueSupport(
-            multi=CapabilityState.SUPPORTED,
-            advanced=CapabilityState.EVIDENCE_GAP,
+            multi=workflow_capability_state("H617A", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED),
         ),
         apply=ApplySupport(
-            single=CapabilityState.SUPPORTED,
-            multi=CapabilityState.SUPPORTED,
+            painted=studio_apply_capability_state("H617A", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H617A", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H617A", CapabilityWorkflow.MULTI),
         ),
     ),
     "H6199": ModelEffectCatalogue(
@@ -451,12 +461,13 @@ MODEL_EFFECT_CATALOGUES: Final = {
         music_modes=H6199_NATIVE_MUSIC_MODES,
         video_modes=H6199_VIDEO_MODES,
         supports=CatalogueSupport(
-            multi=CapabilityState.UNSUPPORTED,
-            advanced=CapabilityState.EVIDENCE_GAP,
+            multi=workflow_capability_state("H6199", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED),
         ),
         apply=ApplySupport(
-            single=CapabilityState.UNSUPPORTED,
-            multi=CapabilityState.UNSUPPORTED,
+            painted=studio_apply_capability_state("H6199", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H6199", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6199", CapabilityWorkflow.MULTI),
         ),
     ),
 }

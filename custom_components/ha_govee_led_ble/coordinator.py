@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from .ble_device_resolver import BLEDeviceResolver
 from .const import DOMAIN, default_effect_families, get_profile
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
+from .effect_deployments import PriorControlState
 from .protocol import (
     BLANK_SCREEN_QUERY,
     BRIGHTNESS_PACKET_TYPE,
@@ -41,6 +42,11 @@ from .protocol import (
     WRITE_UUID,
     ParsedMode,
     SegmentColorGroup,
+    build_brightness,
+    build_color_rgb,
+    build_color_temp,
+    build_h617a_diy_activation,
+    build_power,
     build_segment_paint,
     decode_command_frame,
     decode_status_frame,
@@ -308,6 +314,59 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             sw_version=self.fw_version,
             hw_version=self.hw_version,
         )
+
+    def capture_effect_control_state(self) -> PriorControlState:
+        return PriorControlState(
+            mode=self.active_mode,
+            is_on=self.is_on,
+            brightness_pct=self.brightness_pct,
+            rgb_color=self.rgb_color,
+            color_temp_kelvin=self.color_temp_kelvin,
+            effect=self.effect,
+            diy_code=self.diy_code,
+            music_mode=self.music_mode,
+            video_mode=self.video_mode,
+            music_sensitivity=self.music_sensitivity,
+            music_calm=self.music_calm,
+            music_color=self.music_color,
+        )
+
+    async def async_restore_effect_control_state(
+        self,
+        state: PriorControlState,
+        *,
+        overwritten_diy_code: int,
+    ) -> bool:
+        if not state.is_on:
+            await self.send_command(build_power(False, self.model))
+            self.is_on = False
+            return self.profile.state_readable and await self.refresh_state(expected_on=False)
+        if state.mode == "custom":
+            if state.diy_code is None or state.diy_code == overwritten_diy_code or self.model != "H617A":
+                return False
+            await self.send_command(build_h617a_diy_activation(state.diy_code))
+            self.diy_code = state.diy_code
+            return self.profile.state_readable and await self.refresh_state() and self.diy_code == state.diy_code
+        if state.mode == "music" and state.music_mode in self.profile.music_modes:
+            self.music_sensitivity = state.music_sensitivity
+            self.music_calm = state.music_calm
+            self.music_color = state.music_color
+            await self.async_select_music_slug(state.music_mode)
+            return self.profile.state_readable and await self.refresh_state(expected_music_mode=state.music_mode)
+        if state.mode != "colour":
+            return False
+        await self.send_command(build_power(True, self.model))
+        await self.send_command(build_brightness(state.brightness_pct, self.model))
+        if state.color_temp_kelvin is not None:
+            await self.send_command(build_color_temp(state.color_temp_kelvin, self.model))
+        else:
+            await self.send_command(build_color_rgb(*state.rgb_color, self.model))
+        self.is_on = True
+        self.brightness_pct = state.brightness_pct
+        self.rgb_color = state.rgb_color
+        self.color_temp_kelvin = state.color_temp_kelvin
+        self._enter_static_mode()
+        return self.profile.state_readable and await self.refresh_state() and self.active_mode == "colour"
 
     @callback
     def _note_identity(self, *, fw_version: str | None = None, hw_version: str | None = None) -> None:

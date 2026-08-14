@@ -1,4 +1,8 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  DEPLOYMENT_PHASES,
+  type DeploymentPhase,
+} from "../../src/types";
 
 const studioSelector = "ha-govee-led-ble-editor";
 
@@ -643,6 +647,38 @@ test("custom catalogues reject families without variations", async ({
           multi: "supported",
         },
       });
+      return false;
+    } catch {
+      return true;
+    }
+  });
+
+  expect(rejected).toBe(true);
+});
+
+test("custom catalogues require every planned release workflow", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const rejected = await page.evaluate(async () => {
+    const response = await window.testHarness.backend.hass.callWS<{
+      catalogue: {
+        models: {
+          H6199: {
+            workflows: { id: string }[];
+          };
+        };
+      };
+    }>({
+      type: "ha_govee_led_ble/editor/custom/catalogue",
+    });
+    const catalogue = structuredClone(response.catalogue);
+    catalogue.models.H6199.workflows =
+      catalogue.models.H6199.workflows.filter(
+        (workflow) => workflow.id !== "special_diy",
+      );
+    try {
+      window.testHarness.backend.validateCustomCatalogue(catalogue);
       return false;
     } catch {
       return true;
@@ -1787,6 +1823,83 @@ test("malformed initial payloads fail closed before subscriptions", async ({
   );
   expect(subscriptions.library.active).toBe(0);
   expect(subscriptions.deployment.active).toBe(0);
+});
+
+test("deployment phases decode and render without contract drift", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await selectSavedPainted(studio);
+  const decoded = await page.evaluate((phases) =>
+    phases.map((phase) =>
+      window.testHarness.backend.validateDeployment({
+        operation_id: "phase-contract-operation",
+        config_entry_id: "h617a-main",
+        diy_code: 800,
+        phase,
+        updated_at: "2026-08-14T00:00:00Z",
+        item_id: "painted-1",
+        item_revision: 1,
+        error_code: null,
+        progress_current: 0,
+        progress_total: 2,
+      }).phase,
+    ),
+    DEPLOYMENT_PHASES,
+  );
+  expect(decoded).toEqual(DEPLOYMENT_PHASES);
+  const invalidRejected = await page.evaluate(() => {
+    try {
+      window.testHarness.backend.validateDeployment({
+        operation_id: "phase-contract-operation",
+        config_entry_id: "h617a-main",
+        diy_code: 800,
+        phase: "drifted",
+        updated_at: "2026-08-14T00:00:00Z",
+        item_id: "painted-1",
+        item_revision: 1,
+        error_code: null,
+        progress_current: 0,
+        progress_total: 2,
+      });
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  expect(invalidRejected).toBe(true);
+
+  const messages = {
+    compiling: "Preparing to apply to H617A LED Strip.",
+    pending: "Preparing to apply to H617A LED Strip.",
+    uploading: "Applying to H617A LED Strip: 1 of 2.",
+    activating: "Activating the selected effect on H617A LED Strip.",
+    verifying: "Checking the selected effect on H617A LED Strip.",
+    confirmed: "Applied to H617A LED Strip.",
+    uncertain: "The final state of H617A LED Strip is uncertain.",
+    recovering: "Restoring the previous state on H617A LED Strip",
+    failed: "Apply to H617A LED Strip failed.",
+    interrupted: "Apply to H617A LED Strip was interrupted",
+    unknown: "Applied to H617A LED Strip, but the selected effect could not be confirmed.",
+  } satisfies Record<DeploymentPhase, string>;
+  const alertPhases = new Set<DeploymentPhase>([
+    "failed",
+    "uncertain",
+    "interrupted",
+    "unknown",
+  ]);
+  for (const phase of DEPLOYMENT_PHASES) {
+    await page.evaluate(
+      (visiblePhase) =>
+        window.testHarness.backend.emitDeploymentPhase(visiblePhase),
+      phase,
+    );
+    await expect(
+      studio
+        .getByRole(alertPhases.has(phase) ? "alert" : "status")
+        .filter({ hasText: messages[phase] }),
+    ).toBeVisible();
+  }
 });
 
 test("partial subscription setup is rolled back on permission failure", async ({

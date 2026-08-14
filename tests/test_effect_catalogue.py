@@ -22,6 +22,21 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     MODEL_EFFECT_CATALOGUES,
     custom_effect_catalogue_payload,
 )
+from custom_components.ha_govee_led_ble.effect_contracts import (
+    RELEASE_CAPABILITY_CONTRACT,
+    ApplicationRoute,
+    CapabilityState,
+    CapabilityWorkflow,
+    CompilerDeployerStrategy,
+    EvidenceClassification,
+    FrontendVisibility,
+    PhysicalValidationState,
+    VerificationConfidence,
+    frontend_release_capabilities,
+    release_capability,
+    studio_apply_capability_state,
+    workflow_capability_state,
+)
 from custom_components.ha_govee_led_ble.effect_domain import JsonValue
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type04 import DiyType04
@@ -72,6 +87,7 @@ def test_model_aware_catalogue_includes_both_models_and_legacy_h617a_view() -> N
     }
     assert H617A_TYPE04_APPLY_CODE == 24
     assert catalogue["apply"] == {
+        "painted": "supported",
         "single": "supported",
         "multi": "supported",
     }
@@ -153,6 +169,125 @@ def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries
         "advanced": "evidence_gap",
     }
     assert catalogue["apply"] == {
+        "painted": "unsupported",
         "single": "unsupported",
         "multi": "unsupported",
     }
+
+
+def test_release_capability_contract_covers_every_preview_workflow() -> None:
+    expected = {
+        "H617A": {
+            CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.EDITED_PALETTE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
+            CapabilityWorkflow.PAINTED,
+            CapabilityWorkflow.SINGLE,
+            CapabilityWorkflow.MULTI,
+            CapabilityWorkflow.NATIVE_MUSIC,
+            CapabilityWorkflow.ADVANCED,
+            CapabilityWorkflow.WORKSHOP,
+            CapabilityWorkflow.SPECIAL_DIY,
+        },
+        "H6199": {
+            CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.EDITED_PALETTE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
+            CapabilityWorkflow.PALETTE_DIY,
+            CapabilityWorkflow.NATIVE_MUSIC,
+            CapabilityWorkflow.VIDEO,
+            CapabilityWorkflow.ADVANCED,
+            CapabilityWorkflow.WORKSHOP,
+            CapabilityWorkflow.SPECIAL_DIY,
+        },
+    }
+
+    for model, workflows in expected.items():
+        model_contract = [capability for capability in RELEASE_CAPABILITY_CONTRACT if capability.model == model]
+        declared = {capability.workflow for capability in model_contract}
+        assert declared == workflows
+        assert len(model_contract) == len(workflows)
+
+
+def test_model_visible_capabilities_declare_application_and_evidence_strategies() -> None:
+    visible = [
+        capability
+        for capability in RELEASE_CAPABILITY_CONTRACT
+        if capability.frontend_visibility is FrontendVisibility.VISIBLE
+    ]
+
+    assert visible
+    assert all(isinstance(capability.application_route, ApplicationRoute) for capability in visible)
+    assert all(isinstance(capability.compiler_deployer_strategy, CompilerDeployerStrategy) for capability in visible)
+    assert all(isinstance(capability.verification_confidence, VerificationConfidence) for capability in visible)
+    assert all(isinstance(capability.physical_validation_state, PhysicalValidationState) for capability in visible)
+    assert all(
+        isinstance(capability.diagnostics_evidence_classification, EvidenceClassification) for capability in visible
+    )
+    assert all(capability.persistent_content_kind for capability in visible)
+
+
+def test_release_capability_contract_preserves_audited_application_boundaries() -> None:
+    h617a_painted = release_capability("H617A", CapabilityWorkflow.PAINTED)
+    h617a_single = release_capability("H617A", CapabilityWorkflow.SINGLE)
+    h617a_multi = release_capability("H617A", CapabilityWorkflow.MULTI)
+    h617a_scenes = release_capability("H617A", CapabilityWorkflow.NATIVE_SCENES)
+    h617a_music = release_capability("H617A", CapabilityWorkflow.NATIVE_MUSIC)
+    h6199_music = release_capability("H6199", CapabilityWorkflow.NATIVE_MUSIC)
+    h6199_video = release_capability("H6199", CapabilityWorkflow.VIDEO)
+    h6199_diy = release_capability("H6199", CapabilityWorkflow.PALETTE_DIY)
+    h6199_special = release_capability("H6199", CapabilityWorkflow.SPECIAL_DIY)
+
+    assert all(
+        capability is not None
+        and capability.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+        and capability.compiler_deployer_strategy is CompilerDeployerStrategy.H617A_CUSTOM_ENGINE
+        and capability.verification_confidence is VerificationConfidence.SELECTION_ONLY
+        for capability in (h617a_painted, h617a_single, h617a_multi)
+    )
+    assert h617a_scenes is not None
+    assert h617a_scenes.application_route is ApplicationRoute.STUDIO_SCENE_APPLY
+    assert h617a_scenes.compiler_deployer_strategy is CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION
+    assert all(
+        capability is not None
+        and capability.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
+        and capability.compiler_deployer_strategy is CompilerDeployerStrategy.COORDINATOR_WRITER
+        and capability.verification_confidence is VerificationConfidence.STATE_CONFIRMED
+        for capability in (h617a_music, h6199_music, h6199_video)
+    )
+    assert h6199_diy is not None
+    assert h6199_diy.application_route is ApplicationRoute.NONE
+    assert h6199_diy.compiler_deployer_strategy is CompilerDeployerStrategy.STRUCTURAL_PARSER_ONLY
+    assert h6199_diy.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
+    assert h6199_special is not None
+    assert h6199_special.compiler_deployer_strategy is CompilerDeployerStrategy.RAW_PRESERVATION
+    assert h6199_special.diagnostics_evidence_classification is EvidenceClassification.OPAQUE
+
+
+def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contract() -> None:
+    apply_workflows = {
+        "painted": CapabilityWorkflow.PAINTED,
+        "single": CapabilityWorkflow.SINGLE,
+        "multi": CapabilityWorkflow.MULTI,
+    }
+    models = cast(
+        dict[str, dict[str, JsonValue]],
+        custom_effect_catalogue_payload()["models"],
+    )
+
+    for model, catalogue in models.items():
+        assert catalogue["workflows"] == frontend_release_capabilities(model)
+        for field, workflow in apply_workflows.items():
+            assert (
+                cast(dict[str, str], catalogue["apply"])[field]
+                == studio_apply_capability_state(
+                    model,
+                    workflow,
+                ).value
+            )
+
+
+def test_capability_state_distinguishes_visibility_from_deployability() -> None:
+    assert workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED) is CapabilityState.EVIDENCE_GAP
+    assert workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED) is CapabilityState.EVIDENCE_GAP
+    assert studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY) is CapabilityState.UNSUPPORTED

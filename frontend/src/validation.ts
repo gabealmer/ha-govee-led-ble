@@ -27,17 +27,20 @@ import type {
   PaintedContent,
   PaintedEffectTemplate,
   RelativeBrightness,
+  ReleaseWorkflowCapability,
+  ReleaseWorkflowId,
   RGB,
   SceneCatalogue,
   SceneDetail,
   SceneSummary,
   VideoProfileContent,
 } from "./types";
+import { DEPLOYMENT_PHASES } from "./types";
 
 const EDITOR_API_VERSION = 1;
 const EFFECT_SCHEMA_VERSION = 1;
 const EFFECT_COMPILER_VERSION = 1;
-const CUSTOM_CATALOGUE_SCHEMA_VERSION = 2;
+const CUSTOM_CATALOGUE_SCHEMA_VERSION = 3;
 const MAX_EFFECT_NAME_LENGTH = 128;
 const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
 const MAX_EDITOR_DEVICES = 512;
@@ -66,6 +69,50 @@ const LAYER_UNKNOWN_FLAGS_MASK = 0xfd;
 const MODEL_SKUS = ["H617A", "H6199"] as const;
 const LEGACY_CUSTOM_CATALOGUE_SKU = "H617A";
 const VIDEO_MODE_IDS = ["movie", "game"] as const;
+const RELEASE_WORKFLOW_IDS = [
+  "native_scenes",
+  "edited_palette_scenes",
+  "layered_scenes",
+  "painted",
+  "single",
+  "multi",
+  "native_music",
+  "video",
+  "palette_diy",
+  "advanced",
+  "workshop",
+  "special_diy",
+] as const;
+const RELEASE_WORKFLOW_APPLICATIONS = [
+  "studio",
+  "home_assistant",
+  "planned",
+] as const;
+const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = {
+  H617A: [
+    "native_scenes",
+    "edited_palette_scenes",
+    "layered_scenes",
+    "painted",
+    "single",
+    "multi",
+    "native_music",
+    "advanced",
+    "workshop",
+    "special_diy",
+  ],
+  H6199: [
+    "native_scenes",
+    "edited_palette_scenes",
+    "layered_scenes",
+    "palette_diy",
+    "native_music",
+    "video",
+    "advanced",
+    "workshop",
+    "special_diy",
+  ],
+};
 
 type WireOpaqueContent = Record<string, unknown> & { kind: string };
 type WireEffectContent = KnownEffectContent | WireOpaqueContent;
@@ -285,6 +332,11 @@ function decodeModelEffectCatalogue(
       `${name} video modes`,
       VIDEO_MODE_IDS,
     ),
+    workflows: decodeReleaseWorkflows(
+      catalogue.workflows,
+      `${name} release workflows`,
+      expectedSku,
+    ),
     supports: {
       multi: capabilityValue(supports.multi, `${name} Multi support`),
       advanced: capabilityValue(supports.advanced, `${name} advanced support`),
@@ -297,10 +349,58 @@ function decodeModelEffectCatalogue(
       music_sensitivity_max: musicSensitivityMaximum,
     },
     apply: {
+      painted: capabilityValue(apply.painted, `${name} Painted Apply capability`),
       single: capabilityValue(apply.single, `${name} Single Apply capability`),
       multi: capabilityValue(apply.multi, `${name} Multi Apply capability`),
     },
   };
+}
+
+function decodeReleaseWorkflows(
+  value: unknown,
+  name: string,
+  model: ModelSku,
+): ReleaseWorkflowCapability[] {
+  const workflows = arrayValue(value, name, RELEASE_WORKFLOW_IDS.length).map(
+    (item, index): ReleaseWorkflowCapability => {
+      const workflow = objectValue(item, `${name}[${index}]`);
+      return {
+        id: enumString(
+          workflow.id,
+          RELEASE_WORKFLOW_IDS,
+          `${name}[${index}] ID`,
+        ) as ReleaseWorkflowId,
+        label: boundedString(
+          workflow.label,
+          `${name}[${index}] label`,
+          MAX_EFFECT_NAME_LENGTH,
+        ),
+        content_kind: boundedString(
+          workflow.content_kind,
+          `${name}[${index}] content kind`,
+          MAX_IDENTIFIER_LENGTH,
+        ),
+        application: enumString(
+          workflow.application,
+          RELEASE_WORKFLOW_APPLICATIONS,
+          `${name}[${index}] application`,
+        ) as ReleaseWorkflowCapability["application"],
+      };
+    },
+  );
+  requireUnique(workflows, (workflow) => workflow.id, `${name} IDs`);
+  const expected = MODEL_RELEASE_WORKFLOWS[model];
+  const actual = new Set(workflows.map((workflow) => workflow.id));
+  const missing = expected.filter((workflow) => !actual.has(workflow));
+  const unexpected = workflows
+    .map((workflow) => workflow.id)
+    .filter((workflow) => !expected.includes(workflow));
+  if (missing.length > 0 || unexpected.length > 0) {
+    throw new Error(
+      `Malformed Effect Studio server payload: ${name} does not match ${model}.`,
+    );
+  }
+  return workflows;
 }
 
 function decodePaintedEffectTemplates(
@@ -574,18 +674,11 @@ export function decodeDraft(value: unknown): EffectDraft {
 
 export function decodeDeployment(value: unknown): DeploymentRecord {
   const deployment = objectValue(value, "deployment");
-  const phase = stringValue(deployment.phase, "deployment phase");
-  if (
-    phase !== "pending" &&
-    phase !== "uploading" &&
-    phase !== "verifying" &&
-    phase !== "confirmed" &&
-    phase !== "failed" &&
-    phase !== "interrupted" &&
-    phase !== "unknown"
-  ) {
-    invalid("deployment phase is invalid");
-  }
+  const phase = enumString(
+    deployment.phase,
+    DEPLOYMENT_PHASES,
+    "deployment phase",
+  );
   const decoded: DeploymentRecord = {
     operation_id: boundedString(
       deployment.operation_id,
