@@ -2,6 +2,11 @@ import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import "./palette-editor";
+import "./reorderable-strip";
+import type {
+  GoveeReorderableStrip,
+  ReorderableStripItem,
+} from "./reorderable-strip";
 import type {
   AdvancedContent,
   BrightnessOrder,
@@ -54,6 +59,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   @state()
   private movementAnnouncement = "";
 
+  @state()
+  private layerActionsIndex?: number;
+
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (!changed.has("content") || !this.content) {
       return;
@@ -87,84 +95,67 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       return this.renderEmptyLayers();
     }
     const layer = this.activeLayer;
+    const layerItems: ReorderableStripItem[] = this.content.layers.map(
+      (_item, index) => ({
+        key: `layer-${index}`,
+        label: `Layer ${index + 1}`,
+        ariaLabel: `Layer ${index + 1}. Drag to reorder or use arrow keys.`,
+        id: `advanced-layer-tab-${index}`,
+        ariaControls: "advanced-layer-panel",
+      }),
+    );
     return html`
       <div class="movement-live" aria-live="polite">
         ${this.movementAnnouncement}
       </div>
 
       <section class="card layer-card">
-        <div class="layer-toolbar">
-          <div
-            class="layer-tabs"
-            role="tablist"
-            aria-label="Effect layers"
-          >
-            ${this.content.layers.map(
-              (_item, index) => html`
-                <button
-                  id="advanced-layer-tab-${index}"
-                  class=${index === this.activeLayerIndex ? "selected" : ""}
-                  type="button"
-                  role="tab"
-                  aria-selected=${index === this.activeLayerIndex}
-                  aria-controls="advanced-layer-panel"
-                  tabindex=${index === this.activeLayerIndex ? "0" : "-1"}
-                  @click=${() => this.selectLayer(index)}
-                  @keydown=${(event: KeyboardEvent) =>
-                    this.layerTabKeyPressed(index, event)}
+        <govee-reorderable-strip
+          .items=${layerItems}
+          .activeIndex=${this.activeLayerIndex}
+          ariaLabel="Effect layers"
+          itemRole="tab"
+          addLabel="Add layer"
+          .addDisabled=${this.disabled ||
+          this.content.layers.length >= AUTHORING_LAYER_LIMIT}
+          .reorderDisabled=${this.disabled}
+          @item-selected=${(event: CustomEvent<{ index: number }>) =>
+            this.selectLayer(event.detail.index)}
+          @items-reordered=${(
+            event: CustomEvent<{ from: number; to: number }>,
+          ) => this.reorderLayer(event.detail.from, event.detail.to)}
+          @item-added=${this.addLayer}
+        >
+          ${this.layerActionsIndex === undefined
+            ? nothing
+            : html`
+                <div
+                  slot="item-${this.layerActionsIndex}"
+                  class="strip-popover layer-actions-popover"
+                  role="dialog"
+                  aria-label="Layer actions"
                 >
-                  Layer ${index + 1}
-                </button>
-              `,
-            )}
-          </div>
-          <button
-            class="add-button"
-            type="button"
-            ?disabled=${this.disabled ||
-            this.content.layers.length >= AUTHORING_LAYER_LIMIT}
-            @click=${this.addLayer}
-          >
-            Add layer
-          </button>
-        </div>
-
-        <div class="layer-actions" aria-label="Layer actions">
-          <button
-            class="secondary"
-            type="button"
-            ?disabled=${this.disabled || this.activeLayerIndex === 0}
-            @click=${() => this.moveLayer(-1)}
-          >
-            Move left
-          </button>
-          <button
-            class="secondary"
-            type="button"
-            ?disabled=${this.disabled ||
-            this.activeLayerIndex === this.content.layers.length - 1}
-            @click=${() => this.moveLayer(1)}
-          >
-            Move right
-          </button>
-          <button
-            class="secondary"
-            type="button"
-            ?disabled=${this.disabled ||
-            this.content.layers.length >= AUTHORING_LAYER_LIMIT}
-            @click=${this.copyLayer}
-          >
-            Copy
-          </button>
-          <button
-            class="secondary danger"
-            type="button"
-            ?disabled=${this.disabled || this.content.layers.length === 1}
-            @click=${this.deleteLayer}
-          >
-            Delete
-          </button>
-        </div>
+                  <button
+                    class="secondary"
+                    type="button"
+                    ?disabled=${this.disabled ||
+                    this.content.layers.length >= AUTHORING_LAYER_LIMIT}
+                    @click=${this.copyLayer}
+                  >
+                    Copy layer
+                  </button>
+                  <button
+                    class="secondary danger"
+                    type="button"
+                    ?disabled=${this.disabled ||
+                    this.content.layers.length === 1}
+                    @click=${this.deleteLayer}
+                  >
+                    Delete layer
+                  </button>
+                </div>
+              `}
+        </govee-reorderable-strip>
 
         ${this.content.layers.length >= AUTHORING_LAYER_LIMIT
           ? html`
@@ -184,7 +175,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       >
         <div class="control-grid">
           ${this.renderAppliedArea(layer)}
-          ${this.renderSelection(layer)}
           ${this.renderPalette(layer)}
           ${this.renderDistribution(layer)}
           ${this.renderBrightness(layer)}
@@ -238,20 +228,75 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     const start = clamp(layer.area.start_tenths, 0, 9);
     const end = start + layer.area.width_tenths;
     return html`
-      <section class="card">
+      <section class="card wide-card">
         <h3>Applied area</h3>
-        <div class="coverage" aria-label="Applied strip tenths">
-          ${Array.from(
-            { length: 10 },
-            (_, index) => html`
-              <span
-                class=${areaIsEditable && index >= start && index < end
-                  ? "covered"
-                  : ""}
-                aria-hidden="true"
-              ></span>
-            `,
-          )}
+        <div class="area-control">
+          <div
+            class="coverage"
+            aria-label="Applied area, 10 steps"
+          >
+            ${Array.from(
+              { length: 10 },
+              (_, index) => html`
+                <span
+                  class=${areaIsEditable &&
+                  index >= start &&
+                  index < end
+                    ? "covered"
+                    : ""}
+                  aria-hidden="true"
+                ></span>
+              `,
+            )}
+          </div>
+          ${areaIsEditable
+            ? html`
+                <input
+                  class="area-boundary area-start"
+                  type="range"
+                  min="0"
+                  .max=${String(end - 1)}
+                  step="1"
+                  .value=${String(start)}
+                  aria-label="Applied area start"
+                  aria-valuetext="${start * 10}%"
+                  ?disabled=${this.disabled}
+                  @input=${(event: Event) => {
+                    const nextStart = Number(
+                      (event.target as HTMLInputElement).value,
+                    );
+                    this.updateLayer({
+                      area: {
+                        start_tenths: nextStart,
+                        width_tenths: end - nextStart,
+                      },
+                    });
+                  }}
+                />
+                <input
+                  class="area-boundary area-end"
+                  type="range"
+                  .min=${String(start + 1)}
+                  max="10"
+                  step="1"
+                  .value=${String(end)}
+                  aria-label="Applied area end"
+                  aria-valuetext="${end * 10}%"
+                  ?disabled=${this.disabled}
+                  @input=${(event: Event) => {
+                    const nextEnd = Number(
+                      (event.target as HTMLInputElement).value,
+                    );
+                    this.updateLayer({
+                      area: {
+                        start_tenths: start,
+                        width_tenths: nextEnd - start,
+                      },
+                    });
+                  }}
+                />
+              `
+            : nothing}
         </div>
         ${!areaIsEditable
           ? html`
@@ -272,46 +317,18 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                 Set full strip
               </button>
             `
-          : html`
-              ${this.rangeField(
-                "Start",
-                start,
-                0,
-                9,
-                `${start * 10}%`,
-                (value) =>
-                  this.updateLayer({
-                    area: {
-                      start_tenths: value,
-                      width_tenths: Math.min(
-                        layer.area.width_tenths,
-                        10 - value,
-                      ),
-                    },
-                  }),
-              )}
-              ${this.rangeField(
-                "Width",
-                layer.area.width_tenths,
-                1,
-                10 - start,
-                `${layer.area.width_tenths * 10}%`,
-                (value) =>
-                  this.updateLayer({
-                    area: { ...layer.area, width_tenths: value },
-                  }),
-              )}
-            `}
+          : nothing}
+        ${this.renderSelectionControls(layer)}
       </section>
     `;
   }
 
-  private renderSelection(layer: EffectLayer) {
+  private renderSelectionControls(layer: EffectLayer) {
     const selection = layer.selection;
     const knownType = isKnownSelectionType(selection.type);
     return html`
-      <section class="card">
-        <h3>Selection</h3>
+      <div class="selection-controls">
+        <h4>Selection</h4>
         <label class="field">
           <span>Type</span>
           <select
@@ -418,7 +435,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                       (value) => this.updateSelection({ param_2: value }),
                     )}
                   `}
-      </section>
+      </div>
     `;
   }
 
@@ -1114,6 +1131,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     this.installContent({ kind: "advanced", layers });
     this.activeLayerIndex = layers.length - 1;
     this.activePatternIndex = 0;
+    this.layerActionsIndex = undefined;
     this.focusActiveTab();
   }
 
@@ -1134,6 +1152,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     this.installContent({ kind: "advanced", layers });
     this.activeLayerIndex += 1;
     this.activePatternIndex = 0;
+    this.layerActionsIndex = this.activeLayerIndex;
     this.focusActiveTab();
   }
 
@@ -1149,24 +1168,40 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       layers.length - 1,
     );
     this.activePatternIndex = 0;
+    this.layerActionsIndex = undefined;
     this.emitContent({ kind: "advanced", layers });
     this.focusActiveTab();
   }
 
-  private moveLayer(offset: number): void {
+  private reorderLayer(from: number, to: number): void {
     if (!this.content || this.disabled) {
       return;
     }
-    const target = this.activeLayerIndex + offset;
-    if (target < 0 || target >= this.content.layers.length) {
+    if (
+      from < 0 ||
+      from >= this.content.layers.length ||
+      to < 0 ||
+      to >= this.content.layers.length ||
+      from === to
+    ) {
       return;
     }
     const layers = this.content.layers.map(cloneLayer);
-    const [moving] = layers.splice(this.activeLayerIndex, 1);
-    layers.splice(target, 0, moving);
-    this.activeLayerIndex = target;
+    const [moving] = layers.splice(from, 1);
+    layers.splice(to, 0, moving);
+    this.activeLayerIndex = relocatedIndex(
+      this.activeLayerIndex,
+      from,
+      to,
+    );
+    if (this.layerActionsIndex !== undefined) {
+      this.layerActionsIndex = relocatedIndex(
+        this.layerActionsIndex,
+        from,
+        to,
+      );
+    }
     this.emitContent({ kind: "advanced", layers });
-    this.focusActiveTab();
   }
 
   private addBrightnessPattern(): void {
@@ -1204,30 +1239,14 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   }
 
   private selectLayer(index: number): void {
-    this.activeLayerIndex = index;
-    this.activePatternIndex = 0;
-  }
-
-  private layerTabKeyPressed(
-    index: number,
-    event: KeyboardEvent,
-  ): void {
-    let next: number | undefined;
-    if (event.key === "ArrowLeft") {
-      next = index === 0 ? this.content!.layers.length - 1 : index - 1;
-    } else if (event.key === "ArrowRight") {
-      next = index === this.content!.layers.length - 1 ? 0 : index + 1;
-    } else if (event.key === "Home") {
-      next = 0;
-    } else if (event.key === "End") {
-      next = this.content!.layers.length - 1;
-    }
-    if (next === undefined) {
+    if (index === this.activeLayerIndex) {
+      this.layerActionsIndex =
+        this.layerActionsIndex === index ? undefined : index;
       return;
     }
-    event.preventDefault();
-    this.selectLayer(next);
-    this.focusActiveTab();
+    this.activeLayerIndex = index;
+    this.activePatternIndex = 0;
+    this.layerActionsIndex = index;
   }
 
   private patternTabKeyPressed(
@@ -1260,10 +1279,8 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   private focusActiveTab(): void {
     void this.updateComplete.then(() => {
       this.shadowRoot
-        ?.querySelector<HTMLButtonElement>(
-          `#advanced-layer-tab-${this.activeLayerIndex}`,
-        )
-        ?.focus();
+        ?.querySelector<GoveeReorderableStrip>("govee-reorderable-strip")
+        ?.focusItem(this.activeLayerIndex);
     });
   }
 
@@ -1350,8 +1367,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       margin-bottom: 18px;
     }
 
-    .layer-toolbar,
-    .layer-actions,
     .card-heading,
     .pattern-toolbar {
       display: flex;
@@ -1359,11 +1374,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       gap: 8px;
     }
 
-    .layer-toolbar {
-      align-items: stretch;
-    }
-
-    .layer-tabs,
     .pattern-tabs {
       display: flex;
       flex: 1;
@@ -1374,7 +1384,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       scrollbar-width: thin;
     }
 
-    .layer-tabs button,
     .pattern-tabs button,
     .priority-row button,
     .segmented button {
@@ -1387,7 +1396,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       cursor: pointer;
     }
 
-    .layer-tabs button.selected,
     .pattern-tabs button.selected,
     .priority-row button.selected,
     .segmented button.selected {
@@ -1414,9 +1422,14 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       border-style: dashed;
     }
 
-    .layer-actions {
-      flex-wrap: wrap;
-      margin-top: 12px;
+    .layer-actions-popover {
+      --strip-popover-width: 220px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .layer-actions-popover .secondary {
+      width: 100%;
     }
 
     .danger {
@@ -1448,11 +1461,16 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       grid-column: 1 / -1;
     }
 
+    .area-control {
+      position: relative;
+      margin-bottom: 16px;
+      padding: 10px 0;
+    }
+
     .coverage {
       display: grid;
-      grid-template-columns: repeat(10, 1fr);
+      grid-template-columns: repeat(10, minmax(0, 1fr));
       gap: 4px;
-      margin-bottom: 16px;
     }
 
     .coverage span {
@@ -1465,6 +1483,89 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     .coverage span.covered {
       border-color: var(--studio-blue);
       background: var(--studio-blue);
+    }
+
+    .area-boundary {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 64px;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      appearance: none;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    .area-start {
+      z-index: 2;
+    }
+
+    .area-end {
+      z-index: 3;
+    }
+
+    .area-boundary::-webkit-slider-runnable-track {
+      height: 44px;
+      border: 0;
+      background: transparent;
+    }
+
+    .area-boundary::-webkit-slider-thumb {
+      width: 16px;
+      height: 56px;
+      margin-top: -6px;
+      border: 3px solid var(--studio-blue);
+      border-radius: 8px;
+      appearance: none;
+      background: var(--studio-card);
+      box-shadow: 0 2px 7px rgb(0 0 0 / 24%);
+      cursor: ew-resize;
+      pointer-events: auto;
+    }
+
+    .area-boundary::-moz-range-track {
+      height: 44px;
+      border: 0;
+      background: transparent;
+    }
+
+    .area-boundary::-moz-range-thumb {
+      width: 10px;
+      height: 50px;
+      border: 3px solid var(--studio-blue);
+      border-radius: 8px;
+      background: var(--studio-card);
+      box-shadow: 0 2px 7px rgb(0 0 0 / 24%);
+      cursor: ew-resize;
+      pointer-events: auto;
+    }
+
+    .area-boundary:focus-visible {
+      outline: none;
+    }
+
+    .area-boundary:focus-visible::-webkit-slider-thumb {
+      outline: 3px solid var(--studio-blue);
+      outline-offset: 2px;
+    }
+
+    .area-boundary:focus-visible::-moz-range-thumb {
+      outline: 3px solid var(--studio-blue);
+      outline-offset: 2px;
+    }
+
+    .selection-controls {
+      margin-top: 8px;
+      padding-top: 18px;
+      border-top: 1px solid var(--studio-border);
+    }
+
+    .selection-controls h4 {
+      margin: 0 0 4px;
+      color: var(--primary-text-color);
+      font-size: 15px;
     }
 
     .field,
@@ -1640,10 +1741,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         grid-column: auto;
       }
 
-      .layer-toolbar {
-        flex-direction: column;
-      }
-
       .add-button {
         width: 100%;
       }
@@ -1662,11 +1759,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         padding: 16px;
       }
 
-      .layer-actions {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-      }
-
       .secondary {
         min-width: 0;
       }
@@ -1678,6 +1770,19 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       }
     }
   `;
+}
+
+function relocatedIndex(current: number, from: number, to: number): number {
+  if (current === from) {
+    return to;
+  }
+  if (from < to && current > from && current <= to) {
+    return current - 1;
+  }
+  if (to < from && current >= to && current < from) {
+    return current + 1;
+  }
+  return current;
 }
 
 export function blankAdvancedContent(): AdvancedContent {

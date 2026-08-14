@@ -1173,15 +1173,49 @@ test("advanced layer and palette keyboard focus follows edits", async ({
     .click();
   const advanced = studio.locator("govee-advanced-effect-editor");
   const layerTabs = advanced.getByRole("tab", { name: /Layer \d/ });
+  const appliedArea = advanced.getByLabel("Applied area, 10 steps");
 
-  await layerTabs.nth(0).focus();
-  await layerTabs.nth(0).press("ArrowRight");
-  await expect(layerTabs.nth(1)).toHaveAttribute("aria-selected", "true");
-  await expect(layerTabs.nth(1)).toBeFocused();
+  await expect(appliedArea.locator("span")).toHaveCount(10);
+  await expect(
+    advanced.getByRole("heading", { name: "Selection" }),
+  ).toBeVisible();
+  const areaStart = advanced.getByRole("slider", {
+    name: "Applied area start",
+  });
+  const areaEnd = advanced.getByRole("slider", {
+    name: "Applied area end",
+  });
+  await areaStart.fill("2");
+  await areaEnd.fill("7");
+  await expect(areaStart).toHaveValue("2");
+  await expect(areaEnd).toHaveValue("7");
+  await expect(appliedArea.locator("span.covered")).toHaveCount(5);
+  const selectionSegments = advanced.getByLabel("Segments");
+  await selectionSegments.fill("3");
+  await expect(areaStart).toHaveValue("2");
+  await expect(areaEnd).toHaveValue("7");
+
+  await layerTabs.nth(1).click();
   await layerTabs.nth(1).press("ArrowLeft");
   await expect(layerTabs.nth(0)).toHaveAttribute("aria-selected", "true");
   await expect(layerTabs.nth(0)).toBeFocused();
+  const layerActions = advanced.getByRole("dialog", {
+    name: "Layer actions",
+  });
+  await expect(
+    layerActions.getByRole("button", { name: "Copy layer" }),
+  ).toBeVisible();
+  await expect(
+    layerActions.getByRole("button", { name: "Delete layer" }),
+  ).toBeVisible();
+  await expect(
+    layerActions.getByRole("button", { name: "Move left" }),
+  ).toHaveCount(0);
+  await expect(
+    layerActions.getByRole("button", { name: "Move right" }),
+  ).toHaveCount(0);
 
+  await layerTabs.nth(1).click();
   const palette = advanced.locator("govee-palette-editor");
   let swatches = palette.getByRole("button", { name: /Edit colour/ });
   await swatches.nth(1).focus();
