@@ -8,24 +8,36 @@ import type {
   DeviceCapabilities,
   DraftSummary,
   EditorApiInfo,
+  EffectStudioCatalogue,
+  EffectStudioModeOption,
   EffectContent,
   EffectDraft,
   EffectLayer,
+  JsonObject,
   KnownEffectContent,
   LayeredSceneContent,
   LibraryItem,
   LibrarySnapshot,
+  ModelEffectCatalogue,
+  ModelSku,
+  MusicProfileContent,
   PaletteSceneContent,
+  PaletteDiyFamily,
+  PaletteDiyEffectContent,
   PaintedContent,
+  PaintedEffectTemplate,
+  RelativeBrightness,
   RGB,
   SceneCatalogue,
   SceneDetail,
   SceneSummary,
+  VideoProfileContent,
 } from "./types";
 
 const EDITOR_API_VERSION = 1;
 const EFFECT_SCHEMA_VERSION = 1;
 const EFFECT_COMPILER_VERSION = 1;
+const CUSTOM_CATALOGUE_SCHEMA_VERSION = 2;
 const MAX_EFFECT_NAME_LENGTH = 128;
 const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
 const MAX_EDITOR_DEVICES = 512;
@@ -51,6 +63,9 @@ const SCENE_TRAILING_PADDING_MAX = 0xff * 17;
 // unknown_flags may only carry the complementary reserved bits the wire form masks in.
 const MOVEMENT_UNKNOWN_FLAGS_MASK = 0xe8;
 const LAYER_UNKNOWN_FLAGS_MASK = 0xfd;
+const MODEL_SKUS = ["H617A", "H6199"] as const;
+const LEGACY_CUSTOM_CATALOGUE_SKU = "H617A";
+const VIDEO_MODE_IDS = ["movie", "game"] as const;
 
 type WireOpaqueContent = Record<string, unknown> & { kind: string };
 type WireEffectContent = KnownEffectContent | WireOpaqueContent;
@@ -157,108 +172,258 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
 }
 
 export function decodeCustomCatalogue(value: unknown): CustomEffectCatalogue {
-  assertBoundedJson(value, "custom-effect catalogue", MAX_EFFECT_DOCUMENT_BYTES);
+  assertBoundedJson(
+    value,
+    "custom-effect catalogue",
+    MAX_CATALOGUE_BYTES,
+    MAX_CATALOGUE_JSON_NODES,
+  );
   const catalogue = objectValue(value, "custom-effect catalogue");
-  const limits = objectValue(catalogue.limits, "custom-effect limits");
-  const apply = objectValue(catalogue.apply, "custom-effect Apply capabilities");
-  return {
-    schema_version: integerValue(catalogue.schema_version, "catalogue schema", 1),
-    sku: stringValue(catalogue.sku, "catalogue SKU") as "H617A",
-    painted_effects: arrayValue(
-      catalogue.painted_effects,
-      "painted-effect templates",
-      MAX_JSON_COLLECTION_ITEMS,
-    ).map((item, index) => {
-      const effect = objectValue(item, `painted-effect templates[${index}]`);
-      return {
-        id: enumString(
-          effect.id,
-          [
-            "cycle",
-            "clockwise",
-            "counter_clockwise",
-            "twinkle",
-            "gradient",
-            "breathe",
-          ],
-          "painted-effect ID",
-        ) as PaintedContent["effect"],
-        label: boundedString(
-          effect.label,
-          "painted-effect label",
-          MAX_EFFECT_NAME_LENGTH,
-        ),
-      };
-    }),
-    effects: arrayValue(
-      catalogue.effects,
-      "custom-effect templates",
-      MAX_JSON_COLLECTION_ITEMS,
-    ).map((item, index) => {
-      const effect = objectValue(item, `custom-effect templates[${index}]`);
-      const variations = arrayValue(
-        effect.variations,
-        "template variations",
-        MAX_JSON_COLLECTION_ITEMS,
+  const models = decodeModelCatalogues(catalogue.models);
+  const legacy = decodeModelEffectCatalogue(
+    catalogue,
+    "custom-effect catalogue",
+    LEGACY_CUSTOM_CATALOGUE_SKU,
+  );
+
+  if (JSON.stringify(legacy) !== JSON.stringify(models[LEGACY_CUSTOM_CATALOGUE_SKU])) {
+    throw new Error(
+      "Malformed Effect Studio server payload: legacy custom-effect catalogue view does not match models.H617A.",
+    );
+  }
+
+  exactInteger(
+    catalogue.schema_version,
+    CUSTOM_CATALOGUE_SCHEMA_VERSION,
+    "catalogue schema",
+  );
+
+  const decoded: EffectStudioCatalogue = {
+    ...legacy,
+    schema_version: CUSTOM_CATALOGUE_SCHEMA_VERSION,
+    sku: LEGACY_CUSTOM_CATALOGUE_SKU,
+    models,
+  };
+  return decoded;
+}
+
+function decodeModelCatalogues(value: unknown): Record<ModelSku, ModelEffectCatalogue> {
+  const models = objectValue(value, "custom-effect catalogue models");
+  const keys = Object.keys(models);
+  const unexpected = keys.filter((key) => !MODEL_SKUS.includes(key as ModelSku));
+  if (unexpected.length > 0) {
+    throw new Error(
+      `Malformed Effect Studio server payload: unexpected catalogue models ${unexpected.join(", ")}.`,
+    );
+  }
+
+  for (const sku of MODEL_SKUS) {
+    if (!(sku in models)) {
+      throw new Error(
+        `Malformed Effect Studio server payload: missing catalogue model ${sku}.`,
       );
-      if (variations.length === 0) {
-        throw new Error(
-          "Malformed Effect Studio server payload: custom-effect template has no variations.",
-        );
-      }
-      return {
-        id: boundedString(effect.id, "template ID", MAX_IDENTIFIER_LENGTH),
-        label: boundedString(
-          effect.label,
-          "template label",
-          MAX_EFFECT_NAME_LENGTH,
-        ),
-        family: integerValue(effect.family, "template family", 0, 255),
-        variations: variations.map((item, variationIndex) => {
-          const variation = objectValue(
-            item,
-            `custom-effect templates[${index}].variations[${variationIndex}]`,
-          );
-          return {
-            id: boundedString(
-              variation.id,
-              "variation ID",
-              MAX_IDENTIFIER_LENGTH,
-            ),
-            label: boundedString(
-              variation.label,
-              "variation label",
-              MAX_EFFECT_NAME_LENGTH,
-            ),
-            variant: integerValue(
-              variation.variant,
-              "template variant",
-              0,
-              255,
-            ),
-          };
-        }),
-        supports_multi: booleanValue(
-          effect.supports_multi,
-          "Multi support",
-        ),
-        rate: enumString(
-          effect.rate,
-          ["speed", "sensitivity"],
-          "rate parameter",
-        ) as "speed" | "sensitivity",
-      };
-    }),
+    }
+  }
+
+  return {
+    H617A: decodeModelEffectCatalogue(models.H617A, "catalogue model H617A", "H617A"),
+    H6199: decodeModelEffectCatalogue(models.H6199, "catalogue model H6199", "H6199"),
+  };
+}
+
+function decodeModelEffectCatalogue(
+  value: unknown,
+  name: string,
+  expectedSku: ModelSku,
+): ModelEffectCatalogue {
+  const catalogue = objectValue(value, name);
+  const limits = objectValue(catalogue.limits, `${name} limits`);
+  const supports = objectValue(catalogue.supports, `${name} support capabilities`);
+  const apply = objectValue(catalogue.apply, `${name} Apply capabilities`);
+  const sku = enumString(
+    catalogue.sku,
+    MODEL_SKUS,
+    `${name} SKU`,
+  ) as ModelSku;
+  if (sku !== expectedSku) {
+    throw new Error(
+      `Malformed Effect Studio server payload: ${name} is keyed as ${expectedSku} but declares ${sku}.`,
+    );
+  }
+  const musicSensitivityMinimum = integerValue(
+    limits.music_sensitivity_min,
+    `${name} minimum music sensitivity`,
+    0,
+    100,
+  );
+  const musicSensitivityMaximum = integerValue(
+    limits.music_sensitivity_max,
+    `${name} maximum music sensitivity`,
+    0,
+    100,
+  );
+  if (musicSensitivityMinimum > musicSensitivityMaximum) {
+    invalid(`${name} music sensitivity limits are inverted`);
+  }
+
+  return {
+    sku,
+    painted_effects: decodePaintedEffectTemplates(
+      catalogue.painted_effects,
+      `${name} painted-effect templates`,
+    ),
+    effects: decodePaletteDiyFamilies(
+      catalogue.effects,
+      `${name} custom-effect templates`,
+    ),
+    music_modes: decodeModeOptions(
+      catalogue.music_modes,
+      `${name} music modes`,
+    ),
+    video_modes: decodeModeOptions(
+      catalogue.video_modes,
+      `${name} video modes`,
+      VIDEO_MODE_IDS,
+    ),
+    supports: {
+      multi: capabilityValue(supports.multi, `${name} Multi support`),
+      advanced: capabilityValue(supports.advanced, `${name} advanced support`),
+    },
     limits: {
-      palette_min: integerValue(limits.palette_min, "minimum palette", 1, 255),
-      palette_max: integerValue(limits.palette_max, "maximum palette", 1, 255),
-      multi_max: integerValue(limits.multi_max, "maximum Multi effects", 1, 255),
+      palette_min: integerValue(limits.palette_min, `${name} minimum palette`, 1, 255),
+      palette_max: integerValue(limits.palette_max, `${name} maximum palette`, 1, 255),
+      multi_max: integerValue(limits.multi_max, `${name} maximum Multi effects`, 1, 255),
+      music_sensitivity_min: musicSensitivityMinimum,
+      music_sensitivity_max: musicSensitivityMaximum,
     },
     apply: {
-      single: capabilityValue(apply.single, "Single Apply capability"),
-      multi: capabilityValue(apply.multi, "Multi Apply capability"),
+      single: capabilityValue(apply.single, `${name} Single Apply capability`),
+      multi: capabilityValue(apply.multi, `${name} Multi Apply capability`),
     },
   };
+}
+
+function decodePaintedEffectTemplates(
+  value: unknown,
+  name: string,
+): PaintedEffectTemplate[] {
+  const templates = arrayValue(value, name, MAX_JSON_COLLECTION_ITEMS).map((item, index) => {
+    const effect = objectValue(item, `${name}[${index}]`);
+    return {
+      id: enumString(
+        effect.id,
+        [
+          "cycle",
+          "clockwise",
+          "counter_clockwise",
+          "twinkle",
+          "gradient",
+          "breathe",
+        ],
+        `${name} ID`,
+      ) as PaintedContent["effect"],
+      label: boundedString(
+        effect.label,
+        `${name} label`,
+        MAX_EFFECT_NAME_LENGTH,
+      ),
+    };
+  });
+  requireUnique(templates, (template) => template.id, `${name} IDs`);
+  return templates;
+}
+
+function decodePaletteDiyFamilies(
+  value: unknown,
+  name: string,
+): PaletteDiyFamily[] {
+  const effects = arrayValue(value, name, MAX_JSON_COLLECTION_ITEMS).map((item, index) => {
+    const effect = objectValue(item, `${name}[${index}]`);
+    const variations = arrayValue(
+      effect.variations,
+      `${name}[${index}].variations`,
+      MAX_JSON_COLLECTION_ITEMS,
+    );
+    if (variations.length === 0) {
+      throw new Error(
+        "Malformed Effect Studio server payload: custom-effect template has no variations.",
+      );
+    }
+
+    const decoded: PaletteDiyFamily = {
+      id: boundedString(effect.id, `${name}[${index}] ID`, MAX_IDENTIFIER_LENGTH),
+      label: boundedString(
+        effect.label,
+        `${name}[${index}] label`,
+        MAX_EFFECT_NAME_LENGTH,
+      ),
+      family: integerValue(effect.family, `${name}[${index}] family`, 0, 255),
+      variations: variations.map((item, variationIndex) => {
+        const variation = objectValue(
+          item,
+          `${name}[${index}].variations[${variationIndex}]`,
+        );
+        return {
+          id: boundedString(
+            variation.id,
+            `${name}[${index}].variations[${variationIndex}] ID`,
+            MAX_IDENTIFIER_LENGTH,
+          ),
+          label: boundedString(
+            variation.label,
+            `${name}[${index}].variations[${variationIndex}] label`,
+            MAX_EFFECT_NAME_LENGTH,
+          ),
+          variant: integerValue(
+            variation.variant,
+            `${name}[${index}].variations[${variationIndex}] variant`,
+            0,
+            255,
+          ),
+        };
+      }),
+      supports_multi: booleanValue(effect.supports_multi, `${name}[${index}] Multi support`),
+      rate: enumString(
+        effect.rate,
+        ["speed", "sensitivity"],
+        `${name}[${index}] rate parameter`,
+      ) as "speed" | "sensitivity",
+    };
+    requireUnique(
+      decoded.variations,
+      (variation) => variation.id,
+      `${name}[${index}] variation IDs`,
+    );
+    return decoded;
+  });
+  requireUnique(effects, (effect) => effect.id, `${name} IDs`);
+  return effects;
+}
+
+function decodeModeOptions(
+  value: unknown,
+  name: string,
+  allowedIds?: readonly string[],
+): EffectStudioModeOption[] {
+  const modes = arrayValue(value, name, MAX_JSON_COLLECTION_ITEMS).map((item, index) => {
+    const mode = objectValue(item, `${name}[${index}]`);
+    return {
+      id: allowedIds
+        ? enumString(
+            mode.id,
+            allowedIds,
+            `${name}[${index}] ID`,
+          )
+        : boundedString(mode.id, `${name}[${index}] ID`, MAX_IDENTIFIER_LENGTH),
+      label: boundedString(
+        mode.label,
+        `${name}[${index}] label`,
+        MAX_EFFECT_NAME_LENGTH,
+      ),
+    };
+  });
+  requireUnique(modes, (mode) => mode.id, `${name} IDs`);
+  return modes;
 }
 
 export function decodeLibrarySnapshot(value: unknown): LibrarySnapshot {
@@ -279,6 +444,10 @@ export function decodeLibrarySnapshot(value: unknown): LibrarySnapshot {
         summary.template === undefined
           ? undefined
           : catalogueRef(summary.template, `library items[${index}].template`);
+      const model =
+        summary.model === undefined
+          ? undefined
+          : knownModelSku(summary.model);
       return {
         id: boundedString(summary.id, "library item ID", MAX_IDENTIFIER_LENGTH),
         revision: revisionValue(summary.revision, "library item revision", 1),
@@ -292,6 +461,7 @@ export function decodeLibrarySnapshot(value: unknown): LibrarySnapshot {
           "library item kind",
           MAX_IDENTIFIER_LENGTH,
         ),
+        ...(model ? { model } : {}),
         ...(template ? { template } : {}),
       };
     }),
@@ -609,6 +779,85 @@ export function decodeEffectContent(value: unknown): EffectContent {
         speed: integerValue(content.speed, "Multi speed", 0, 100),
         palette: paletteValue(content.palette, "Multi palette", 8),
       };
+    case "palette_diy":
+      return {
+        kind,
+        model: enumString(
+          content.model,
+          MODEL_SKUS,
+          "palette DIY model",
+        ) as ModelSku,
+        family: integerValue(content.family, "palette DIY family", 0, 255),
+        variant: integerValue(content.variant, "palette DIY variant", 0, 255),
+        speed: integerValue(content.speed, "palette DIY speed", 0, 100),
+        palette: paletteValue(content.palette, "palette DIY palette", 8),
+      } satisfies PaletteDiyEffectContent;
+    case "music_profile":
+      return {
+        kind,
+        model: enumString(
+          content.model,
+          MODEL_SKUS,
+          "music profile model",
+        ) as ModelSku,
+        mode: boundedString(
+          content.mode,
+          "music profile mode",
+          MAX_IDENTIFIER_LENGTH,
+        ),
+        sensitivity: integerValue(
+          content.sensitivity,
+          "music profile sensitivity",
+          0,
+          100,
+        ),
+        colour: nullableRgbValue(content.colour, "music profile colour"),
+        calm: nullableBooleanValue(content.calm, "music profile calm"),
+        parameters: boundedRecord(
+          content.parameters,
+          "music profile parameters",
+        ) as JsonObject,
+      } satisfies MusicProfileContent;
+    case "video_profile":
+      return {
+        kind,
+        model: enumString(content.model, ["H6199"], "video profile model"),
+        mode: enumString(content.mode, VIDEO_MODE_IDS, "video profile mode"),
+        full_screen: booleanValue(
+          content.full_screen,
+          "video profile full-screen flag",
+        ),
+        saturation: integerValue(
+          content.saturation,
+          "video profile saturation",
+          0,
+          100,
+        ),
+        sound_effects: booleanValue(
+          content.sound_effects,
+          "video profile sound-effects flag",
+        ),
+        sound_effects_softness: integerValue(
+          content.sound_effects_softness,
+          "video profile sound-effects softness",
+          1,
+          100,
+        ),
+        white_balance_position: integerValue(
+          content.white_balance_position,
+          "video profile white-balance position",
+          1,
+          20,
+        ),
+        relative_brightness: relativeBrightnessValue(
+          content.relative_brightness,
+          "video profile relative brightness",
+        ),
+        blank_screen: booleanValue(
+          content.blank_screen,
+          "video profile blank-screen flag",
+        ),
+      } satisfies VideoProfileContent;
     case "advanced":
       return {
         kind,
@@ -996,6 +1245,27 @@ function rgbValue(value: unknown, name: string): RGB {
   ) as RGB;
 }
 
+function nullableRgbValue(value: unknown, name: string): RGB | null {
+  return value === null ? null : rgbValue(value, name);
+}
+
+function nullableBooleanValue(value: unknown, name: string): boolean | null {
+  return value === null ? null : booleanValue(value, name);
+}
+
+function relativeBrightnessValue(
+  value: unknown,
+  name: string,
+): RelativeBrightness {
+  const brightness = objectValue(value, name);
+  return {
+    left: integerValue(brightness.left, `${name}.left`, 1, 100),
+    top: integerValue(brightness.top, `${name}.top`, 1, 100),
+    right: integerValue(brightness.right, `${name}.right`, 1, 100),
+    bottom: integerValue(brightness.bottom, `${name}.bottom`, 1, 100),
+  };
+}
+
 function capabilityValue(value: unknown, name: string): CapabilityState {
   if (
     value !== "supported" &&
@@ -1066,6 +1336,12 @@ function stringValue(value: unknown, name: string): string {
     invalid(`${name} must be a string`);
   }
   return value;
+}
+
+function knownModelSku(value: unknown): ModelSku | undefined {
+  return typeof value === "string" && MODEL_SKUS.includes(value as ModelSku)
+    ? (value as ModelSku)
+    : undefined;
 }
 
 function booleanValue(value: unknown, name: string): boolean {

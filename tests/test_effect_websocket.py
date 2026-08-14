@@ -24,9 +24,14 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
+    MusicProfile,
     OpaqueContent,
     PaintedEffect,
+    PaletteDiyEffect,
+    RelativeBrightness,
     SingleEffect,
+    TargetHint,
+    VideoProfile,
     effect_content_to_dict,
 )
 from custom_components.ha_govee_led_ble.effect_limits import (
@@ -78,6 +83,41 @@ def _layered_scene_content() -> dict[str, Any]:
     )
 
 
+def _saved_profile_contents() -> tuple[dict[str, Any], ...]:
+    return (
+        effect_content_to_dict(PaletteDiyEffect("H6199", 8, 9, 60, ((255, 0, 0), (0, 0, 255)))),
+        effect_content_to_dict(
+            MusicProfile(
+                "H6199",
+                "rolling",
+                75,
+                None,
+                True,
+                {
+                    "preset": "warm",
+                    "bands": [1, 2, 3],
+                    "mirror": False,
+                    "slot": 2,
+                    "override": None,
+                },
+            )
+        ),
+        effect_content_to_dict(
+            VideoProfile(
+                "H6199",
+                "movie",
+                True,
+                70,
+                True,
+                40,
+                12,
+                RelativeBrightness(80, 60, 55, 45),
+                False,
+            )
+        ),
+    )
+
+
 async def test_authenticated_users_can_read_library(
     hass: HomeAssistant,
     hass_ws_client,
@@ -101,6 +141,8 @@ async def test_authenticated_users_can_read_library(
     assert listing["success"] is True
     assert listing["result"] == {"library_revision": 0, "items": []}
     assert catalogue["success"] is True
+    assert catalogue["result"]["catalogue"]["schema_version"] == 2
+    assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H617A", "H6199"]
     assert [effect["label"] for effect in catalogue["result"]["catalogue"]["effects"]] == [
         "Fade",
         "Jumping",
@@ -110,6 +152,10 @@ async def test_authenticated_users_can_read_library(
         "Stream",
         "Flow",
         "Chase",
+    ]
+    assert catalogue["result"]["catalogue"]["models"]["H6199"]["video_modes"] == [
+        {"id": "movie", "label": "Movie"},
+        {"id": "game", "label": "Game"},
     ]
 
 
@@ -167,6 +213,7 @@ async def test_non_admin_cannot_read_opaque_library_content(
                 "template": {"secret": "opaque-summary-secret"},
             },
         ),
+        target_hint=TargetHint("future-model", 15),
     )
     await backend.library.async_create(item, expected_library_revision=0)
     client = await hass_ws_client(
@@ -223,6 +270,10 @@ async def test_admin_library_lifecycle_and_conflict(
     item_id = created["result"]["item"]["id"]
     assert created["success"] is True
     assert created["result"]["library_revision"] == 1
+
+    await client.send_json_auto_id({"type": WS_LIBRARY_LIST})
+    listing = await client.receive_json()
+    assert listing["result"]["items"][0]["model"] == "H617A"
 
     await client.send_json_auto_id(
         {
@@ -580,6 +631,148 @@ async def test_empty_layered_scene_import_mutations_are_accepted(
     assert draft_updated["result"]["draft"]["item"]["content"] == content
 
 
+@pytest.mark.parametrize("content", _saved_profile_contents())
+async def test_saved_profile_content_round_trips_through_websocket_mutations(
+    hass: HomeAssistant,
+    hass_ws_client,
+    content: dict[str, Any],
+) -> None:
+    await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_LIBRARY_CREATE,
+            "name": "Saved profile",
+            "content": content,
+            "expected_library_revision": 0,
+        }
+    )
+    library_created = await client.receive_json()
+    item_id = library_created["result"]["item"]["id"]
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_LIBRARY_GET,
+            "item_id": item_id,
+        }
+    )
+    library_fetched = await client.receive_json()
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_LIBRARY_UPDATE,
+            "item_id": item_id,
+            "name": "Saved profile updated",
+            "content": content,
+            "expected_revision": 1,
+            "expected_library_revision": 1,
+        }
+    )
+    library_updated = await client.receive_json()
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_DRAFT_CREATE,
+            "name": "Saved profile draft",
+            "content": content,
+            "updated_at": "2026-08-12T00:00:00Z",
+        }
+    )
+    draft_created = await client.receive_json()
+    draft_id = draft_created["result"]["draft"]["id"]
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_DRAFT_GET,
+            "draft_id": draft_id,
+        }
+    )
+    draft_fetched = await client.receive_json()
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_DRAFT_UPDATE,
+            "draft_id": draft_id,
+            "expected_revision": 1,
+            "name": "Saved profile draft updated",
+            "content": content,
+            "updated_at": "2026-08-12T00:01:00Z",
+        }
+    )
+    draft_updated = await client.receive_json()
+
+    assert library_created["success"] is True
+    assert library_fetched["result"]["item"]["content"] == content
+    assert library_updated["success"] is True
+    assert library_updated["result"]["item"]["content"] == content
+    assert draft_created["success"] is True
+    assert draft_fetched["result"]["draft"]["item"]["content"] == content
+    assert draft_updated["success"] is True
+    assert draft_updated["result"]["draft"]["item"]["content"] == content
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        (
+            {
+                "kind": "music_profile",
+                "model": "H6199",
+                "mode": "rolling",
+                "sensitivity": 50,
+                "colour": None,
+                "calm": None,
+                "parameters": [],
+            },
+            "parameters must be a mapping",
+        ),
+        (
+            {
+                "kind": "video_profile",
+                "model": "H6199",
+                "mode": "movie",
+                "full_screen": True,
+                "saturation": 50,
+                "sound_effects": True,
+                "sound_effects_softness": 50,
+                "white_balance_position": 10,
+                "relative_brightness": {
+                    "left": 0,
+                    "top": 50,
+                    "right": 50,
+                    "bottom": 50,
+                },
+                "blank_screen": False,
+            },
+            "left must be an integer from 1 to 100",
+        ),
+    ],
+)
+async def test_saved_profile_content_websocket_validation_errors(
+    hass: HomeAssistant,
+    hass_ws_client,
+    content: dict[str, Any],
+    message: str,
+) -> None:
+    await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_LIBRARY_CREATE,
+            "name": "Invalid profile",
+            "content": content,
+            "expected_library_revision": 0,
+        }
+    )
+    response = await client.receive_json()
+
+    assert response["success"] is False
+    assert response["error"]["code"] == "invalid_format"
+    assert message in response["error"]["message"]
+
+
 async def test_device_capabilities_and_apply(
     hass: HomeAssistant,
     hass_ws_client,
@@ -772,6 +965,7 @@ async def test_scene_catalogue_and_native_apply(
         await client.send_json_auto_id({"type": WS_LIBRARY_LIST})
         scene_library = await client.receive_json()
         assert scene_library["result"]["items"][0]["template"]["sku"] == "H617A"
+        assert scene_library["result"]["items"][0]["model"] == "H617A"
 
         assert scene.speed is not None
         await client.send_json_auto_id(

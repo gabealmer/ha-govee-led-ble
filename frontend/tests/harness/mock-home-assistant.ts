@@ -2,6 +2,7 @@ import { blankAdvancedContent, cloneAdvancedContent } from "../../src/advanced-e
 import {
   decodeCustomCatalogue,
   decodeEffectContent,
+  decodeLibrarySnapshot,
   decodeSceneDetail,
 } from "../../src/validation";
 import type {
@@ -180,6 +181,10 @@ export class MockHomeAssistantBackend {
 
   public validateCustomCatalogue(value: unknown): CustomEffectCatalogue {
     return decodeCustomCatalogue(value);
+  }
+
+  public validateLibrarySnapshot(value: unknown): LibrarySnapshot {
+    return decodeLibrarySnapshot(value);
   }
 
   public validateSceneDetail(value: unknown): SceneDetail {
@@ -934,6 +939,12 @@ function librarySnapshot(state: BackendState): LibrarySnapshot {
 
 function librarySummary(item: WireLibraryItem): LibrarySummary {
   const kind = String(item.content.kind);
+  const declaredModel =
+    ["palette_diy", "music_profile", "video_profile"].includes(kind) &&
+    "model" in item.content &&
+    typeof item.content.model === "string"
+      ? item.content.model
+      : undefined;
   const template =
     ["scene_builtin", "scene_palette", "scene_layered"].includes(kind) &&
     "template" in item.content &&
@@ -941,11 +952,27 @@ function librarySummary(item: WireLibraryItem): LibrarySummary {
     item.content.template !== null
       ? item.content.template as LibrarySummary["template"]
       : undefined;
+  const templateModel =
+    template?.sku === "H617A" || template?.sku === "H6199"
+      ? template.sku
+      : undefined;
+  const model =
+    declaredModel === "H617A" || declaredModel === "H6199"
+      ? declaredModel
+      : ["h617a_painted", "h617a_single", "h617a_multi"].includes(kind)
+        ? "H617A"
+        : templateModel
+          ? templateModel
+          : item.target_hint?.model === "H617A" ||
+              item.target_hint?.model === "H6199"
+            ? item.target_hint.model
+            : undefined;
   return {
     id: item.id,
     revision: item.revision,
     name: item.name,
     kind,
+    ...(model ? { model } : {}),
     ...(template
       ? {
           template: structuredClone(template),

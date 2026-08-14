@@ -7,7 +7,15 @@ from typing import Any
 import pytest
 
 from custom_components.ha_govee_led_ble.effect_application import EffectStudioApplication
-from custom_components.ha_govee_led_ble.effect_domain import SingleEffect, effect_content_to_dict
+from custom_components.ha_govee_led_ble.effect_domain import (
+    MusicProfile,
+    PaletteDiyEffect,
+    RelativeBrightness,
+    SingleEffect,
+    VideoProfile,
+    effect_content_from_dict,
+    effect_content_to_dict,
+)
 from custom_components.ha_govee_led_ble.effect_drafts import EffectDraftRepository
 from custom_components.ha_govee_led_ble.effect_storage import (
     EffectLibraryRepository,
@@ -31,6 +39,41 @@ async def _application() -> EffectStudioApplication:
 
 def _content() -> dict[str, Any]:
     return effect_content_to_dict(SingleEffect(0, 0, 50, ((255, 0, 0),)))
+
+
+def _saved_profile_contents() -> tuple[dict[str, Any], ...]:
+    return (
+        effect_content_to_dict(PaletteDiyEffect("H6199", 8, 9, 60, ((255, 0, 0), (0, 0, 255)))),
+        effect_content_to_dict(
+            MusicProfile(
+                "H6199",
+                "rolling",
+                75,
+                None,
+                True,
+                {
+                    "preset": "warm",
+                    "bands": [1, 2, 3],
+                    "mirror": False,
+                    "slot": 2,
+                    "override": None,
+                },
+            )
+        ),
+        effect_content_to_dict(
+            VideoProfile(
+                "H6199",
+                "movie",
+                True,
+                70,
+                True,
+                40,
+                12,
+                RelativeBrightness(80, 60, 55, 45),
+                False,
+            )
+        ),
+    )
 
 
 async def test_library_use_cases_construct_revisions_and_publish_committed_snapshots() -> None:
@@ -94,6 +137,48 @@ async def test_library_use_cases_enforce_optimistic_revisions() -> None:
     assert error.value.current_revision == 1
 
 
+@pytest.mark.parametrize("content", _saved_profile_contents())
+async def test_saved_profile_content_round_trips_through_library_and_drafts(
+    content: dict[str, Any],
+) -> None:
+    application = await _application()
+    expected = effect_content_from_dict(content)
+
+    created = await application.async_create_library_item(
+        name="Profile",
+        content=content,
+        expected_library_revision=0,
+    )
+    updated = await application.async_update_library_item(
+        item_id=str(created.item.id),
+        name="Profile updated",
+        content=content,
+        expected_revision=1,
+        expected_library_revision=1,
+    )
+    created_draft = await application.async_create_draft(
+        "owner-a",
+        name="Draft profile",
+        content=content,
+        updated_at="2026-08-12T00:00:00Z",
+    )
+    updated_draft = await application.async_update_draft(
+        "owner-a",
+        draft_id=str(created_draft.id),
+        expected_revision=1,
+        name="Draft profile updated",
+        content=content,
+        updated_at="2026-08-12T00:01:00Z",
+    )
+
+    assert created.item.content == expected
+    assert application.get_saved_effect(str(created.item.id)).content == expected
+    assert updated.item.content == expected
+    assert created_draft.item.content == expected
+    assert application.get_draft("owner-a", str(created_draft.id)).item.content == expected
+    assert updated_draft.item.content == expected
+
+
 @pytest.mark.parametrize(
     "content, message",
     [
@@ -134,6 +219,38 @@ async def test_library_use_cases_enforce_optimistic_revisions() -> None:
                 ],
             },
             "at least one brightness pattern",
+        ),
+        (
+            {
+                "kind": "music_profile",
+                "model": "H6199",
+                "mode": "rolling",
+                "sensitivity": 50,
+                "colour": None,
+                "calm": None,
+                "parameters": [],
+            },
+            "parameters must be a mapping",
+        ),
+        (
+            {
+                "kind": "video_profile",
+                "model": "H6199",
+                "mode": "movie",
+                "full_screen": True,
+                "saturation": 50,
+                "sound_effects": True,
+                "sound_effects_softness": 50,
+                "white_balance_position": 10,
+                "relative_brightness": {
+                    "left": 0,
+                    "top": 50,
+                    "right": 50,
+                    "bottom": 50,
+                },
+                "blank_screen": False,
+            },
+            "left must be an integer from 1 to 100",
         ),
     ],
 )

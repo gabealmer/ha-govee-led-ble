@@ -1,6 +1,12 @@
 export type RGB = [number, number, number];
+export type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
+
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
 
 export type CapabilityState = "supported" | "unsupported" | "evidence_gap";
+export type ModelSku = "H617A" | "H6199";
 
 export interface EditorApiInfo {
   api_version: number;
@@ -71,6 +77,45 @@ export interface MultiContent {
   palette: RGB[];
 }
 
+export interface PaletteDiyEffectContent {
+  kind: "palette_diy";
+  model: ModelSku;
+  family: number;
+  variant: number;
+  speed: number;
+  palette: RGB[];
+}
+
+export interface MusicProfileContent {
+  kind: "music_profile";
+  model: ModelSku;
+  mode: string;
+  sensitivity: number;
+  colour: RGB | null;
+  calm: boolean | null;
+  parameters: JsonObject;
+}
+
+export interface RelativeBrightness {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface VideoProfileContent {
+  kind: "video_profile";
+  model: "H6199";
+  mode: "movie" | "game";
+  full_screen: boolean;
+  saturation: number;
+  sound_effects: boolean;
+  sound_effects_softness: number;
+  white_balance_position: number;
+  relative_brightness: RelativeBrightness;
+  blank_screen: boolean;
+}
+
 export type BrightnessOrder = 0 | 1 | 2 | 3;
 
 export type SelectionType = 0 | 1 | 2 | 3;
@@ -135,39 +180,65 @@ export type CustomEffectContent =
   | SingleContent
   | MultiContent;
 
-export interface DiyEffectVariation {
+export interface PaintedEffectTemplate {
+  id: PaintedContent["effect"];
+  label: string;
+}
+
+export interface PaletteDiyVariation {
   id: string;
   label: string;
   variant: number;
 }
 
-export interface DiyEffectFamily {
+export type DiyEffectVariation = PaletteDiyVariation;
+
+export interface PaletteDiyFamily {
   id: string;
   label: string;
   family: number;
-  variations: DiyEffectVariation[];
+  variations: PaletteDiyVariation[];
   supports_multi: boolean;
   rate: "speed" | "sensitivity";
 }
 
-export interface CustomEffectCatalogue {
-  schema_version: number;
-  sku: "H617A";
-  painted_effects: {
-    id: PaintedContent["effect"];
-    label: string;
-  }[];
-  effects: DiyEffectFamily[];
+export type DiyEffectFamily = PaletteDiyFamily;
+
+export interface EffectStudioModeOption {
+  id: string;
+  label: string;
+}
+
+export interface ModelEffectCatalogue {
+  sku: ModelSku;
+  painted_effects: PaintedEffectTemplate[];
+  effects: PaletteDiyFamily[];
+  music_modes: EffectStudioModeOption[];
+  video_modes: EffectStudioModeOption[];
+  supports: {
+    multi: CapabilityState;
+    advanced: CapabilityState;
+  };
   limits: {
     palette_min: number;
     palette_max: number;
     multi_max: number;
+    music_sensitivity_min: number;
+    music_sensitivity_max: number;
   };
   apply: {
     single: CapabilityState;
     multi: CapabilityState;
   };
 }
+
+export interface EffectStudioCatalogue extends ModelEffectCatalogue {
+  schema_version: 2;
+  sku: "H617A";
+  models: Record<ModelSku, ModelEffectCatalogue>;
+}
+
+export type CustomEffectCatalogue = EffectStudioCatalogue;
 
 export interface CatalogueRef {
   sku: string;
@@ -213,6 +284,9 @@ export interface LayeredSceneContent {
 
 export type KnownEffectContent =
   | CustomEffectContent
+  | PaletteDiyEffectContent
+  | MusicProfileContent
+  | VideoProfileContent
   | AdvancedContent
   | BuiltinSceneContent
   | PaletteSceneContent
@@ -245,6 +319,7 @@ export interface LibrarySummary {
   revision: number;
   name: string;
   kind: string;
+  model?: ModelSku;
   template?: CatalogueRef;
 }
 
