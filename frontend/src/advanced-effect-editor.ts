@@ -8,6 +8,8 @@ import type {
 } from "./reorderable-strip";
 import type { SegmentedControlChange } from "./segmented-control";
 import "./segmented-control";
+import type { SliderControlChange } from "./slider-control";
+import "./slider-control";
 import {
   studioActionStyles,
   studioBaseStyles,
@@ -765,7 +767,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           layer.colour_speed,
           0,
           255,
-          byteOutput(layer.colour_speed),
           (value) => this.updateLayer({ colour_speed: value }),
         )}
         ${this.rangeField(
@@ -773,7 +774,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           layer.colour_retention,
           0,
           255,
-          String(layer.colour_retention),
           (value) => this.updateLayer({ colour_retention: value }),
         )}
       </section>
@@ -919,7 +919,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             pattern.scope_low,
             0,
             255,
-            byteOutput(pattern.scope_low),
             (value) => this.updateBrightnessPattern({ scope_low: value }),
           )}
           ${this.rangeField(
@@ -927,7 +926,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             pattern.scope_high,
             0,
             255,
-            byteOutput(pattern.scope_high),
             (value) => this.updateBrightnessPattern({ scope_high: value }),
           )}
           ${this.rangeField(
@@ -935,7 +933,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             pattern.change_speed,
             0,
             255,
-            byteOutput(pattern.change_speed),
             (value) => this.updateBrightnessPattern({ change_speed: value }),
           )}
           ${this.rangeField(
@@ -943,7 +940,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             pattern.brightest_retention,
             0,
             255,
-            String(pattern.brightest_retention),
             (value) =>
               this.updateBrightnessPattern({
                 brightest_retention: value,
@@ -954,7 +950,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             pattern.darkest_retention,
             0,
             255,
-            String(pattern.darkest_retention),
             (value) =>
               this.updateBrightnessPattern({
                 darkest_retention: value,
@@ -1028,7 +1023,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                 movement.speed,
                 0,
                 255,
-                byteOutput(movement.speed),
                 (value) =>
                   this.updateMovement(
                     key,
@@ -1187,24 +1181,18 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     value: number,
     minimum: number,
     maximum: number,
-    output: string,
     changed: (value: number) => void,
   ) {
     return html`
-      <label class="range-field">
-        <span>${label}</span>
-        <input
-          type="range"
-          min=${minimum}
-          max=${maximum}
-          .value=${String(clamp(value, minimum, maximum))}
-          aria-label=${label}
-          ?disabled=${this.disabled}
-          @input=${(event: Event) =>
-            changed(Number((event.target as HTMLInputElement).value))}
-        />
-        <output aria-label="${label} value">${output}</output>
-      </label>
+      <govee-slider-control
+        .label=${label}
+        .value=${value}
+        .minimum=${minimum}
+        .maximum=${maximum}
+        .disabled=${this.disabled}
+        @value-changed=${(event: CustomEvent<SliderControlChange>) =>
+          changed(event.detail.value)}
+      ></govee-slider-control>
     `;
   }
 
@@ -1760,11 +1748,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       margin-bottom: 4px;
     }
 
-    .range-field {
-      grid-template-columns: minmax(112px, auto) minmax(100px, 1fr) 74px;
-      font-variant-numeric: tabular-nums;
-    }
-
     .priority-row {
       display: flex;
       flex-wrap: wrap;
@@ -1886,13 +1869,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         width: 100%;
       }
 
-      .range-field {
-        grid-template-columns: 1fr 64px;
-      }
-
-      .range-field span {
-        grid-column: 1 / -1;
-      }
     }
 
     @media (max-width: 480px) {
@@ -2022,10 +1998,6 @@ function isKnownBrightnessOrder(value: number): value is BrightnessOrder {
 
 function bytePercent(value: number): number {
   return Math.round((clamp(value, 0, 255) / 255) * 100);
-}
-
-function byteOutput(value: number): string {
-  return `${bytePercent(value)}% · ${value}`;
 }
 
 function hexByte(value: number): string {

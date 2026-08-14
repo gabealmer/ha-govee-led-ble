@@ -14,6 +14,8 @@ import "./music-profile-editor";
 import "./palette-editor";
 import "./painted-segment-editor";
 import "./scene-browser";
+import type { SliderControlChange } from "./slider-control";
+import "./slider-control";
 import "./video-profile-editor";
 import {
   studioActionStyles,
@@ -1235,7 +1237,7 @@ export class GoveeLedEffectStudio extends LitElement {
         <section class="card">
           <div class="parameter-stack">
             ${this.renderPaintedVariationField()}
-            ${this.rangeField("Speed", "speed", this.content.speed)}
+            ${this.sliderField("Speed", "speed", this.content.speed)}
             ${this.rangeField(
               "Brightness",
               "brightness",
@@ -1554,6 +1556,24 @@ export class GoveeLedEffectStudio extends LitElement {
         />
         <output>${value}%</output>
       </label>
+    `;
+  }
+
+  private sliderField(
+    label: string,
+    key: "speed" | "brightness",
+    value: number,
+  ) {
+    return html`
+      <govee-slider-control
+        .label=${label}
+        .value=${value}
+        .minimum=${0}
+        .maximum=${100}
+        .disabled=${!this.isAdmin}
+        @value-changed=${(event: CustomEvent<SliderControlChange>) =>
+          this.updateContent({ [key]: event.detail.value })}
+      ></govee-slider-control>
     `;
   }
 

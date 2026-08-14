@@ -10,6 +10,8 @@ import type {
   SegmentedControlValue,
 } from "./segmented-control";
 import "./segmented-control";
+import type { SliderControlChange } from "./slider-control";
+import "./slider-control";
 import {
   studioBaseStyles,
   studioCardStyles,
@@ -120,7 +122,6 @@ export class GoveeMusicProfileEditor extends LitElement {
 
           ${this.renderRangeField(
             "Sensitivity",
-            "Sensitivity",
             sensitivity,
             sensitivityMinimum,
             sensitivityMaximum,
@@ -196,27 +197,21 @@ export class GoveeMusicProfileEditor extends LitElement {
 
   private renderRangeField(
     label: string,
-    ariaLabel: string,
     value: number,
     min: number,
     max: number,
     commit: (value: number) => void,
   ) {
     return html`
-      <label class="range-field">
-        <span class="parameter-label">${label}</span>
-        <input
-          type="range"
-          aria-label=${ariaLabel}
-          min=${String(min)}
-          max=${String(max)}
-          .value=${String(value)}
-          ?disabled=${this.disabled}
-          @input=${(event: Event) =>
-            commit(Number((event.target as HTMLInputElement).value))}
-        />
-        <output>${value}</output>
-      </label>
+      <govee-slider-control
+        .label=${label}
+        .value=${value}
+        .minimum=${min}
+        .maximum=${max}
+        .disabled=${this.disabled}
+        @value-changed=${(event: CustomEvent<SliderControlChange>) =>
+          commit(event.detail.value)}
+      ></govee-slider-control>
     `;
   }
 
@@ -242,7 +237,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     const gradient = booleanParameter(parameters, "gradient", true);
 
     return html`
-      ${this.renderRangeField("Point", "Point", point, 0, 100, (value) =>
+      ${this.renderRangeField("Point", point, 0, 100, (value) =>
         this.updateParameter("point", value))}
       ${this.renderCheckboxField("Gradient", gradient, (checked) =>
         this.updateParameter("gradient", checked))}
@@ -261,7 +256,6 @@ export class GoveeMusicProfileEditor extends LitElement {
     return html`
       ${this.renderRangeField(
         "Relative brightness",
-        "Relative brightness",
         relativeBrightness,
         0,
         100,
@@ -274,7 +268,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     const keyCount = numberParameter(parameters, "key_count", 15, 1, 15);
 
     return html`
-      ${this.renderRangeField("Key count", "Key count", keyCount, 1, 15, (value) =>
+      ${this.renderRangeField("Key count", keyCount, 1, 15, (value) =>
         this.updateParameter("key_count", value))}
     `;
   }
@@ -318,13 +312,12 @@ export class GoveeMusicProfileEditor extends LitElement {
     return html`
       ${this.renderRangeField(
         "Segment count",
-        "Segment count",
         segmentCount,
         1,
         15,
         (value) => this.updateParameter("segment_count", value),
       )}
-      ${this.renderRangeField("Speed", "Speed", speed, 0, 100, (value) =>
+      ${this.renderRangeField("Speed", speed, 0, 100, (value) =>
         this.updateParameter("speed", value))}
       ${this.renderCheckboxField("Gradient", gradient, (checked) =>
         this.updateParameter("gradient", checked))}
@@ -432,24 +425,6 @@ export class GoveeMusicProfileEditor extends LitElement {
         display: block;
       }
 
-      input[type="range"] {
-        width: 100%;
-      }
-
-      .range-field {
-        grid-template-columns: minmax(112px, auto) minmax(100px, 1fr) 56px;
-        font-variant-numeric: tabular-nums;
-      }
-
-      @media (max-width: 560px) {
-        .range-field {
-          grid-template-columns: 1fr 56px;
-        }
-
-        .range-field > span:first-child {
-          grid-column: 1 / -1;
-        }
-      }
     `,
   ];
 }
