@@ -201,6 +201,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     min: number,
     max: number,
     commit: (value: number) => void,
+    showValue = false,
   ) {
     return html`
       <govee-slider-control
@@ -208,6 +209,7 @@ export class GoveeMusicProfileEditor extends LitElement {
         .value=${value}
         .minimum=${min}
         .maximum=${max}
+        .showValue=${showValue}
         .disabled=${this.disabled}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
           commit(event.detail.value)}
@@ -316,6 +318,7 @@ export class GoveeMusicProfileEditor extends LitElement {
         1,
         15,
         (value) => this.updateParameter("segment_count", value),
+        true,
       )}
       ${this.renderRangeField("Speed", speed, 0, 100, (value) =>
         this.updateParameter("speed", value))}
