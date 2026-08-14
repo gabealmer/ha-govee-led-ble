@@ -1,3 +1,5 @@
+import argparse
+import asyncio
 import importlib.util
 import json
 import sys
@@ -22,6 +24,8 @@ class FakeWebSocket:
         self.closed = False
 
     async def recv(self):
+        if not self.responses:
+            await asyncio.Future()
         return self.responses.pop(0)
 
     async def send(self, payload):
@@ -34,7 +38,7 @@ class FakeWebSocket:
 class FakeClient:
     def __init__(self, responses: dict[str, Any] | None = None):
         self.responses = responses or {}
-        self.calls = []
+        self.calls: list[dict[str, Any]] = []
         self.raw_response = {"type": "result", "success": True, "result": {}}
         self.closed = False
 
@@ -69,7 +73,7 @@ class FakeRest:
 
 class RestartRest:
     def __init__(self):
-        self.readiness = iter((True, False, False, True))
+        self.readiness = iter((True, False, True, True, True))
         self.calls = 0
 
     async def ready(self):
@@ -192,19 +196,99 @@ async def test_websocket_client_authenticates_and_supports_subscriptions_without
     ]
 
 
-async def test_restart_waits_for_rest_unavailability_before_accepting_readiness(monkeypatch):
+async def test_websocket_subscription_wait_correlates_events_and_retains_non_matches():
+    websocket = FakeWebSocket(
+        [
+            {"type": "event", "id": 2, "event": {"operation_id": "other-subscription"}},
+            {"type": "event", "id": 1, "event": {"operation_id": "wrong-operation"}},
+            {"type": "event", "id": 1, "event": {"operation_id": "expected-operation"}},
+        ]
+    )
+    client = harness.HomeAssistantWebSocket(websocket)
+
+    matched = await client.wait_event(
+        1,
+        lambda message: message.get("event", {}).get("operation_id") == "expected-operation",
+    )
+
+    assert matched["event"]["operation_id"] == "expected-operation"
+    assert (await client.wait_event(2))["event"]["operation_id"] == "other-subscription"
+    assert (await client.wait_event(1))["event"]["operation_id"] == "wrong-operation"
+
+
+async def test_websocket_subscription_wait_reports_a_bounded_timeout():
+    client = harness.HomeAssistantWebSocket(FakeWebSocket([]))
+
+    with pytest.raises(harness.ValidationError, match="subscription event timed out"):
+        await client.wait_event(1, timeout=0.001)
+
+
+async def test_restart_waits_for_loaded_entry_and_usable_light(monkeypatch):
     client = FakeClient()
     client.wait_event = lambda *args, **kwargs: _async_value({"event": {}})
     rest = RestartRest()
+    setup_retry = FakeClient(
+        {
+            "config_entries/get": lambda _: [
+                {
+                    "entry_id": "entry-secret",
+                    "domain": harness.DOMAIN,
+                    "disabled_by": None,
+                    "state": "setup_retry",
+                }
+            ]
+        }
+    )
+    unavailable_light = FakeClient(
+        {
+            "config_entries/get": lambda _: [
+                {
+                    "entry_id": "entry-secret",
+                    "domain": harness.DOMAIN,
+                    "disabled_by": None,
+                    "state": "loaded",
+                }
+            ],
+            "get_states": lambda _: [{"entity_id": "light.cupboard", "state": "unavailable"}],
+        }
+    )
+    ready = FakeClient(
+        {
+            "config_entries/get": lambda _: [
+                {
+                    "entry_id": "entry-secret",
+                    "domain": harness.DOMAIN,
+                    "disabled_by": None,
+                    "state": "loaded",
+                }
+            ],
+            "get_states": lambda _: [{"entity_id": "light.cupboard", "state": "on"}],
+        }
+    )
+    candidates = iter((setup_retry, unavailable_light, ready))
 
     async def no_delay(_seconds):
         return None
 
+    async def reconnect():
+        return next(candidates), rest
+
     monkeypatch.setattr(harness.asyncio, "sleep", no_delay)
+    monkeypatch.setattr(harness, "_connect", reconnect)
 
-    await harness._restart_home_assistant(client, rest)
+    reconnected, returned_rest = await harness._restart_home_assistant(
+        client,
+        rest,
+        identity_entry_id="entry-secret",
+        light_entity_id="light.cupboard",
+    )
 
-    assert rest.calls == 4
+    assert reconnected is ready
+    assert returned_rest is rest
+    assert rest.calls == 5
+    assert setup_retry.closed is True
+    assert unavailable_light.closed is True
+    assert ready.closed is False
     assert client.calls[-1] == {
         "type": "call_service",
         "domain": "homeassistant",
@@ -311,6 +395,42 @@ async def test_cleanup_removes_temporary_item_using_current_library_revisions():
     assert validator.library_revision == 8
 
 
+async def test_cleanup_retries_until_editor_commands_register(monkeypatch):
+    list_calls = 0
+
+    def library_listing(_payload):
+        nonlocal list_calls
+        list_calls += 1
+        if list_calls == 1:
+            raise harness.HomeAssistantApiError("unknown_command")
+        return {
+            "library_revision": 7,
+            "items": [{"id": "temporary-item", "revision": 3}],
+        }
+
+    async def no_delay(_seconds):
+        return None
+
+    client = FakeClient(
+        {
+            harness.WS_LIBRARY_LIST: library_listing,
+            harness.WS_LIBRARY_DELETE: {"library_revision": 8},
+        }
+    )
+    validator = harness.EffectStudioValidator(
+        client,
+        FakeRest(),
+        identity_entry_id="entry-secret",
+        identity_model="H617A",
+    )
+    monkeypatch.setattr(harness.asyncio, "sleep", no_delay)
+
+    await validator.cleanup_item("temporary-item")
+
+    assert list_calls == 2
+    assert validator.library_revision == 8
+
+
 async def test_restoration_replays_controls_and_verifies_the_original_light_state():
     original_states = [
         {
@@ -367,6 +487,295 @@ async def test_restoration_replays_controls_and_verifies_the_original_light_stat
         "brightness": 128,
         "rgb_color": [1, 2, 3],
     }
+
+
+async def test_restoration_verification_is_selection_independent_and_converges(monkeypatch):
+    original_states = [
+        {
+            "entity_id": "light.cupboard",
+            "state": "on",
+            "attributes": {
+                "brightness": 128,
+                "effect": "None",
+                "color_mode": "rgb",
+                "rgb_color": [1, 2, 3],
+            },
+        }
+    ]
+    different_states = [
+        {
+            "entity_id": "light.cupboard",
+            "state": "on",
+            "attributes": {
+                "brightness": 16,
+                "effect": "None",
+                "color_mode": "rgb",
+                "rgb_color": [8, 9, 10],
+            },
+        }
+    ]
+    client = FakeClient({"get_states": [different_states, original_states]})
+    validator = harness.EffectStudioValidator(
+        client,
+        FakeRest(),
+        identity_entry_id="entry-secret",
+        identity_model="H617A",
+    )
+
+    async def no_delay(_seconds):
+        return None
+
+    monkeypatch.setattr(harness.asyncio, "sleep", no_delay)
+
+    await validator._verify_restored(original_states)
+
+    assert [call["type"] for call in client.calls] == ["get_states", "get_states"]
+
+
+class RunValidator:
+    events: list[str] = []
+    route_error: BaseException | None = None
+    cleanup_error: BaseException | None = None
+    restore_error: BaseException | None = None
+
+    def __init__(self, client, rest, *, identity_entry_id, identity_model):
+        self.client = client
+        self.rest = rest
+        self.identity_entry_id = identity_entry_id
+        self.identity_model = identity_model
+        self.selection = None
+        self.temporary_item_id = None
+        self.temporary_item_revision = 1
+
+    async def verify_surfaces(self):
+        self.events.append("verify")
+        self.selection = harness.DeviceSelection(
+            "entry-secret",
+            "H617A",
+            "Cupboard",
+            "light.cupboard",
+            ("light.cupboard",),
+        )
+        return self.selection
+
+    async def subscribe(self):
+        self.events.append("subscribe")
+
+    def _selection(self):
+        if self.selection is None:
+            raise harness.ValidationError("selection unavailable")
+        return self.selection
+
+    async def capture_controllable_state(self):
+        self.events.append("capture")
+        return _original_run_states()
+
+    async def create_and_update_temporary_effect(self):
+        self.events.append("create")
+        self.temporary_item_id = "temporary-item"
+        self.temporary_item_revision = 2
+        return harness.RunState("temporary-item", 2, [])
+
+    async def verify_persisted_item(self, _state):
+        self.events.append("persisted")
+
+    async def run_routes(self, _state):
+        self.events.append("routes")
+        if self.route_error is not None:
+            raise self.route_error
+        return [
+            harness.RouteSummary(
+                "single",
+                "confirmed",
+                "activation_match",
+                "h617a_single",
+            )
+        ], ["operation-id"]
+
+    async def verify_diagnostics(self, _operation_ids):
+        self.events.append("diagnostics")
+        return 2
+
+    async def cleanup_item(self, _item_id):
+        self.events.append("cleanup")
+        if self.cleanup_error is not None:
+            raise self.cleanup_error
+
+    async def restore_states(self, _states):
+        self.events.append(f"restore:{self.selection is not None}")
+        if self.restore_error is not None:
+            raise self.restore_error
+
+
+def _original_run_states():
+    return [
+        {
+            "entity_id": "light.cupboard",
+            "state": "on",
+            "attributes": {
+                "brightness": 128,
+                "effect": "None",
+                "color_mode": "rgb",
+                "rgb_color": [1, 2, 3],
+            },
+        }
+    ]
+
+
+def _prepare_run(monkeypatch, tmp_path: Path):
+    RunValidator.events = []
+    RunValidator.route_error = None
+    RunValidator.cleanup_error = None
+    RunValidator.restore_error = None
+    state_path = tmp_path / "effect-studio-state.json"
+    monkeypatch.setattr(harness, "STATE_PATH", state_path)
+    monkeypatch.setattr(harness, "EffectStudioValidator", RunValidator)
+    monkeypatch.setenv("EFFECT_STUDIO_CONFIG_ENTRY_ID", "entry-secret")
+    monkeypatch.setenv("EFFECT_STUDIO_DEVICE_MODEL", "H617A")
+    return state_path
+
+
+async def test_run_all_reconnects_validates_cleans_and_restores(monkeypatch, tmp_path: Path):
+    state_path = _prepare_run(monkeypatch, tmp_path)
+    initial_client = FakeClient()
+    reconnected_client = FakeClient()
+    rest = FakeRest()
+
+    async def connect():
+        return initial_client, rest
+
+    async def restart(client, returned_rest, **kwargs):
+        assert client is initial_client
+        assert returned_rest is rest
+        assert kwargs == {
+            "identity_entry_id": "entry-secret",
+            "light_entity_id": "light.cupboard",
+        }
+        return reconnected_client, rest
+
+    monkeypatch.setattr(harness, "_connect", connect)
+    monkeypatch.setattr(harness, "_restart_home_assistant", restart)
+
+    result = await harness._run(argparse.Namespace(stage="all"))
+
+    assert result == {
+        "stage": "all",
+        "restart": "completed",
+        "routes": [
+            {
+                "route": "single",
+                "phase": "confirmed",
+                "confidence": "activation_match",
+                "content_kind": "h617a_single",
+            }
+        ],
+        "diagnostic_events": 2,
+        "temporary_item": "removed",
+        "restoration": "verified",
+    }
+    assert RunValidator.events == [
+        "verify",
+        "subscribe",
+        "capture",
+        "create",
+        "verify",
+        "subscribe",
+        "persisted",
+        "routes",
+        "diagnostics",
+        "cleanup",
+        "restore:True",
+    ]
+    assert state_path.exists() is False
+    assert reconnected_client.closed is True
+
+
+async def test_run_before_restart_retains_recovery_state_and_selection(monkeypatch, tmp_path: Path):
+    state_path = _prepare_run(monkeypatch, tmp_path)
+    initial_client = FakeClient()
+    reconnected_client = FakeClient()
+    rest = FakeRest()
+
+    async def connect():
+        return initial_client, rest
+
+    async def restart(_client, _rest, **_kwargs):
+        return reconnected_client, rest
+
+    monkeypatch.setattr(harness, "_connect", connect)
+    monkeypatch.setattr(harness, "_restart_home_assistant", restart)
+
+    result = await harness._run(argparse.Namespace(stage="before-restart"))
+
+    assert result == {
+        "stage": "before-restart",
+        "restart": "completed",
+        "temporary_item": "retained_for_after_restart",
+        "restoration": "verified",
+    }
+    assert RunValidator.events == [
+        "verify",
+        "subscribe",
+        "capture",
+        "create",
+        "restore:True",
+    ]
+    assert state_path.exists() is True
+
+
+async def test_run_after_restart_uses_staged_state_and_removes_it(monkeypatch, tmp_path: Path):
+    state_path = _prepare_run(monkeypatch, tmp_path)
+    harness._write_state(harness.RunState("temporary-item", 2, _original_run_states()))
+    client = FakeClient()
+    rest = FakeRest()
+
+    async def connect():
+        return client, rest
+
+    monkeypatch.setattr(harness, "_connect", connect)
+
+    result = await harness._run(argparse.Namespace(stage="after-restart"))
+
+    assert result["stage"] == "after-restart"
+    assert RunValidator.events == [
+        "verify",
+        "subscribe",
+        "persisted",
+        "routes",
+        "diagnostics",
+        "cleanup",
+        "restore:True",
+    ]
+    assert state_path.exists() is False
+
+
+async def test_run_attempts_cleanup_and_surfaces_residual_errors(monkeypatch, tmp_path: Path):
+    state_path = _prepare_run(monkeypatch, tmp_path)
+    initial_client = FakeClient()
+    reconnected_client = FakeClient()
+    rest = FakeRest()
+    RunValidator.route_error = harness.ValidationError("route validation failed")
+    RunValidator.cleanup_error = harness.ValidationError("delete remained")
+    RunValidator.restore_error = harness.ValidationError("light remained changed")
+
+    async def connect():
+        return initial_client, rest
+
+    async def restart(_client, _rest, **_kwargs):
+        return reconnected_client, rest
+
+    monkeypatch.setattr(harness, "_connect", connect)
+    monkeypatch.setattr(harness, "_restart_home_assistant", restart)
+
+    with pytest.raises(harness.ValidationError) as error:
+        await harness._run(argparse.Namespace(stage="all"))
+
+    assert "route validation failed" in str(error.value)
+    assert "temporary library cleanup failed" in str(error.value)
+    assert "light restoration failed" in str(error.value)
+    assert "cleanup" in RunValidator.events
+    assert "restore:True" in RunValidator.events
+    assert state_path.exists() is True
 
 
 async def _async_value(value):
