@@ -148,6 +148,18 @@ class EffectDeploymentDiagnosticBridge:
                 config_entry_id=record.config_entry_id,
                 operation_id=operation_id,
             )
+        elif record.phase is DeploymentPhase.APPLIED:
+            self._history.record_evidence_gap(
+                "application_write_completed",
+                details={
+                    "confidence": record.verification_confidence.value,
+                    "packets_sent": record.progress_current,
+                    "verification": "device_readback_unavailable",
+                },
+                correlation_id=operation_id,
+                config_entry_id=record.config_entry_id,
+                operation_id=operation_id,
+            )
         elif record.phase in {DeploymentPhase.UNKNOWN, DeploymentPhase.UNCERTAIN}:
             self._history.record_evidence_gap(
                 "device_state_uncertain",

@@ -592,14 +592,21 @@ export class MockHomeAssistantBackend {
         : content.kind === "video_profile"
           ? "video"
           : undefined;
+    const uploadOnly =
+      content.kind === "workshop" || content.kind === "special_diy";
     const deployment: DeploymentRecord = {
       operation_id: operationId,
       config_entry_id: String(message.config_entry_id),
-      diy_code: profileTarget ? null : h6199PaletteDiy ? 401 : 1,
+      diy_code:
+        profileTarget || uploadOnly ? null : h6199PaletteDiy ? 401 : 1,
       content_kind: content.kind,
       target_mode: profileTarget ?? (sceneTarget ? "scene" : "custom"),
       target_effect: sceneTarget ? "compiled-scene" : null,
-      phase: h6199PaletteDiy ? "uncertain" : "confirmed",
+      phase: uploadOnly
+        ? "applied"
+        : h6199PaletteDiy
+          ? "uncertain"
+          : "confirmed",
       updated_at: new Date().toISOString(),
       item_id:
         typeof message.item_id === "string" ? message.item_id : null,
@@ -699,7 +706,7 @@ export class MockHomeAssistantBackend {
 const DEVICES = productionData.devices as DeviceCapabilities[];
 
 const REAL_CUSTOM_CATALOGUE =
-  productionData.custom_catalogue as CustomEffectCatalogue;
+  productionData.custom_catalogue as unknown as CustomEffectCatalogue;
 const REAL_SCENE_CATALOGUES =
   productionData.scene_catalogues as Record<string, SceneCatalogue>;
 const REAL_SCENE_DETAILS =

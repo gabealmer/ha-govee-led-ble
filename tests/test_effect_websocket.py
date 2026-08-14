@@ -19,7 +19,11 @@ from homeassistant.setup import async_setup_component
 
 from custom_components.ha_govee_led_ble.const import EFFECT_FAMILY_SCENES
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
-from custom_components.ha_govee_led_ble.effect_catalogue import H6199_DIY_EFFECTS
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    H6199_DIY_EFFECTS,
+    H6199_SPECIAL_DIY_TEMPLATES,
+    WORKSHOP_TEMPLATES,
+)
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
@@ -120,6 +124,9 @@ def _saved_profile_contents() -> tuple[dict[str, Any], ...]:
                 False,
             )
         ),
+        effect_content_to_dict(WORKSHOP_TEMPLATES[0].content("H617A")),
+        effect_content_to_dict(WORKSHOP_TEMPLATES[0].content("H6199")),
+        effect_content_to_dict(H6199_SPECIAL_DIY_TEMPLATES[0].content()),
     )
 
 
@@ -834,6 +841,8 @@ async def test_device_capabilities_and_apply(
         await client.send_json_auto_id({"type": WS_DEVICES})
         devices = await client.receive_json()
         assert devices["result"]["devices"][0]["model"] == "H617A"
+        assert devices["result"]["devices"][0]["custom_effects"]["workshop"] == "supported"
+        assert devices["result"]["devices"][0]["custom_effects"]["special_diy"] == "unsupported"
 
         await client.send_json_auto_id(
             {

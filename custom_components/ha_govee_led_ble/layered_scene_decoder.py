@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 from typing import Any
 
 from .generated_protocol_adapter import (
     GoveeShared,
+    H6199EffectUpload,
     SceneBody,
     SceneParameterTooLargeError,
+    WorkshopBody,
     new_child,
     new_rgb,
+    parse_h6199_workshop_content,
     parse_scene_body,
+    parse_workshop_body,
+    serialize_h6199_workshop_content,
     serialize_scene_body_param,
+    serialize_workshop_body_param,
 )
 from .layered_scene import (
     _LAYER_UNKNOWN_FLAGS_MASK,
@@ -33,7 +40,9 @@ from .scenes import SceneEntry
 __all__ = [
     "decode_catalogue_layered_scene",
     "decode_layered_scene",
+    "decode_workshop_effect",
     "encode_layered_scene",
+    "encode_workshop_effect",
 ]
 
 _APPLIED_AREA_WIDTH_SHIFT = 4
@@ -81,7 +90,7 @@ def encode_layered_scene(scene: LayeredScene) -> bytes:
     root.scene_type = SceneBody.SceneType.scene_v2
     layers = scene.effect.layers
     root.num_records = len(layers)
-    root.records = [_encode_record(root, layer) for layer in layers]
+    root.records = [_encode_record(SceneBody.Record, root, layer) for layer in layers]
     root.padding = [0] * scene.trailing_padding
     try:
         return serialize_scene_body_param(root)
@@ -89,8 +98,56 @@ def encode_layered_scene(scene: LayeredScene) -> bytes:
         raise LayeredSceneValidationError(str(error)) from error
 
 
-def _encode_record(root: Any, layer: EffectLayer) -> Any:
-    record = new_child(SceneBody.Record, root)
+def decode_workshop_effect(
+    model: str,
+    raw_param: bytes,
+) -> tuple[LayeredEffect, int]:
+    """Decode a Workshop parameter through its model-specific generated structure."""
+    if model == "H617A":
+        parsed, trailing_padding = parse_workshop_body(raw_param)
+        records = parsed.layers
+    elif model == "H6199":
+        parsed, trailing_padding = parse_h6199_workshop_content(raw_param)
+        records = parsed.blocks
+    else:
+        raise ValueError(f"{model} has no Workshop grammar")
+    return LayeredEffect(tuple(_decode_layer(record.body) for record in records)), trailing_padding
+
+
+def encode_workshop_effect(
+    model: str,
+    effect: LayeredEffect,
+    *,
+    trailing_padding: int = 0,
+) -> bytes:
+    """Serialize Workshop layers through the model-specific generated structure."""
+    serializer: Callable[[Any], bytes]
+    if model == "H617A":
+        root = WorkshopBody()
+        root.a3_type = b"\x02"
+        root.num_layers = len(effect.layers)
+        root.layers = [_encode_record(WorkshopBody.LayerRecord, root, layer) for layer in effect.layers]
+        root.padding = [0] * trailing_padding
+        serializer = serialize_workshop_body_param
+        value = root
+    elif model == "H6199":
+        root = H6199EffectUpload()
+        content = new_child(H6199EffectUpload.SceneContent, root)
+        content.num_blocks = len(effect.layers)
+        content.blocks = [_encode_record(H6199EffectUpload.Block, content, layer) for layer in effect.layers]
+        content.padding = [0] * trailing_padding
+        serializer = serialize_h6199_workshop_content
+        value = content
+    else:
+        raise ValueError(f"{model} has no Workshop grammar")
+    try:
+        return serializer(value)
+    except SceneParameterTooLargeError as error:
+        raise LayeredSceneValidationError(str(error)) from error
+
+
+def _encode_record(record_type: Any, parent: Any, layer: EffectLayer) -> Any:
+    record = new_child(record_type, parent)
     record.body = _encode_layer(record, layer)
     return record
 

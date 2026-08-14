@@ -229,9 +229,9 @@ capabilities:
       - diy_type04_saved_upload_precedes_selector
       - diy_type04_code24_stable_across_body_edits
     generated_module: custom_components/ha_govee_led_ble/generated_protocol/diy_type04.py
-    runtime: {encode: wired, decode: none, readback: none}
-    ha_surface: prerelease Painted, Single and Multi Apply; workshop none
-    persistence_need: none
+    runtime: {encode: wired, decode: wired, readback: none}
+    ha_surface: prerelease Painted, Single, Multi and Workshop Apply
+    persistence_need: deployment_intent
     preview_level: structural
     preview_variants:
       - label: painted_segment_map
@@ -245,12 +245,12 @@ capabilities:
         note: "workshop_body exposes palettes, layer order and applied-area fields, but selection, brightness and movement/timing semantics are not calibrated well enough to infer rendered cells or animation."
       - label: uncaptured_special_templates
         preview_level: opaque
-        note: "Special DIY templates use parser-specific grammars outside the basic Type04 roster. Until those payloads have committed schemas and fixtures, preserve their raw content without inventing a layout or animation."
+        note: "No H617A Special DIY payload has committed attribution. The H6199 fixtures cannot establish an H617A grammar, so this model remains explicitly unsupported rather than receiving a cross-model write."
     known_gaps:
-      - "workshop_body remains decode-only and has no runtime encoder."
+      - "Workshop Apply completes on the captured 0xA3 upload write. No readback identifies the uploaded body, so the deployment is reported as applied with packet-completion confidence and an evidence-gap diagnostic."
       - "Type03 Painted upload is connected to the evidenced code 800. Type04 Single/Multi Apply uses an explicit caller-supplied code; no automatic allocation rule is evidenced."
       - "Selector readback confirms the accepted code, not the exact uploaded body identity or device-side overwrite/alias semantics."
-      - "See pipeline_known_issues: preview_fidelity_ceiling. diy_type03's explicit 15-segment paint map supports a deterministic static preview. The vendor-named basic Type04 roster has captured structure, with four exact pairs fixture-backed, but rendering and motion semantics remain uncalibrated. Special DIY and other parser-specific payloads remain opaque until modelled. See preview_variants for the per-product breakdown."
+      - "See pipeline_known_issues: preview_fidelity_ceiling. diy_type03's explicit 15-segment paint map supports a deterministic static preview. The vendor-named basic Type04 roster has captured structure, with four exact pairs fixture-backed, but rendering and motion semantics remain uncalibrated. H617A Special DIY remains unsupported until model-specific payloads are committed. See preview_variants for the per-product breakdown."
 
   - model: H617A
     capability: music_mode
@@ -429,7 +429,7 @@ capabilities:
 
   - model: H6199
     capability: diy_upload
-    summary: Creating/uploading DIY, workshop and AI-generated effects via the 0xA3 h6199_effect_upload family; a rich, confirmed decode-only fixture corpus (DIY, workshop and scene-upload variants), compiled into the shipped runtime package but never imported by any handwritten runtime module.
+    summary: Creating/uploading DIY, workshop and AI-generated effects via the 0xA3 h6199_effect_upload family; fixture-backed Workshop and Special DIY definitions are persisted, compiled through the generated structures and applied as hardened upload-only transactions.
     kaitai_schema: ["h6199_effect_upload.ksy::h6199_effect_upload"]
     evidence_status: confirmed
     evidence_refs:
@@ -440,8 +440,10 @@ capabilities:
     persistence_need: deployment_intent
     preview_level: structural
     known_gaps:
-      - "The generated writer covers only the fixture-backed palette DIY families and variations. Workshop, AI-generated and unfixtured identities remain outside this compiler and retain structural or opaque handling."
-      - "The upload bytes are fully modelled, but their binding to the captured scene-slot activation is not. Deployment preserves that evidence boundary by completing with uncertain confidence and a bounded evidence-gap diagnostic."
+      - "The generated writer covers fixture-backed palette DIY, Workshop and Special DIY definitions. AI-generated and unfixtured identities remain outside the compiler and retain structural or opaque handling."
+      - "Palette DIY upload bytes are modelled, but their binding to captured scene slot 401 is not. That transaction remains uncertain even when the selector is observed."
+      - "Workshop and Special DIY fixtures expose no committed readback or separate activation selector. Successful writes are reported with packet-completion confidence, not device-state confirmation."
+      - "Workshop and Special DIY rendering semantics remain structural. The editor exposes only schema-backed parameters, preserves source payload provenance and does not infer animation from family or timing fields."
 
   - model: H6199
     capability: music_mode

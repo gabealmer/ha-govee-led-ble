@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import io
 from dataclasses import dataclass
 from typing import Final
+
+from kaitaistruct import KaitaiStream
 
 from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS
 from .effect_contracts import (
@@ -13,8 +17,17 @@ from .effect_contracts import (
     studio_apply_capability_state,
     workflow_capability_state,
 )
-from .effect_domain import MAX_MULTI_EFFECTS, MAX_PALETTE_COLOURS, JsonValue
+from .effect_domain import (
+    MAX_MULTI_EFFECTS,
+    MAX_PALETTE_COLOURS,
+    JsonValue,
+    SpecialDiyEffect,
+    WorkshopEffect,
+    effect_content_to_dict,
+)
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
+from .generated_protocol.h6199_effect_upload import H6199EffectUpload  # type: ignore[attr-defined]
+from .layered_scene_decoder import decode_workshop_effect
 
 EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 4
 LEGACY_CATALOGUE_SKU: Final = "H617A"
@@ -88,14 +101,78 @@ class NativeModeOption:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkshopTemplate:
+    id: str
+    label: str
+    source_fixture: str
+    raw_param_b64: str
+
+    def content(self, model: str) -> WorkshopEffect:
+        raw_param = base64.b64decode(self.raw_param_b64, validate=True)
+        effect, trailing_padding = decode_workshop_effect(model, raw_param)
+        return WorkshopEffect(
+            model=model,
+            template=self.id,
+            effect=effect,
+            raw_param=raw_param,
+            trailing_padding=trailing_padding,
+        )
+
+    def to_dict(self, model: str) -> dict[str, JsonValue]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "source_fixture": self.source_fixture,
+            "content": effect_content_to_dict(self.content(model)),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class SpecialDiyTemplate:
+    id: str
+    label: str
+    source_fixture: str
+    source_body_b64: str
+
+    def content(self) -> SpecialDiyEffect:
+        source_body = base64.b64decode(self.source_body_b64, validate=True)
+        parsed = H6199EffectUpload(KaitaiStream(io.BytesIO(source_body)))
+        parsed._read()
+        if parsed.kind != H6199EffectUpload.BodyKind.diy:
+            raise ValueError(f"{self.source_fixture} is not a Special DIY body")
+        return SpecialDiyEffect(
+            model="H6199",
+            template=self.id,
+            family=int(parsed.content.family),
+            variant=int(parsed.content.variant),
+            speed=int(parsed.content.speed),
+            palette=tuple((int(colour.red), int(colour.green), int(colour.blue)) for colour in parsed.content.palette),
+            raw_payload=source_body,
+            trailing_padding=len(parsed.content.padding),
+        )
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "source_fixture": self.source_fixture,
+            "content": effect_content_to_dict(self.content()),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class CatalogueSupport:
     multi: CapabilityState
     advanced: CapabilityState
+    workshop: CapabilityState
+    special_diy: CapabilityState
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
             "multi": self.multi.value,
             "advanced": self.advanced.value,
+            "workshop": self.workshop.value,
+            "special_diy": self.special_diy.value,
         }
 
 
@@ -105,6 +182,8 @@ class ApplySupport:
     single: CapabilityState
     multi: CapabilityState
     palette_diy: CapabilityState
+    workshop: CapabilityState
+    special_diy: CapabilityState
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
@@ -112,6 +191,8 @@ class ApplySupport:
             "single": self.single.value,
             "multi": self.multi.value,
             "palette_diy": self.palette_diy.value,
+            "workshop": self.workshop.value,
+            "special_diy": self.special_diy.value,
         }
 
 
@@ -122,6 +203,8 @@ class ModelEffectCatalogue:
     effects: tuple[DiyEffectFamily, ...]
     music_modes: tuple[NativeModeOption, ...]
     video_modes: tuple[NativeModeOption, ...]
+    workshop_templates: tuple[WorkshopTemplate, ...]
+    special_diy_templates: tuple[SpecialDiyTemplate, ...]
     supports: CatalogueSupport
     apply: ApplySupport
 
@@ -133,6 +216,8 @@ class ModelEffectCatalogue:
             "effects": [effect.to_dict() for effect in self.effects],
             "music_modes": [mode.to_dict() for mode in self.music_modes],
             "video_modes": [mode.to_dict() for mode in self.video_modes],
+            "workshop_templates": [template.to_dict(self.sku) for template in self.workshop_templates],
+            "special_diy_templates": [template.to_dict() for template in self.special_diy_templates],
             "workflows": frontend_release_capabilities(self.sku),
             "supports": self.supports.to_dict(),
             "limits": {
@@ -443,6 +528,114 @@ H6199_VIDEO_MODES: Final = (
     NativeModeOption("game", "Game"),
 )
 
+WORKSHOP_TEMPLATES: Final = (
+    WorkshopTemplate(
+        "movement-baseline",
+        "Movement",
+        "workshop_body_mv_baseline.bin",
+        "Ah1AAAACEgH/AACAFBSBsm0CAP8A/wAAFAHvEAG3ARoAAQAPEAH/AACAFBQBgBQBBv8AAACAAACAAAAAAAAAAAA=",
+    ),
+    WorkshopTemplate(
+        "selected-area-movement-direction",
+        "Selected-area movement",
+        "workshop_body_selected_movement_dir.bin",
+        "Ah1AAAACEgH/AACAFBSDsm0CAP8A/wAAFgHvEAG3ARoAAQAPEAH/AACAFBQBgBQBBv8AAACAAACAAAAAAAAAAAA=",
+    ),
+    WorkshopTemplate(
+        "overall-movement-direction",
+        "Whole-layer movement",
+        "workshop_body_overall_movement_dir.bin",
+        "Ah1AAAACEgH/AACAFBSDsm0CAP8A/wAAAAHvEgG3ABoAAQAPEAH/AACAFBQBgBQBBv8AAACAAACAAAAAAAAAAAA=",
+    ),
+    WorkshopTemplate(
+        "two-colour-continuous-selection",
+        "Continuous two-colour",
+        "workshop_body_two_colour_continuously.bin",
+        "AR0AAQAPEAH/AACAFBQBgBQC/wAAAAD/AACAAACAAA==",
+    ),
+    WorkshopTemplate(
+        "three-colour-palette",
+        "Three-colour palette",
+        "workshop_body_three_colour.bin",
+        "ASAAAQAPEAH/AACAFBQBgBQD/wAAAAD/AP8AAACAAACAAAAAAAAAAAAAAAAAAAAA",
+    ),
+    WorkshopTemplate(
+        "brightness-scope",
+        "Brightness range",
+        "workshop_body_brightness_scope.bin",
+        "AR0AAQAPEAHGOQD/yDABfxQC/wAAAAD/AACAAACAAA==",
+    ),
+    WorkshopTemplate(
+        "two-layer-priority",
+        "Layer priority",
+        "workshop_body_priority_2layer.bin",
+        "Ah1AAAACEgH/AACAFBSDsm0CAP8A/wAAAAHvEAG3AhoAAQAPEAH/AACAFBQBgBQBBv8AAACAAACAAAAAAAAAAAA=",
+    ),
+    WorkshopTemplate(
+        "distribution-direction",
+        "Distribution direction",
+        "workshop_body_r13_direction.bin",
+        "BRogAQACAAH/AACAFBSAgBQB/wAFAACAAACAABoiAQACAAH/AACAFBQBgBQBAP8EAACAAACAABokAQACAAH/AACAFBQBgBQB/wABAACAAACAABomAQACAAH/AACAFBQBgBQBAP8AAACAAACAABooAQABAAH/AACAFBQBgBQB/wAAAACAAACAAAAAAAAAAAAAAAAAAAAA",
+    ),
+    WorkshopTemplate(
+        "matrix-customise",
+        "Custom segments",
+        "workshop_body_matrix_customize.bin",
+        "AR0AAwEAEAH/AACAFBQBgBQC/wAAAAD/AACAAACAAA==",
+    ),
+    WorkshopTemplate(
+        "five-layer-applied-area",
+        "Five applied areas",
+        "workshop_body_christmas_5layer.bin",
+        "BRogAQACAAH/AACAFBQBgBQB/wAFAACAAACAABoiAQACAAH/AACAFBQBgBQBAP8EAACAAACAABokAQACAAH/AACAFBQBgBQB/wABAACAAACAABomAQACAAH/AACAFBQBgBQBAP8AAACAAACAABooAQABAAH/AACAFBQBgBQB/wAAAACAAACAAAAAAAAAAAAAAAAAAAAA",
+    ),
+)
+
+H6199_SPECIAL_DIY_TEMPLATES: Final = (
+    SpecialDiyTemplate(
+        "fade",
+        "Fade",
+        "h6199_effect_diy_fade1_fast.bin",
+        "AQIEAABcFf8AAP99AP//AAD/AAAA/wD//4sA/wAAAAAAAA==",
+    ),
+    SpecialDiyTemplate(
+        "jumping",
+        "Jumping",
+        "h6199_effect_diy_jumping1.bin",
+        "AQIEAQBcFf8AAP99AP//AAD/AAAA/wD//4sA/wAAAAAAAA==",
+    ),
+    SpecialDiyTemplate(
+        "chasing",
+        "Chasing",
+        "h6199_effect_diy_chasing1.bin",
+        "AQIECAkyFf8AAP99AP//AAD/AAAA/wD//4sA/wAAAAAAAA==",
+    ),
+    SpecialDiyTemplate(
+        "marquee",
+        "Marquee",
+        "h6199_effect_diy_marquee1.bin",
+        "AQIEAwNcFf8AAP99AP//AAD/AAAA/wD//4sA/wAAAAAAAA==",
+    ),
+    SpecialDiyTemplate(
+        "crossing",
+        "Crossing",
+        "h6199_effect_diy_crossing.bin",
+        "AQIECgBkCf8AAAD/AAAA/wAAAAAAAAAAAAAAAAAAAAAAAA==",
+    ),
+    SpecialDiyTemplate(
+        "rainbow",
+        "Rainbow",
+        "h6199_effect_diy_rainbow1.bin",
+        "AQIECQkyFf8AAP99AP//AAD/AAAA/wD//4sA/wAAAAAAAA==",
+    ),
+    SpecialDiyTemplate(
+        "twinkle",
+        "Twinkle",
+        "h6199_effect_diy_twinkle1.bin",
+        "AQIEAgBcFf8AAP99AP//AAD/AAAA/wD//4sA/wAAAAAAAA==",
+    ),
+)
+
 MODEL_EFFECT_CATALOGUES: Final = {
     "H617A": ModelEffectCatalogue(
         sku="H617A",
@@ -450,15 +643,21 @@ MODEL_EFFECT_CATALOGUES: Final = {
         effects=H617A_TYPE04_FAMILIES,
         music_modes=H617A_NATIVE_MUSIC_MODES,
         video_modes=(),
+        workshop_templates=WORKSHOP_TEMPLATES,
+        special_diy_templates=(),
         supports=CatalogueSupport(
             multi=workflow_capability_state("H617A", CapabilityWorkflow.MULTI),
             advanced=workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H617A", CapabilityWorkflow.WORKSHOP),
+            special_diy=workflow_capability_state("H617A", CapabilityWorkflow.SPECIAL_DIY),
         ),
         apply=ApplySupport(
             painted=studio_apply_capability_state("H617A", CapabilityWorkflow.PAINTED),
             single=studio_apply_capability_state("H617A", CapabilityWorkflow.SINGLE),
             multi=studio_apply_capability_state("H617A", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H617A", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H617A", CapabilityWorkflow.WORKSHOP),
+            special_diy=studio_apply_capability_state("H617A", CapabilityWorkflow.SPECIAL_DIY),
         ),
     ),
     "H6199": ModelEffectCatalogue(
@@ -467,15 +666,21 @@ MODEL_EFFECT_CATALOGUES: Final = {
         effects=H6199_PALETTE_DIY_FAMILIES,
         music_modes=H6199_NATIVE_MUSIC_MODES,
         video_modes=H6199_VIDEO_MODES,
+        workshop_templates=WORKSHOP_TEMPLATES,
+        special_diy_templates=H6199_SPECIAL_DIY_TEMPLATES,
         supports=CatalogueSupport(
             multi=workflow_capability_state("H6199", CapabilityWorkflow.MULTI),
             advanced=workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6199", CapabilityWorkflow.WORKSHOP),
+            special_diy=workflow_capability_state("H6199", CapabilityWorkflow.SPECIAL_DIY),
         ),
         apply=ApplySupport(
             painted=studio_apply_capability_state("H6199", CapabilityWorkflow.PAINTED),
             single=studio_apply_capability_state("H6199", CapabilityWorkflow.SINGLE),
             multi=studio_apply_capability_state("H6199", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP),
+            special_diy=studio_apply_capability_state("H6199", CapabilityWorkflow.SPECIAL_DIY),
         ),
     ),
 }

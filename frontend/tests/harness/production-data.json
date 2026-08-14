@@ -4,7 +4,9 @@
       "multi": "supported",
       "painted": "supported",
       "palette_diy": "unsupported",
-      "single": "supported"
+      "single": "supported",
+      "special_diy": "unsupported",
+      "workshop": "supported"
     },
     "effects": [
       {
@@ -188,7 +190,9 @@
           "multi": "supported",
           "painted": "supported",
           "palette_diy": "unsupported",
-          "single": "supported"
+          "single": "supported",
+          "special_diy": "unsupported",
+          "workshop": "supported"
         },
         "effects": [
           {
@@ -439,9 +443,12 @@
           }
         ],
         "sku": "H617A",
+        "special_diy_templates": [],
         "supports": {
           "advanced": "supported",
-          "multi": "supported"
+          "multi": "supported",
+          "special_diy": "evidence_gap",
+          "workshop": "supported"
         },
         "video_modes": [],
         "workflows": [
@@ -494,16 +501,1411 @@
             "label": "Advanced"
           },
           {
-            "application": "planned",
-            "content_kind": "advanced",
+            "application": "studio",
+            "content_kind": "workshop",
             "id": "workshop",
             "label": "Workshop"
           },
           {
             "application": "planned",
-            "content_kind": "opaque",
+            "content_kind": "special_diy",
             "id": "special_diy",
             "label": "Special DIY"
+          }
+        ],
+        "workshop_templates": [
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 4
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 109,
+                    "colour_speed": 178,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 183,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 239,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 0
+                    },
+                    "unknown_flags": 16
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        6,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "021d400000021201ff000080141481b26d0200ff00ff00001401ef1001b7011a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+              "template": "movement-baseline",
+              "trailing_padding": 7
+            },
+            "id": "movement-baseline",
+            "label": "Movement",
+            "source_fixture": "workshop_body_mv_baseline.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 4
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 109,
+                    "colour_speed": 178,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 3
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 183,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 2,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 239,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 0
+                    },
+                    "unknown_flags": 16
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        6,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "021d400000021201ff000080141483b26d0200ff00ff00001601ef1001b7011a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+              "template": "selected-area-movement-direction",
+              "trailing_padding": 7
+            },
+            "id": "selected-area-movement-direction",
+            "label": "Selected-area movement",
+            "source_fixture": "workshop_body_selected_movement_dir.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 4
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 109,
+                    "colour_speed": 178,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 3
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 2,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 183,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 239,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 0
+                    },
+                    "unknown_flags": 16
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        6,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "021d400000021201ff000080141483b26d0200ff00ff00000001ef1201b7001a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+              "template": "overall-movement-direction",
+              "trailing_padding": 7
+            },
+            "id": "overall-movement-direction",
+            "label": "Whole-layer movement",
+            "source_fixture": "workshop_body_overall_movement_dir.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "011d0001000f1001ff000080141401801402ff00000000ff00008000008000",
+              "template": "two-colour-continuous-selection",
+              "trailing_padding": 0
+            },
+            "id": "two-colour-continuous-selection",
+            "label": "Continuous two-colour",
+            "source_fixture": "workshop_body_two_colour_continuously.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "01200001000f1001ff000080141401801403ff00000000ff00ff00000080000080000000000000000000000000000000",
+              "template": "three-colour-palette",
+              "trailing_padding": 14
+            },
+            "id": "three-colour-palette",
+            "label": "Three-colour palette",
+            "source_fixture": "workshop_body_three_colour.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 200,
+                        "change_speed": 255,
+                        "darkest_retention": 48,
+                        "order": 0,
+                        "scope_high": 198,
+                        "scope_low": 57
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 127,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "011d0001000f1001c63900ffc830017f1402ff00000000ff00008000008000",
+              "template": "brightness-scope",
+              "trailing_padding": 0
+            },
+            "id": "brightness-scope",
+            "label": "Brightness range",
+            "source_fixture": "workshop_body_brightness_scope.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 4
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 109,
+                    "colour_speed": 178,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 3
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 183,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 2,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 239,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 0
+                    },
+                    "unknown_flags": 16
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        6,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "021d400000021201ff000080141483b26d0200ff00ff00000001ef1001b7021a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+              "template": "two-layer-priority",
+              "trailing_padding": 7
+            },
+            "id": "two-layer-priority",
+            "label": "Layer priority",
+            "source_fixture": "workshop_body_priority_2layer.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        5
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 2,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        4
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 4,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        1
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 6,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 8,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "051a200100020001ff000080141480801401ff0005000080000080001a220100020001ff00008014140180140100ff04000080000080001a240100020001ff000080141401801401ff0001000080000080001a260100020001ff00008014140180140100ff00000080000080001a280100010001ff000080141401801401ff0000000080000080000000000000000000000000000000",
+              "template": "distribution-direction",
+              "trailing_padding": 14
+            },
+            "id": "distribution-direction",
+            "label": "Distribution direction",
+            "source_fixture": "workshop_body_r13_direction.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 1,
+                      "param_2": 0,
+                      "type": 3
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "011d000301001001ff000080141401801402ff00000000ff00008000008000",
+              "template": "matrix-customise",
+              "trailing_padding": 0
+            },
+            "id": "matrix-customise",
+            "label": "Custom segments",
+            "source_fixture": "workshop_body_matrix_customize.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        5
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 2,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        4
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 4,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        1
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 6,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 8,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H617A",
+              "raw_param": "051a200100020001ff000080141401801401ff0005000080000080001a220100020001ff00008014140180140100ff04000080000080001a240100020001ff000080141401801401ff0001000080000080001a260100020001ff00008014140180140100ff00000080000080001a280100010001ff000080141401801401ff0000000080000080000000000000000000000000000000",
+              "template": "five-layer-applied-area",
+              "trailing_padding": 14
+            },
+            "id": "five-layer-applied-area",
+            "label": "Five applied areas",
+            "source_fixture": "workshop_body_christmas_5layer.bin"
           }
         ]
       },
@@ -512,7 +1914,9 @@
           "multi": "unsupported",
           "painted": "unsupported",
           "palette_diy": "supported",
-          "single": "unsupported"
+          "single": "unsupported",
+          "special_diy": "supported",
+          "workshop": "supported"
         },
         "effects": [
           {
@@ -660,9 +2064,357 @@
         ],
         "painted_effects": [],
         "sku": "H6199",
+        "special_diy_templates": [
+          {
+            "content": {
+              "family": 0,
+              "kind": "special_diy",
+              "model": "H6199",
+              "palette": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  125,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "raw_payload": "01020400005c15ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000",
+              "speed": 92,
+              "template": "fade",
+              "trailing_padding": 6,
+              "variant": 0
+            },
+            "id": "fade",
+            "label": "Fade",
+            "source_fixture": "h6199_effect_diy_fade1_fast.bin"
+          },
+          {
+            "content": {
+              "family": 1,
+              "kind": "special_diy",
+              "model": "H6199",
+              "palette": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  125,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "raw_payload": "01020401005c15ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000",
+              "speed": 92,
+              "template": "jumping",
+              "trailing_padding": 6,
+              "variant": 0
+            },
+            "id": "jumping",
+            "label": "Jumping",
+            "source_fixture": "h6199_effect_diy_jumping1.bin"
+          },
+          {
+            "content": {
+              "family": 8,
+              "kind": "special_diy",
+              "model": "H6199",
+              "palette": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  125,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "raw_payload": "01020408093215ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000",
+              "speed": 50,
+              "template": "chasing",
+              "trailing_padding": 6,
+              "variant": 9
+            },
+            "id": "chasing",
+            "label": "Chasing",
+            "source_fixture": "h6199_effect_diy_chasing1.bin"
+          },
+          {
+            "content": {
+              "family": 3,
+              "kind": "special_diy",
+              "model": "H6199",
+              "palette": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  125,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "raw_payload": "01020403035c15ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000",
+              "speed": 92,
+              "template": "marquee",
+              "trailing_padding": 6,
+              "variant": 3
+            },
+            "id": "marquee",
+            "label": "Marquee",
+            "source_fixture": "h6199_effect_diy_marquee1.bin"
+          },
+          {
+            "content": {
+              "family": 10,
+              "kind": "special_diy",
+              "model": "H6199",
+              "palette": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ]
+              ],
+              "raw_payload": "0102040a006409ff000000ff000000ff000000000000000000000000000000000000",
+              "speed": 100,
+              "template": "crossing",
+              "trailing_padding": 18,
+              "variant": 0
+            },
+            "id": "crossing",
+            "label": "Crossing",
+            "source_fixture": "h6199_effect_diy_crossing.bin"
+          },
+          {
+            "content": {
+              "family": 9,
+              "kind": "special_diy",
+              "model": "H6199",
+              "palette": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  125,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "raw_payload": "01020409093215ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000",
+              "speed": 50,
+              "template": "rainbow",
+              "trailing_padding": 6,
+              "variant": 9
+            },
+            "id": "rainbow",
+            "label": "Rainbow",
+            "source_fixture": "h6199_effect_diy_rainbow1.bin"
+          },
+          {
+            "content": {
+              "family": 2,
+              "kind": "special_diy",
+              "model": "H6199",
+              "palette": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  125,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "raw_payload": "01020402005c15ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000",
+              "speed": 92,
+              "template": "twinkle",
+              "trailing_padding": 6,
+              "variant": 0
+            },
+            "id": "twinkle",
+            "label": "Twinkle",
+            "source_fixture": "h6199_effect_diy_twinkle1.bin"
+          }
+        ],
         "supports": {
           "advanced": "supported",
-          "multi": "unsupported"
+          "multi": "unsupported",
+          "special_diy": "supported",
+          "workshop": "supported"
         },
         "video_modes": [
           {
@@ -718,16 +2470,1411 @@
             "label": "Advanced"
           },
           {
-            "application": "planned",
-            "content_kind": "advanced",
+            "application": "studio",
+            "content_kind": "workshop",
             "id": "workshop",
             "label": "Workshop"
           },
           {
-            "application": "planned",
-            "content_kind": "opaque",
+            "application": "studio",
+            "content_kind": "special_diy",
             "id": "special_diy",
             "label": "Special DIY"
+          }
+        ],
+        "workshop_templates": [
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 4
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 109,
+                    "colour_speed": 178,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 183,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 239,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 0
+                    },
+                    "unknown_flags": 16
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        6,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "021d400000021201ff000080141481b26d0200ff00ff00001401ef1001b7011a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+              "template": "movement-baseline",
+              "trailing_padding": 7
+            },
+            "id": "movement-baseline",
+            "label": "Movement",
+            "source_fixture": "workshop_body_mv_baseline.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 4
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 109,
+                    "colour_speed": 178,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 3
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 183,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 2,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 239,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 0
+                    },
+                    "unknown_flags": 16
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        6,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "021d400000021201ff000080141483b26d0200ff00ff00001601ef1001b7011a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+              "template": "selected-area-movement-direction",
+              "trailing_padding": 7
+            },
+            "id": "selected-area-movement-direction",
+            "label": "Selected-area movement",
+            "source_fixture": "workshop_body_selected_movement_dir.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 4
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 109,
+                    "colour_speed": 178,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 3
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 2,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 183,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 239,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 0
+                    },
+                    "unknown_flags": 16
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        6,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "021d400000021201ff000080141483b26d0200ff00ff00000001ef1201b7001a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+              "template": "overall-movement-direction",
+              "trailing_padding": 7
+            },
+            "id": "overall-movement-direction",
+            "label": "Whole-layer movement",
+            "source_fixture": "workshop_body_overall_movement_dir.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "011d0001000f1001ff000080141401801402ff00000000ff00008000008000",
+              "template": "two-colour-continuous-selection",
+              "trailing_padding": 0
+            },
+            "id": "two-colour-continuous-selection",
+            "label": "Continuous two-colour",
+            "source_fixture": "workshop_body_two_colour_continuously.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "01200001000f1001ff000080141401801403ff00000000ff00ff00000080000080000000000000000000000000000000",
+              "template": "three-colour-palette",
+              "trailing_padding": 14
+            },
+            "id": "three-colour-palette",
+            "label": "Three-colour palette",
+            "source_fixture": "workshop_body_three_colour.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 200,
+                        "change_speed": 255,
+                        "darkest_retention": 48,
+                        "order": 0,
+                        "scope_high": 198,
+                        "scope_low": 57
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 127,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "011d0001000f1001c63900ffc830017f1402ff00000000ff00008000008000",
+              "template": "brightness-scope",
+              "trailing_padding": 0
+            },
+            "id": "brightness-scope",
+            "label": "Brightness range",
+            "source_fixture": "workshop_body_brightness_scope.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 4
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 109,
+                    "colour_speed": 178,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 3
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 183,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 2,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 239,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 0
+                    },
+                    "unknown_flags": 16
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        6,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "021d400000021201ff000080141483b26d0200ff00ff00000001ef1001b7021a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+              "template": "two-layer-priority",
+              "trailing_padding": 7
+            },
+            "id": "two-layer-priority",
+            "label": "Layer priority",
+            "source_fixture": "workshop_body_priority_2layer.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": true,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        5
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 2,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        4
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 4,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        1
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 6,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 8,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "051a200100020001ff000080141480801401ff0005000080000080001a220100020001ff00008014140180140100ff04000080000080001a240100020001ff000080141401801401ff0001000080000080001a260100020001ff00008014140180140100ff00000080000080001a280100010001ff000080141401801401ff0000000080000080000000000000000000000000000000",
+              "template": "distribution-direction",
+              "trailing_padding": 14
+            },
+            "id": "distribution-direction",
+            "label": "Distribution direction",
+            "source_fixture": "workshop_body_r13_direction.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 1,
+                      "param_2": 0,
+                      "type": 3
+                    },
+                    "unknown_flags": 16
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "011d000301001001ff000080141401801402ff00000000ff00008000008000",
+              "template": "matrix-customise",
+              "trailing_padding": 0
+            },
+            "id": "matrix-customise",
+            "label": "Custom segments",
+            "source_fixture": "workshop_body_matrix_customize.bin"
+          },
+          {
+            "content": {
+              "effect": {
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        5
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 2,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        4
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 4,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        1
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 6,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 2,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 8,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 128,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 128,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ]
+              },
+              "kind": "workshop",
+              "model": "H6199",
+              "raw_param": "051a200100020001ff000080141401801401ff0005000080000080001a220100020001ff00008014140180140100ff04000080000080001a240100020001ff000080141401801401ff0001000080000080001a260100020001ff00008014140180140100ff00000080000080001a280100010001ff000080141401801401ff0000000080000080000000000000000000000000000000",
+              "template": "five-layer-applied-area",
+              "trailing_padding": 14
+            },
+            "id": "five-layer-applied-area",
+            "label": "Five applied areas",
+            "source_fixture": "workshop_body_christmas_5layer.bin"
           }
         ]
       }
@@ -806,9 +3953,12 @@
     ],
     "schema_version": 4,
     "sku": "H617A",
+    "special_diy_templates": [],
     "supports": {
       "advanced": "supported",
-      "multi": "supported"
+      "multi": "supported",
+      "special_diy": "evidence_gap",
+      "workshop": "supported"
     },
     "video_modes": [],
     "workflows": [
@@ -861,16 +4011,1411 @@
         "label": "Advanced"
       },
       {
-        "application": "planned",
-        "content_kind": "advanced",
+        "application": "studio",
+        "content_kind": "workshop",
         "id": "workshop",
         "label": "Workshop"
       },
       {
         "application": "planned",
-        "content_kind": "opaque",
+        "content_kind": "special_diy",
         "id": "special_diy",
         "label": "Special DIY"
+      }
+    ],
+    "workshop_templates": [
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 4
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 109,
+                "colour_speed": 178,
+                "distribution": {
+                  "backwards": true,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": false,
+                  "speed": 183,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    255,
+                    0,
+                    0
+                  ]
+                ],
+                "priority": 1,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 239,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 0
+                },
+                "unknown_flags": 16
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    6,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 15,
+                  "type": 1
+                },
+                "unknown_flags": 16
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "021d400000021201ff000080141481b26d0200ff00ff00001401ef1001b7011a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+          "template": "movement-baseline",
+          "trailing_padding": 7
+        },
+        "id": "movement-baseline",
+        "label": "Movement",
+        "source_fixture": "workshop_body_mv_baseline.bin"
+      },
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 4
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 109,
+                "colour_speed": 178,
+                "distribution": {
+                  "backwards": true,
+                  "method": 3
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": false,
+                  "speed": 183,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    255,
+                    0,
+                    0
+                  ]
+                ],
+                "priority": 1,
+                "selected_movement": {
+                  "direction": 2,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 239,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 0
+                },
+                "unknown_flags": 16
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    6,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 15,
+                  "type": 1
+                },
+                "unknown_flags": 16
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "021d400000021201ff000080141483b26d0200ff00ff00001601ef1001b7011a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+          "template": "selected-area-movement-direction",
+          "trailing_padding": 7
+        },
+        "id": "selected-area-movement-direction",
+        "label": "Selected-area movement",
+        "source_fixture": "workshop_body_selected_movement_dir.bin"
+      },
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 4
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 109,
+                "colour_speed": 178,
+                "distribution": {
+                  "backwards": true,
+                  "method": 3
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 2,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": false,
+                  "speed": 183,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    255,
+                    0,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 1,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 239,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 0
+                },
+                "unknown_flags": 16
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    6,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 15,
+                  "type": 1
+                },
+                "unknown_flags": 16
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "021d400000021201ff000080141483b26d0200ff00ff00000001ef1201b7001a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+          "template": "overall-movement-direction",
+          "trailing_padding": 7
+        },
+        "id": "overall-movement-direction",
+        "label": "Whole-layer movement",
+        "source_fixture": "workshop_body_overall_movement_dir.bin"
+      },
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 15,
+                  "type": 1
+                },
+                "unknown_flags": 16
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "011d0001000f1001ff000080141401801402ff00000000ff00008000008000",
+          "template": "two-colour-continuous-selection",
+          "trailing_padding": 0
+        },
+        "id": "two-colour-continuous-selection",
+        "label": "Continuous two-colour",
+        "source_fixture": "workshop_body_two_colour_continuously.bin"
+      },
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 15,
+                  "type": 1
+                },
+                "unknown_flags": 16
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "01200001000f1001ff000080141401801403ff00000000ff00ff00000080000080000000000000000000000000000000",
+          "template": "three-colour-palette",
+          "trailing_padding": 14
+        },
+        "id": "three-colour-palette",
+        "label": "Three-colour palette",
+        "source_fixture": "workshop_body_three_colour.bin"
+      },
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 200,
+                    "change_speed": 255,
+                    "darkest_retention": 48,
+                    "order": 0,
+                    "scope_high": 198,
+                    "scope_low": 57
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 127,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 15,
+                  "type": 1
+                },
+                "unknown_flags": 16
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "011d0001000f1001c63900ffc830017f1402ff00000000ff00008000008000",
+          "template": "brightness-scope",
+          "trailing_padding": 0
+        },
+        "id": "brightness-scope",
+        "label": "Brightness range",
+        "source_fixture": "workshop_body_brightness_scope.bin"
+      },
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 4
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 109,
+                "colour_speed": 178,
+                "distribution": {
+                  "backwards": true,
+                  "method": 3
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": false,
+                  "speed": 183,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    255,
+                    0,
+                    0
+                  ]
+                ],
+                "priority": 2,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 1,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 239,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 0
+                },
+                "unknown_flags": 16
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    6,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 15,
+                  "type": 1
+                },
+                "unknown_flags": 16
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "021d400000021201ff000080141483b26d0200ff00ff00000001ef1001b7021a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+          "template": "two-layer-priority",
+          "trailing_padding": 7
+        },
+        "id": "two-layer-priority",
+        "label": "Layer priority",
+        "source_fixture": "workshop_body_priority_2layer.bin"
+      },
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": true,
+                  "method": 0
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    5
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 2,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    4
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 4,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    1
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 6,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 8,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 1,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "051a200100020001ff000080141480801401ff0005000080000080001a220100020001ff00008014140180140100ff04000080000080001a240100020001ff000080141401801401ff0001000080000080001a260100020001ff00008014140180140100ff00000080000080001a280100010001ff000080141401801401ff0000000080000080000000000000000000000000000000",
+          "template": "distribution-direction",
+          "trailing_padding": 14
+        },
+        "id": "distribution-direction",
+        "label": "Distribution direction",
+        "source_fixture": "workshop_body_r13_direction.bin"
+      },
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 1,
+                  "param_2": 0,
+                  "type": 3
+                },
+                "unknown_flags": 16
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "011d000301001001ff000080141401801402ff00000000ff00008000008000",
+          "template": "matrix-customise",
+          "trailing_padding": 0
+        },
+        "id": "matrix-customise",
+        "label": "Custom segments",
+        "source_fixture": "workshop_body_matrix_customize.bin"
+      },
+      {
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    5
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 2,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    4
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 4,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    1
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 6,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 2,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 8,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": false,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 0,
+                    "scope_high": 255,
+                    "scope_low": 0
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 1,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              }
+            ]
+          },
+          "kind": "workshop",
+          "model": "H617A",
+          "raw_param": "051a200100020001ff000080141401801401ff0005000080000080001a220100020001ff00008014140180140100ff04000080000080001a240100020001ff000080141401801401ff0001000080000080001a260100020001ff00008014140180140100ff00000080000080001a280100010001ff000080141401801401ff0000000080000080000000000000000000000000000000",
+          "template": "five-layer-applied-area",
+          "trailing_padding": 14
+        },
+        "id": "five-layer-applied-area",
+        "label": "Five applied areas",
+        "source_fixture": "workshop_body_christmas_5layer.bin"
       }
     ]
   },
@@ -882,7 +5427,9 @@
         "multi": "supported",
         "painted": "supported",
         "palette_diy": "unsupported",
-        "single": "supported"
+        "single": "supported",
+        "special_diy": "unsupported",
+        "workshop": "supported"
       },
       "display_name": "H617A LED Strip",
       "model": "H617A",
@@ -900,7 +5447,9 @@
         "multi": "unsupported",
         "painted": "unsupported",
         "palette_diy": "supported",
-        "single": "unsupported"
+        "single": "unsupported",
+        "special_diy": "supported",
+        "workshop": "supported"
       },
       "display_name": "H6199 DreamView T1",
       "model": "H6199",

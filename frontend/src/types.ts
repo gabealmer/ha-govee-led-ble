@@ -51,6 +51,8 @@ export interface DeviceCapabilities {
     multi: CapabilityState;
     palette_diy: CapabilityState;
     advanced: CapabilityState;
+    workshop: CapabilityState;
+    special_diy: CapabilityState;
   };
   profiles: {
     music: CapabilityState;
@@ -197,6 +199,29 @@ export interface AdvancedContent {
   layers: EffectLayer[];
 }
 
+export interface WorkshopContent {
+  kind: "workshop";
+  model: ModelSku;
+  template: string;
+  effect: {
+    layers: EffectLayer[];
+  };
+  raw_param: string;
+  trailing_padding: number;
+}
+
+export interface SpecialDiyContent {
+  kind: "special_diy";
+  model: "H6199";
+  template: string;
+  family: number;
+  variant: number;
+  speed: number;
+  palette: RGB[];
+  raw_payload: string;
+  trailing_padding: number;
+}
+
 export type CustomEffectContent =
   | PaintedContent
   | SingleContent
@@ -231,6 +256,20 @@ export interface EffectStudioModeOption {
   label: string;
 }
 
+export interface WorkshopTemplate {
+  id: string;
+  label: string;
+  source_fixture: string;
+  content: WorkshopContent;
+}
+
+export interface SpecialDiyTemplate {
+  id: string;
+  label: string;
+  source_fixture: string;
+  content: SpecialDiyContent;
+}
+
 export interface ReleaseWorkflowCapability {
   id: ReleaseWorkflowId;
   label: string;
@@ -244,10 +283,14 @@ export interface ModelEffectCatalogue {
   effects: PaletteDiyFamily[];
   music_modes: EffectStudioModeOption[];
   video_modes: EffectStudioModeOption[];
+  workshop_templates: WorkshopTemplate[];
+  special_diy_templates: SpecialDiyTemplate[];
   workflows: ReleaseWorkflowCapability[];
   supports: {
     multi: CapabilityState;
     advanced: CapabilityState;
+    workshop: CapabilityState;
+    special_diy: CapabilityState;
   };
   limits: {
     palette_min: number;
@@ -261,6 +304,8 @@ export interface ModelEffectCatalogue {
     single: CapabilityState;
     multi: CapabilityState;
     palette_diy: CapabilityState;
+    workshop: CapabilityState;
+    special_diy: CapabilityState;
   };
 }
 
@@ -320,6 +365,8 @@ export type KnownEffectContent =
   | MusicProfileContent
   | VideoProfileContent
   | AdvancedContent
+  | WorkshopContent
+  | SpecialDiyContent
   | BuiltinSceneContent
   | PaletteSceneContent
   | LayeredSceneContent;
@@ -386,6 +433,7 @@ export const DEPLOYMENT_PHASES = [
   "activating",
   "verifying",
   "confirmed",
+  "applied",
   "uncertain",
   "recovering",
   "failed",
@@ -423,6 +471,7 @@ export interface DeploymentRecord {
     | "activation_match"
     | "settings_match"
     | "mode_match"
+    | "write_completed"
     | "unknown";
 }
 

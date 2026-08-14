@@ -12,7 +12,11 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
-from custom_components.ha_govee_led_ble.effect_catalogue import H6199_PALETTE_DIY_APPLY_CODE
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    H6199_PALETTE_DIY_APPLY_CODE,
+    H6199_SPECIAL_DIY_TEMPLATES,
+    WORKSHOP_TEMPLATES,
+)
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, compile_h617a, compile_h6199
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
@@ -829,6 +833,71 @@ async def test_h6199_uncertain_result_emits_structured_evidence_gap(
         "progress_current": 3,
         "progress_total": 3,
     }
+
+
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+async def test_workshop_upload_completes_without_inventing_activation_or_readback(
+    hass: HomeAssistant,
+    model: str,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = model
+    item = LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content(model))
+    compiled = compile_effect(item, model)
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.APPLIED
+    assert result.diy_code is None
+    assert result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.upload_packets]
+    assert coordinator.refresh_state.await_count == 1
+
+
+async def test_special_diy_upload_completes_without_inventing_activation_or_readback(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    item = LibraryItem.new("Special DIY", H6199_SPECIAL_DIY_TEMPLATES[0].content())
+    compiled = compile_effect(item, "H6199")
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.APPLIED
+    assert result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.upload_packets]
+
+
+async def test_cross_model_workshop_is_rejected_before_any_write(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    item = LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content("H617A"))
+
+    with pytest.raises(ValueError, match="targets H617A"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            item,
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+        )
+    coordinator.send_command.assert_not_awaited()
+    coordinator.send_command.assert_not_awaited()
 
 
 async def test_type04_uses_evidenced_code_and_confirms_readback(

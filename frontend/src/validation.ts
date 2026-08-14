@@ -33,7 +33,11 @@ import type {
   SceneCatalogue,
   SceneDetail,
   SceneSummary,
+  SpecialDiyContent,
+  SpecialDiyTemplate,
   VideoProfileContent,
+  WorkshopContent,
+  WorkshopTemplate,
 } from "./types";
 import { DEPLOYMENT_PHASES } from "./types";
 
@@ -91,6 +95,9 @@ const RELEASE_WORKFLOW_APPLICATIONS = [
 const VERIFICATION_CONFIDENCE = [
   "exact_session",
   "activation_match",
+  "settings_match",
+  "mode_match",
+  "write_completed",
   "unknown",
 ] as const;
 const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = {
@@ -219,6 +226,11 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
           "palette DIY capability",
         ),
         advanced: capabilityValue(effects.advanced, "advanced capability"),
+        workshop: capabilityValue(effects.workshop, "Workshop capability"),
+        special_diy: capabilityValue(
+          effects.special_diy,
+          "Special DIY capability",
+        ),
       },
       profiles: {
         music: capabilityValue(profiles.music, "music profile capability"),
@@ -349,6 +361,16 @@ function decodeModelEffectCatalogue(
       `${name} video modes`,
       VIDEO_MODE_IDS,
     ),
+    workshop_templates: decodeWorkshopTemplates(
+      catalogue.workshop_templates,
+      `${name} Workshop templates`,
+      expectedSku,
+    ),
+    special_diy_templates: decodeSpecialDiyTemplates(
+      catalogue.special_diy_templates,
+      `${name} Special DIY templates`,
+      expectedSku,
+    ),
     workflows: decodeReleaseWorkflows(
       catalogue.workflows,
       `${name} release workflows`,
@@ -357,6 +379,11 @@ function decodeModelEffectCatalogue(
     supports: {
       multi: capabilityValue(supports.multi, `${name} Multi support`),
       advanced: capabilityValue(supports.advanced, `${name} advanced support`),
+      workshop: capabilityValue(supports.workshop, `${name} Workshop support`),
+      special_diy: capabilityValue(
+        supports.special_diy,
+        `${name} Special DIY support`,
+      ),
     },
     limits: {
       palette_min: integerValue(limits.palette_min, `${name} minimum palette`, 1, 255),
@@ -372,6 +399,14 @@ function decodeModelEffectCatalogue(
       palette_diy: capabilityValue(
         apply.palette_diy,
         `${name} palette DIY Apply capability`,
+      ),
+      workshop: capabilityValue(
+        apply.workshop,
+        `${name} Workshop Apply capability`,
+      ),
+      special_diy: capabilityValue(
+        apply.special_diy,
+        `${name} Special DIY Apply capability`,
       ),
     },
   };
@@ -545,6 +580,78 @@ function decodeModeOptions(
   });
   requireUnique(modes, (mode) => mode.id, `${name} IDs`);
   return modes;
+}
+
+function decodeWorkshopTemplates(
+  value: unknown,
+  name: string,
+  model: ModelSku,
+): WorkshopTemplate[] {
+  const templates = arrayValue(value, name, MAX_JSON_COLLECTION_ITEMS).map(
+    (item, index): WorkshopTemplate => {
+      const template = objectValue(item, `${name}[${index}]`);
+      const content = decodeEffectContent(template.content);
+      if (content.kind !== "workshop" || content.model !== model) {
+        invalid(`${name}[${index}] content does not target ${model}`);
+      }
+      return {
+        id: boundedString(
+          template.id,
+          `${name}[${index}] ID`,
+          MAX_IDENTIFIER_LENGTH,
+        ),
+        label: boundedString(
+          template.label,
+          `${name}[${index}] label`,
+          MAX_EFFECT_NAME_LENGTH,
+        ),
+        source_fixture: boundedString(
+          template.source_fixture,
+          `${name}[${index}] source fixture`,
+          MAX_IDENTIFIER_LENGTH,
+        ),
+        content,
+      };
+    },
+  );
+  requireUnique(templates, (template) => template.id, `${name} IDs`);
+  return templates;
+}
+
+function decodeSpecialDiyTemplates(
+  value: unknown,
+  name: string,
+  model: ModelSku,
+): SpecialDiyTemplate[] {
+  const templates = arrayValue(value, name, MAX_JSON_COLLECTION_ITEMS).map(
+    (item, index): SpecialDiyTemplate => {
+      const template = objectValue(item, `${name}[${index}]`);
+      const content = decodeEffectContent(template.content);
+      if (content.kind !== "special_diy" || content.model !== model) {
+        invalid(`${name}[${index}] content does not target ${model}`);
+      }
+      return {
+        id: boundedString(
+          template.id,
+          `${name}[${index}] ID`,
+          MAX_IDENTIFIER_LENGTH,
+        ),
+        label: boundedString(
+          template.label,
+          `${name}[${index}] label`,
+          MAX_EFFECT_NAME_LENGTH,
+        ),
+        source_fixture: boundedString(
+          template.source_fixture,
+          `${name}[${index}] source fixture`,
+          MAX_IDENTIFIER_LENGTH,
+        ),
+        content,
+      };
+    },
+  );
+  requireUnique(templates, (template) => template.id, `${name} IDs`);
+  return templates;
 }
 
 export function decodeLibrarySnapshot(value: unknown): LibrarySnapshot {
@@ -999,6 +1106,63 @@ export function decodeEffectContent(value: unknown): EffectContent {
         kind,
         layers: layerArray(content.layers, "Advanced layers"),
       } satisfies AdvancedContent;
+    case "workshop": {
+      const effect = objectValue(content.effect, "Workshop effect");
+      return {
+        kind,
+        model: enumString(
+          content.model,
+          MODEL_SKUS,
+          "Workshop model",
+        ) as ModelSku,
+        template: boundedString(
+          content.template,
+          "Workshop template",
+          MAX_IDENTIFIER_LENGTH,
+        ),
+        effect: {
+          layers: layerArray(effect.layers, "Workshop layers"),
+        },
+        raw_param: hexString(
+          content.raw_param,
+          "Workshop source parameter",
+        ),
+        trailing_padding: integerValue(
+          content.trailing_padding,
+          "Workshop trailing padding",
+          0,
+          SCENE_TRAILING_PADDING_MAX,
+        ),
+      } satisfies WorkshopContent;
+    }
+    case "special_diy":
+      return {
+        kind,
+        model: enumString(
+          content.model,
+          ["H6199"],
+          "Special DIY model",
+        ),
+        template: boundedString(
+          content.template,
+          "Special DIY template",
+          MAX_IDENTIFIER_LENGTH,
+        ),
+        family: integerValue(content.family, "Special DIY family", 0, 255),
+        variant: integerValue(content.variant, "Special DIY variant", 0, 255),
+        speed: integerValue(content.speed, "Special DIY speed", 0, 100),
+        palette: paletteValue(content.palette, "Special DIY palette", 8),
+        raw_payload: hexString(
+          content.raw_payload,
+          "Special DIY source payload",
+        ),
+        trailing_padding: integerValue(
+          content.trailing_padding,
+          "Special DIY trailing padding",
+          0,
+          SCENE_TRAILING_PADDING_MAX,
+        ),
+      } satisfies SpecialDiyContent;
     case "scene_builtin":
       return {
         kind,

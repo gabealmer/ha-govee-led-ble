@@ -14,6 +14,7 @@ from .effect_domain import (
     JsonValue,
     LayeredEffect,
     LibraryItem,
+    WorkshopEffect,
     effect_content_from_dict,
 )
 from .effect_drafts import EffectDraft, EffectDraftRepository
@@ -222,11 +223,12 @@ class EffectStudioApplication:
 
 def _authored_content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
     content = effect_content_from_dict(raw)
-    if not isinstance(content, LayeredEffect):
+    layered = content.effect if isinstance(content, WorkshopEffect) else content
+    if not isinstance(layered, LayeredEffect):
         return content
-    if not content.layers:
+    if not layered.layers:
         raise EffectValidationError("Advanced effect must contain at least one layer")
-    for index, layer in enumerate(content.layers, start=1):
+    for index, layer in enumerate(layered.layers, start=1):
         if not layer.brightness_patterns:
             raise EffectValidationError(f"Advanced effect layer {index} must contain at least one brightness pattern")
     return content

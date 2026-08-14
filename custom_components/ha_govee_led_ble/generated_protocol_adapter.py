@@ -45,6 +45,10 @@ H6199StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
 )
+H6199EffectUpload = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload").H6199EffectUpload,
+)
 DiyType03 = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type03").DiyType03,
@@ -60,6 +64,10 @@ SceneBody = cast(
 SceneType1Body = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_type1_body").SceneType1Body,
+)
+WorkshopBody = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.workshop_body").WorkshopBody,
 )
 
 _A3_CHUNK_SIZE = 17
@@ -337,6 +345,21 @@ def parse_scene_body_param(raw_param: bytes) -> Any:
     return parse_scene_body(raw_param)[0]
 
 
+def parse_workshop_body(raw_param: bytes) -> tuple[Any, int]:
+    """Parse an H617A Workshop parameter through the generated WorkshopBody root."""
+    return _parse_a3_scene(WorkshopBody, 2, raw_param, lambda root: root.padding)
+
+
+def parse_h6199_workshop_content(raw_param: bytes) -> tuple[Any, int]:
+    """Parse an H6199 Workshop parameter through the generated effect-upload content."""
+    if not isinstance(raw_param, bytes):
+        raise TypeError("Workshop parameter must be bytes")
+    root = H6199EffectUpload()
+    parsed = H6199EffectUpload.SceneContent(KaitaiStream(io.BytesIO(raw_param)), root, root)
+    parsed._read()
+    return parsed, len(parsed.padding)
+
+
 def parse_scene_type1_body(raw_param: bytes) -> tuple[Any, int]:
     """Parse a catalogue type-1 parameter, returning its tree and real trailing padding."""
     return _parse_a3_scene(SceneType1Body, 1, raw_param, lambda root: root.content.padding)
@@ -349,7 +372,30 @@ def parse_scene_type1_body_param(raw_param: bytes) -> Any:
 
 def serialize_scene_body_param(root: Any) -> bytes:
     """Serialize a built type-2 SceneBody root and return its catalogue parameter bytes."""
-    for record in root.records:
+    _set_effect_layer_lengths(root.records)
+    return _serialize_a3_scene_param(root)
+
+
+def serialize_workshop_body_param(root: Any) -> bytes:
+    """Serialize a built H617A WorkshopBody root and return its parameter bytes."""
+    _set_effect_layer_lengths(root.layers)
+    return _serialize_a3_scene_param(root)
+
+
+def serialize_h6199_workshop_content(content: Any) -> bytes:
+    """Serialize built H6199 Workshop content without its A3 envelope."""
+    _set_effect_layer_lengths(content.blocks)
+    _check_tree(content)
+    content_size = _serialized_length(content)
+    if content_size + 3 > _A3_MAX_CONTENT:
+        raise SceneParameterTooLargeError(
+            f"Workshop content is {content_size + 3} bytes but the A3 line count only encodes {_A3_MAX_CONTENT}"
+        )
+    return _write(content, content_size)
+
+
+def _set_effect_layer_lengths(records: list[Any]) -> None:
+    for record in records:
         _check_tree(record.body)
         body_length = _serialized_length(record.body)
         if body_length > _U1_MAX:
@@ -357,7 +403,6 @@ def serialize_scene_body_param(root: Any) -> bytes:
                 f"layer body is {body_length} bytes but the record length field only encodes {_U1_MAX}"
             )
         record.len_body = body_length
-    return _serialize_a3_scene_param(root)
 
 
 def serialize_scene_type1_body_param(root: Any) -> bytes:
@@ -450,6 +495,27 @@ def build_h617a_diy_multi_body(
     length = 8 + body.len_palette + body.seqlen
     _check_tree(root)
     return _write(root, length)[3:]
+
+
+def build_h6199_special_diy_body(
+    family: int,
+    variant: int,
+    speed: int,
+    palette: list[tuple[int, int, int]],
+    *,
+    trailing_padding: int = 0,
+) -> bytes:
+    """Serialize the H6199 0x04 DIY content through the generated Kaitai writer."""
+    root = H6199EffectUpload()
+    content = _child(H6199EffectUpload.DiyContent, root)
+    content.family = family
+    content.variant = variant
+    content.speed = speed
+    content.palette_len = len(palette) * 3
+    content.palette = [_rgb(content, *colour) for colour in palette]
+    content.padding = [0] * trailing_padding
+    _check_tree(content)
+    return _write(content, 4 + content.palette_len + trailing_padding)
 
 
 def build_power(on: bool, model: str = "H617A") -> bytes:

@@ -7,6 +7,10 @@ from typing import Any
 import pytest
 
 from custom_components.ha_govee_led_ble.effect_application import EffectStudioApplication
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    H6199_SPECIAL_DIY_TEMPLATES,
+    WORKSHOP_TEMPLATES,
+)
 from custom_components.ha_govee_led_ble.effect_domain import (
     MusicProfile,
     PaletteDiyEffect,
@@ -73,6 +77,9 @@ def _saved_profile_contents() -> tuple[dict[str, Any], ...]:
                 False,
             )
         ),
+        effect_content_to_dict(WORKSHOP_TEMPLATES[0].content("H617A")),
+        effect_content_to_dict(WORKSHOP_TEMPLATES[0].content("H6199")),
+        effect_content_to_dict(H6199_SPECIAL_DIY_TEMPLATES[0].content()),
     )
 
 

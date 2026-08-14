@@ -893,7 +893,18 @@ def _item_summary(item: LibraryItem) -> dict[str, Any]:
         "name": item.name,
         "kind": kind,
     }
-    model = content.get("model") if kind in {"palette_diy", "music_profile", "video_profile"} else None
+    model = (
+        content.get("model")
+        if kind
+        in {
+            "palette_diy",
+            "music_profile",
+            "video_profile",
+            "workshop",
+            "special_diy",
+        }
+        else None
+    )
     if model in {"H617A", "H6199"}:
         summary["model"] = model
     elif kind in {"h617a_painted", "h617a_single", "h617a_multi"}:

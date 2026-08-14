@@ -17,9 +17,11 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H6199_DIY_EFFECTS,
     H6199_NATIVE_MUSIC_MODES,
     H6199_PALETTE_DIY_FAMILIES,
+    H6199_SPECIAL_DIY_TEMPLATES,
     H6199_VIDEO_MODES,
     LEGACY_CATALOGUE_SKU,
     MODEL_EFFECT_CATALOGUES,
+    WORKSHOP_TEMPLATES,
     custom_effect_catalogue_payload,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import (
@@ -91,6 +93,8 @@ def test_model_aware_catalogue_includes_both_models_and_legacy_h617a_view() -> N
         "single": "supported",
         "multi": "supported",
         "palette_diy": "unsupported",
+        "workshop": "supported",
+        "special_diy": "unsupported",
     }
 
 
@@ -168,12 +172,16 @@ def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries
     assert catalogue["supports"] == {
         "multi": "unsupported",
         "advanced": "supported",
+        "workshop": "supported",
+        "special_diy": "supported",
     }
     assert catalogue["apply"] == {
         "painted": "unsupported",
         "single": "unsupported",
         "multi": "unsupported",
         "palette_diy": "supported",
+        "workshop": "supported",
+        "special_diy": "supported",
     }
 
 
@@ -283,8 +291,9 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
     assert h6199_diy.verification_confidence is VerificationConfidence.UNVERIFIED
     assert h6199_diy.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
     assert h6199_special is not None
-    assert h6199_special.compiler_deployer_strategy is CompilerDeployerStrategy.RAW_PRESERVATION
-    assert h6199_special.diagnostics_evidence_classification is EvidenceClassification.OPAQUE
+    assert h6199_special.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+    assert h6199_special.compiler_deployer_strategy is CompilerDeployerStrategy.A3_EFFECT_UPLOAD
+    assert h6199_special.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
 
 
 def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contract() -> None:
@@ -293,6 +302,8 @@ def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contr
         "single": CapabilityWorkflow.SINGLE,
         "multi": CapabilityWorkflow.MULTI,
         "palette_diy": CapabilityWorkflow.PALETTE_DIY,
+        "workshop": CapabilityWorkflow.WORKSHOP,
+        "special_diy": CapabilityWorkflow.SPECIAL_DIY,
     }
     models = cast(
         dict[str, dict[str, JsonValue]],
@@ -315,3 +326,26 @@ def test_capability_state_distinguishes_visibility_from_deployability() -> None:
     assert workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED) is CapabilityState.SUPPORTED
     assert workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED) is CapabilityState.SUPPORTED
     assert studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY) is CapabilityState.SUPPORTED
+    assert studio_apply_capability_state("H617A", CapabilityWorkflow.WORKSHOP) is CapabilityState.SUPPORTED
+    assert studio_apply_capability_state("H617A", CapabilityWorkflow.SPECIAL_DIY) is CapabilityState.UNSUPPORTED
+    assert studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP) is CapabilityState.SUPPORTED
+    assert studio_apply_capability_state("H6199", CapabilityWorkflow.SPECIAL_DIY) is CapabilityState.SUPPORTED
+
+
+def test_workshop_and_special_diy_templates_are_grounded_in_committed_fixtures() -> None:
+    for model in ("H617A", "H6199"):
+        for template in WORKSHOP_TEMPLATES:
+            content = template.content(model)
+            fixture = (FIXTURES / template.source_fixture).read_bytes()
+
+            assert content.model == model
+            assert content.raw_param == fixture[3:]
+            assert content.template == template.id
+
+    for special_template in H6199_SPECIAL_DIY_TEMPLATES:
+        special_content = special_template.content()
+        fixture = (FIXTURES / special_template.source_fixture).read_bytes()
+
+        assert special_content.raw_payload == fixture
+        assert special_content.model == "H6199"
+        assert special_content.template == special_template.id

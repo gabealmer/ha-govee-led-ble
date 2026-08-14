@@ -55,6 +55,7 @@ class DeploymentPhase(StrEnum):
     ACTIVATING = "activating"
     VERIFYING = "verifying"
     CONFIRMED = "confirmed"
+    APPLIED = "applied"
     UNCERTAIN = "uncertain"
     RECOVERING = "recovering"
     FAILED = "failed"
@@ -67,6 +68,7 @@ class ObservationConfidence(StrEnum):
     ACTIVATION_MATCH = "activation_match"
     SETTINGS_MATCH = "settings_match"
     MODE_MATCH = "mode_match"
+    WRITE_COMPLETED = "write_completed"
     UNKNOWN = "unknown"
 
 
@@ -902,6 +904,7 @@ def _remove_oldest_terminal_deployment(records: dict[str, Any]) -> None:
         if _required_str(_as_mapping(raw, "deployment"), "phase")
         in {
             DeploymentPhase.CONFIRMED.value,
+            DeploymentPhase.APPLIED.value,
             DeploymentPhase.UNCERTAIN.value,
             DeploymentPhase.FAILED.value,
             DeploymentPhase.INTERRUPTED.value,

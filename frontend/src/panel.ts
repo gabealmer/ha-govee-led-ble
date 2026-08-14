@@ -49,7 +49,9 @@ import type {
   PaintedContent,
   PanelConfig,
   RGB,
+  SpecialDiyContent,
   VideoProfileContent,
+  WorkshopContent,
 } from "./types";
 import { IN_FLIGHT_DEPLOYMENT_PHASES } from "./types";
 import {
@@ -60,15 +62,20 @@ import {
 import { isCompatibleEditorInfo } from "./validation";
 
 type StudioSection = "video" | "scenes" | "custom";
-type AdvancedEditableContent = AdvancedContent | LayeredSceneContent;
+type AdvancedEditableContent =
+  | AdvancedContent
+  | LayeredSceneContent
+  | WorkshopContent;
 type ProfileContent =
   | PaletteDiyEffectContent
   | MusicProfileContent
-  | VideoProfileContent;
+  | VideoProfileContent
+  | SpecialDiyContent;
 type EditableEffectContent =
   | CustomEffectContent
   | ProfileContent
   | AdvancedEditableContent;
+type DeployableEffectContent = EditableEffectContent;
 type NewEffectKind =
   | CustomEffectContent["kind"]
   | PaletteDiyEffectContent["kind"]
@@ -81,6 +88,7 @@ type CustomEffectCategory =
   | "single-layer"
   | "multi-layer"
   | "advanced"
+  | "special-diy"
   | "my-effects";
 type CustomEffectListEntry =
   | {
@@ -117,6 +125,20 @@ type CustomEffectListEntry =
       key: "template:advanced";
       label: "Layered";
       category: "advanced";
+    }
+  | {
+      kind: "workshop";
+      key: string;
+      label: string;
+      category: "advanced";
+      content: WorkshopContent;
+    }
+  | {
+      kind: "special_diy";
+      key: string;
+      label: string;
+      category: "special-diy";
+      content: SpecialDiyContent;
     }
   | {
       kind: "saved";
@@ -288,6 +310,10 @@ export class GoveeLedEffectStudio extends LitElement {
         return device.profiles.music;
       case "video_profile":
         return device.profiles.video;
+      case "workshop":
+        return device.custom_effects.workshop;
+      case "special_diy":
+        return device.custom_effects.special_diy;
     }
   }
 
@@ -473,6 +499,9 @@ export class GoveeLedEffectStudio extends LitElement {
         ${this.customEffectCategoryAvailable("advanced")
           ? this.customEffectCategoryButton("advanced", "Advanced")
           : nothing}
+        ${this.customEffectCategoryAvailable("special-diy")
+          ? this.customEffectCategoryButton("special-diy", "Special DIY")
+          : nothing}
         ${this.customEffectCategoryAvailable("my-effects")
           ? this.customEffectCategoryButton("my-effects", "My effects")
           : nothing}
@@ -498,7 +527,10 @@ export class GoveeLedEffectStudio extends LitElement {
         ? this.renderPaintedEditor()
         : this.renderPaletteEffectEditor();
     }
-    if (this.content.kind === "palette_diy") {
+    if (
+      this.content.kind === "palette_diy" ||
+      this.content.kind === "special_diy"
+    ) {
       return this.renderPaletteEffectEditor();
     }
     if (this.content.kind === "music_profile") {
@@ -698,6 +730,24 @@ export class GoveeLedEffectStudio extends LitElement {
             },
           ]
         : []),
+      ...(catalogue?.workshop_templates.map(
+        (template): CustomEffectListEntry => ({
+          kind: "workshop",
+          key: `template:workshop:${template.id}`,
+          label: template.label,
+          category: "advanced",
+          content: template.content,
+        }),
+      ) ?? []),
+      ...(catalogue?.special_diy_templates.map(
+        (template): CustomEffectListEntry => ({
+          kind: "special_diy",
+          key: `template:special-diy:${template.id}`,
+          label: template.label,
+          category: "special-diy",
+          content: template.content,
+        }),
+      ) ?? []),
       {
         kind: "advanced",
         key: "template:advanced",
@@ -751,6 +801,10 @@ export class GoveeLedEffectStudio extends LitElement {
         return this.customEffectKindAvailable("h617a_multi");
       case "advanced":
         return this.customEffectKindAvailable("advanced");
+      case "workshop":
+        return this.customEffectKindAvailable("workshop");
+      case "special_diy":
+        return this.customEffectKindAvailable("special_diy");
       case "saved":
         return this.libraryItemAvailable(entry.item);
     }
@@ -785,9 +839,13 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     if (
       content.kind === "palette_diy" ||
+      content.kind === "special_diy" ||
       content.kind === "music_profile" ||
       content.kind === "video_profile"
     ) {
+      return content.model === model;
+    }
+    if (content.kind === "workshop") {
       return content.model === model;
     }
     if (content.kind === "scene_layered") {
@@ -808,12 +866,18 @@ export class GoveeLedEffectStudio extends LitElement {
         return (
           this.customEffectKindAvailable("h617a_painted") ||
           this.customEffectKindAvailable("h617a_single") ||
-          this.customEffectKindAvailable("palette_diy")
+          this.customEffectKindAvailable("palette_diy") ||
+          this.customEffectKindAvailable("special_diy")
         );
       case "multi-layer":
         return this.customEffectKindAvailable("h617a_multi");
       case "advanced":
-        return this.customEffectKindAvailable("advanced");
+        return (
+          this.customEffectKindAvailable("advanced") ||
+          this.customEffectKindAvailable("workshop")
+        );
+      case "special-diy":
+        return this.customEffectKindAvailable("special_diy");
       case "my-effects":
         return this.library.items.some(
           (item) =>
@@ -841,6 +905,20 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     if (kind === "music_profile") {
       return Boolean(catalogue?.music_modes.length);
+    }
+    if (kind === "workshop") {
+      return (
+        catalogue !== undefined &&
+        catalogue.supports.workshop !== "unsupported" &&
+        Boolean(catalogue.workshop_templates.length)
+      );
+    }
+    if (kind === "special_diy") {
+      return (
+        catalogue !== undefined &&
+        catalogue.supports.special_diy !== "unsupported" &&
+        Boolean(catalogue.special_diy_templates.length)
+      );
     }
     return catalogue?.supports.advanced !== "unsupported";
   }
@@ -955,6 +1033,14 @@ export class GoveeLedEffectStudio extends LitElement {
         templateLabel: entry.label,
       });
       this.customTemplateSelection = entry.key;
+      return;
+    }
+    if (entry.kind === "workshop" || entry.kind === "special_diy") {
+      this.openEditableTemplate(
+        entry.label,
+        entry.content,
+        entry.key,
+      );
       return;
     }
     const catalogue = this.modelCatalogue;
@@ -1079,6 +1165,8 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     const layeredScene = this.content.kind === "scene_layered";
+    const workshop = this.content.kind === "workshop";
+    const deployment = this.activeDeployment;
     return html`
       ${layeredScene
         ? html`
@@ -1115,7 +1203,7 @@ export class GoveeLedEffectStudio extends LitElement {
           `
         : nothing}
 
-      ${layeredScene
+      ${layeredScene || workshop
         ? html`
             <div class="feedback source-note" role="note">
               Source parameter bytes remain immutable provenance. Layer edits
@@ -1140,9 +1228,7 @@ export class GoveeLedEffectStudio extends LitElement {
           );
         }}
       ></govee-advanced-effect-editor>
-      ${this.activeDeployment
-        ? this.renderDeployment(this.activeDeployment)
-        : nothing}
+      ${deployment ? this.renderDeployment(deployment) : nothing}
     `;
   }
 
@@ -1284,7 +1370,8 @@ export class GoveeLedEffectStudio extends LitElement {
     if (
       this.content.kind !== "h617a_single" &&
       this.content.kind !== "h617a_multi" &&
-      this.content.kind !== "palette_diy"
+      this.content.kind !== "palette_diy" &&
+      this.content.kind !== "special_diy"
     ) {
       return nothing;
     }
@@ -1323,12 +1410,15 @@ export class GoveeLedEffectStudio extends LitElement {
           event: CustomEvent<{
             content:
               | CustomEffectContent
-              | PaletteDiyEffectContent;
+              | PaletteDiyEffectContent
+              | SpecialDiyContent;
           }>,
         ) => {
           this.content =
             event.detail.content.kind === "palette_diy"
               ? clonePaletteDiy(event.detail.content)
+              : event.detail.content.kind === "special_diy"
+                ? cloneSpecialDiy(event.detail.content)
               : cloneCustomEffect(event.detail.content);
         }}
       ></govee-custom-effect-editor>
@@ -1700,6 +1790,9 @@ export class GoveeLedEffectStudio extends LitElement {
               : deployment.target_mode === "scene"
                 ? `Applied to ${deviceName}. The selected scene identity was confirmed, but authored scene contents cannot be read back.`
                 : `Applied to ${deviceName}. The selected custom-effect code was confirmed, but exact effect contents cannot be read back.`;
+        break;
+      case "applied":
+        message = `Applied to ${deviceName}. This upload has no device readback, so packet completion is the available confirmation.`;
         break;
       case "uncertain":
         message =
@@ -3408,6 +3501,27 @@ function clonePaletteDiy(
   };
 }
 
+function cloneSpecialDiy(
+  content: SpecialDiyContent,
+): SpecialDiyContent {
+  return {
+    ...content,
+    palette: content.palette.map((colour) => [...colour]),
+  };
+}
+
+function cloneWorkshop(content: WorkshopContent): WorkshopContent {
+  return {
+    ...content,
+    effect: {
+      layers: cloneAdvancedContent({
+        kind: "advanced",
+        layers: content.effect.layers,
+      }).layers,
+    },
+  };
+}
+
 function cloneMusicProfile(
   content: MusicProfileContent,
 ): MusicProfileContent {
@@ -3436,8 +3550,14 @@ function cloneEditableEffect(
   if (content.kind === "scene_layered") {
     return cloneLayeredSceneContent(content);
   }
+  if (content.kind === "workshop") {
+    return cloneWorkshop(content);
+  }
   if (content.kind === "palette_diy") {
     return clonePaletteDiy(content);
+  }
+  if (content.kind === "special_diy") {
+    return cloneSpecialDiy(content);
   }
   if (content.kind === "music_profile") {
     return cloneMusicProfile(content);
@@ -3472,6 +3592,14 @@ function updateAdvancedEditorContent(
 ): AdvancedEditableContent {
   if (current.kind === "advanced") {
     return cloneAdvancedContent(edited);
+  }
+  if (current.kind === "workshop") {
+    return {
+      ...cloneWorkshop(current),
+      effect: {
+        layers: cloneAdvancedContent(edited).layers,
+      },
+    };
   }
   return {
     ...cloneLayeredSceneContent(current),
@@ -3596,22 +3724,8 @@ function isCustomEffectContent(
 
 function isDeployableEffectContent(
   content: unknown,
-): content is
-  | CustomEffectContent
-  | PaletteDiyEffectContent
-  | AdvancedEditableContent
-  | MusicProfileContent
-  | VideoProfileContent {
-  return (
-    isCustomEffectContent(content) ||
-    (typeof content === "object" &&
-      content !== null &&
-      "kind" in content &&
-      (content.kind === "palette_diy" ||
-        isAdvancedEditableKind(content.kind) ||
-        content.kind === "music_profile" ||
-        content.kind === "video_profile"))
-  );
+): content is DeployableEffectContent {
+  return isEditableEffectContent(content);
 }
 
 function isEditableEffectContent(
@@ -3624,6 +3738,7 @@ function isEditableEffectContent(
       "kind" in content &&
       (isAdvancedEditableKind(content.kind) ||
         content.kind === "palette_diy" ||
+        content.kind === "special_diy" ||
         content.kind === "music_profile" ||
         content.kind === "video_profile"))
   );
@@ -3640,7 +3755,8 @@ function newEffectTypeForContent(
   }
   return content.kind === "h617a_painted" ||
     content.kind === "h617a_single" ||
-    content.kind === "palette_diy"
+    content.kind === "palette_diy" ||
+    content.kind === "special_diy"
     ? "single"
     : undefined;
 }
@@ -3648,7 +3764,11 @@ function newEffectTypeForContent(
 function isAdvancedEditableKind(
   kind: unknown,
 ): kind is AdvancedEditableContent["kind"] {
-  return kind === "advanced" || kind === "scene_layered";
+  return (
+    kind === "advanced" ||
+    kind === "scene_layered" ||
+    kind === "workshop"
+  );
 }
 
 function isAdvancedEditableContent(
@@ -3662,6 +3782,7 @@ function isKnownEffectKind(kind: string): boolean {
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
     kind === "palette_diy" ||
+    kind === "special_diy" ||
     kind === "music_profile" ||
     kind === "video_profile" ||
     kind === "scene_builtin" ||
@@ -3681,6 +3802,10 @@ function customKindLabel(kind: unknown): string {
       return "Layered";
     case "palette_diy":
       return "Single";
+    case "special_diy":
+      return "Special DIY";
+    case "workshop":
+      return "Workshop";
     default:
       return "Custom";
   }
@@ -3691,6 +3816,7 @@ function isMyEffectKind(kind: string): boolean {
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
     kind === "palette_diy" ||
+    kind === "special_diy" ||
     kind === "music_profile" ||
     !isKnownEffectKind(kind)
   );
@@ -3699,12 +3825,20 @@ function isMyEffectKind(kind: string): boolean {
 function libraryKindPriority(kind: string, model: ModelSku | undefined): number {
   const order =
     model === "H6199"
-      ? ["palette_diy", "music_profile", "advanced", "scene_layered"]
+      ? [
+          "special_diy",
+          "palette_diy",
+          "workshop",
+          "music_profile",
+          "advanced",
+          "scene_layered",
+        ]
       : [
           "h617a_painted",
           "h617a_single",
           "h617a_multi",
           "music_profile",
+          "workshop",
           "advanced",
           "scene_layered",
         ];
@@ -3724,9 +3858,10 @@ function customEffectCategoryForKind(
   if (
     kind === "h617a_painted" ||
     kind === "h617a_single" ||
-    kind === "palette_diy"
+    kind === "palette_diy" ||
+    kind === "special_diy"
   ) {
-    return "single-layer";
+    return kind === "special_diy" ? "special-diy" : "single-layer";
   }
   return "advanced";
 }
@@ -3754,8 +3889,10 @@ function upsertSummary(
           ? item.content.source_kind
           : item.content.kind,
       ...(model ? { model } : {}),
-      ...("template" in item.content
-        ? { template: item.content.template as LibrarySummary["template"] }
+      ...(item.content.kind === "scene_builtin" ||
+      item.content.kind === "scene_palette" ||
+      item.content.kind === "scene_layered"
+        ? { template: item.content.template }
         : {}),
     },
   ].sort((left, right) => left.name.localeCompare(right.name));
@@ -3765,6 +3902,8 @@ function libraryItemModel(item: LibraryItem): ModelSku | undefined {
   const content = item.content;
   if (
     content.kind === "palette_diy" ||
+    content.kind === "special_diy" ||
+    content.kind === "workshop" ||
     content.kind === "music_profile" ||
     content.kind === "video_profile"
   ) {

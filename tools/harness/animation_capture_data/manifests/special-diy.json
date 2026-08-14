@@ -36,7 +36,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-fade-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -78,7 +78,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-jumping-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -120,7 +120,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-chasing-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -162,7 +162,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-marquee-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -204,7 +204,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-crossing-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -246,7 +246,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-rainbow-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -288,7 +288,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-twinkle-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",

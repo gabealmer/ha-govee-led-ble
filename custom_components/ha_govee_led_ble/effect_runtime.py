@@ -37,7 +37,9 @@ from .effect_domain import (
     PaintedEffect,
     PaletteDiyEffect,
     SingleEffect,
+    SpecialDiyEffect,
     VideoProfile,
+    WorkshopEffect,
 )
 from .native_profile_controls import (
     apply_active_video_mode,
@@ -196,7 +198,7 @@ class EffectDeploymentEngine:
             if (
                 existing.config_entry_id == record.config_entry_id
                 and existing.artifact_sha256 == record.artifact_sha256
-                and existing.phase is DeploymentPhase.CONFIRMED
+                and existing.phase in {DeploymentPhase.CONFIRMED, DeploymentPhase.APPLIED}
             ):
                 return existing
             raise RuntimeError(
@@ -230,6 +232,17 @@ class EffectDeploymentEngine:
                             current = replace(current, progress_current=index)
                             await self._deployments.async_put(current, expected_revision=None)
 
+                        if compiled.verification_strategy is VerificationStrategy.WRITE_COMPLETED:
+                            completed = replace(
+                                current,
+                                phase=DeploymentPhase.APPLIED,
+                                error_code=None,
+                                verification_confidence=ObservationConfidence.WRITE_COMPLETED,
+                            )
+                            await self._deployments.async_put(completed, expected_revision=None)
+                            return completed
+                        if compiled.activation_packet is None:
+                            raise RuntimeError("compiled activation verification has no activation packet")
                         next_record = replace(current, phase=DeploymentPhase.ACTIVATING)
                         await self._deployments.async_put(next_record, expected_revision=None)
                         current = next_record
@@ -246,6 +259,8 @@ class EffectDeploymentEngine:
                         isinstance(compiled, CompiledEffect)
                         and compiled.verification_strategy is VerificationStrategy.UNPROVEN_H6199_SLOT
                     ):
+                        if compiled.diy_code is None:
+                            raise RuntimeError("compiled H6199 slot verification has no DIY code")
                         selector_observed = await self._async_observe_unproven_h6199_slot(
                             coordinator,
                             compiled.diy_code,
@@ -429,6 +444,8 @@ class EffectDeploymentEngine:
             return False, ObservationConfidence.UNKNOWN, record
         if not isinstance(compiled, CompiledEffect):
             return await self._async_verify_profile(coordinator, compiled, record)
+        if compiled.activation_packet is None:
+            raise RuntimeError("compiled activation verification has no activation packet")
         current = record
         for attempt in range(VERIFICATION_ATTEMPTS):
             try:
@@ -824,13 +841,15 @@ def resolve_diy_code(
     deployments: EffectDeploymentRepository,
     item: LibraryItem,
     config_entry_id: str,
-) -> int:
+) -> int | None:
     if isinstance(item.content, PaintedEffect):
         return 800
     if isinstance(item.content, SingleEffect | MultiEffect):
         return H617A_TYPE04_APPLY_CODE
     if isinstance(item.content, PaletteDiyEffect):
         return H6199_PALETTE_DIY_APPLY_CODE
+    if isinstance(item.content, WorkshopEffect | SpecialDiyEffect):
+        return None
     raise ValueError("this content kind has no custom-effect selector allocation")
 
 
@@ -840,6 +859,10 @@ def _resolve_compiler_diy_code(
     config_entry_id: str,
     diy_code: int | None,
 ) -> int | None:
+    if isinstance(item.content, WorkshopEffect | SpecialDiyEffect):
+        if diy_code is not None:
+            raise ValueError("this upload has no evidenced activation packet")
+        return None
     if not isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect):
         return None
     return resolve_diy_code(deployments, item, config_entry_id) if diy_code is None else diy_code

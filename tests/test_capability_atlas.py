@@ -91,7 +91,7 @@ def test_h617a_type04_apply_evidence_is_current(atlas):
     upload = _row(atlas, "H617A", "diy_upload")
 
     assert "Single and Multi Apply" in activation["ha_surface"]
-    assert "Single and Multi Apply" in upload["ha_surface"]
+    assert all(workflow in upload["ha_surface"] for workflow in ("Painted", "Single", "Multi", "Workshop"))
     assert "diy_type04_code24_stable_across_body_edits" in activation["aggregate_refs"]
     assert "diy_type04_multi_two_upload_precedes_selector" in upload["aggregate_refs"]
     assert all("issue #155" not in text.lower() for row in (activation, upload) for text in lint._strings(row))
@@ -439,7 +439,8 @@ def test_type04_preview_claim_is_limited_to_fixture_backed_catalogue_entries(atl
     assert "Four exact family/variant identities" in variants["type04_fixture_catalogue"]["note"]
     assert "Neither source maps" in variants["type04_fixture_catalogue"]["note"]
     uncaptured_note = variants["uncaptured_special_templates"]["note"]
-    assert "Special DIY templates use parser-specific grammars" in uncaptured_note
+    assert "No H617A Special DIY payload has committed attribution" in uncaptured_note
+    assert "H6199 fixtures cannot establish an H617A grammar" in uncaptured_note
 
 
 def test_preview_pipeline_does_not_call_type04_palette_deterministic(atlas):
