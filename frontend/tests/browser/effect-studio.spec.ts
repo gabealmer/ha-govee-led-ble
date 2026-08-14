@@ -53,7 +53,7 @@ async function openPaletteScene(
   await sceneBrowser.getByRole("button", { name: category }).click();
   await sceneBrowser.getByRole("button", { name }).click();
   await expect(
-    sceneBrowser.getByRole("heading", { name: "Parameters" }),
+    sceneBrowser.getByText("Layout", { exact: true }),
   ).toBeVisible();
   return sceneBrowser;
 }
@@ -142,13 +142,25 @@ test("default harness uses complete production H617A catalogues", async ({
     studio
       .getByRole("complementary", { name: "Effect categories" })
       .getByRole("button"),
-  ).toHaveText(["All", "Single Layer", "Multi Layer", "Advanced"]);
+  ).toHaveText(["New", "All", "Single Layer", "Multi Layer", "Advanced"]);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
   const effectList = studio.getByRole("complementary", {
     name: "My effects",
   });
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
   await expect(
     effectList.getByRole("button", { name: "Paint", exact: true }),
   ).toBeVisible();
+  await expect(
+    effectList.getByRole("button", { name: "Jumping", exact: true }),
+  ).toBeVisible();
+  await categories
+    .getByRole("button", { name: "All", exact: true })
+    .click();
   await expect(
     effectList.getByRole("button", { name: "Fade", exact: true }),
   ).toBeVisible();
@@ -176,7 +188,7 @@ test("default harness uses complete production H617A catalogues", async ({
   await expect(paintedEffect).toHaveValue("clockwise");
 });
 
-test("new effects open in All with the generated name selected", async ({
+test("new effects stay in their category with the generated name selected", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -184,20 +196,33 @@ test("new effects open in All with the generated name selected", async ({
     name: "Effect categories",
   });
 
+  await categories.getByRole("button", { name: "New", exact: true }).click();
+  const types = studio.getByRole("tablist", { name: "Custom effect type" });
+  await expect(types.getByRole("tab")).toHaveText([
+    "Single",
+    "Multi",
+    "Advanced",
+  ]);
+  await expect(types.getByRole("tab", { name: "Single" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+
   await categories
-    .getByRole("button", { name: "Advanced", exact: true })
+    .getByRole("button", { name: "Single Layer", exact: true })
     .click();
-  await studio
+  const jumping = studio
     .getByRole("complementary", { name: "My effects" })
-    .getByRole("button", { name: "Layered", exact: true })
-    .click();
+    .getByRole("button", { name: "Jumping", exact: true });
+  await jumping.click();
 
   await expect(
-    categories.getByRole("button", { name: "All", exact: true }),
+    categories.getByRole("button", { name: "Single Layer", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  await expect(jumping).toHaveClass(/selected/);
   const name = studio.getByLabel("Effect name");
   await expect(name).toBeFocused();
-  await expect(name).toHaveValue("New Layered effect");
+  await expect(name).toHaveValue("New Jumping effect");
   await expect
     .poll(() =>
       name.evaluate((input: HTMLInputElement) => ({
@@ -205,7 +230,17 @@ test("new effects open in All with the generated name selected", async ({
         end: input.selectionEnd,
       })),
     )
-    .toEqual({ start: 0, end: "New Layered effect".length });
+    .toEqual({ start: 0, end: "New Jumping effect".length });
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Save", exact: true })
+    .click();
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  await expect(
+    categories.getByRole("button", { name: "Single Layer", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("Painted effects keep multiple brushes and their picker visible", async ({
@@ -301,12 +336,14 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   await expect(
     studio.getByRole("navigation", { name: "Create" }),
   ).toBeVisible();
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  await categories.getByRole("button", { name: "New", exact: true }).click();
   const modes = studio.getByRole("tablist", { name: "Custom effect type" });
-  await expect(modes.getByRole("tab", { name: "Paint" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
-  await modes.getByRole("tab", { name: "Single" }).click();
   await expect(modes.getByRole("tab", { name: "Single" })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -316,16 +353,30 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     "aria-selected",
     "true",
   );
-  await modes.getByRole("tab", { name: "Paint" }).click();
+  await modes.getByRole("tab", { name: "Advanced" }).click();
+  await expect(modes.getByRole("tab", { name: "Advanced" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "My effects" })
+    .getByRole("button", { name: "Paint", exact: true })
+    .click();
+  await expect(modes.getByRole("tab", { name: "Single" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(
     studio.locator(".editor").getByRole("button", { name: "Apply" }),
   ).toBeEnabled();
   await expect(
-    studio.getByRole("button", { name: "Segment 1, #2f6fed" }),
+    studio.getByRole("button", { name: /^Segment 1,/ }),
   ).toBeEnabled();
 
-  await studio
-    .getByRole("complementary", { name: "Effect categories" })
+  await categories
     .getByRole("button", { name: "Advanced", exact: true })
     .click();
   await studio
@@ -371,6 +422,9 @@ test("palette scene parameters preserve decoded order", async ({
   await expect(
     halloween.getByRole("heading", { name: "Common settings" }),
   ).toHaveCount(0);
+  await expect(
+    halloween.getByRole("heading", { name: "Parameters" }),
+  ).toHaveCount(0);
   await expect(halloween.getByText("Layout", { exact: true })).toBeVisible();
   await expect(halloween.getByText("0", { exact: true })).toBeVisible();
   await expect(halloween.getByText("Brightness flag")).toBeVisible();
@@ -397,11 +451,6 @@ test("palette scene parameters preserve decoded order", async ({
 
   await halloween.getByRole("button", { name: "Life" }).click();
   await halloween.getByRole("button", { name: /^Sweet/ }).click();
-  await expect(
-    halloween.getByRole("heading", {
-      name: "Parameters",
-    }),
-  ).toBeVisible();
   await expect(halloween.getByText("Raw value 50")).toBeVisible();
   await expect(halloween.getByLabel("Colour 4, #e300ff")).toBeVisible();
 });
@@ -787,13 +836,16 @@ test("palette copies save losslessly, reload under Custom and cannot Apply", asy
   await openStudio(page);
   const sceneBrowser = await openPaletteScene(page, "Festival", /^Halloween/);
   const nativeApply = sceneBrowser.getByRole("button", { name: "Apply" });
+  const saveCopy = sceneBrowser.getByRole("button", { name: "Save copy" });
 
   await expect(nativeApply).toBeEnabled();
+  await expect(nativeApply).toHaveClass("secondary");
+  await expect(saveCopy).toHaveClass("primary");
   await nativeApply.click();
   await expect(
     sceneBrowser.getByRole("status").filter({ hasText: "Applied to Test strip" }),
   ).toBeVisible();
-  await sceneBrowser.getByRole("button", { name: "Save copy" }).click();
+  await saveCopy.click();
   await expect(
     sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
   ).toBeVisible();
@@ -1382,7 +1434,10 @@ test("advanced layer and palette keyboard focus follows edits", async ({
 
 test("palette choices commit and close the colour picker", async ({ page }) => {
   const studio = await openStudio(page);
-  await studio.getByRole("tab", { name: "Single" }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "New", exact: true })
+    .click();
   const palette = studio
     .locator("govee-custom-effect-editor")
     .locator("govee-palette-editor");

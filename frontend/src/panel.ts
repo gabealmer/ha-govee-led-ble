@@ -34,6 +34,7 @@ type StudioSection = "scenes" | "custom";
 type AdvancedEditableContent = AdvancedContent | LayeredSceneContent;
 type EditableEffectContent = CustomEffectContent | AdvancedEditableContent;
 type NewEffectKind = CustomEffectContent["kind"] | AdvancedContent["kind"];
+type NewEffectType = "single" | "multi" | "advanced";
 type DeleteCandidate = Pick<LibrarySummary, "id" | "revision" | "name">;
 type CustomEffectCategory =
   | "all"
@@ -350,6 +351,14 @@ export class GoveeLedEffectStudio extends LitElement {
   private renderCustomEffects() {
     return html`
       <aside class="effect-categories" aria-label="Effect categories">
+        <button
+          class="selector"
+          type="button"
+          ?disabled=${!this.isAdmin}
+          @click=${() => this.newEffect("h617a_single")}
+        >
+          New
+        </button>
         ${this.customEffectCategoryButton("all", "All")}
         ${this.customEffectCategoryButton("single-layer", "Single Layer")}
         ${this.customEffectCategoryButton("multi-layer", "Multi Layer")}
@@ -629,6 +638,8 @@ export class GoveeLedEffectStudio extends LitElement {
         </div>
       </div>
 
+      ${this.renderNewEffectTypeTabs()}
+
       ${!this.isAdmin
         ? html`
             <div class="read-only" role="note">
@@ -741,7 +752,7 @@ export class GoveeLedEffectStudio extends LitElement {
         </div>
       </div>
 
-      ${this.renderCustomModeTabs()}
+      ${this.renderNewEffectTypeTabs()}
 
       ${!this.isAdmin
         ? html`
@@ -896,7 +907,7 @@ export class GoveeLedEffectStudio extends LitElement {
         </div>
       </div>
 
-      ${this.renderCustomModeTabs()}
+      ${this.renderNewEffectTypeTabs()}
 
       ${!this.isAdmin
         ? html`
@@ -946,27 +957,26 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
-  private renderCustomModeTabs() {
-    if (!isCustomEffectContent(this.content)) {
+  private renderNewEffectTypeTabs() {
+    if (this.currentItem || !isEditableEffectContent(this.content)) {
       return nothing;
     }
     return html`
       <div class="custom-mode-tabs" role="tablist" aria-label="Custom effect type">
-        ${this.customModeButton("h617a_painted", "Paint")}
-        ${this.customModeButton("h617a_single", "Single")}
-        ${this.customModeButton("h617a_multi", "Multi")}
+        ${this.newEffectTypeButton("single", "Single")}
+        ${this.newEffectTypeButton("multi", "Multi")}
+        ${this.newEffectTypeButton("advanced", "Advanced")}
       </div>
     `;
   }
 
-  private customModeButton(
-    kind: CustomEffectContent["kind"],
+  private newEffectTypeButton(
+    type: NewEffectType,
     label: string,
   ) {
-    const selected =
-      isCustomEffectContent(this.content) && this.content.kind === kind;
+    const selected = newEffectTypeForContent(this.content) === type;
     const wouldDiscardSequence =
-      kind === "h617a_single" &&
+      type === "single" &&
       this.content.kind === "h617a_multi" &&
       this.content.effects.length > 1;
     return html`
@@ -979,7 +989,7 @@ export class GoveeLedEffectStudio extends LitElement {
           ? "Remove all but one effect before switching to Single"
           : nothing}
         ?disabled=${!this.isAdmin || wouldDiscardSequence}
-        @click=${() => this.switchCustomMode(kind)}
+        @click=${() => this.switchNewEffectType(type)}
       >
         ${label}
       </button>
@@ -1291,6 +1301,27 @@ export class GoveeLedEffectStudio extends LitElement {
     this.notice = this.applyAvailabilityNotice();
   }
 
+  private switchNewEffectType(type: NewEffectType): void {
+    if (
+      !this.isAdmin ||
+      this.currentItem ||
+      !isEditableEffectContent(this.content) ||
+      newEffectTypeForContent(this.content) === type
+    ) {
+      return;
+    }
+    if (type === "advanced") {
+      this.newEffect("advanced");
+      return;
+    }
+    const kind = type === "single" ? "h617a_single" : "h617a_multi";
+    if (isCustomEffectContent(this.content)) {
+      this.switchCustomMode(kind);
+      return;
+    }
+    this.newEffect(kind);
+  }
+
   private switchCustomMode(kind: CustomEffectContent["kind"]): void {
     if (
       !this.isAdmin ||
@@ -1403,7 +1434,6 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     this.currentItem = undefined;
-    this.customEffectCategory = "all";
     this.customTemplateSelection =
       kind === "advanced"
         ? undefined
@@ -2823,6 +2853,20 @@ function isEditableEffectContent(
       "kind" in content &&
       isAdvancedEditableKind(content.kind))
   );
+}
+
+function newEffectTypeForContent(
+  content: EffectContent,
+): NewEffectType | undefined {
+  if (content.kind === "h617a_multi") {
+    return "multi";
+  }
+  if (isAdvancedEditableKind(content.kind)) {
+    return "advanced";
+  }
+  return content.kind === "h617a_painted" || content.kind === "h617a_single"
+    ? "single"
+    : undefined;
 }
 
 function isAdvancedEditableKind(

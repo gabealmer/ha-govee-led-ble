@@ -292,7 +292,7 @@ export class GoveeSceneBrowser extends LitElement {
         </div>
         <div class="actions">
           <button
-            class="secondary"
+            class="primary"
             type="button"
             ?disabled=${!this.isAdmin ||
             this.saving ||
@@ -322,7 +322,7 @@ export class GoveeSceneBrowser extends LitElement {
               `
             : nothing}
           <button
-            class="primary"
+            class="secondary"
             type="button"
             aria-describedby=${custom &&
             this.content?.kind === "scene_palette"
@@ -372,8 +372,7 @@ export class GoveeSceneBrowser extends LitElement {
     const palette =
       this.content?.kind === "scene_palette" ? this.content : undefined;
     return html`
-      <section class="card scene-parameters" aria-labelledby="scene-parameters-heading">
-        <h3 id="scene-parameters-heading">Parameters</h3>
+      <div class="card scene-parameters">
         <div class="parameter-list">
           ${speed
             ? html`
@@ -405,7 +404,7 @@ export class GoveeSceneBrowser extends LitElement {
             ? this.renderPaletteParameters(palette)
             : nothing}
         </div>
-      </section>
+      </div>
     `;
   }
 
@@ -937,7 +936,12 @@ export class GoveeSceneBrowser extends LitElement {
 
     .actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 9px;
+    }
+
+    .actions > button {
+      min-height: 44px;
     }
 
     .primary,
