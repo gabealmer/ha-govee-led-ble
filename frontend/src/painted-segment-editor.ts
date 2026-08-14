@@ -1,8 +1,12 @@
 import { LitElement, css, html } from "lit";
 import { property } from "lit/decorators.js";
 
-import { rgbToHex } from "./palette-editor";
+import {
+  studioBaseStyles,
+  studioCardStyles,
+} from "./studio-styles";
 import type { RGB } from "./types";
+import { rgbToHex } from "./ui-utils";
 
 export class GoveePaintedSegmentEditor extends LitElement {
   @property({ attribute: false })
@@ -100,23 +104,9 @@ export class GoveePaintedSegmentEditor extends LitElement {
     );
   }
 
-  static styles = css`
+  static styles = [studioBaseStyles, studioCardStyles, css`
     :host {
       display: block;
-      --studio-blue: var(--primary-color, #2f6fed);
-      --studio-border: var(--divider-color, #d8dce2);
-      --studio-card: var(--card-background-color, #fff);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    .card {
-      padding: 20px;
-      border: 1px solid var(--studio-border);
-      border-radius: 10px;
-      background: var(--studio-card);
     }
 
     h3 {
@@ -143,13 +133,8 @@ export class GoveePaintedSegmentEditor extends LitElement {
     }
 
     button:focus-visible {
-      outline: 3px solid var(--studio-blue);
-      outline-offset: 2px;
-    }
-
-    button:disabled {
-      cursor: not-allowed;
-      opacity: 0.52;
+      outline: var(--studio-focus-width) solid var(--studio-blue);
+      outline-offset: var(--studio-focus-offset);
     }
 
     @media (max-width: 600px) {
@@ -157,7 +142,7 @@ export class GoveePaintedSegmentEditor extends LitElement {
         grid-template-columns: repeat(5, minmax(0, 1fr));
       }
     }
-  `;
+  `];
 }
 
 declare global {
