@@ -32,7 +32,16 @@ export class GoveeCustomEffectEditor extends LitElement {
   private draggedEffectIndex?: number;
 
   protected updated(): void {
-    if (!this.content || this.content.kind !== "h617a_multi") {
+    if (!this.content) {
+      return;
+    }
+    if (this.content.kind === "h617a_single") {
+      const variation = this.shadowRoot?.querySelector<HTMLSelectElement>(
+        "select[data-single-variation]",
+      );
+      if (variation) {
+        variation.value = String(this.content.variant);
+      }
       return;
     }
     this.content.effects.forEach((pair, index) => {
@@ -74,15 +83,16 @@ export class GoveeCustomEffectEditor extends LitElement {
 
       <section class="card parameters-card">
         <h3>Parameters</h3>
+        ${this.renderSingleVariation()}
         <div class="parameter-group">
           <h4>Colours</h4>
           ${this.renderPalette()}
         </div>
         <div class="parameter-group speed-group">
           <h4>${rateLabel}</h4>
-          <label class="range-field">
-            <span>${rateLabel}</span>
+          <div class="range-field">
             <input
+              aria-label=${rateLabel}
               type="range"
               min="0"
               max="100"
@@ -94,10 +104,58 @@ export class GoveeCustomEffectEditor extends LitElement {
                   speed: Number((event.target as HTMLInputElement).value),
                 })}
             />
-            <output>${this.content.speed}%</output>
-          </label>
+            <output>${this.content.speed}</output>
+          </div>
         </div>
       </section>
+    `;
+  }
+
+  private renderSingleVariation() {
+    if (!this.content || this.content.kind !== "h617a_single") {
+      return nothing;
+    }
+    const content = this.content;
+    const family = this.effectFamily(content);
+    const variations = family?.variations ?? [];
+    const knownVariation = variations.some(
+      (variation) => variation.variant === content.variant,
+    );
+    if (knownVariation && variations.length <= 1) {
+      return nothing;
+    }
+    return html`
+      <div class="parameter-group">
+        <label class="field">
+          <span>Variation</span>
+          <select
+            aria-label="Variation"
+            data-single-variation
+            .value=${String(content.variant)}
+            ?disabled=${this.disabled}
+            @change=${(event: Event) =>
+              this.emitContent({
+                ...content,
+                variant: Number((event.target as HTMLSelectElement).value),
+              })}
+          >
+            ${knownVariation
+              ? nothing
+              : html`
+                  <option value=${String(content.variant)}>
+                    Unknown variation ${content.variant}
+                  </option>
+                `}
+            ${variations.map(
+              (variation) => html`
+                <option value=${String(variation.variant)}>
+                  ${variation.label}
+                </option>
+              `,
+            )}
+          </select>
+        </label>
+      </div>
     `;
   }
 
@@ -526,13 +584,11 @@ export class GoveeCustomEffectEditor extends LitElement {
 
     .parameter-group + .parameter-group {
       margin-top: 18px;
-      padding-top: 18px;
-      border-top: 1px solid var(--studio-border);
     }
 
     .range-field {
-      display: grid;
-      grid-template-columns: 70px minmax(100px, 1fr) 44px;
+      grid-template-columns: minmax(100px, 1fr) 44px;
+      margin-top: 0;
     }
 
     @media (max-width: 560px) {
