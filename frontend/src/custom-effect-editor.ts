@@ -2,6 +2,8 @@ import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
 import "./palette-editor";
+import type { SliderControlChange } from "./slider-control";
+import "./slider-control";
 import {
   studioBaseStyles,
   studioCardStyles,
@@ -93,25 +95,18 @@ export class GoveeCustomEffectEditor extends LitElement {
             <span class="parameter-label">Colours</span>
             ${this.renderPalette()}
           </div>
-          <div class="parameter-group speed-group">
-            <span class="parameter-label">${rateLabel}</span>
-            <div class="range-field">
-              <input
-                aria-label=${rateLabel}
-                type="range"
-                min="0"
-                max="100"
-                .value=${String(this.content.speed)}
-                ?disabled=${this.disabled}
-                @input=${(event: Event) =>
-                  this.emitContent({
-                    ...this.content!,
-                    speed: Number((event.target as HTMLInputElement).value),
-                  })}
-              />
-              <output>${this.content.speed}</output>
-            </div>
-          </div>
+          <govee-slider-control
+            .label=${rateLabel}
+            .value=${this.content.speed}
+            .minimum=${0}
+            .maximum=${100}
+            .disabled=${this.disabled}
+            @value-changed=${(event: CustomEvent<SliderControlChange>) =>
+              this.emitContent({
+                ...this.content!,
+                speed: event.detail.value,
+              })}
+          ></govee-slider-control>
         </div>
       </section>
     `;
@@ -576,11 +571,6 @@ export class GoveeCustomEffectEditor extends LitElement {
       background: transparent;
       cursor: pointer;
       font-size: 24px;
-    }
-
-    .range-field {
-      grid-template-columns: minmax(100px, 1fr) 44px;
-      margin-top: 0;
     }
 
     @media (max-width: 560px) {

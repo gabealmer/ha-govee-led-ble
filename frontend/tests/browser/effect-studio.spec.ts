@@ -285,6 +285,10 @@ test("default harness uses complete production H617A catalogues", async ({
   for (const label of musicParameterLabels) {
     await expect(label).toHaveCount(1);
   }
+  await expect(
+    musicEditor.getByRole("slider", { name: "Sensitivity" }),
+  ).toBeVisible();
+  await expect(musicEditor.locator("output")).toHaveCount(0);
   const musicLabelStyles = await Promise.all(
     musicParameterLabels.map((label) =>
       label.evaluate((element) => {
@@ -371,33 +375,25 @@ test("default harness uses complete production H617A catalogues", async ({
   await expect(
     speedParameters.getByRole("heading", { name: "Parameters" }),
   ).toHaveCount(0);
-  const paletteParameterLabels = speedParameters.locator(
-    ".parameter-stack > .parameter-group > .parameter-label",
+  const paletteParameterLabels = ["Variation", "Colours", "Speed"].map(
+    (label) => speedParameters.getByText(label, { exact: true }),
   );
-  await expect(paletteParameterLabels).toHaveText([
-    "Variation",
-    "Colours",
-    "Speed",
-  ]);
-  const paletteLabelStyles = await paletteParameterLabels.evaluateAll(
-    (labels) =>
-      labels.map((label) => {
-        const style = getComputedStyle(label);
+  for (const label of paletteParameterLabels) {
+    await expect(label).toHaveCount(1);
+  }
+  const paletteLabelStyles = await Promise.all(
+    paletteParameterLabels.map((label) =>
+      label.evaluate((element) => {
+        const style = getComputedStyle(element);
         return `${style.fontSize}|${style.fontWeight}|${style.color}`;
       }),
+    ),
   );
   expect(new Set(paletteLabelStyles).size).toBe(1);
   await expect(
     speedParameters.getByRole("slider", { name: "Speed" }),
   ).toBeVisible();
-  await expect(speedParameters.locator(".speed-group output")).toHaveText("50");
-  await expect
-    .poll(() =>
-      speedParameters
-        .locator(".speed-group")
-        .evaluate((element) => getComputedStyle(element).borderTopStyle),
-    )
-    .toBe("none");
+  await expect(speedParameters.locator("output")).toHaveCount(0);
 
   await categories
     .getByRole("button", { name: "Music", exact: true })
@@ -592,6 +588,14 @@ test("saved Painted effects retain their content kind", async ({ page }) => {
   await expect(
     studio.locator("govee-painted-segment-editor"),
   ).toBeVisible();
+  const speed = studio.getByRole("slider", { name: "Speed" });
+  await expect(speed).toBeVisible();
+  await expect(
+    studio
+      .locator("govee-slider-control")
+      .filter({ has: speed })
+      .locator("output"),
+  ).toHaveCount(0);
 });
 
 test("custom catalogues reject families without variations", async ({
@@ -2098,6 +2102,14 @@ test("advanced layer and palette keyboard focus follows edits", async ({
   await expect(
     advanced.getByText("Selection", { exact: true }),
   ).toBeVisible();
+  await expect(advanced.getByRole("slider", { name: "Scope low" })).toBeVisible();
+  await expect(
+    advanced.getByRole("slider", { name: "Scope high" }),
+  ).toBeVisible();
+  await expect(
+    advanced.getByRole("slider", { name: "Changing speed" }),
+  ).toBeVisible();
+  await expect(advanced.locator("output")).toHaveCount(0);
   const areaTrack = advanced.locator(".area-track");
   const areaStart = advanced.getByRole("slider", {
     name: "Applied area start",
@@ -2146,6 +2158,17 @@ test("advanced layer and palette keyboard focus follows edits", async ({
   await expect(areaStart).toHaveAttribute("aria-valuenow", "0");
   await expect(areaEnd).toHaveAttribute("aria-valuenow", "3");
   await expect(appliedArea.locator("span.covered")).toHaveCount(5);
+
+  const selectedMovement = advanced.getByRole("switch", {
+    name: "Move selected pattern enabled",
+  });
+  if ((await selectedMovement.getAttribute("aria-checked")) === "false") {
+    await selectedMovement.click();
+  }
+  await expect(
+    advanced.getByRole("slider", { name: "Speed" }).first(),
+  ).toBeVisible();
+  await expect(advanced.locator("output")).toHaveCount(0);
 
   await areaStart.press("ArrowRight");
   await expect(areaStart).toHaveAttribute("aria-valuenow", "1");
