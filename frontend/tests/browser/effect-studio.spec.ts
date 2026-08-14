@@ -986,6 +986,10 @@ test("H6199 Video exposes complete reusable profile controls", async ({ page }) 
     editor.getByRole("slider", { name: "Uniform brightness" }),
   ).toBeVisible();
   await expect(
+    editor.getByRole("group", { name: "Screen edge brightness" }),
+  ).toBeVisible();
+  await expect(editor.locator(".virtual-screen")).toBeVisible();
+  await expect(
     editor.getByRole("slider", { name: "Left", exact: true }),
   ).toBeVisible();
   await expect(
@@ -997,12 +1001,38 @@ test("H6199 Video exposes complete reusable profile controls", async ({ page }) 
   await expect(
     editor.getByRole("slider", { name: "Bottom", exact: true }),
   ).toBeVisible();
+  const leftBrightness = editor.getByRole("slider", {
+    name: "Left",
+    exact: true,
+  });
+  await leftBrightness.fill("25");
   await expect(
-    editor.getByRole("switch", { name: "Sound effects" }),
+    editor.getByRole("status", { name: "Left value" }),
+  ).toHaveText("25%");
+  await expect(editor.locator(".screen-edge-left")).toHaveAttribute(
+    "style",
+    "--edge-level: 0.25",
+  );
+  await editor
+    .getByRole("slider", { name: "Uniform brightness" })
+    .fill("60");
+  for (const edge of ["Left", "Top", "Right", "Bottom"]) {
+    await expect(
+      editor.getByRole("status", { name: `${edge} value` }),
+    ).toHaveText("60%");
+  }
+  await expect(
+    editor.getByRole("checkbox", { name: "Sound effects" }),
   ).toBeVisible();
   await expect(
-    editor.getByRole("switch", { name: "Blank screen" }),
+    editor.getByRole("checkbox", { name: "Blank screen" }),
   ).toBeVisible();
+  await expect(
+    editor.getByRole("checkbox", { name: "Sound effects" }),
+  ).toHaveCSS("width", "20px");
+  await expect(
+    editor.getByText("Sound effects", { exact: true }),
+  ).toHaveCSS("font-size", "13px");
 });
 
 test("Home Assistant mode omits the fixture device picker", async ({ page }) => {

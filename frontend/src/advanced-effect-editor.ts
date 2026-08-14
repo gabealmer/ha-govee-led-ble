@@ -1854,16 +1854,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     }
 
     .check-field {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-height: 44px;
       margin-top: 12px;
-    }
-
-    .check-field input {
-      width: 20px;
-      height: 20px;
     }
 
     .priority-row {

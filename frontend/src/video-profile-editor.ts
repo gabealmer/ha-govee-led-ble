@@ -145,7 +145,7 @@ export class GoveeVideoProfileEditor extends LitElement {
                   content.full_screen = value;
                 }),
             )}
-            ${this.renderToggleRow(
+            ${this.renderCheckboxField(
               "Sound effects",
               this.content.sound_effects,
               (checked) =>
@@ -166,7 +166,7 @@ export class GoveeVideoProfileEditor extends LitElement {
                     }),
                 )
               : nothing}
-            ${this.renderToggleRow(
+            ${this.renderCheckboxField(
               "Blank screen",
               this.content.blank_screen,
               (checked) =>
@@ -220,20 +220,40 @@ export class GoveeVideoProfileEditor extends LitElement {
               ? html`
                   <p class="section-note muted" id="relative-brightness-note">
                     Edges differ.  Adjust Uniform brightness to align all four
-                    sides, or fine-tune each edge below.
+                    sides, or adjust them around the screen.
                   </p>
                 `
               : nothing}
-            <div class="edge-grid">
-              ${BRIGHTNESS_EDGE_OPTIONS.map(({ key, label }) =>
-                this.renderRangeField(
-                  label,
-                  brightness[key],
-                  1,
-                  100,
-                  `${brightness[key]}%`,
-                  (value) => this.updateRelativeBrightnessEdge(key, value),
-                ),
+            <div
+              class="screen-brightness"
+              role="group"
+              aria-label="Screen edge brightness"
+            >
+              ${this.renderScreenEdgeControl("top", "Top", brightness.top)}
+              ${this.renderScreenEdgeControl("left", "Left", brightness.left)}
+              <div class="virtual-screen" aria-hidden="true">
+                ${BRIGHTNESS_EDGE_OPTIONS.map(
+                  ({ key }) => html`
+                    <span
+                      class="screen-edge screen-edge-${key}"
+                      style=${`--edge-level: ${brightness[key] / 100}`}
+                    ></span>
+                  `,
+                )}
+                <div class="screen-image">
+                  <span>Screen</span>
+                </div>
+                <div class="screen-stand"></div>
+              </div>
+              ${this.renderScreenEdgeControl(
+                "right",
+                "Right",
+                brightness.right,
+              )}
+              ${this.renderScreenEdgeControl(
+                "bottom",
+                "Bottom",
+                brightness.bottom,
               )}
             </div>
           </div>
@@ -274,26 +294,22 @@ export class GoveeVideoProfileEditor extends LitElement {
     `;
   }
 
-  private renderToggleRow(
+  private renderCheckboxField(
     label: string,
     checked: boolean,
     changed: (checked: boolean) => void,
   ) {
     return html`
-      <div class="toggle-row">
-        <span class="parameter-label">${label}</span>
-        <button
-          class="switch ${checked ? "on" : ""}"
-          type="button"
-          role="switch"
-          aria-checked=${checked}
-          aria-label=${label}
+      <label class="check-field">
+        <input
+          type="checkbox"
+          .checked=${checked}
           ?disabled=${this.disabled}
-          @click=${() => changed(!checked)}
-        >
-          <span aria-hidden="true"></span>
-        </button>
-      </div>
+          @change=${(event: Event) =>
+            changed((event.target as HTMLInputElement).checked)}
+        />
+        <span class="parameter-label">${label}</span>
+      </label>
     `;
   }
 
@@ -356,6 +372,32 @@ export class GoveeVideoProfileEditor extends LitElement {
     `;
   }
 
+  private renderScreenEdgeControl(
+    edge: RelativeBrightnessEdge,
+    label: string,
+    value: number,
+  ) {
+    return html`
+      <label class="screen-edge-control edge-control-${edge}">
+        <span class="parameter-label">${label}</span>
+        <input
+          type="range"
+          min="1"
+          max="100"
+          .value=${String(value)}
+          aria-label=${label}
+          ?disabled=${this.disabled}
+          @input=${(event: Event) =>
+            this.updateRelativeBrightnessEdge(
+              edge,
+              Number((event.target as HTMLInputElement).value),
+            )}
+        />
+        <output aria-label="${label} value">${value}%</output>
+      </label>
+    `;
+  }
+
   private updateRelativeBrightnessEdge(
     edge: RelativeBrightnessEdge,
     value: number,
@@ -408,18 +450,12 @@ export class GoveeVideoProfileEditor extends LitElement {
         grid-column: 1 / -1;
       }
 
-      .edge-grid,
       .field-group {
         display: grid;
       }
 
       .field-group {
         gap: 10px;
-      }
-
-      .edge-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px 18px;
       }
 
       .field,
@@ -439,8 +475,175 @@ export class GoveeVideoProfileEditor extends LitElement {
         margin: -6px 0 0;
       }
 
-      .card-heading,
-      .toggle-row {
+      .screen-brightness {
+        display: grid;
+        grid-template:
+          ". top ." auto
+          "left screen right" minmax(220px, 1fr)
+          ". bottom ." auto
+          / 72px minmax(260px, 560px) 72px;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 12px 0 20px;
+      }
+
+      .virtual-screen {
+        position: relative;
+        grid-area: screen;
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        padding: 10px;
+        border: 1px solid color-mix(in srgb, var(--studio-muted) 55%, transparent);
+        border-radius: 14px;
+        background: #181b22;
+        box-shadow:
+          0 18px 34px rgb(15 23 42 / 18%),
+          inset 0 0 0 1px rgb(255 255 255 / 6%);
+      }
+
+      .screen-image {
+        display: grid;
+        width: 100%;
+        height: 100%;
+        place-items: center;
+        overflow: hidden;
+        border-radius: 7px;
+        color: rgb(255 255 255 / 62%);
+        background:
+          radial-gradient(circle at 72% 24%, rgb(64 186 255 / 42%), transparent 31%),
+          radial-gradient(circle at 25% 72%, rgb(126 87 255 / 38%), transparent 36%),
+          linear-gradient(145deg, #24334b, #101724 62%, #1e1633);
+        font-size: 13px;
+        font-weight: 650;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .screen-stand {
+        position: absolute;
+        bottom: -18px;
+        left: 50%;
+        width: 28%;
+        height: 14px;
+        border-bottom: 4px solid #353b47;
+        transform: translateX(-50%);
+      }
+
+      .screen-stand::before {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 4px;
+        height: 12px;
+        background: #353b47;
+        content: "";
+        transform: translateX(-50%);
+      }
+
+      .screen-edge {
+        position: absolute;
+        z-index: 1;
+        border-radius: 999px;
+        background: rgb(67 168 255);
+        box-shadow:
+          0 0 8px 2px rgb(67 168 255 / 72%),
+          0 0 20px 5px rgb(67 168 255 / 34%);
+        opacity: calc(0.12 + var(--edge-level) * 0.88);
+        pointer-events: none;
+      }
+
+      .screen-edge-top,
+      .screen-edge-bottom {
+        right: 16px;
+        left: 16px;
+        height: 5px;
+      }
+
+      .screen-edge-top {
+        top: 3px;
+      }
+
+      .screen-edge-bottom {
+        bottom: 3px;
+      }
+
+      .screen-edge-left,
+      .screen-edge-right {
+        top: 16px;
+        bottom: 16px;
+        width: 5px;
+      }
+
+      .screen-edge-left {
+        left: 3px;
+      }
+
+      .screen-edge-right {
+        right: 3px;
+      }
+
+      .screen-edge-control {
+        display: grid;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .screen-edge-control input {
+        min-width: 0;
+      }
+
+      .screen-edge-control output {
+        color: var(--studio-muted);
+        font-size: 13px;
+        font-weight: 600;
+        text-align: end;
+      }
+
+      .edge-control-top,
+      .edge-control-bottom {
+        grid-template-columns: 48px minmax(120px, 1fr) 44px;
+      }
+
+      .edge-control-top {
+        grid-area: top;
+      }
+
+      .edge-control-bottom {
+        grid-area: bottom;
+      }
+
+      .edge-control-left,
+      .edge-control-right {
+        grid-template-rows: auto minmax(130px, 1fr) auto;
+        justify-items: center;
+        height: 100%;
+      }
+
+      .edge-control-left {
+        grid-area: left;
+      }
+
+      .edge-control-right {
+        grid-area: right;
+      }
+
+      .edge-control-left input,
+      .edge-control-right input {
+        width: 24px;
+        height: 100%;
+        writing-mode: vertical-lr;
+        direction: rtl;
+      }
+
+      .edge-control-left output,
+      .edge-control-right output {
+        text-align: center;
+      }
+
+      .card-heading {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -453,43 +656,6 @@ export class GoveeVideoProfileEditor extends LitElement {
 
       .card-heading h3 {
         margin-bottom: 0;
-      }
-
-      .toggle-row {
-        min-height: var(--studio-control-height);
-      }
-
-      .switch {
-        position: relative;
-        width: 60px;
-        min-height: 44px;
-        height: 44px;
-        padding: 0;
-        border: 1px solid var(--studio-border);
-        border-radius: 999px;
-        background: var(--secondary-background-color, #f5f6f8);
-        cursor: pointer;
-      }
-
-      .switch span {
-        position: absolute;
-        top: 6px;
-        left: 6px;
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: var(--studio-muted);
-        transition: transform 120ms ease;
-      }
-
-      .switch.on {
-        border-color: var(--studio-blue);
-        background: var(--studio-blue);
-      }
-
-      .switch.on span {
-        background: var(--text-primary-color, #fff);
-        transform: translateX(18px);
       }
 
       .range-field {
@@ -551,10 +717,6 @@ export class GoveeVideoProfileEditor extends LitElement {
       }
 
       @media (max-width: 560px) {
-        .edge-grid {
-          grid-template-columns: 1fr;
-        }
-
         .range-field {
           grid-template-columns: 1fr;
         }
@@ -563,12 +725,28 @@ export class GoveeVideoProfileEditor extends LitElement {
           text-align: start;
         }
 
-        .toggle-row {
-          align-items: start;
+        .screen-brightness {
+          grid-template:
+            ". top ." auto
+            "left screen right" minmax(160px, 1fr)
+            ". bottom ." auto
+            / 52px minmax(160px, 1fr) 52px;
+          gap: 8px;
         }
 
-        .switch {
-          flex: 0 0 auto;
+        .edge-control-top,
+        .edge-control-bottom {
+          grid-template-columns: minmax(0, 1fr) 42px;
+        }
+
+        .edge-control-top .parameter-label,
+        .edge-control-bottom .parameter-label {
+          grid-column: 1 / -1;
+        }
+
+        .edge-control-left,
+        .edge-control-right {
+          grid-template-rows: auto minmax(90px, 1fr) auto;
         }
       }
     `,

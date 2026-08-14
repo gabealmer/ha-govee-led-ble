@@ -459,18 +459,6 @@ export class GoveeMusicProfileEditor extends LitElement {
         font-variant-numeric: tabular-nums;
       }
 
-      .check-field {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        min-height: 44px;
-      }
-
-      .check-field input {
-        width: 20px;
-        height: 20px;
-      }
-
       @media (max-width: 560px) {
         .parameter-options button {
           min-width: 0;
