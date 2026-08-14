@@ -21,6 +21,9 @@ type SceneContent =
   | BuiltinSceneContent
   | PaletteSceneContent
   | LayeredSceneContent;
+type SceneListEntry =
+  | { kind: "custom"; item: LibrarySummary; label: string }
+  | { kind: "builtin"; scene: SceneSummary; label: string };
 type SceneRequestContext = {
   generation: number;
   api: EffectStudioApi;
@@ -131,43 +134,34 @@ export class GoveeSceneBrowser extends LitElement {
 
     return html`
       <aside class="categories" aria-label="Scene categories">
-        <p class="eyebrow">Scenes</p>
-        ${this.categoryButton("all", "All scenes")}
-        ${this.categoryButton("custom", "Custom")}
-        ${this.catalogue.categories.map((category) =>
-          this.categoryButton(category.id, category.name),
+        ${this.sortedCategories.map((category) =>
+          this.categoryButton(category.id, category.label),
         )}
       </aside>
 
       <aside class="scenes" aria-label="Scenes">
-        <div class="scenes-heading">
-          <p class="eyebrow">${this.categoryLabel}</p>
-          <h2>Scenes</h2>
-        </div>
-        ${this.filteredCustomScenes.map((item) =>
-          this.sceneButton(
-            `custom:${item.id}`,
-            item.name,
-            "Custom",
-            () => this.selectCustom(item),
-          ),
+        ${this.filteredSceneEntries.map((entry) =>
+          entry.kind === "custom"
+            ? this.sceneButton(
+                `custom:${entry.item.id}`,
+                entry.label,
+                "Custom",
+                () => this.selectCustom(entry.item),
+              )
+            : this.sceneButton(
+                sceneKey(entry.scene),
+                entry.label,
+                entry.scene.parameter_kind === "none"
+                  ? "Built-in"
+                  : entry.scene.parameter_kind === "palette"
+                    ? "Colours"
+                    : entry.scene.parameter_kind === "layers"
+                      ? "Layers"
+                      : "Built-in",
+                () => this.selectBuiltin(entry.scene),
+              ),
         )}
-        ${this.filteredBuiltinScenes.map((scene) =>
-          this.sceneButton(
-            sceneKey(scene),
-            scene.display_name,
-            scene.parameter_kind === "none"
-              ? "Built-in"
-              : scene.parameter_kind === "palette"
-                ? "Colours"
-                : scene.parameter_kind === "layers"
-                  ? "Layers"
-                  : "Built-in",
-            () => this.selectBuiltin(scene),
-          ),
-        )}
-        ${!this.filteredCustomScenes.length &&
-        !this.filteredBuiltinScenes.length
+        ${!this.filteredSceneEntries.length
           ? html`<p class="empty-list">No scenes in this category.</p>`
           : nothing}
       </aside>
@@ -178,31 +172,23 @@ export class GoveeSceneBrowser extends LitElement {
           : nothing}
         ${this.selectedScene && this.content
           ? this.renderDetail()
-          : html`
-              <div class="empty">
-                <h2>Select a scene</h2>
-                <p>
-                  Choose a built-in or custom scene to inspect its documented
-                  controls.
-                </p>
-              </div>
-            `}
+          : nothing}
       </section>
     `;
   }
 
-  private get categoryLabel(): string {
-    if (this.category === "all") {
-      return "All scenes";
-    }
-    if (this.category === "custom") {
-      return "Custom";
-    }
-    return (
-      this.catalogue?.categories.find(
-        (category) => category.id === this.category,
-      )?.name ?? "Scenes"
-    );
+  private get sortedCategories(): {
+    id: CategorySelection;
+    label: string;
+  }[] {
+    return [
+      { id: "all" as const, label: "All scenes" },
+      { id: "custom" as const, label: "Custom" },
+      ...(this.catalogue?.categories.map((category) => ({
+        id: category.id,
+        label: category.name,
+      })) ?? []),
+    ].sort((left, right) => compareLabels(left.label, right.label));
   }
 
   private get compatibleCustomScenes(): LibrarySummary[] {
@@ -229,6 +215,25 @@ export class GoveeSceneBrowser extends LitElement {
     return this.catalogue.scenes.filter(
       (scene) => scene.category_id === this.category,
     );
+  }
+
+  private get filteredSceneEntries(): SceneListEntry[] {
+    return [
+      ...this.filteredCustomScenes.map(
+        (item): SceneListEntry => ({
+          kind: "custom",
+          item,
+          label: item.name,
+        }),
+      ),
+      ...this.filteredBuiltinScenes.map(
+        (scene): SceneListEntry => ({
+          kind: "builtin",
+          scene,
+          label: scene.display_name,
+        }),
+      ),
+    ].sort((left, right) => compareLabels(left.label, right.label));
   }
 
   private get selectionKey(): string | undefined {
@@ -1190,8 +1195,13 @@ function speedLabel(index: number, defaultIndex: number): string {
   if (offset === 0) {
     return "Default";
   }
+
   const magnitude = Math.abs(offset);
   return `${offset < 0 ? "Slower" : "Faster"}${magnitude > 1 ? ` ${magnitude}` : ""}`;
+}
+
+function compareLabels(left: string, right: string): number {
+  return left.localeCompare(right, "en-AU", { sensitivity: "base" });
 }
 
 function cloneLayeredSceneContent(

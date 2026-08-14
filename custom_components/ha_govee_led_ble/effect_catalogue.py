@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from .effect_domain import MAX_MULTI_EFFECTS, MAX_PALETTE_COLOURS, JsonValue
+from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 
 # PR #156 proves code 24 immediately follows and reads back after both Flat and Combo uploads.
 H617A_TYPE04_APPLY_CODE: Final = 24
@@ -59,11 +60,20 @@ H617A_TYPE04_EFFECTS: Final = (
     ),
 )
 
+H617A_PAINTED_EFFECTS: Final = tuple(
+    {
+        "id": effect.name,
+        "label": "Counterclockwise" if effect.name == "counter_clockwise" else effect.name.capitalize(),
+    }
+    for effect in DiyType03.Effect
+)
+
 
 def custom_effect_catalogue_payload() -> dict[str, JsonValue]:
     return {
         "schema_version": 1,
         "sku": "H617A",
+        "painted_effects": list(H617A_PAINTED_EFFECTS),
         "effects": [effect.to_dict() for effect in H617A_TYPE04_EFFECTS],
         "limits": {
             "palette_min": 1,

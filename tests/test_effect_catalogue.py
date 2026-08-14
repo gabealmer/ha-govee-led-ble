@@ -6,10 +6,12 @@ from pathlib import Path
 from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble.effect_catalogue import (
+    H617A_PAINTED_EFFECTS,
     H617A_TYPE04_APPLY_CODE,
     H617A_TYPE04_EFFECTS,
     custom_effect_catalogue_payload,
 )
+from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type04 import DiyType04
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tools/ble/kaitai/src"
@@ -39,3 +41,10 @@ def test_type04_catalogue_exposes_domain_limits_and_apply_support() -> None:
     assert isinstance(apply, dict)
     assert apply["single"] == "supported"
     assert apply["multi"] == "supported"
+
+
+def test_painted_catalogue_exposes_every_kaitai_effect() -> None:
+    catalogue = custom_effect_catalogue_payload()
+
+    assert [effect["id"] for effect in H617A_PAINTED_EFFECTS] == [effect.name for effect in DiyType03.Effect]
+    assert catalogue["painted_effects"] == list(H617A_PAINTED_EFFECTS)

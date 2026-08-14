@@ -38,7 +38,13 @@ export interface PaintedGroup {
 
 export interface PaintedContent {
   kind: "h617a_painted";
-  effect: "clockwise" | "counter_clockwise";
+  effect:
+    | "cycle"
+    | "clockwise"
+    | "counter_clockwise"
+    | "twinkle"
+    | "gradient"
+    | "breathe";
   speed: number;
   brightness: number;
   background: RGB;
@@ -139,6 +145,10 @@ export interface DiyEffectTemplate {
 export interface CustomEffectCatalogue {
   schema_version: number;
   sku: "H617A";
+  painted_effects: {
+    id: PaintedContent["effect"];
+    label: string;
+  }[];
   effects: DiyEffectTemplate[];
   limits: {
     palette_min: number;

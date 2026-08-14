@@ -3,7 +3,12 @@ import { expect, test, type Page } from "@playwright/test";
 const studioSelector = "ha-govee-led-ble-editor";
 
 async function openStudio(page: Page, query = "") {
-  await page.goto(`/${query}`);
+  const path = query && !query.startsWith("?") ? `/${query}` : "/";
+  const parameters = new URLSearchParams(
+    query.startsWith("?") ? query.slice(1) : "",
+  );
+  parameters.set("fixtures", "1");
+  await page.goto(`${path}?${parameters.toString()}`);
   const studio = page.locator(studioSelector);
   await expect(
     studio.getByRole("heading", { name: "Effect Studio" }),
@@ -69,6 +74,94 @@ async function setCustomPalette(
       );
     }, palette);
 }
+
+test("default harness uses complete production H617A catalogues", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const studio = page.locator(studioSelector);
+  await expect(
+    studio.getByRole("heading", { name: "Effect Studio" }),
+  ).toBeVisible();
+
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const sceneBrowser = studio.locator("govee-scene-browser");
+  await expect(
+    sceneBrowser
+      .locator("aside.scenes")
+      .getByRole("button")
+      .filter({ hasText: /Built-in|Colours|Layers/ }),
+  ).toHaveCount(83);
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Natural", exact: true }),
+  ).toBeVisible();
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Funny", exact: true }),
+  ).toBeVisible();
+  await expect(
+    sceneBrowser
+      .getByRole("complementary", { name: "Scene categories" })
+      .getByRole("button"),
+  ).toHaveText([
+    "All scenes",
+    "Custom",
+    "Emotion",
+    "Festival",
+    "Funny",
+    "Life",
+    "Natural",
+  ]);
+  const orderedSceneNames = await sceneBrowser
+    .locator("aside.scenes button.scene > span:first-child")
+    .allTextContents();
+  expect(orderedSceneNames).toHaveLength(83);
+  expect(orderedSceneNames.slice(0, 10)).toEqual([
+    "Afternoon",
+    "Aurora",
+    "Aurora B",
+    "Birthday",
+    "Bloom",
+    "Breathe",
+    "Candlelight",
+    "Candy",
+    "Cheerful",
+    "Cherry blossoms",
+  ]);
+
+  await studio
+    .getByRole("button", { name: "Custom Effects", exact: true })
+    .click();
+  const effectList = studio.getByRole("complementary", {
+    name: "Custom effects",
+  });
+  await expect(
+    effectList.getByRole("button", { name: "Cycle Painted" }),
+  ).toBeVisible();
+  await expect(
+    effectList.getByRole("button", { name: "Fade Single" }),
+  ).toBeVisible();
+  await expect(
+    effectList.getByRole("button", { name: "Mix Multi" }),
+  ).toBeVisible();
+  await expect(
+    effectList.getByRole("button", { name: "Unsupported special DIY pair" }),
+  ).toHaveCount(0);
+  const paintedEffect = studio.getByRole("combobox", {
+    name: "Effect",
+    exact: true,
+  });
+  await expect(
+    paintedEffect.locator("option"),
+  ).toHaveText([
+    "Cycle",
+    "Clockwise",
+    "Counterclockwise",
+    "Twinkle",
+    "Gradient",
+    "Breathe",
+  ]);
+  await expect(paintedEffect).toHaveValue("clockwise");
+});
 
 test("capability gates Apply while retaining supported H617A custom Apply", async ({
   page,

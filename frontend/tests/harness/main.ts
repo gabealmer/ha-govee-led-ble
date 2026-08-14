@@ -21,6 +21,7 @@ const backend = new MockHomeAssistantBackend(
   parameters.get("slowLoad") === "1",
   parameters.get("malformedLibrary") === "1",
   parameters.get("rejectDeploymentSubscription") === "1",
+  parameters.get("fixtures") === "1",
 );
 
 if (parameters.get("rtl") === "1") {

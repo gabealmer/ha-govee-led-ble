@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 uv sync --locked
+uv run --no-sync python -m tools.generate_frontend_harness_data --check
 
 echo "=== Frontend ==="
 npm --prefix frontend ci --ignore-scripts
