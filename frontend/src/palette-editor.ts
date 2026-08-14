@@ -1,6 +1,11 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import "./reorderable-strip";
+import type {
+  GoveeReorderableStrip,
+  ReorderableStripItem,
+} from "./reorderable-strip";
 import type { RGB } from "./types";
 
 const RECENT_COLOUR_LIMIT = 17;
@@ -43,13 +48,6 @@ export class GoveePaletteEditor extends LitElement {
   @state()
   private editingIndex?: number;
 
-  private draggedIndex?: number;
-  private pointerId?: number;
-  private pointerIndex?: number;
-  private pointerX = 0;
-  private pointerY = 0;
-  private pointerMoved = false;
-  private suppressClick = false;
   private readonly windowPointerDown = (event: PointerEvent): void => {
     if (
       this.editingIndex !== undefined &&
@@ -80,113 +78,96 @@ export class GoveePaletteEditor extends LitElement {
   }
 
   protected render() {
+    const items: ReorderableStripItem[] = this.palette.map(
+      (colour, index) => ({
+        key: `${index}-${rgbToHex(colour)}`,
+        label: `Colour ${index + 1}`,
+        ariaLabel:
+          this.editingIndex === index &&
+          this.palette.length > this.minColours
+            ? `Remove colour ${index + 1}`
+            : `Edit colour ${index + 1}, ${rgbToHex(
+                colour,
+              )}. Drag to reorder or use arrow keys.`,
+        colour: rgbToHex(colour),
+        removeReady:
+          this.editingIndex === index &&
+          this.palette.length > this.minColours,
+        disabled: this.disabled,
+      }),
+    );
     return html`
-      <ul class="palette-list" aria-label="Colours">
-        ${this.palette.map(
-          (colour, index) => html`
-            <li
-              class="swatch-item ${this.editingIndex === index &&
-              this.palette.length > this.minColours
-                ? "remove-ready"
-                : ""}"
-              data-colour-index=${index}
-              draggable=${this.disabled ? "false" : "true"}
-              @dragstart=${(event: DragEvent) =>
-                this.dragStarted(index, event)}
-              @dragover=${(event: DragEvent) => {
-                if (!this.disabled) {
-                  event.preventDefault();
-                }
-              }}
-              @drop=${(event: DragEvent) => this.dropped(index, event)}
-              @pointerdown=${(event: PointerEvent) =>
-                this.pointerStarted(index, event)}
-              @pointermove=${this.pointerMovedOver}
-              @pointerup=${this.pointerFinished}
-              @pointercancel=${this.pointerFinished}
-            >
-              <button
-                class="swatch"
-                type="button"
-                data-colour-index=${index}
-                style="--swatch-colour: ${rgbToHex(colour)}"
-                aria-label=${this.editingIndex === index &&
-                this.palette.length > this.minColours
-                  ? `Remove colour ${index + 1}`
-                  : `Edit colour ${index + 1}, ${rgbToHex(
-                      colour,
-                    )}. Drag to reorder or use arrow keys.`}
-                ?disabled=${this.disabled}
-                @click=${() => this.swatchClicked(index)}
+      <govee-reorderable-strip
+        .items=${items}
+        .activeIndex=${this.editingIndex}
+        ariaLabel="Colours"
+        addLabel="Add colour"
+        .addDisabled=${this.disabled ||
+        this.palette.length >= this.maxColours}
+        .reorderDisabled=${this.disabled}
+        @item-selected=${(event: CustomEvent<{ index: number }>) =>
+          this.swatchClicked(event.detail.index)}
+        @items-reordered=${(
+          event: CustomEvent<{ from: number; to: number }>,
+        ) => this.reorder(event.detail.from, event.detail.to)}
+        @item-added=${this.addColour}
+      >
+        ${this.editingIndex === undefined
+          ? nothing
+          : html`
+              <div
+                slot="item-${this.editingIndex}"
+                class="strip-popover colour-popover"
+                role="dialog"
+                aria-label="Edit colour"
                 @keydown=${(event: KeyboardEvent) =>
-                  this.keyPressed(index, event)}
-              ></button>
-              ${this.editingIndex === index
-                ? this.renderPopover(index, colour)
-                : nothing}
-            </li>
-          `,
-        )}
-        <li>
-          <button
-            class="palette-add"
-            type="button"
-            title="Add colour"
-            aria-label="Add colour"
-            ?disabled=${this.disabled ||
-            this.palette.length >= this.maxColours}
-            @click=${this.addColour}
-          >
-            +
-          </button>
-        </li>
-      </ul>
+                  this.popoverKeyPressed(this.editingIndex!, event)}
+              >
+                ${this.renderPopover(
+                  this.editingIndex,
+                  this.palette[this.editingIndex],
+                )}
+              </div>
+            `}
+      </govee-reorderable-strip>
     `;
   }
 
   private renderPopover(index: number, colour: RGB) {
     return html`
-      <div
-        class="colour-popover"
-        role="dialog"
-        aria-label="Edit colour"
-        @keydown=${(event: KeyboardEvent) =>
-          this.popoverKeyPressed(index, event)}
-      >
-        <div class="preset-grid">
-          ${recentColours.map(
-            (recent) => html`
-              <button
-                type="button"
-                style="--preset-colour: ${rgbToHex(recent)}"
-                aria-label="Use ${rgbToHex(recent)}"
-                ?disabled=${this.disabled}
-                @click=${() => this.commitColour(index, recent)}
-              ></button>
-            `,
-          )}
-          <label
-            class="custom-colour"
-            style="--custom-colour: ${rgbToHex(colour)}"
-          >
-            <input
-              type="color"
-              aria-label="Custom colour"
-              .value=${rgbToHex(colour)}
+      <div class="preset-grid">
+        ${recentColours.map(
+          (recent) => html`
+            <button
+              type="button"
+              style="--preset-colour: ${rgbToHex(recent)}"
+              aria-label="Use ${rgbToHex(recent)}"
               ?disabled=${this.disabled}
-              @input=${(event: Event) =>
-                this.updateColour(
-                  index,
-                  hexToRgb((event.target as HTMLInputElement).value),
-                )}
-              @change=${(event: Event) =>
-                this.commitColour(
-                  index,
-                  hexToRgb((event.target as HTMLInputElement).value),
-                )}
-            />
-          </label>
-        </div>
+              @click=${() => this.commitColour(index, recent)}
+            ></button>
+          `,
+        )}
+        <label
+          class="custom-colour"
+          style="--custom-colour: ${rgbToHex(colour)}"
+        >
+          <input
+            type="color"
+            aria-label="Custom colour"
+            .value=${rgbToHex(colour)}
+            ?disabled=${this.disabled}
+            @input=${(event: Event) =>
+              this.updateColour(
+                index,
+                hexToRgb((event.target as HTMLInputElement).value),
+              )}
+            @change=${(event: Event) =>
+              this.commitColour(
+                index,
+                hexToRgb((event.target as HTMLInputElement).value),
+              )}
+          />
+        </label>
       </div>
     `;
   }
@@ -229,27 +210,7 @@ export class GoveePaletteEditor extends LitElement {
     this.focusSwatchAfterUpdate(focusIndex);
   }
 
-  private moveColour(
-    index: number,
-    offset: number,
-    restoreFocus = false,
-  ): void {
-    const target = index + offset;
-    if (
-      this.disabled ||
-      target < 0 ||
-      target >= this.palette.length
-    ) {
-      return;
-    }
-    this.reorder(index, target, restoreFocus);
-  }
-
-  private reorder(
-    from: number,
-    to: number,
-    restoreFocus = false,
-  ): void {
+  private reorder(from: number, to: number): void {
     if (this.disabled || from === to) {
       return;
     }
@@ -261,51 +222,14 @@ export class GoveePaletteEditor extends LitElement {
         ? to
         : relocatedIndex(this.editingIndex, from, to);
     this.emitPalette(palette);
-    if (restoreFocus) {
-      this.focusSwatchAfterUpdate(to);
-    }
   }
 
   private focusSwatchAfterUpdate(index: number): void {
     void this.updateComplete.then(() => {
       this.shadowRoot
-        ?.querySelector<HTMLButtonElement>(
-          `.swatch[data-colour-index="${index}"]`,
-        )
-        ?.focus();
+        ?.querySelector<GoveeReorderableStrip>("govee-reorderable-strip")
+        ?.focusItem(index);
     });
-  }
-
-  private dragStarted(index: number, event: DragEvent): void {
-    if (this.disabled) {
-      return;
-    }
-    this.draggedIndex = index;
-    event.dataTransfer?.setData("text/plain", String(index));
-  }
-
-  private dropped(index: number, event: DragEvent): void {
-    event.preventDefault();
-    if (this.draggedIndex === undefined) {
-      return;
-    }
-    this.reorder(this.draggedIndex, index);
-    this.draggedIndex = undefined;
-  }
-
-  private keyPressed(index: number, event: KeyboardEvent): void {
-    if (
-      event.key !== "ArrowLeft" &&
-      event.key !== "ArrowRight"
-    ) {
-      return;
-    }
-    event.preventDefault();
-    this.moveColour(
-      index,
-      event.key === "ArrowLeft" ? -1 : 1,
-      true,
-    );
   }
 
   private popoverKeyPressed(index: number, event: KeyboardEvent): void {
@@ -319,10 +243,6 @@ export class GoveePaletteEditor extends LitElement {
   }
 
   private swatchClicked(index: number): void {
-    if (this.suppressClick) {
-      this.suppressClick = false;
-      return;
-    }
     if (
       this.editingIndex === index &&
       this.palette.length > this.minColours
@@ -332,66 +252,6 @@ export class GoveePaletteEditor extends LitElement {
     }
     this.editingIndex =
       this.editingIndex === index ? undefined : index;
-  }
-
-  private pointerStarted(index: number, event: PointerEvent): void {
-    if (
-      this.disabled ||
-      event.pointerType === "mouse" ||
-      (event.target as HTMLElement).closest(".colour-popover")
-    ) {
-      return;
-    }
-    this.pointerId = event.pointerId;
-    this.pointerIndex = index;
-    this.pointerX = event.clientX;
-    this.pointerY = event.clientY;
-    this.pointerMoved = false;
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  }
-
-  private pointerMovedOver(event: PointerEvent): void {
-    if (
-      event.pointerId !== this.pointerId ||
-      this.pointerIndex === undefined
-    ) {
-      return;
-    }
-    const deltaX = event.clientX - this.pointerX;
-    const deltaY = event.clientY - this.pointerY;
-    if (!this.pointerMoved) {
-      if (Math.abs(deltaY) > Math.abs(deltaX) || Math.abs(deltaX) < 10) {
-        return;
-      }
-      this.pointerMoved = true;
-    }
-    event.preventDefault();
-    const target = this.shadowRoot
-      ?.elementFromPoint(event.clientX, event.clientY)
-      ?.closest<HTMLElement>("[data-colour-index]");
-    const targetIndex = Number(target?.dataset.colourIndex);
-    if (
-      !Number.isInteger(targetIndex) ||
-      targetIndex === this.pointerIndex
-    ) {
-      return;
-    }
-    this.reorder(this.pointerIndex, targetIndex);
-    this.pointerIndex = targetIndex;
-  }
-
-  private pointerFinished(event: PointerEvent): void {
-    if (event.pointerId !== this.pointerId) {
-      return;
-    }
-    const target = event.currentTarget as HTMLElement;
-    if (target.hasPointerCapture(event.pointerId)) {
-      target.releasePointerCapture(event.pointerId);
-    }
-    this.suppressClick = this.pointerMoved;
-    this.pointerId = undefined;
-    this.pointerIndex = undefined;
-    this.pointerMoved = false;
   }
 
   private emitPalette(palette: RGB[]): void {
@@ -423,85 +283,6 @@ export class GoveePaletteEditor extends LitElement {
     input {
       min-height: 44px;
       font: inherit;
-    }
-
-    .palette-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .swatch-item {
-      position: relative;
-      touch-action: pan-y;
-    }
-
-    .swatch-item[draggable="true"] {
-      cursor: grab;
-    }
-
-    .swatch,
-    .palette-add {
-      width: 44px;
-      height: 44px;
-      padding: 0;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
-    .swatch {
-      border: 1px solid rgb(0 0 0 / 14%);
-      background: var(--swatch-colour);
-    }
-
-    .remove-ready .swatch {
-      position: relative;
-      outline: 2px solid rgb(255 255 255 / 95%);
-      outline-offset: -4px;
-    }
-
-    .remove-ready .swatch::after {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      color: #fff;
-      font-size: 26px;
-      font-weight: 500;
-      text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
-      content: "×";
-      pointer-events: none;
-    }
-
-    .palette-add {
-      display: grid;
-      place-items: center;
-      border: 1px dashed var(--studio-border);
-      color: var(--studio-blue);
-      background: transparent;
-      font-size: 24px;
-    }
-
-    .swatch:focus-visible,
-    .palette-add:focus-visible {
-      outline: 3px solid var(--studio-blue);
-      outline-offset: 2px;
-    }
-
-    .colour-popover {
-      position: absolute;
-      z-index: 25;
-      top: 52px;
-      left: 0;
-      width: min(280px, calc(100vw - 48px));
-      padding: 10px;
-      border: 1px solid var(--studio-border);
-      border-radius: 9px;
-      background: var(--studio-card);
-      box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
     }
 
     .preset-grid {
@@ -554,18 +335,6 @@ export class GoveePaletteEditor extends LitElement {
       opacity: 0.52;
     }
 
-    @media (max-width: 600px) {
-      .colour-popover {
-        position: fixed;
-        top: 50%;
-        right: 24px;
-        left: 24px;
-        width: auto;
-        max-height: calc(100vh - 48px);
-        overflow: auto;
-        transform: translateY(-50%);
-      }
-    }
   `;
 }
 
