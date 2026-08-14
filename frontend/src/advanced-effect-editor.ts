@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import "./palette-editor";
+import { rgbToHex } from "./palette-editor";
 import "./reorderable-strip";
 import type {
   GoveeReorderableStrip,
@@ -19,8 +19,25 @@ import type {
 
 const AUTHORING_LAYER_LIMIT = 5;
 const AUTHORING_PALETTE_LIMIT = 8;
+const DEFAULT_SEGMENT_COUNT = 15;
 const KNOWN_SELECTION_TYPES: SelectionType[] = [1, 2, 0, 3];
 const KNOWN_BRIGHTNESS_ORDERS: BrightnessOrder[] = [0, 1, 2, 3];
+
+type AreaDragMode = "start" | "end" | "move";
+
+interface AreaDrag {
+  pointerId: number;
+  mode: AreaDragMode;
+  initialStart: number;
+  initialEnd: number;
+  currentStart: number;
+  currentEnd: number;
+  originX: number;
+  pointerOffsetX: number;
+  trackLeft: number;
+  trackWidth: number;
+  captureTarget: HTMLElement;
+}
 
 const SELECTION_LABELS: Record<SelectionType, string> = {
   0: "Segment",
@@ -50,6 +67,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
+  @property({ type: Number })
+  public segmentCount = DEFAULT_SEGMENT_COUNT;
+
   @state()
   private activeLayerIndex = 0;
 
@@ -61,6 +81,8 @@ export class GoveeAdvancedEffectEditor extends LitElement {
 
   @state()
   private layerActionsIndex?: number;
+
+  private areaDrag?: AreaDrag;
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (!changed.has("content") || !this.content) {
@@ -227,76 +249,132 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       layer.area.width_tenths <= 10 - layer.area.start_tenths;
     const start = clamp(layer.area.start_tenths, 0, 9);
     const end = start + layer.area.width_tenths;
+    const segmentCount =
+      Number.isInteger(this.segmentCount) && this.segmentCount > 0
+        ? this.segmentCount
+        : DEFAULT_SEGMENT_COUNT;
+    const segmentColour = rgbToHex(layer.palette[0] ?? [47, 111, 237]);
     return html`
       <section class="card wide-card">
         <h3>Applied area</h3>
         <div class="area-control">
           <div
-            class="coverage"
-            aria-label="Applied area, 10 steps"
+            class="area-track"
+            style="--area-segment-count: ${segmentCount}; --area-colour: ${segmentColour};"
           >
-            ${Array.from(
-              { length: 10 },
-              (_, index) => html`
-                <span
-                  class=${areaIsEditable &&
-                  index >= start &&
-                  index < end
-                    ? "covered"
-                    : ""}
-                  aria-hidden="true"
-                ></span>
-              `,
-            )}
+            <div
+              class="area-segments"
+              aria-label="Applied area, ${segmentCount} segments"
+            >
+              ${Array.from(
+                { length: segmentCount },
+                (_, index) => html`
+                  <span
+                    class=${areaIsEditable &&
+                    segmentOverlapsArea(index, segmentCount, start, end)
+                      ? "covered"
+                      : ""}
+                    aria-hidden="true"
+                  ></span>
+                `,
+              )}
+            </div>
+            ${areaIsEditable
+              ? html`
+                  <div
+                    class="area-selection"
+                    style="--area-start: ${start * 10}%; --area-width: ${(end -
+                    start) *
+                    10}%"
+                  >
+                    <button
+                      class="area-handle area-handle-start"
+                      type="button"
+                      role="slider"
+                      aria-label="Applied area start"
+                      aria-orientation="horizontal"
+                      aria-valuemin="0"
+                      aria-valuemax=${end - 1}
+                      aria-valuenow=${start}
+                      aria-valuetext="${start * 10}%"
+                      ?disabled=${this.disabled}
+                      @pointerdown=${(event: PointerEvent) =>
+                        this.areaPointerStarted(
+                          "start",
+                          start,
+                          end,
+                          event,
+                        )}
+                      @pointermove=${this.areaPointerMoved}
+                      @pointerup=${this.areaPointerFinished}
+                      @pointercancel=${this.areaPointerFinished}
+                      @lostpointercapture=${this.areaPointerFinished}
+                      @keydown=${(event: KeyboardEvent) =>
+                        this.areaBoundaryKeyDown(
+                          "start",
+                          start,
+                          end,
+                          event,
+                        )}
+                    >
+                      <span aria-hidden="true"></span>
+                    </button>
+                    <button
+                      class="area-selection-body"
+                      type="button"
+                      aria-label="Move applied area, ${start *
+                      10}% to ${end * 10}%"
+                      ?disabled=${this.disabled}
+                      @pointerdown=${(event: PointerEvent) =>
+                        this.areaPointerStarted(
+                          "move",
+                          start,
+                          end,
+                          event,
+                        )}
+                      @pointermove=${this.areaPointerMoved}
+                      @pointerup=${this.areaPointerFinished}
+                      @pointercancel=${this.areaPointerFinished}
+                      @lostpointercapture=${this.areaPointerFinished}
+                      @keydown=${(event: KeyboardEvent) =>
+                        this.areaPositionKeyDown(start, end, event)}
+                    ></button>
+                    <button
+                      class="area-handle area-handle-end"
+                      type="button"
+                      role="slider"
+                      aria-label="Applied area end"
+                      aria-orientation="horizontal"
+                      aria-valuemin=${start + 1}
+                      aria-valuemax="10"
+                      aria-valuenow=${end}
+                      aria-valuetext="${end * 10}%"
+                      ?disabled=${this.disabled}
+                      @pointerdown=${(event: PointerEvent) =>
+                        this.areaPointerStarted(
+                          "end",
+                          start,
+                          end,
+                          event,
+                        )}
+                      @pointermove=${this.areaPointerMoved}
+                      @pointerup=${this.areaPointerFinished}
+                      @pointercancel=${this.areaPointerFinished}
+                      @lostpointercapture=${this.areaPointerFinished}
+                      @keydown=${(event: KeyboardEvent) =>
+                        this.areaBoundaryKeyDown(
+                          "end",
+                          start,
+                          end,
+                          event,
+                        )}
+                    >
+                      <span aria-hidden="true"></span>
+                    </button>
+                  </div>
+                `
+              : nothing}
           </div>
-          ${areaIsEditable
-            ? html`
-                <input
-                  class="area-boundary area-start"
-                  type="range"
-                  min="0"
-                  .max=${String(end - 1)}
-                  step="1"
-                  .value=${String(start)}
-                  aria-label="Applied area start"
-                  aria-valuetext="${start * 10}%"
-                  ?disabled=${this.disabled}
-                  @input=${(event: Event) => {
-                    const nextStart = Number(
-                      (event.target as HTMLInputElement).value,
-                    );
-                    this.updateLayer({
-                      area: {
-                        start_tenths: nextStart,
-                        width_tenths: end - nextStart,
-                      },
-                    });
-                  }}
-                />
-                <input
-                  class="area-boundary area-end"
-                  type="range"
-                  .min=${String(start + 1)}
-                  max="10"
-                  step="1"
-                  .value=${String(end)}
-                  aria-label="Applied area end"
-                  aria-valuetext="${end * 10}%"
-                  ?disabled=${this.disabled}
-                  @input=${(event: Event) => {
-                    const nextEnd = Number(
-                      (event.target as HTMLInputElement).value,
-                    );
-                    this.updateLayer({
-                      area: {
-                        start_tenths: start,
-                        width_tenths: nextEnd - start,
-                      },
-                    });
-                  }}
-                />
-              `
-            : nothing}
         </div>
         ${!areaIsEditable
           ? html`
@@ -321,6 +399,143 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         ${this.renderSelectionControls(layer)}
       </section>
     `;
+  }
+
+  private areaPointerStarted(
+    mode: AreaDragMode,
+    start: number,
+    end: number,
+    event: PointerEvent,
+  ): void {
+    if (this.disabled) {
+      return;
+    }
+    const track = this.shadowRoot?.querySelector<HTMLElement>(".area-track");
+    if (!track) {
+      return;
+    }
+    const bounds = track.getBoundingClientRect();
+    if (bounds.width <= 0) {
+      return;
+    }
+    const captureTarget = event.currentTarget as HTMLElement;
+    const boundary =
+      mode === "start" ? start : mode === "end" ? end : start;
+    event.preventDefault();
+    event.stopPropagation();
+    captureTarget.focus();
+    captureTarget.setPointerCapture(event.pointerId);
+    this.areaDrag = {
+      pointerId: event.pointerId,
+      mode,
+      initialStart: start,
+      initialEnd: end,
+      currentStart: start,
+      currentEnd: end,
+      originX: event.clientX,
+      pointerOffsetX:
+        mode === "move"
+          ? 0
+          : event.clientX -
+            (bounds.left + (boundary / 10) * bounds.width),
+      trackLeft: bounds.left,
+      trackWidth: bounds.width,
+      captureTarget,
+    };
+  }
+
+  private areaPointerMoved(event: PointerEvent): void {
+    const drag = this.areaDrag;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    let nextStart = drag.initialStart;
+    let nextEnd = drag.initialEnd;
+    if (drag.mode === "move") {
+      const width = drag.initialEnd - drag.initialStart;
+      const delta = Math.round(
+        ((event.clientX - drag.originX) / drag.trackWidth) * 10,
+      );
+      nextStart = clamp(drag.initialStart + delta, 0, 10 - width);
+      nextEnd = nextStart + width;
+    } else {
+      const boundary = Math.round(
+        ((event.clientX -
+          drag.pointerOffsetX -
+          drag.trackLeft) /
+          drag.trackWidth) *
+          10,
+      );
+      if (drag.mode === "start") {
+        nextStart = clamp(boundary, 0, drag.initialEnd - 1);
+      } else {
+        nextEnd = clamp(boundary, drag.initialStart + 1, 10);
+      }
+    }
+    if (
+      nextStart === drag.currentStart &&
+      nextEnd === drag.currentEnd
+    ) {
+      return;
+    }
+    drag.currentStart = nextStart;
+    drag.currentEnd = nextEnd;
+    this.setAppliedArea(nextStart, nextEnd);
+  }
+
+  private areaPointerFinished(event: PointerEvent): void {
+    const drag = this.areaDrag;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    if (drag.captureTarget.hasPointerCapture(event.pointerId)) {
+      drag.captureTarget.releasePointerCapture(event.pointerId);
+    }
+    this.areaDrag = undefined;
+  }
+
+  private areaBoundaryKeyDown(
+    boundary: "start" | "end",
+    start: number,
+    end: number,
+    event: KeyboardEvent,
+  ): void {
+    const minimum = boundary === "start" ? 0 : start + 1;
+    const maximum = boundary === "start" ? end - 1 : 10;
+    const value = boundary === "start" ? start : end;
+    const next = adjustedSliderValue(event.key, value, minimum, maximum);
+    if (next === undefined) {
+      return;
+    }
+    event.preventDefault();
+    this.setAppliedArea(
+      boundary === "start" ? next : start,
+      boundary === "end" ? next : end,
+    );
+  }
+
+  private areaPositionKeyDown(
+    start: number,
+    end: number,
+    event: KeyboardEvent,
+  ): void {
+    const width = end - start;
+    const next = adjustedSliderValue(event.key, start, 0, 10 - width);
+    if (next === undefined) {
+      return;
+    }
+    event.preventDefault();
+    this.setAppliedArea(next, next + width);
+  }
+
+  private setAppliedArea(start: number, end: number): void {
+    this.updateLayer({
+      area: {
+        start_tenths: start,
+        width_tenths: end - start,
+      },
+    });
   }
 
   private renderSelectionControls(layer: EffectLayer) {
@@ -1323,6 +1538,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       --studio-card: var(--card-background-color, #fff);
       --studio-muted: var(--secondary-text-color, #68707c);
       --studio-danger: var(--error-color, #db4437);
+      --area-trim: var(--warning-color, #f4c542);
     }
 
     * {
@@ -1464,96 +1680,119 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     .area-control {
       position: relative;
       margin-bottom: 16px;
-      padding: 10px 0;
+      padding: 10px 12px;
     }
 
-    .coverage {
+    .area-track {
+      position: relative;
+      direction: ltr;
+      touch-action: none;
+    }
+
+    .area-segments {
       display: grid;
-      grid-template-columns: repeat(10, minmax(0, 1fr));
+      grid-template-columns: repeat(
+        var(--area-segment-count),
+        minmax(0, 1fr)
+      );
       gap: 4px;
     }
 
-    .coverage span {
-      min-height: 44px;
-      border: 1px solid var(--studio-border);
-      border-radius: 5px;
-      background: var(--secondary-background-color, #f5f6f8);
+    .area-segments span {
+      min-width: 0;
+      min-height: 48px;
+      border: 1px solid
+        color-mix(in srgb, var(--area-colour) 35%, var(--studio-border));
+      border-radius: 6px;
+      background: color-mix(
+        in srgb,
+        var(--area-colour) 14%,
+        var(--studio-card)
+      );
     }
 
-    .coverage span.covered {
-      border-color: var(--studio-blue);
-      background: var(--studio-blue);
+    .area-segments span.covered {
+      border-color: color-mix(
+        in srgb,
+        var(--area-colour) 70%,
+        #000
+      );
+      background: var(--area-colour);
     }
 
-    .area-boundary {
+    .area-selection {
       position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 64px;
-      min-height: 0;
-      margin: 0;
-      padding: 0;
-      appearance: none;
-      background: transparent;
+      z-index: 2;
+      top: -7px;
+      bottom: -7px;
+      left: var(--area-start);
+      width: var(--area-width);
+      border-block: 4px solid var(--area-trim);
       pointer-events: none;
     }
 
-    .area-start {
+    .area-handle,
+    .area-selection-body {
+      position: absolute;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      pointer-events: auto;
+    }
+
+    .area-handle {
       z-index: 2;
+      top: -4px;
+      bottom: -4px;
+      width: 22px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--area-trim);
+      box-shadow: 0 2px 7px rgb(0 0 0 / 28%);
+      cursor: ew-resize;
     }
 
-    .area-end {
-      z-index: 3;
+    .area-handle-start {
+      left: 0;
+      transform: translateX(-50%);
     }
 
-    .area-boundary::-webkit-slider-runnable-track {
-      height: 44px;
+    .area-handle-end {
+      right: 0;
+      transform: translateX(50%);
+    }
+
+    .area-handle span {
+      display: block;
+      width: 3px;
+      height: 18px;
+      margin: auto;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--area-trim) 40%, #000);
+    }
+
+    .area-selection-body {
+      z-index: 1;
+      inset: 4px 11px;
       border: 0;
       background: transparent;
+      cursor: grab;
     }
 
-    .area-boundary::-webkit-slider-thumb {
-      width: 16px;
-      height: 56px;
-      margin-top: -6px;
-      border: 3px solid var(--studio-blue);
-      border-radius: 8px;
-      appearance: none;
-      background: var(--studio-card);
-      box-shadow: 0 2px 7px rgb(0 0 0 / 24%);
-      cursor: ew-resize;
-      pointer-events: auto;
+    .area-selection-body:active {
+      cursor: grabbing;
     }
 
-    .area-boundary::-moz-range-track {
-      height: 44px;
-      border: 0;
-      background: transparent;
-    }
-
-    .area-boundary::-moz-range-thumb {
-      width: 10px;
-      height: 50px;
-      border: 3px solid var(--studio-blue);
-      border-radius: 8px;
-      background: var(--studio-card);
-      box-shadow: 0 2px 7px rgb(0 0 0 / 24%);
-      cursor: ew-resize;
-      pointer-events: auto;
-    }
-
-    .area-boundary:focus-visible {
-      outline: none;
-    }
-
-    .area-boundary:focus-visible::-webkit-slider-thumb {
+    .area-handle:focus-visible,
+    .area-selection-body:focus-visible {
       outline: 3px solid var(--studio-blue);
-      outline-offset: 2px;
+      outline-offset: 3px;
     }
 
-    .area-boundary:focus-visible::-moz-range-thumb {
-      outline: 3px solid var(--studio-blue);
-      outline-offset: 2px;
+    .area-handle:disabled,
+    .area-selection-body:disabled {
+      cursor: not-allowed;
+      opacity: 0.58;
     }
 
     .selection-controls {
@@ -1895,6 +2134,38 @@ function parseHexByte(value: string): number | undefined {
     return undefined;
   }
   return Number.parseInt(normalised, 16);
+}
+
+function segmentOverlapsArea(
+  index: number,
+  segmentCount: number,
+  start: number,
+  end: number,
+): boolean {
+  const segmentStart = (index * 10) / segmentCount;
+  const segmentEnd = ((index + 1) * 10) / segmentCount;
+  return segmentEnd > start && segmentStart < end;
+}
+
+function adjustedSliderValue(
+  key: string,
+  value: number,
+  minimum: number,
+  maximum: number,
+): number | undefined {
+  if (key === "Home") {
+    return minimum;
+  }
+  if (key === "End") {
+    return maximum;
+  }
+  if (key === "ArrowLeft" || key === "ArrowDown") {
+    return clamp(value - 1, minimum, maximum);
+  }
+  if (key === "ArrowRight" || key === "ArrowUp") {
+    return clamp(value + 1, minimum, maximum);
+  }
+  return undefined;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

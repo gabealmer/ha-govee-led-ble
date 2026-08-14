@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const studioSelector = "ha-govee-led-ble-editor";
 
@@ -75,6 +75,53 @@ async function setCustomPalette(
     }, palette);
 }
 
+async function dragAreaControlTo(
+    page: Page,
+    control: Locator,
+    track: Locator,
+    tenths: number,
+) {
+    const controlBox = await control.boundingBox();
+    const trackBox = await track.boundingBox();
+    if (!controlBox || !trackBox) {
+      throw new Error("Applied area control is not visible.");
+    }
+    await page.mouse.move(
+      controlBox.x + controlBox.width / 2,
+      controlBox.y + controlBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      trackBox.x + (trackBox.width * tenths) / 10,
+      controlBox.y + controlBox.height / 2,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+}
+
+async function dragAreaControlBy(
+    page: Page,
+    control: Locator,
+    track: Locator,
+    tenths: number,
+) {
+    const controlBox = await control.boundingBox();
+    const trackBox = await track.boundingBox();
+    if (!controlBox || !trackBox) {
+      throw new Error("Applied area control is not visible.");
+    }
+    const startX = controlBox.x + controlBox.width / 2;
+    const y = controlBox.y + controlBox.height / 2;
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    await page.mouse.move(
+      startX + (trackBox.width * tenths) / 10,
+      y,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+}
+
 test("default harness uses complete production H617A catalogues", async ({
   page,
 }) => {
@@ -136,7 +183,7 @@ test("default harness uses complete production H617A catalogues", async ({
   ]);
 
   await studio
-    .getByRole("button", { name: "My Effects", exact: true })
+    .getByRole("button", { name: "Effects", exact: true })
     .click();
   await expect(
     studio
@@ -147,7 +194,7 @@ test("default harness uses complete production H617A catalogues", async ({
     name: "Effect categories",
   });
   const effectList = studio.getByRole("complementary", {
-    name: "My effects",
+    name: "Effects",
   });
   await categories
     .getByRole("button", { name: "Single Layer", exact: true })
@@ -212,7 +259,7 @@ test("new effects stay in their category with the generated name selected", asyn
     .getByRole("button", { name: "Single Layer", exact: true })
     .click();
   const jumping = studio
-    .getByRole("complementary", { name: "My effects" })
+    .getByRole("complementary", { name: "Effects" })
     .getByRole("button", { name: "Jumping", exact: true });
   await jumping.click();
 
@@ -278,7 +325,7 @@ test("saved effects can be deleted from the editor or item list", async ({
 }) => {
   const studio = await openStudio(page);
   const effectList = studio.getByRole("complementary", {
-    name: "My effects",
+    name: "Effects",
   });
   const editorDelete = studio
     .locator(".editor-heading .actions")
@@ -362,7 +409,7 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     .getByRole("button", { name: "Single Layer", exact: true })
     .click();
   await studio
-    .getByRole("complementary", { name: "My effects" })
+    .getByRole("complementary", { name: "Effects" })
     .getByRole("button", { name: "Paint", exact: true })
     .click();
   await expect(modes.getByRole("tab", { name: "Single" })).toHaveAttribute(
@@ -380,21 +427,15 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     .getByRole("button", { name: "Advanced", exact: true })
     .click();
   await studio
-    .getByRole("complementary", { name: "My effects" })
+    .getByRole("complementary", { name: "Effects" })
     .getByRole("button", { name: "Layered", exact: true })
     .click();
   const apply = studio
     .locator(".editor")
     .getByRole("button", { name: "Apply" });
-  const reason = studio.getByRole("note").filter({
-    hasText: "Layered effects can be saved, but Apply is unavailable",
-  });
   await expect(apply).toBeDisabled();
-  await expect(apply).toHaveAttribute(
-    "aria-describedby",
-    "advanced-apply-reason",
-  );
-  await expect(reason).toBeVisible();
+  await expect(apply).not.toHaveAttribute("aria-describedby");
+  await expect(studio.locator("#advanced-apply-reason")).toHaveCount(0);
   await expect(
     studio.getByRole("tablist", { name: "Effect layers" }),
   ).toBeVisible();
@@ -1363,7 +1404,7 @@ test("advanced layer and palette keyboard focus follows edits", async ({
     .getByRole("button", { name: "Advanced", exact: true })
     .click();
   await studio
-    .getByRole("complementary", { name: "My effects" })
+    .getByRole("complementary", { name: "Effects" })
     .getByRole("button", {
       name: "Layered library effect",
       exact: true,
@@ -1371,27 +1412,78 @@ test("advanced layer and palette keyboard focus follows edits", async ({
     .click();
   const advanced = studio.locator("govee-advanced-effect-editor");
   const layerTabs = advanced.getByRole("tab", { name: /Layer \d/ });
-  const appliedArea = advanced.getByLabel("Applied area, 10 steps");
+  const appliedArea = advanced.getByLabel("Applied area, 15 segments");
 
-  await expect(appliedArea.locator("span")).toHaveCount(10);
+  await expect(appliedArea.locator("span")).toHaveCount(15);
   await expect(
     advanced.getByRole("heading", { name: "Selection" }),
   ).toBeVisible();
+  const areaTrack = advanced.locator(".area-track");
   const areaStart = advanced.getByRole("slider", {
     name: "Applied area start",
   });
   const areaEnd = advanced.getByRole("slider", {
     name: "Applied area end",
   });
-  await areaStart.fill("2");
-  await areaEnd.fill("7");
-  await expect(areaStart).toHaveValue("2");
-  await expect(areaEnd).toHaveValue("7");
+  let moveArea = advanced.getByRole("button", {
+    name: /^Move applied area/,
+  });
+  await expect(areaStart).toHaveAttribute("aria-valuenow", "0");
+  await expect(areaEnd).toHaveAttribute("aria-valuenow", "10");
+
+  await dragAreaControlTo(page, areaStart, areaTrack, 2);
+  await expect(areaStart).toHaveAttribute("aria-valuenow", "2");
+  await expect(areaEnd).toHaveAttribute("aria-valuenow", "10");
+  const trackBox = await areaTrack.boundingBox();
+  const startBox = await areaStart.boundingBox();
+  if (!trackBox || !startBox) {
+    throw new Error("Applied area track is not visible.");
+  }
+  expect(
+    Math.abs(
+      startBox.x +
+        startBox.width / 2 -
+        (trackBox.x + trackBox.width * 0.2),
+    ),
+  ).toBeLessThan(2);
+
+  await dragAreaControlTo(page, areaEnd, areaTrack, 7);
+  await expect(areaStart).toHaveAttribute("aria-valuenow", "2");
+  await expect(areaEnd).toHaveAttribute("aria-valuenow", "7");
+
+  await dragAreaControlBy(page, moveArea, areaTrack, 1);
+  await expect(areaStart).toHaveAttribute("aria-valuenow", "3");
+  await expect(areaEnd).toHaveAttribute("aria-valuenow", "8");
+
+  await dragAreaControlTo(page, areaEnd, areaTrack, 6);
+  await expect(areaStart).toHaveAttribute("aria-valuenow", "3");
+  await expect(areaEnd).toHaveAttribute("aria-valuenow", "6");
+
+  moveArea = advanced.getByRole("button", {
+    name: /^Move applied area/,
+  });
+  await dragAreaControlBy(page, moveArea, areaTrack, -3);
+  await expect(areaStart).toHaveAttribute("aria-valuenow", "0");
+  await expect(areaEnd).toHaveAttribute("aria-valuenow", "3");
   await expect(appliedArea.locator("span.covered")).toHaveCount(5);
-  const selectionSegments = advanced.getByLabel("Segments");
+
+  await areaStart.press("ArrowRight");
+  await expect(areaStart).toHaveAttribute("aria-valuenow", "1");
+  await expect(areaEnd).toHaveAttribute("aria-valuenow", "3");
+  moveArea = advanced.getByRole("button", {
+    name: /^Move applied area/,
+  });
+  await moveArea.press("ArrowRight");
+  await expect(areaStart).toHaveAttribute("aria-valuenow", "2");
+  await expect(areaEnd).toHaveAttribute("aria-valuenow", "4");
+
+  const selectionSegments = advanced.getByRole("spinbutton", {
+    name: "Segments",
+    exact: true,
+  });
   await selectionSegments.fill("3");
-  await expect(areaStart).toHaveValue("2");
-  await expect(areaEnd).toHaveValue("7");
+  await expect(areaStart).toHaveAttribute("aria-valuenow", "2");
+  await expect(areaEnd).toHaveAttribute("aria-valuenow", "4");
 
   await layerTabs.nth(1).click();
   await layerTabs.nth(1).press("ArrowLeft");
@@ -1759,11 +1851,6 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
     .locator(".editor")
     .getByRole("button", { name: "Apply" });
   await expect(advancedApply).toBeDisabled();
-  await expect(
-    studio.getByRole("note").filter({
-      hasText: "Layered effects can be saved, but Apply is unavailable",
-    }),
-  ).toBeVisible();
 
   await studio.getByLabel("Effect name").fill("Aurora authored");
   await studio.getByRole("button", { name: "Save" }).click();
@@ -1868,14 +1955,9 @@ for (const direction of ["ltr", "rtl"] as const) {
       .getByRole("button", { name: "Advanced", exact: true })
       .click();
     await studio
-      .getByRole("complementary", { name: "My effects" })
+      .getByRole("complementary", { name: "Effects" })
       .getByRole("button", { name: "Layered", exact: true })
       .click();
-    await expect(
-      studio.getByRole("note").filter({
-        hasText: "Layered effects can be saved, but Apply is unavailable",
-      }),
-    ).toBeVisible();
     await expect(
       studio.getByRole("tablist", { name: "Effect layers" }),
     ).toBeVisible();

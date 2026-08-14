@@ -276,7 +276,7 @@ export class GoveeLedEffectStudio extends LitElement {
       >
         <nav class="primary-nav" aria-label="Create">
           ${this.navButton("scenes", "Scenes")}
-          ${this.navButton("custom", "My Effects")}
+          ${this.navButton("custom", "Effects")}
           ${this.showDevicePicker ? this.renderDevicePicker() : nothing}
         </nav>
 
@@ -365,7 +365,7 @@ export class GoveeLedEffectStudio extends LitElement {
         ${this.customEffectCategoryButton("advanced", "Advanced")}
       </aside>
 
-      <aside class="library" aria-label="My effects">
+      <aside class="library" aria-label="Effects">
         ${this.customEffectEntries.map((entry) =>
           this.customEffectListButton(entry),
         )}
@@ -630,7 +630,6 @@ export class GoveeLedEffectStudio extends LitElement {
             class="secondary"
             type="button"
             disabled
-            aria-describedby="advanced-apply-reason"
           >
             Apply
           </button>
@@ -649,11 +648,6 @@ export class GoveeLedEffectStudio extends LitElement {
           `
         : nothing}
 
-      <div id="advanced-apply-reason" class="apply-reason" role="note">
-        Layered effects can be saved, but Apply is unavailable because there
-        is no confirmed compiler or deployment path.
-      </div>
-
       ${layeredScene
         ? html`
             <div class="source-note" role="note">
@@ -666,6 +660,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-advanced-effect-editor
         .content=${advancedEditorContent(this.content)}
         .disabled=${!this.isAdmin}
+        .segmentCount=${this.selectedDevice?.segment_count ?? 15}
         @content-changed=${(
           event: CustomEvent<{ content: AdvancedContent }>,
         ) => {
@@ -2312,7 +2307,6 @@ export class GoveeLedEffectStudio extends LitElement {
     }
 
     .read-only,
-    .apply-reason,
     .source-note,
     .deployment {
       margin-bottom: 18px;
@@ -2321,16 +2315,6 @@ export class GoveeLedEffectStudio extends LitElement {
       border-radius: 9px;
       background: var(--studio-card);
       line-height: 1.45;
-    }
-
-    .apply-reason {
-      color: var(--primary-text-color);
-      border-color: color-mix(
-        in srgb,
-        var(--studio-blue) 35%,
-        var(--studio-border)
-      );
-      background: var(--studio-blue-soft);
     }
 
     .source-note {
