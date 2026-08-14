@@ -95,6 +95,18 @@ export class EffectStudioApi {
     };
   }
 
+  public async deleteItem(
+    item: Pick<LibraryItem, "id" | "revision">,
+    expectedLibraryRevision: number,
+  ): Promise<number> {
+    const result = await this.call("library/delete", {
+      item_id: item.id,
+      expected_revision: item.revision,
+      expected_library_revision: expectedLibraryRevision,
+    });
+    return libraryRevisionField(result);
+  }
+
   public async drafts(): Promise<DraftSummary[]> {
     const result = await this.call("draft/list");
     return decodeDraftSummaries(resultField(result, "drafts"));

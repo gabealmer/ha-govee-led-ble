@@ -138,14 +138,15 @@ test("default harness uses complete production H617A catalogues", async ({
     name: "My effects",
   });
   await expect(
-    effectList.getByRole("button", { name: "Paint Single Layer" }),
+    effectList.getByRole("button", { name: "Paint", exact: true }),
   ).toBeVisible();
   await expect(
-    effectList.getByRole("button", { name: "Fade Single Layer" }),
+    effectList.getByRole("button", { name: "Fade", exact: true }),
   ).toBeVisible();
   await expect(
-    effectList.getByRole("button", { name: "Mix Multi Layer" }),
+    effectList.getByRole("button", { name: "Mix", exact: true }),
   ).toBeVisible();
+  await expect(effectList.locator("small")).toHaveCount(0);
   await expect(
     effectList.getByRole("button", { name: "Unsupported special DIY pair" }),
   ).toHaveCount(0);
@@ -164,6 +165,93 @@ test("default harness uses complete production H617A catalogues", async ({
     "Breathe",
   ]);
   await expect(paintedEffect).toHaveValue("clockwise");
+});
+
+test("new effects open in All with the generated name selected", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+
+  await categories
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "My effects" })
+    .getByRole("button", { name: "Layered", exact: true })
+    .click();
+
+  await expect(
+    categories.getByRole("button", { name: "All", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  const name = studio.getByLabel("Effect name");
+  await expect(name).toBeFocused();
+  await expect(name).toHaveValue("New Layered effect");
+  await expect
+    .poll(() =>
+      name.evaluate((input: HTMLInputElement) => ({
+        start: input.selectionStart,
+        end: input.selectionEnd,
+      })),
+    )
+    .toEqual({ start: 0, end: "New Layered effect".length });
+});
+
+test("saved effects can be deleted from the editor or item list", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const effectList = studio.getByRole("complementary", {
+    name: "My effects",
+  });
+  const editorDelete = studio
+    .locator(".editor-heading .actions")
+    .getByRole("button", { name: "Delete", exact: true });
+
+  await editorDelete.click();
+  let dialog = studio.getByRole("dialog", { name: "Delete effect?" });
+  await expect(dialog.getByText("Supported painted effect")).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(editorDelete).toBeFocused();
+
+  await effectList
+    .getByRole("button", {
+      name: "Delete Supported painted effect",
+      exact: true,
+    })
+    .click();
+  dialog = studio.getByRole("dialog", { name: "Delete effect?" });
+  await dialog.getByRole("button", { name: "Delete effect" }).click();
+
+  await expect(
+    effectList.getByRole("button", {
+      name: "Supported painted effect",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio.getByRole("status").filter({
+      hasText: "Deleted Supported painted effect.",
+    }),
+  ).toBeVisible();
+  const deleteCall = await page.evaluate(() =>
+    window.testHarness
+      .snapshot()
+      .calls.find(
+        (call) =>
+          typeof call.type === "string" &&
+          call.type.endsWith("/library/delete"),
+      ),
+  );
+  expect(deleteCall).toMatchObject({
+    item_id: "painted-1",
+    expected_revision: 1,
+    expected_library_revision: 1,
+  });
 });
 
 test("capability gates Apply while retaining supported H617A custom Apply", async ({
@@ -203,7 +291,7 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     .click();
   await studio
     .getByRole("complementary", { name: "My effects" })
-    .getByRole("button", { name: "Layered Advanced", exact: true })
+    .getByRole("button", { name: "Layered", exact: true })
     .click();
   const apply = studio
     .locator(".editor")
@@ -943,7 +1031,10 @@ test("stale subscription snapshots cannot roll back visible state", async ({
   await page.evaluate(() => window.testHarness.backend.emitStaleSnapshots());
 
   await expect(
-    studio.getByRole("button", { name: "Supported painted effect" }),
+    studio.getByRole("button", {
+      name: "Supported painted effect",
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
     studio.getByRole("status").filter({
@@ -1165,7 +1256,7 @@ test("advanced layer and palette keyboard focus follows edits", async ({
   await studio
     .getByRole("complementary", { name: "My effects" })
     .getByRole("button", {
-      name: "Layered library effect Advanced",
+      name: "Layered library effect",
       exact: true,
     })
     .click();
@@ -1274,7 +1365,12 @@ test("unknown layered values stay raw", async ({
     .getByRole("complementary", { name: "Effect categories" })
     .getByRole("button", { name: "Advanced", exact: true })
     .click();
-  await studio.getByRole("button", { name: "Raw layered values" }).click();
+  await studio
+    .getByRole("button", {
+      name: "Raw layered values",
+      exact: true,
+    })
+    .click();
   const advanced = studio.locator("govee-advanced-effect-editor");
   const selection = advanced.getByLabel("Selection type");
   const order = advanced.getByLabel("Brightness order");
@@ -1329,7 +1425,12 @@ test("opaque backend content is inspectable but cannot be edited or applied", as
     .getByRole("complementary", { name: "Effect categories" })
     .getByRole("button", { name: "Advanced", exact: true })
     .click();
-  await studio.getByRole("button", { name: "Future backend effect" }).click();
+  await studio
+    .getByRole("button", {
+      name: "Future backend effect",
+      exact: true,
+    })
+    .click();
 
   await expect(
     studio.getByRole("heading", { name: "Future backend effect" }),
@@ -1656,7 +1757,7 @@ for (const direction of ["ltr", "rtl"] as const) {
       .click();
     await studio
       .getByRole("complementary", { name: "My effects" })
-      .getByRole("button", { name: "Layered Advanced", exact: true })
+      .getByRole("button", { name: "Layered", exact: true })
       .click();
     await expect(
       studio.getByRole("note").filter({
