@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
     EffectDeploymentRepository,
+    ObservationConfidence,
 )
 from custom_components.ha_govee_led_ble.effect_diagnostics import (
     MAX_DIAGNOSTIC_COLLECTION_ITEMS,
@@ -349,3 +350,33 @@ async def test_scene_compiler_evidence_is_diagnostic_only() -> None:
         "layered_field_semantics_uncalibrated",
     ]
     assert all(event["presentation"] == "diagnostic_only" for event in events[1:])
+
+
+async def test_upload_only_application_emits_bounded_evidence_gap() -> None:
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    initial = await repository.async_load()
+    history = _history()
+    bridge = EffectDeploymentDiagnosticBridge(repository, history, initial)
+
+    await repository.async_put(
+        replace(
+            _deployment(),
+            diy_code=None,
+            phase=DeploymentPhase.APPLIED,
+            progress_current=2,
+            progress_total=2,
+            verification_confidence=ObservationConfidence.WRITE_COMPLETED,
+        ),
+        expected_revision=None,
+    )
+
+    event = history.snapshot(config_entry_id="entry-a")["events"][0]
+    bridge.close()
+
+    assert event["stage"] == "evidence_gap"
+    assert event["code"] == "application_write_completed"
+    assert event["details"] == {
+        "confidence": "write_completed",
+        "packets_sent": 2,
+        "verification": "device_readback_unavailable",
+    }

@@ -24,6 +24,7 @@ case "$mode" in
       scene_type1_body
       status_query
       status_reply
+      workshop_body
     )
     package_args=(
       --python-package

@@ -34,10 +34,17 @@ from .effect_domain import (
     PaletteDiyEffect,
     PaletteScene,
     SingleEffect,
+    SpecialDiyEffect,
     VideoProfile,
+    WorkshopEffect,
+)
+from .generated_protocol_adapter import (
+    H6199EffectUpload,
+    SceneBody,
+    build_h6199_special_diy_body,
 )
 from .layered_scene import CatalogueRef
-from .layered_scene_decoder import encode_layered_scene
+from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
 from .palette_scene_decoder import encode_palette_scene
 from .scenes import MODEL_SCENES, SceneEntry
 
@@ -56,6 +63,7 @@ class ActivationMode(StrEnum):
 class VerificationStrategy(StrEnum):
     ACTIVATION = "activation"
     UNPROVEN_H6199_SLOT = "unproven_h6199_slot"
+    WRITE_COMPLETED = "write_completed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,11 +78,11 @@ class CompiledEffect:
     revision: int
     model: str
     content_kind: str
-    diy_code: int
+    diy_code: int | None
     activation_mode: ActivationMode
     expected_effect: str | None
     upload_packets: tuple[bytes, ...]
-    activation_packet: bytes
+    activation_packet: bytes | None
     artifact_sha256: str
     verification_strategy: VerificationStrategy = VerificationStrategy.ACTIVATION
     evidence_codes: tuple[str, ...] = ()
@@ -82,7 +90,7 @@ class CompiledEffect:
 
     @property
     def packets(self) -> tuple[bytes, ...]:
-        return (*self.upload_packets, self.activation_packet)
+        return self.upload_packets if self.activation_packet is None else (*self.upload_packets, self.activation_packet)
 
     @property
     def progress_total(self) -> int:
@@ -165,6 +173,14 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 (f"{model} video-profile application is not supported",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
+    if isinstance(content, WorkshopEffect | SpecialDiyEffect):
+        if content.model != model:
+            label = "Workshop" if isinstance(content, WorkshopEffect) else "Special DIY"
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{label} effect targets {content.model}, not {model}",),
+            )
+        return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
         return CompatibilityResult(
             CompatibilityState.INCOMPATIBLE,
@@ -240,7 +256,59 @@ def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None
         )
     if isinstance(item.content, PaletteScene | LayeredScene | LayeredEffect):
         return compile_scene_effect(item, model)
+    if isinstance(item.content, WorkshopEffect | SpecialDiyEffect):
+        if diy_code is not None:
+            label = "Workshop" if isinstance(item.content, WorkshopEffect) else "Special DIY"
+            raise ValueError(f"{label} uploads have no evidenced activation packet")
+        return _compile_upload_only_effect(item, model)
     raise ValueError("unsupported effect content")
+
+
+def _compile_upload_only_effect(
+    item: LibraryItem,
+    model: str,
+) -> CompiledEffect:
+    content = item.content
+    if isinstance(content, WorkshopEffect):
+        payload = encode_workshop_effect(
+            model,
+            content.effect,
+            trailing_padding=content.trailing_padding,
+        )
+        body_kind = int(H6199EffectUpload.BodyKind.scene) if model == "H6199" else int(SceneBody.SceneType.scene_v2)
+        upload = tuple(protocol.build_a3_multi(body_kind, payload))
+        content_kind = "workshop"
+    elif isinstance(content, SpecialDiyEffect):
+        body = build_h6199_special_diy_body(
+            content.family,
+            content.variant,
+            content.speed,
+            list(content.palette),
+            trailing_padding=content.trailing_padding,
+        )
+        upload = tuple(
+            protocol.build_a3_multi(
+                int(H6199EffectUpload.BodyKind.diy),
+                body,
+            )
+        )
+        content_kind = "special_diy"
+    else:
+        raise ValueError("content is not an upload-only effect")
+
+    return CompiledEffect(
+        item_id=str(item.id),
+        revision=item.revision,
+        model=model,
+        content_kind=content_kind,
+        diy_code=None,
+        activation_mode=ActivationMode.CUSTOM,
+        expected_effect=None,
+        upload_packets=upload,
+        activation_packet=None,
+        artifact_sha256=sha256(b"".join(upload)).hexdigest(),
+        verification_strategy=VerificationStrategy.WRITE_COMPLETED,
+    )
 
 
 def compile_scene_effect(item: LibraryItem, model: str) -> CompiledEffect:

@@ -349,6 +349,20 @@ def test_invalid_profile_recovery_state_is_rejected(changes, message) -> None:
         replace(state, **changes)
 
 
+def test_upload_only_deployment_round_trip_preserves_nullable_selector_and_completion_confidence() -> None:
+    record = replace(
+        _deployment(DeploymentPhase.APPLIED),
+        diy_code=None,
+        verification_confidence=ObservationConfidence.WRITE_COMPLETED,
+    )
+
+    restored = DeploymentRecord.from_dict(record.to_dict())
+
+    assert restored == record
+    assert restored.to_public_dict()["diy_code"] is None
+    assert restored.to_public_dict()["verification_confidence"] == "write_completed"
+
+
 @pytest.mark.parametrize(
     "changes",
     [

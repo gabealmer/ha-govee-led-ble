@@ -201,7 +201,7 @@ def special_diy_targets() -> list[dict[str, Any]]:
             "special-diy",
             "vendor_app",
             "special-diy",
-            "H617A",
+            "H6199",
             duration=20,
             brightness=30,
             parameters={"template": template, "variation": "app_default"},
@@ -232,11 +232,11 @@ def workshop_targets() -> list[dict[str, Any]]:
     )
     return [
         _target(
-            f"workshop-{primitive}-baseline",
+            (f"workshop-{primitive}-baseline" if model == "H617A" else f"workshop-h6199-{primitive}-baseline"),
             "advanced-workshop",
             "vendor_app",
             "workshop-primitive",
-            "H617A",
+            model,
             duration=20,
             brightness=30,
             parameters={"primitive": primitive, "variation": "app_default_baseline"},
@@ -248,6 +248,7 @@ def workshop_targets() -> list[dict[str, Any]]:
                 "Stop before Apply, return to the terminal, then follow the Apply prompt.",
             ],
         )
+        for model in ("H617A", "H6199")
         for primitive in primitives
     ]
 

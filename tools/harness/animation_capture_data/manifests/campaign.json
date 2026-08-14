@@ -1176,7 +1176,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-fade-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -1218,7 +1218,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-jumping-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -1260,7 +1260,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-chasing-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -1302,7 +1302,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-marquee-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -1344,7 +1344,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-crossing-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -1386,7 +1386,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-rainbow-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -1428,7 +1428,7 @@
       "duration_seconds": 20,
       "family": "special-diy",
       "id": "special-diy-twinkle-baseline",
-      "model": "H617A",
+      "model": "H6199",
       "operator_steps": [
         "Open DIY, select the named Special Effects template and leave every control at the app default.",
         "Set the palette to red, green and blue where the template exposes colours.",
@@ -1849,6 +1849,426 @@
       "family": "workshop-primitive",
       "id": "workshop-five-layer-applied-area-baseline",
       "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "five-layer-applied-area",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-movement-baseline-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "movement-baseline",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-selected-area-movement-direction-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "selected-area-movement-direction",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-overall-movement-direction-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "overall-movement-direction",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-two-colour-continuous-selection-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "two-colour-continuous-selection",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-three-colour-palette-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "three-colour-palette",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-brightness-scope-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "brightness-scope",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-two-layer-priority-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "two-layer-priority",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-distribution-direction-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "distribution-direction",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-matrix-customise-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "matrix-customise",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-five-layer-applied-area-baseline",
+      "model": "H6199",
       "operator_steps": [
         "Open Workshop and build only the named primitive using the app defaults.",
         "Use red, green and blue for exposed palette controls and avoid unrelated controls.",

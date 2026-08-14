@@ -70,7 +70,9 @@ async def test_surfaces_release_capability_evidence_without_hiding_planned_workf
         "evidence_classification": "structural",
     }
     assert capabilities["special_diy"]["frontend_visibility"] == "visible"
-    assert capabilities["special_diy"]["evidence_classification"] == "opaque"
+    assert capabilities["special_diy"]["application_route"] == "studio_custom_apply"
+    assert capabilities["special_diy"]["compiler_deployer_strategy"] == "a3_effect_upload"
+    assert capabilities["special_diy"]["evidence_classification"] == "structural"
 
 
 async def test_stale_experimental_option_ignored(mock_h6199_coordinator):

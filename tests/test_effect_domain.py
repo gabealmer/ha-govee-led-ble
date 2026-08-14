@@ -11,6 +11,10 @@ import pytest
 from custom_components.ha_govee_led_ble import effect_domain as effect_domain_module
 from custom_components.ha_govee_led_ble import layered_scene as layered_scene_module
 from custom_components.ha_govee_led_ble import protocol
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    H6199_SPECIAL_DIY_TEMPLATES,
+    WORKSHOP_TEMPLATES,
+)
 from custom_components.ha_govee_led_ble.effect_compiler import (
     ActivationMode,
     CompatibilityState,
@@ -70,6 +74,7 @@ from custom_components.ha_govee_led_ble.effect_limits import (
     MAX_LIBRARY_ITEMS,
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
+from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 
 
 def _layered_effect() -> LayeredEffect:
@@ -213,6 +218,19 @@ def test_saved_effect_profile_content_round_trips(content) -> None:
     item = LibraryItem.new("Studio profile", content)
 
     assert LibraryItem.from_dict(item.to_dict()) == item
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        WORKSHOP_TEMPLATES[0].content("H617A"),
+        WORKSHOP_TEMPLATES[0].content("H6199"),
+        H6199_SPECIAL_DIY_TEMPLATES[0].content(),
+    ],
+)
+def test_workshop_and_special_diy_content_round_trips(content) -> None:
+    assert effect_content_from_dict(effect_content_to_dict(content)) == content
+    assert LibraryItem.from_dict(LibraryItem.new("Template", content).to_dict()).content == content
 
 
 @pytest.mark.parametrize(
@@ -531,6 +549,86 @@ def test_music_profile_compiler_applies_parameter_defaults_and_select_values() -
 
     assert separation.parameters == {"point": 1, "gradient": True}
     assert fountain.parameters == {"direction": "two_way"}
+
+
+@pytest.mark.parametrize("template", WORKSHOP_TEMPLATES, ids=lambda template: template.id)
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+def test_workshop_compiler_reproduces_fixture_body_without_inventing_activation(model: str, template) -> None:
+    content = template.content(model)
+    item = LibraryItem.new("Workshop", content)
+
+    compiled = compile_effect(item, model)
+
+    assert compiled.activation_packet is None
+    assert compiled.diy_code is None
+    assert (
+        b"".join(packet[2:19] for packet in compiled.upload_packets)
+        == bytes([1, len(compiled.upload_packets), 2]) + content.raw_param
+    )
+
+
+@pytest.mark.parametrize("template", H6199_SPECIAL_DIY_TEMPLATES, ids=lambda template: template.id)
+def test_special_diy_compiler_reproduces_fixture_body_without_inventing_activation(template) -> None:
+    content = template.content()
+    item = LibraryItem.new("Special DIY", content)
+
+    compiled = compile_effect(item, "H6199")
+
+    assert compiled.activation_packet is None
+    assert compiled.diy_code is None
+    assert b"".join(packet[2:19] for packet in compiled.upload_packets) == content.raw_payload
+
+
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+def test_workshop_edit_preserves_reserved_layer_data(model: str) -> None:
+    content = WORKSHOP_TEMPLATES[0].content(model)
+    first = content.effect.layers[0]
+    edited = replace(
+        content,
+        effect=LayeredEffect(
+            (
+                replace(
+                    first,
+                    colour_speed=first.colour_speed + 1,
+                ),
+                *content.effect.layers[1:],
+            )
+        ),
+    )
+
+    compiled = compile_effect(LibraryItem.new("Edited Workshop", edited), model)
+    framed = b"".join(packet[2:19] for packet in compiled.upload_packets)
+    decoded, trailing_padding = decode_workshop_effect(model, framed[3:])
+
+    assert decoded == edited.effect
+    assert decoded.layers[0].unknown_flags == first.unknown_flags
+    assert decoded.layers[0].selected_movement.unknown_flags == first.selected_movement.unknown_flags
+    assert decoded.layers[0].overall_movement.unknown_flags == first.overall_movement.unknown_flags
+    assert decoded.layers[0].excess == first.excess
+    assert trailing_padding == edited.trailing_padding
+    assert edited.raw_param == content.raw_param
+
+
+@pytest.mark.parametrize(
+    ("item", "model"),
+    [
+        (LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content("H617A")), "H617A"),
+        (LibraryItem.new("Special DIY", H6199_SPECIAL_DIY_TEMPLATES[0].content()), "H6199"),
+    ],
+)
+def test_upload_only_compilers_reject_invented_activation(item: LibraryItem, model: str) -> None:
+    with pytest.raises(ValueError, match="no evidenced activation packet"):
+        compile_effect(item, model, diy_code=800)
+
+
+def test_model_mismatch_fails_before_a_packet_can_be_compiled() -> None:
+    workshop = LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content("H617A"))
+    special = LibraryItem.new("Special DIY", H6199_SPECIAL_DIY_TEMPLATES[0].content())
+
+    with pytest.raises(ValueError, match="targets H617A"):
+        compile_effect(workshop, "H6199")
+    with pytest.raises(ValueError, match="targets H6199"):
+        compile_effect(special, "H617A")
 
 
 def test_editor_contract_reports_first_slice_boundaries() -> None:

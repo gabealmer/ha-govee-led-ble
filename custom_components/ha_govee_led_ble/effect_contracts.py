@@ -66,6 +66,7 @@ class CompilerDeployerStrategy(StrEnum):
     STRUCTURAL_DEFINITION_ONLY = "structural_definition_only"
     STRUCTURAL_PARSER_ONLY = "structural_parser_only"
     RAW_PRESERVATION = "raw_preservation"
+    A3_EFFECT_UPLOAD = "a3_effect_upload"
 
 
 class VerificationConfidence(StrEnum):
@@ -256,9 +257,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         "H617A",
         CapabilityWorkflow.WORKSHOP,
         "Workshop",
-        "advanced",
-        ApplicationRoute.NONE,
-        CompilerDeployerStrategy.STRUCTURAL_PARSER_ONLY,
+        "workshop",
+        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
         VerificationConfidence.UNVERIFIED,
         PhysicalValidationState.CAPTURE_VALIDATED,
         EvidenceClassification.STRUCTURAL,
@@ -267,7 +268,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         "H617A",
         CapabilityWorkflow.SPECIAL_DIY,
         "Special DIY",
-        "opaque",
+        "special_diy",
         ApplicationRoute.NONE,
         CompilerDeployerStrategy.RAW_PRESERVATION,
         VerificationConfidence.UNVERIFIED,
@@ -355,9 +356,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         "H6199",
         CapabilityWorkflow.WORKSHOP,
         "Workshop",
-        "advanced",
-        ApplicationRoute.NONE,
-        CompilerDeployerStrategy.STRUCTURAL_PARSER_ONLY,
+        "workshop",
+        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
         VerificationConfidence.UNVERIFIED,
         PhysicalValidationState.CAPTURE_VALIDATED,
         EvidenceClassification.STRUCTURAL,
@@ -366,12 +367,12 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         "H6199",
         CapabilityWorkflow.SPECIAL_DIY,
         "Special DIY",
-        "opaque",
-        ApplicationRoute.NONE,
-        CompilerDeployerStrategy.RAW_PRESERVATION,
+        "special_diy",
+        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
         VerificationConfidence.UNVERIFIED,
-        PhysicalValidationState.NOT_VALIDATED,
-        EvidenceClassification.OPAQUE,
+        PhysicalValidationState.CAPTURE_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
     ),
 )
 
@@ -465,6 +466,8 @@ class DeviceEffectCapabilities:
     advanced: CapabilityState
     music: CapabilityState
     video: CapabilityState
+    workshop: CapabilityState
+    special_diy: CapabilityState
     readback: str
 
     def to_dict(self) -> dict[str, JsonValue]:
@@ -479,6 +482,8 @@ class DeviceEffectCapabilities:
                 "multi": self.multi.value,
                 "palette_diy": self.palette_diy.value,
                 "advanced": self.advanced.value,
+                "workshop": self.workshop.value,
+                "special_diy": self.special_diy.value,
             },
             "profiles": {
                 "music": self.music.value,
@@ -506,5 +511,7 @@ def device_effect_capabilities(
         advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED),
         music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC),
         video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO),
+        workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP),
+        special_diy=studio_apply_capability_state(model, CapabilityWorkflow.SPECIAL_DIY),
         readback="diy_code_only" if model == "H617A" else "mode_only",
     )

@@ -537,6 +537,61 @@ test("templates become named custom effects only after Save as Custom", async ({
   ).toHaveAttribute("aria-current", "page");
 });
 
+test("Workshop and Special DIY templates use shared editors and apply safely", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  const effects = studio.getByRole("complementary", { name: "Effects" });
+
+  await categories.getByRole("button", { name: "Advanced", exact: true }).click();
+  await effects.getByRole("button", { name: "Movement", exact: true }).click();
+  await expect(studio.locator("govee-advanced-effect-editor")).toBeVisible();
+  await expect(
+    studio.getByText(
+      "Source parameter bytes remain immutable provenance. Layer edits are saved separately and may diverge from those bytes.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await studio.locator(".editor").getByRole("button", { name: "Apply" }).click();
+  await expect(
+    studio.getByRole("status").filter({
+      hasText:
+        "This upload has no device readback, so packet completion is the available confirmation.",
+    }),
+  ).toBeVisible();
+
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await categories
+    .getByRole("button", { name: "Special DIY", exact: true })
+    .click();
+  await expect(effects.getByRole("button")).toHaveText([
+    "Chasing",
+    "Crossing",
+    "Fade",
+    "Jumping",
+    "Marquee",
+    "Rainbow",
+    "Twinkle",
+  ]);
+  await effects.getByRole("button", { name: "Fade", exact: true }).click();
+  const specialEditor = studio.locator("govee-custom-effect-editor");
+  await expect(specialEditor.getByText("Colours", { exact: true })).toBeVisible();
+  await expect(specialEditor.getByText("Speed", { exact: true })).toBeVisible();
+  await expect(studio.getByText("raw_payload", { exact: false })).toHaveCount(0);
+  await studio.locator(".editor").getByRole("button", { name: "Apply" }).click();
+  await expect(
+    studio.getByRole("status").filter({
+      hasText:
+        "This upload has no device readback, so packet completion is the available confirmation.",
+    }),
+  ).toBeVisible();
+});
+
 test("Single and Multi variation selects track same-sized family changes", async ({
   page,
 }) => {
@@ -2120,6 +2175,7 @@ test("deployment phases decode and render without contract drift", async ({
     activating: "Activating the selected effect on H617A LED Strip.",
     verifying: "Checking the selected effect on H617A LED Strip.",
     confirmed: "Applied to H617A LED Strip.",
+    applied: "Applied to H617A LED Strip.",
     uncertain: "The final state of H617A LED Strip is uncertain.",
     recovering: "Restoring the previous state on H617A LED Strip",
     failed: "Apply to H617A LED Strip failed.",
