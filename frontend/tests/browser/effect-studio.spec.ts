@@ -11,7 +11,7 @@ async function openStudio(page: Page, query = "") {
   await page.goto(`${path}?${parameters.toString()}`);
   const studio = page.locator(studioSelector);
   await expect(
-    studio.getByRole("heading", { name: "Effect Studio" }),
+    studio.getByRole("navigation", { name: "Create" }),
   ).toBeVisible();
   return studio;
 }
@@ -53,7 +53,7 @@ async function openPaletteScene(
   await sceneBrowser.getByRole("button", { name: category }).click();
   await sceneBrowser.getByRole("button", { name }).click();
   await expect(
-    sceneBrowser.getByRole("heading", { name: "Scene parameters" }),
+    sceneBrowser.getByRole("heading", { name: "Parameters" }),
   ).toBeVisible();
   return sceneBrowser;
 }
@@ -81,8 +81,17 @@ test("default harness uses complete production H617A catalogues", async ({
   await page.goto("/");
   const studio = page.locator(studioSelector);
   await expect(
-    studio.getByRole("heading", { name: "Effect Studio" }),
+    studio.getByRole("navigation", { name: "Create" }),
   ).toBeVisible();
+  await expect(studio.locator("header.topbar")).toHaveCount(0);
+  await expect(
+    studio
+      .getByRole("navigation", { name: "Create" })
+      .getByLabel("Device"),
+  ).toBeVisible();
+  await expect(
+    studio.getByRole("navigation", { name: "Create" }).locator(":scope > :last-child"),
+  ).toHaveClass(/device-picker/);
 
   await studio.getByRole("button", { name: "Scenes", exact: true }).click();
   const sceneBrowser = studio.locator("govee-scene-browser");
@@ -344,16 +353,34 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   ).toBeVisible();
 });
 
+test("Home Assistant mode omits the fixture device picker", async ({ page }) => {
+  const studio = await openStudio(page, "?devicePicker=0");
+
+  await expect(studio.getByLabel("Device")).toHaveCount(0);
+  await expect(
+    studio.getByRole("heading", { name: "Effect Studio" }),
+  ).toBeAttached();
+});
+
 test("palette scene parameters preserve decoded order", async ({
   page,
 }) => {
   await openStudio(page);
   const halloween = await openPaletteScene(page, "Festival", /^Halloween/);
 
+  await expect(
+    halloween.getByRole("heading", { name: "Common settings" }),
+  ).toHaveCount(0);
   await expect(halloween.getByText("Layout", { exact: true })).toBeVisible();
   await expect(halloween.getByText("0", { exact: true })).toBeVisible();
   await expect(halloween.getByText("Brightness flag")).toBeVisible();
   await expect(halloween.getByText("Set", { exact: true })).toBeVisible();
+  await expect(
+    halloween.getByRole("heading", { name: "Palette" }),
+  ).toBeVisible();
+  await expect(
+    halloween.getByRole("heading", { name: "Sequence" }),
+  ).toBeVisible();
   await expect(
     halloween
       .getByRole("list", { name: "Ordered scene steps" })
@@ -372,7 +399,7 @@ test("palette scene parameters preserve decoded order", async ({
   await halloween.getByRole("button", { name: /^Sweet/ }).click();
   await expect(
     halloween.getByRole("heading", {
-      name: "Scene parameters",
+      name: "Parameters",
     }),
   ).toBeVisible();
   await expect(halloween.getByText("Raw value 50")).toBeVisible();
@@ -833,7 +860,7 @@ test("palette copies save losslessly, reload under Custom and cannot Apply", asy
   await page.reload();
   const studio = page.locator(studioSelector);
   await expect(
-    studio.getByRole("heading", { name: "Effect Studio" }),
+    studio.getByRole("navigation", { name: "Create" }),
   ).toBeVisible();
   await studio.getByRole("button", { name: "Scenes", exact: true }).click();
   const reloadedBrowser = studio.locator("govee-scene-browser");
@@ -1100,7 +1127,7 @@ test("disconnect during initial load cannot install stale subscriptions", async 
   await expect(
     page
       .locator(studioSelector)
-      .getByRole("heading", { name: "Effect Studio" }),
+      .getByRole("navigation", { name: "Create" }),
   ).toBeVisible();
   await expect
     .poll(async () =>
@@ -1169,7 +1196,7 @@ test("subscriptions cleanly uninstall and reload after reconnect", async ({
   await page.evaluate(() => window.testHarness.reconnectEditor());
   const studio = page.locator(studioSelector);
   await expect(
-    studio.getByRole("heading", { name: "Effect Studio" }),
+    studio.getByRole("navigation", { name: "Create" }),
   ).toBeVisible();
   await expect
     .poll(async () =>

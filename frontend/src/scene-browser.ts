@@ -359,96 +359,115 @@ export class GoveeSceneBrowser extends LitElement {
           `
         : nothing}
 
-      ${speed
-        ? html`
-            <section class="card">
-              <h3>Common settings</h3>
-              <label class="range-field">
-                <span>Speed</span>
-                <input
-                  type="range"
-                  aria-label="Scene speed"
-                  min="0"
-                  max=${speed.option_count - 1}
-                  step="1"
-                  .value=${String(speedIndex)}
-                  ?disabled=${!this.isAdmin}
-                  @input=${(event: Event) => {
-                    this.speedIndex = Number(
-                      (event.target as HTMLInputElement).value,
-                    );
-                  }}
-                />
-                <output>
-                  ${speedLabel(speedIndex, speed.default_index)}
-                </output>
-              </label>
-            </section>
-          `
+      ${speed || this.content?.kind === "scene_palette"
+        ? this.renderParameters(speed, speedIndex)
         : nothing}
+    `;
+  }
 
-      ${this.content?.kind === "scene_palette"
-        ? this.renderPaletteParameters(this.content)
-        : nothing}
+  private renderParameters(
+    speed: SceneSummary["speed"],
+    speedIndex: number,
+  ) {
+    const palette =
+      this.content?.kind === "scene_palette" ? this.content : undefined;
+    return html`
+      <section class="card scene-parameters" aria-labelledby="scene-parameters-heading">
+        <h3 id="scene-parameters-heading">Parameters</h3>
+        <div class="parameter-list">
+          ${speed
+            ? html`
+                <label class="parameter-entry speed-parameter">
+                  <span class="parameter-heading">
+                    <span>Speed</span>
+                    <output>
+                      ${speedLabel(speedIndex, speed.default_index)}
+                    </output>
+                  </span>
+                  <input
+                    type="range"
+                    aria-label="Scene speed"
+                    min="0"
+                    max=${speed.option_count - 1}
+                    step="1"
+                    .value=${String(speedIndex)}
+                    ?disabled=${!this.isAdmin}
+                    @input=${(event: Event) => {
+                      this.speedIndex = Number(
+                        (event.target as HTMLInputElement).value,
+                      );
+                    }}
+                  />
+                </label>
+              `
+            : nothing}
+          ${palette
+            ? this.renderPaletteParameters(palette)
+            : nothing}
+        </div>
+      </section>
     `;
   }
 
   private renderPaletteParameters(content: PaletteSceneContent) {
     return html`
-      <section class="card scene-parameters">
-        <h3>Scene parameters</h3>
-        <dl class="parameter-summary">
-          <div>
-            <dt>Layout</dt>
-            <dd>${content.layout}</dd>
-          </div>
-          <div>
-            <dt>Brightness flag</dt>
-            <dd>${content.brightness_flag ? "Set" : "Clear"}</dd>
-          </div>
-          <div>
-            <dt>Step count</dt>
-            <dd>${content.steps.length}</dd>
-          </div>
-        </dl>
-        ${content.palette.length > 0
-          ? html`
+      <dl class="parameter-summary">
+        <div>
+          <dt>Layout</dt>
+          <dd>${content.layout}</dd>
+        </div>
+        <div>
+          <dt>Brightness flag</dt>
+          <dd>${content.brightness_flag ? "Set" : "Clear"}</dd>
+        </div>
+        <div>
+          <dt>Steps</dt>
+          <dd>${content.steps.length}</dd>
+        </div>
+      </dl>
+      ${content.palette.length > 0
+        ? html`
+            <section class="parameter-entry visual-parameter">
+              <h4>Palette</h4>
               <div class="scene-palette" role="list" aria-label="Scene palette">
                 ${content.palette.map(
                   (colour, index) => html`
-                    <span
-                      role="listitem"
-                      style="--scene-colour: ${rgbToHex(colour)}"
-                      aria-label="Colour ${index + 1}, ${rgbToHex(colour)}"
-                    ></span>
-                  `,
+                  <span
+                    role="listitem"
+                    style="--scene-colour: ${rgbToHex(colour)}"
+                    aria-label="Colour ${index + 1}, ${rgbToHex(colour)}"
+                  ></span>
+                `,
                 )}
               </div>
-            `
-          : nothing}
+            </section>
+          `
+        : nothing}
+      <section class="parameter-entry visual-parameter">
+        <h4>Sequence</h4>
         <ol class="scene-steps" aria-label="Ordered scene steps">
           ${content.steps.map(
             (step, index) => html`
-              <li>
-                <span class="step-order">${index + 1}</span>
-                <span
-                  class="step-colour"
-                  style="--scene-colour: ${rgbToHex(step.colour)}"
-                  aria-label="Step colour ${rgbToHex(step.colour)}"
-                ></span>
-                <span>
-                  <strong>Raw value ${step.value}</strong>
-                  <small>Step colour ${rgbToHex(step.colour)}</small>
-                  ${step.inline_colour
-                    ? html`
-                        <small>
-                          Inline colour ${rgbToHex(step.inline_colour)}
-                        </small>
-                      `
-                    : nothing}
-                </span>
-              </li>
-            `,
+            <li>
+              <span class="step-order">${index + 1}</span>
+              <span
+                class="step-colour"
+                style="--scene-colour: ${rgbToHex(step.colour)}"
+                aria-label="Step colour ${rgbToHex(step.colour)}"
+              ></span>
+              <span>
+                <strong>Raw value ${step.value}</strong>
+                <small>Step colour ${rgbToHex(step.colour)}</small>
+                ${step.inline_colour
+                  ? html`
+                      <small>
+                        Inline colour ${rgbToHex(step.inline_colour)}
+                      </small>
+                    `
+                  : nothing}
+              </span>
+            </li>
+          `,
           )}
         </ol>
       </section>
@@ -847,6 +866,11 @@ export class GoveeSceneBrowser extends LitElement {
       font-size: 16px;
     }
 
+    h4 {
+      margin: 0;
+      font-size: 13px;
+    }
+
     .scenes-heading {
       margin: 0 10px 20px;
     }
@@ -984,11 +1008,55 @@ export class GoveeSceneBrowser extends LitElement {
       font-weight: 700;
     }
 
+    .parameter-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .parameter-entry {
+      padding: 14px;
+      border: 1px solid var(--studio-border);
+      border-radius: 8px;
+      background: color-mix(
+        in srgb,
+        var(--primary-background-color) 58%,
+        var(--studio-card)
+      );
+    }
+
+    .parameter-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .parameter-heading output {
+      color: var(--studio-muted);
+      font-weight: 600;
+    }
+
+    .speed-parameter {
+      display: grid;
+      gap: 10px;
+    }
+
+    .speed-parameter input {
+      width: 100%;
+    }
+
+    .visual-parameter {
+      display: grid;
+      gap: 12px;
+    }
+
     .scene-palette {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 14px;
     }
 
     .scene-palette span,
@@ -1005,7 +1073,7 @@ export class GoveeSceneBrowser extends LitElement {
     .scene-steps {
       display: grid;
       gap: 8px;
-      margin: 14px 0 0;
+      margin: 0;
       padding: 0;
       list-style: none;
     }
@@ -1062,21 +1130,6 @@ export class GoveeSceneBrowser extends LitElement {
       padding: 12px 10px;
     }
 
-    .range-field {
-      display: grid;
-      grid-template-columns: 80px minmax(100px, 1fr) 72px;
-      align-items: center;
-      gap: 10px;
-      color: var(--studio-muted);
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .range-field output {
-      color: var(--primary-text-color);
-      text-align: end;
-    }
-
     .status {
       grid-column: 2 / -1;
       padding: 48px 28px;
@@ -1125,6 +1178,10 @@ export class GoveeSceneBrowser extends LitElement {
 
       .actions > button {
         flex: 1;
+      }
+
+      .parameter-summary {
+        grid-template-columns: 1fr;
       }
     }
   `;

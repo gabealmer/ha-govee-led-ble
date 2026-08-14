@@ -84,6 +84,9 @@ export class GoveeLedEffectStudio extends LitElement {
   @property({ attribute: false })
   public panel?: PanelConfig;
 
+  @property({ type: Boolean })
+  public showDevicePicker = false;
+
   @state()
   private loading = true;
 
@@ -259,33 +262,7 @@ export class GoveeLedEffectStudio extends LitElement {
     }
 
     return html`
-      <header class="topbar">
-        <div>
-          <h1>Effect Studio</h1>
-        </div>
-        <label class="device-picker">
-          <span>Device</span>
-          <select
-            .value=${this.selectedDeviceId ?? ""}
-            @change=${this.deviceChanged}
-          >
-            ${this.devices.map(
-              (device) => html`
-                <option value=${device.config_entry_id}>
-                  ${device.display_name} / ${device.model}
-                </option>
-              `,
-            )}
-            ${this.selectedDeviceId && !this.selectedDevice
-              ? html`
-                  <option value=${this.selectedDeviceId} disabled>
-                    Device temporarily unavailable
-                  </option>
-                `
-              : nothing}
-          </select>
-        </label>
-      </header>
+      <h1 class="visually-hidden">Effect Studio</h1>
 
       ${this.notice
         ? html`<div class="notice" role="status">${this.notice}</div>`
@@ -299,6 +276,7 @@ export class GoveeLedEffectStudio extends LitElement {
         <nav class="primary-nav" aria-label="Create">
           ${this.navButton("scenes", "Scenes")}
           ${this.navButton("custom", "My Effects")}
+          ${this.showDevicePicker ? this.renderDevicePicker() : nothing}
         </nav>
 
         <govee-scene-browser
@@ -313,6 +291,33 @@ export class GoveeLedEffectStudio extends LitElement {
         ${this.section === "custom" ? this.renderCustomEffects() : nothing}
       </main>
       ${this.deleteCandidate ? this.renderDeleteConfirmation() : nothing}
+    `;
+  }
+
+  private renderDevicePicker() {
+    return html`
+      <label class="device-picker">
+        <span>Device</span>
+        <select
+          .value=${this.selectedDeviceId ?? ""}
+          @change=${this.deviceChanged}
+        >
+          ${this.devices.map(
+            (device) => html`
+              <option value=${device.config_entry_id}>
+                ${device.display_name} / ${device.model}
+              </option>
+            `,
+          )}
+          ${this.selectedDeviceId && !this.selectedDevice
+            ? html`
+                <option value=${this.selectedDeviceId} disabled>
+                  Device temporarily unavailable
+                </option>
+              `
+            : nothing}
+        </select>
+      </label>
     `;
   }
 
@@ -1923,16 +1928,6 @@ export class GoveeLedEffectStudio extends LitElement {
       font-weight: 600;
     }
 
-    .topbar {
-      display: flex;
-      align-items: end;
-      justify-content: space-between;
-      gap: 24px;
-      padding: 22px 28px;
-      border-bottom: 1px solid var(--studio-border);
-      background: var(--app-header-background-color, var(--studio-card));
-    }
-
     h1,
     h2,
     h3,
@@ -1969,7 +1964,9 @@ export class GoveeLedEffectStudio extends LitElement {
     .device-picker {
       display: grid;
       gap: 6px;
-      min-width: 240px;
+      margin-top: auto;
+      padding-top: 18px;
+      border-top: 1px solid var(--studio-border);
       color: var(--studio-muted);
       font-size: 12px;
       font-weight: 600;
@@ -1996,7 +1993,7 @@ export class GoveeLedEffectStudio extends LitElement {
     .studio {
       display: grid;
       grid-template-columns: 190px 230px minmax(0, 1fr);
-      min-height: calc(100vh - 90px);
+      min-height: 100vh;
     }
 
     .studio.scenes-mode,
@@ -2016,6 +2013,18 @@ export class GoveeLedEffectStudio extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
+    }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
     }
 
     .effect-categories {
@@ -2449,15 +2458,6 @@ export class GoveeLedEffectStudio extends LitElement {
     }
 
     @media (max-width: 760px) {
-      .topbar {
-        align-items: stretch;
-        flex-direction: column;
-      }
-
-      .device-picker {
-        min-width: 0;
-      }
-
       .studio {
         display: block;
       }
@@ -2468,6 +2468,13 @@ export class GoveeLedEffectStudio extends LitElement {
         padding: 10px 16px;
         border-inline-end: 0;
         border-bottom: 1px solid var(--studio-border);
+      }
+
+      .device-picker {
+        grid-column: 1 / -1;
+        margin-top: 4px;
+        padding-top: 10px;
+        text-align: start;
       }
 
       .selector {

@@ -35,6 +35,7 @@ editor.panel = {
     configuration_path: "/config/integrations/integration/ha_govee_led_ble",
   },
 };
+editor.showDevicePicker = parameters.get("devicePicker") !== "0";
 document.body.append(editor);
 
 export interface EffectStudioTestHarness {
