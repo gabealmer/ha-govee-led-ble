@@ -248,7 +248,7 @@ export class GoveeSceneBrowser extends LitElement {
   }[] {
     const categories: { id: CategorySelection; label: string }[] = [];
     if (this.catalogue?.scenes.length) {
-      categories.push({ id: "all", label: "All scenes" });
+      categories.push({ id: "all", label: "All" });
     }
     if (this.compatibleCustomScenes.length) {
       categories.push({ id: "custom", label: "Custom" });
@@ -401,7 +401,7 @@ export class GoveeSceneBrowser extends LitElement {
         </div>
         <div class="actions">
           <button
-            class="primary"
+            class=${layered || nativeSelection ? "secondary" : "primary"}
             type="button"
             ?disabled=${!this.isAdmin ||
             this.saving ||
@@ -421,7 +421,7 @@ export class GoveeSceneBrowser extends LitElement {
                     : "Save"}
           </button>
           <button
-            class="secondary"
+            class="primary"
             type="button"
             ?disabled=${!this.isAdmin ||
             !applyEnabled ||
@@ -452,21 +452,6 @@ export class GoveeSceneBrowser extends LitElement {
             <div class="feedback callout" role="note">
               Native scenes are disabled for this device in the integration
               options. Browsing and saving copies remain available.
-            </div>
-          `
-        : nothing}
-
-      ${custom &&
-      (this.content?.kind === "scene_palette" ||
-        this.content?.kind === "scene_layered")
-        ? html`
-            <div
-              class="feedback callout"
-              role="note"
-            >
-              Authored scene parameters are uploaded before the source scene is
-              selected. The device confirms scene identity, but cannot read the
-              authored parameters back.
             </div>
           `
         : nothing}
@@ -948,10 +933,7 @@ export class GoveeSceneBrowser extends LitElement {
         await request.api.applySaved(request.deviceId, this.selectedItem!);
       }
       if (this.requestIsCurrent(request)) {
-        this.notice =
-          nativeSelection || content.kind === "scene_builtin"
-            ? `Applied to ${device.display_name}. Scene identity can be read back; the selected speed remains optimistic.`
-            : `Applied to ${device.display_name}. Scene identity was confirmed; authored parameters remain write-only.`;
+        this.notice = `Applied to ${device.display_name}.`;
       }
     } catch (error) {
       if (this.requestIsCurrent(request)) {

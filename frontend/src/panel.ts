@@ -483,7 +483,7 @@ export class GoveeLedEffectStudio extends LitElement {
         ${newEffectKind
           ? html`
               <button
-                class="selector"
+                class="selector new-effect-action"
                 type="button"
                 ?disabled=${!this.isAdmin}
                 @click=${() => this.newEffect(newEffectKind)}
@@ -667,7 +667,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private renderProfileHeading() {
     return this.renderEditorHeading(html`
       <button
-        class="secondary"
+        class="primary"
         type="button"
         ?disabled=${!this.canApply}
         @click=${this.apply}
@@ -1128,7 +1128,6 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     const layeredScene = this.content.kind === "scene_layered";
-    const workshop = this.content.kind === "workshop";
     const deployment = this.activeDeployment;
     return html`
       ${layeredScene
@@ -1145,7 +1144,7 @@ export class GoveeLedEffectStudio extends LitElement {
       ${this.renderEditorHeading(
         html`
           <button
-            class="secondary"
+            class="primary"
             type="button"
             ?disabled=${!this.canApply}
             @click=${this.apply}
@@ -1162,15 +1161,6 @@ export class GoveeLedEffectStudio extends LitElement {
             <div class="feedback read-only" role="note">
               You can inspect shared effects. An administrator is required to
               edit or save them.
-            </div>
-          `
-        : nothing}
-
-      ${layeredScene || workshop
-        ? html`
-            <div class="feedback source-note" role="note">
-              Source parameter bytes remain immutable provenance. Layer edits
-              are saved separately and may diverge from those bytes.
             </div>
           `
         : nothing}
@@ -1198,7 +1188,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private renderOpaqueEditor(content: OpaqueContent) {
     return html`
       ${this.renderEditorHeading(
-        html`<button class="secondary" type="button" disabled>Apply</button>`,
+        html`<button class="primary" type="button" disabled>Apply</button>`,
         { save: false, title: html`<h2>${this.name}</h2>` },
       )}
       <div class="feedback read-only" role="note">
@@ -1226,7 +1216,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading(html`
         <button
-          class="secondary"
+          class="primary"
           type="button"
           ?disabled=${!this.canApply}
           @click=${this.apply}
@@ -1343,7 +1333,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading(html`
         <button
-          class="secondary"
+          class="primary"
           type="button"
           ?disabled=${!this.canApply}
           @click=${this.apply}
@@ -1547,7 +1537,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (this.templateSourceLabel) {
       return html`
         <button
-          class="primary"
+          class="secondary"
           type="button"
           ?disabled=${!this.isAdmin ||
           this.saving ||
@@ -1754,17 +1744,8 @@ export class GoveeLedEffectStudio extends LitElement {
         message = `Checking the selected effect on ${deviceName}.`;
         break;
       case "confirmed":
-        message =
-          deployment.content_kind === "music_profile"
-            ? `Applied to ${deviceName}. The result responds to live audio.`
-            : deployment.content_kind === "video_profile"
-              ? `Applied to ${deviceName}. The result follows the live screen input.`
-              : deployment.target_mode === "scene"
-                ? `Applied to ${deviceName}. The selected scene identity was confirmed, but authored scene contents cannot be read back.`
-                : `Applied to ${deviceName}. The selected custom-effect code was confirmed, but exact effect contents cannot be read back.`;
-        break;
       case "applied":
-        message = `Applied to ${deviceName}. This upload has no device readback, so packet completion is the available confirmation.`;
+        message = `Applied to ${deviceName}.`;
         break;
       case "uncertain":
         message =
@@ -3081,6 +3062,16 @@ export class GoveeLedEffectStudio extends LitElement {
       gap: 6px;
     }
 
+    .effect-categories .new-effect-action {
+      color: var(--studio-blue);
+      background: var(--studio-blue-soft);
+      font-weight: 650;
+    }
+
+    .effect-categories .new-effect-action:hover {
+      background: color-mix(in srgb, var(--studio-blue) 20%, transparent);
+    }
+
     .item {
       display: flex;
       align-items: center;
@@ -3173,10 +3164,6 @@ export class GoveeLedEffectStudio extends LitElement {
       justify-content: flex-end;
       gap: 9px;
       margin-top: 24px;
-    }
-
-    .source-note {
-      color: var(--studio-muted);
     }
 
     .controls {

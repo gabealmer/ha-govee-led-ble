@@ -162,7 +162,7 @@ test("default harness uses complete production H617A catalogues", async ({
       .getByRole("complementary", { name: "Scene categories" })
       .getByRole("button"),
   ).toHaveText([
-    "All scenes",
+    "All",
     "Emotion",
     "Festival",
     "Funny",
@@ -481,7 +481,12 @@ test("native templates become editable copies through shared actions", async ({
     name: "Effect categories",
   });
 
-  await categories.getByRole("button", { name: "New", exact: true }).click();
+  const newEffect = categories.getByRole("button", {
+    name: "New",
+    exact: true,
+  });
+  await expect(newEffect).toHaveClass("selector new-effect-action");
+  await newEffect.click();
   await expect(
     studio.locator(".editor").getByRole("button", { name: "Save", exact: true }),
   ).toBeEnabled();
@@ -593,17 +598,10 @@ test("Workshop and Special DIY templates use shared editors and apply safely", a
       .locator("govee-advanced-effect-editor")
       .getByRole("button", { name: "Add layer" }),
   ).toBeDisabled();
-  await expect(
-    studio.getByText(
-      "Source parameter bytes remain immutable provenance. Layer edits are saved separately and may diverge from those bytes.",
-      { exact: true },
-    ),
-  ).toBeVisible();
   await studio.locator(".editor").getByRole("button", { name: "Apply" }).click();
   await expect(
     studio.getByRole("status").filter({
-      hasText:
-        "This upload has no device readback, so packet completion is the available confirmation.",
+      hasText: "Applied to H617A LED Strip.",
     }),
   ).toBeVisible();
   await studio
@@ -1061,7 +1059,7 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   await apply.click();
   await expect(
     studio.getByRole("status").filter({
-      hasText: "authored scene contents cannot be read back",
+      hasText: "Applied to H617A LED Strip.",
     }),
   ).toBeVisible();
   await expect(apply).not.toHaveAttribute("aria-describedby");
@@ -1958,8 +1956,8 @@ test("palette scenes apply native identity and authored saved or unsaved definit
   await expect(heading).toBeVisible();
   await expect(heading.locator(":scope > .actions")).toHaveCount(1);
   await expect(nativeApply).toBeEnabled();
-  await expect(nativeApply).toHaveClass("secondary");
-  await expect(edit).toHaveClass("primary");
+  await expect(nativeApply).toHaveClass("primary");
+  await expect(edit).toHaveClass("secondary");
   await expect(edit).toHaveCSS("min-height", "44px");
   await expect(nativeApply).toHaveCSS("min-height", "44px");
   const [editBox, applyBox] = await Promise.all([
@@ -1980,7 +1978,7 @@ test("palette scenes apply native identity and authored saved or unsaved definit
   await sceneBrowser.getByRole("button", { name: "Apply" }).click();
   await expect(
     sceneBrowser.getByRole("status").filter({
-      hasText: "authored parameters remain write-only",
+      hasText: "Applied to H617A LED Strip.",
     }),
   ).toBeVisible();
   await sceneBrowser
@@ -1995,11 +1993,6 @@ test("palette scenes apply native identity and authored saved or unsaved definit
 
   const customApply = sceneBrowser.getByRole("button", { name: "Apply" });
   await expect(customApply).toBeEnabled();
-  await expect(
-    sceneBrowser.getByRole("note").filter({
-      hasText: "Authored scene parameters are uploaded",
-    }),
-  ).toBeVisible();
   await customApply.click();
   await sceneBrowser.getByLabel("Scene name").fill("Halloween preserved");
   await customApply.click();
