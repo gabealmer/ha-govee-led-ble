@@ -32,6 +32,9 @@ EXPECTED_MODEL = "H617A"
 STATE_SCHEMA_VERSION = 1
 MAX_ROUTE_SUMMARIES = 32
 STATE_PATH = Path(__file__).parents[2] / ".harness" / "effect-studio-home-assistant.json"
+RESTART_UNAVAILABLE_TIMEOUT = 60
+RESTART_SETUP_TIMEOUT = 180
+EDITOR_CLEANUP_TIMEOUT = 30
 
 WS_INFO = f"{DOMAIN}/editor/info"
 WS_DEVICES = f"{DOMAIN}/editor/devices"
@@ -172,7 +175,10 @@ class HomeAssistantWebSocket:
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
                 raise ValidationError("Home Assistant subscription event timed out")
-            message = await asyncio.wait_for(self._receive(), remaining)
+            try:
+                message = await asyncio.wait_for(self._receive(), remaining)
+            except TimeoutError as exc:
+                raise ValidationError("Home Assistant subscription event timed out") from exc
             if message.get("type") == "event" and isinstance(message.get("id"), int):
                 self.events.setdefault(cast(int, message["id"]), []).append(message)
 
@@ -616,8 +622,15 @@ class EffectStudioValidator:
         return len(events)
 
     async def cleanup_item(self, item_id: str) -> None:
-        for _attempt in range(3):
-            listing = _object(await self.client.call({"type": WS_LIBRARY_LIST}), "library cleanup list")
+        deadline = asyncio.get_running_loop().time() + EDITOR_CLEANUP_TIMEOUT
+        while True:
+            try:
+                listing = _object(await self.client.call({"type": WS_LIBRARY_LIST}), "library cleanup list")
+            except HomeAssistantApiError as exc:
+                if exc.code != "unknown_command" or asyncio.get_running_loop().time() >= deadline:
+                    raise
+                await asyncio.sleep(1)
+                continue
             library_revision = _required_int(listing, "library_revision")
             items = _object_list(listing.get("items"), "library cleanup items")
             summary = next((item for item in items if item.get("id") == item_id), None)
@@ -638,7 +651,8 @@ class EffectStudioValidator:
                     "library delete response",
                 )
             except HomeAssistantApiError as exc:
-                if exc.code == "conflict":
+                if exc.code in {"conflict", "unknown_command"} and asyncio.get_running_loop().time() < deadline:
+                    await asyncio.sleep(1)
                     continue
                 raise
             deleted_revision = _required_int(result, "library_revision")
@@ -646,7 +660,6 @@ class EffectStudioValidator:
                 await self._expect_library_event(deleted_revision, item_id, None)
             self.library_revision = deleted_revision
             return
-        raise ValidationError("temporary Effect Studio item could not be deleted after revision retries")
 
     async def restore_states(self, original_states: Sequence[JsonObject]) -> None:
         ordered = sorted(original_states, key=lambda state: str(state.get("entity_id", "")).startswith("light."))
@@ -783,7 +796,12 @@ class EffectStudioValidator:
         )
 
     async def _verify_restored(self, original_states: Sequence[JsonObject]) -> None:
-        if not any(state.get("entity_id") == self._selection().light_entity_id for state in original_states):
+        light_entities = [
+            state.get("entity_id")
+            for state in original_states
+            if isinstance(state.get("entity_id"), str) and str(state["entity_id"]).startswith("light.")
+        ]
+        if len(light_entities) != 1:
             raise ValidationError("captured state has no cupboard light")
         deadline = asyncio.get_running_loop().time() + 45
         while True:
@@ -1065,7 +1083,13 @@ def _remove_state() -> None:
     STATE_PATH.with_suffix(".staging").unlink(missing_ok=True)
 
 
-async def _restart_home_assistant(client: ClientProtocol, rest: HomeAssistantRest) -> None:
+async def _restart_home_assistant(
+    client: ClientProtocol,
+    rest: HomeAssistantRest,
+    *,
+    identity_entry_id: str,
+    light_entity_id: str,
+) -> tuple[HomeAssistantWebSocket, HomeAssistantRest]:
     stop_subscription_id, _initial = await client.subscribe(
         {
             "type": "subscribe_events",
@@ -1086,20 +1110,56 @@ async def _restart_home_assistant(client: ClientProtocol, rest: HomeAssistantRes
             await client.wait_event(stop_subscription_id, timeout=30)
 
     saw_unavailable = False
-    unavailable_deadline = asyncio.get_running_loop().time() + 60
+    unavailable_deadline = asyncio.get_running_loop().time() + RESTART_UNAVAILABLE_TIMEOUT
     while not saw_unavailable and asyncio.get_running_loop().time() < unavailable_deadline:
         saw_unavailable = not await rest.ready()
         if not saw_unavailable:
             await asyncio.sleep(0.5)
     if not saw_unavailable:
         raise ValidationError("Home Assistant restart did not enter an unavailable state")
+    with suppress(BaseException):
+        await client.close()
 
-    ready_deadline = asyncio.get_running_loop().time() + 180
+    ready_deadline = asyncio.get_running_loop().time() + RESTART_SETUP_TIMEOUT
+    last_entry_state = "unavailable"
     while asyncio.get_running_loop().time() < ready_deadline:
         if await rest.ready():
-            return
+            ready_client: HomeAssistantWebSocket | None = None
+            try:
+                ready_client, ready_rest = await _connect()
+                entries = _object_list(
+                    await ready_client.call({"type": "config_entries/get"}),
+                    "config entry response",
+                )
+                entry = next((item for item in entries if item.get("entry_id") == identity_entry_id), None)
+                if entry is None:
+                    last_entry_state = "missing"
+                else:
+                    last_entry_state = str(entry.get("state", "unknown"))
+                    if (
+                        entry.get("domain") == DOMAIN
+                        and entry.get("disabled_by") is None
+                        and entry.get("state") == "loaded"
+                    ):
+                        states = _object_list(
+                            await ready_client.call({"type": "get_states"}),
+                            "restart state response",
+                        )
+                        light_state = next(
+                            (state for state in states if state.get("entity_id") == light_entity_id),
+                            None,
+                        )
+                        if light_state is not None and light_state.get("state") in {"on", "off"}:
+                            return ready_client, ready_rest
+            except Exception:
+                last_entry_state = "unavailable"
+            if ready_client is not None:
+                with suppress(BaseException):
+                    await ready_client.close()
         await asyncio.sleep(2)
-    raise ValidationError("Home Assistant did not return after restart")
+    raise ValidationError(
+        f"Home Assistant cupboard entry and light did not become usable after restart; entry state={last_entry_state}"
+    )
 
 
 async def _connect() -> tuple[HomeAssistantWebSocket, HomeAssistantRest]:
@@ -1143,20 +1203,25 @@ async def _run(args: argparse.Namespace) -> JsonObject:
         await validator.verify_surfaces()
         await validator.subscribe()
         if staged is None:
+            selection = validator._selection()
             original_states = await validator.capture_controllable_state()
             run_state = await validator.create_and_update_temporary_effect()
             run_state.original_states = original_states
             _write_state(run_state)
-            await _restart_home_assistant(client, rest)
+            client, rest = await _restart_home_assistant(
+                client,
+                rest,
+                identity_entry_id=identity_entry_id,
+                light_entity_id=selection.light_entity_id,
+            )
             restart_completed = True
-            await client.close()
-            client, rest = await _connect()
             validator = EffectStudioValidator(
                 client,
                 rest,
                 identity_entry_id=identity_entry_id,
                 identity_model=identity_model,
             )
+            validator.selection = selection
             if args.stage == "before-restart":
                 before_restart_complete = True
             else:
