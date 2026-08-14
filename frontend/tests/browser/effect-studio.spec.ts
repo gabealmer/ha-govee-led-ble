@@ -1086,7 +1086,7 @@ test("a second tab preserves dirty work when the library changes", async ({
   await expect(
     secondStudio.getByRole("status").filter({
       hasText:
-        "This effect changed elsewhere. Reload it before saving your draft.",
+        "This effect changed elsewhere. Reload it before saving.",
     }),
   ).toBeVisible();
   await expect(secondStudio.getByLabel("Effect name")).toHaveValue(
@@ -1097,323 +1097,6 @@ test("a second tab preserves dirty work when the library changes", async ({
     return items.find((item) => item.id === "painted-1")?.name;
   });
   expect(savedName).toBe("Tab one saved revision");
-});
-
-test("two tabs fork a stale recovery draft instead of overwriting it", async ({
-  context,
-  page,
-}) => {
-  const firstStudio = await openStudio(page);
-  await firstStudio.getByLabel("Effect name").fill("Shared draft");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        Object.values(window.testHarness.snapshot().state.drafts).find(
-          (draft) => draft.base_item_id === "painted-1",
-        )?.item.name,
-      ),
-    )
-    .toBe("Shared draft");
-
-  const secondPage = await context.newPage();
-  const secondStudio = await openStudio(secondPage);
-  await expect(secondStudio.getByLabel("Effect name")).toHaveValue(
-    "Shared draft",
-  );
-
-  await firstStudio.getByLabel("Effect name").fill("First tab draft");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        Object.values(window.testHarness.snapshot().state.drafts).find(
-          (draft) => draft.base_item_id === "painted-1",
-        )?.item.name,
-      ),
-    )
-    .toBe("First tab draft");
-
-  await secondStudio.getByLabel("Effect name").fill("Second tab draft");
-  await expect(
-    secondStudio.getByRole("status").filter({
-      hasText:
-        "This draft changed elsewhere, so your work was saved as a separate recovery draft.",
-    }),
-  ).toBeVisible();
-  const drafts = await secondPage.evaluate(() =>
-    Object.values(window.testHarness.snapshot().state.drafts)
-      .filter((draft) => draft.base_item_id === "painted-1")
-      .map((draft) => draft.item.name)
-      .sort(),
-  );
-  expect(drafts).toEqual(["First tab draft", "Second tab draft"]);
-});
-
-test("same-tab edits adopt an in-flight autosave revision without forking", async ({
-  page,
-}) => {
-  const studio = await openStudio(page);
-  await studio.getByLabel("Effect name").fill("Initial draft");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        Object.values(window.testHarness.snapshot().state.drafts).find(
-          (draft) => draft.base_item_id === "painted-1",
-        )?.item.name,
-      ),
-    )
-    .toBe("Initial draft");
-
-  await page.evaluate(() =>
-    window.testHarness.backend.delayNext("draft/update", 1000),
-  );
-  await studio.getByLabel("Effect name").fill("Delayed update");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        window.testHarness
-          .snapshot()
-          .calls.filter(
-            (call) =>
-              call.type === "ha_govee_led_ble/editor/draft/update",
-          ).length,
-      ),
-    )
-    .toBe(1);
-  await studio.getByLabel("Effect name").fill("Latest same-tab edit");
-
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const drafts = Object.values(
-          window.testHarness.snapshot().state.drafts,
-        ).filter((draft) => draft.base_item_id === "painted-1");
-        return {
-          count: drafts.length,
-          name: drafts[0]?.item.name,
-        };
-      }),
-    )
-    .toEqual({ count: 1, name: "Latest same-tab edit" });
-  await expect(
-    studio.getByRole("status").filter({
-      hasText:
-        "This draft changed elsewhere, so your work was saved as a separate recovery draft.",
-    }),
-  ).toHaveCount(0);
-});
-
-test("unfinished work recovers automatically without a draft manager", async ({
-  page,
-}) => {
-  let studio = await openStudio(page);
-  await studio.getByLabel("Effect name").fill("Restart recovery");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        Object.values(window.testHarness.snapshot().state.drafts).find(
-          (draft) => draft.base_item_id === "painted-1",
-        )?.item.name,
-      ),
-    )
-    .toBe("Restart recovery");
-
-  await page.reload();
-  studio = page.locator(studioSelector);
-  await expect(studio.getByLabel("Effect name")).toHaveValue(
-    "Restart recovery",
-  );
-  await expect(
-    studio.getByRole("status").filter({
-      hasText: "Recovered an unfinished draft.",
-    }),
-  ).toBeVisible();
-  await expect(studio.getByText("Recovery drafts")).toHaveCount(0);
-});
-
-test("a delayed save cannot replace a newer dirty selection or delete its draft", async ({
-  page,
-}) => {
-  const studio = await openStudio(page);
-
-  await studio.getByRole("button", { name: "Zeta painted effect" }).click();
-  await studio.getByLabel("Effect name").fill("B dirty work");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        Object.values(window.testHarness.snapshot().state.drafts).find(
-          (draft) => draft.base_item_id === "painted-2",
-        )?.item.name,
-      ),
-    )
-    .toBe("B dirty work");
-  const bDraftId = await page.evaluate(() =>
-    Object.values(window.testHarness.snapshot().state.drafts).find(
-      (draft) => draft.base_item_id === "painted-2",
-    )?.id,
-  );
-  expect(bDraftId).toBeTruthy();
-
-  await studio
-    .getByRole("button", { name: "Supported painted effect" })
-    .click();
-  await studio.getByLabel("Effect name").fill("A delayed save");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        Object.values(window.testHarness.snapshot().state.drafts).find(
-          (draft) => draft.base_item_id === "painted-1",
-        )?.item.name,
-      ),
-    )
-    .toBe("A delayed save");
-  const aDraft = await page.evaluate(() =>
-    Object.values(window.testHarness.snapshot().state.drafts).find(
-      (draft) => draft.base_item_id === "painted-1",
-    ),
-  );
-  expect(aDraft).toBeTruthy();
-  await page.evaluate(() =>
-    window.testHarness.backend.delayNext("library/update", 1000),
-  );
-  await studio
-    .locator(".editor")
-    .getByRole("button", { name: "Save", exact: true })
-    .click();
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        window.testHarness
-          .snapshot()
-          .calls.filter(
-            (call) =>
-              call.type === "ha_govee_led_ble/editor/library/update",
-          ).length,
-      ),
-    )
-    .toBe(1);
-
-  await studio.getByRole("button", { name: "Zeta painted effect" }).click();
-  await expect(studio.getByLabel("Effect name")).toHaveValue("B dirty work");
-  await expect
-    .poll(async () =>
-      page.evaluate(
-        () =>
-          window.testHarness.snapshot().state.items["painted-1"]?.name,
-      ),
-    )
-    .toBe("A delayed save");
-
-  await expect(studio.getByLabel("Effect name")).toHaveValue("B dirty work");
-  await expect(
-    studio.locator(".editor").getByRole("button", { name: "Save" }),
-  ).toBeEnabled();
-  await expect(studio.getByText("Recovery drafts")).toHaveCount(0);
-  const finalState = await page.evaluate(() => window.testHarness.snapshot());
-  expect(finalState.state.drafts[bDraftId!]?.item.name).toBe("B dirty work");
-  const deleteCalls = finalState.calls.filter(
-    (call) => call.type === "ha_govee_led_ble/editor/draft/delete",
-  );
-  expect(deleteCalls).toContainEqual(
-    expect.objectContaining({
-      draft_id: aDraft!.id,
-      expected_revision: aDraft!.revision,
-    }),
-  );
-  expect(deleteCalls.map((call) => call.draft_id)).not.toContain(bDraftId);
-  await expect(
-    studio.getByRole("status").filter({ hasText: "Saved." }),
-  ).toHaveCount(0);
-});
-
-test("stale draft cleanup failure preserves the active notice and originating draft", async ({
-  page,
-}) => {
-  const studio = await openStudio(page);
-
-  await studio.getByRole("button", { name: "Zeta painted effect" }).click();
-  await studio.getByLabel("Effect name").fill("B notice retained");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        Object.values(window.testHarness.snapshot().state.drafts).find(
-          (draft) => draft.base_item_id === "painted-2",
-        )?.item.name,
-      ),
-    )
-    .toBe("B notice retained");
-
-  await studio
-    .getByRole("button", { name: "Supported painted effect" })
-    .click();
-  await studio.getByLabel("Effect name").fill("A cleanup failure");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        Object.values(window.testHarness.snapshot().state.drafts).find(
-          (draft) => draft.base_item_id === "painted-1",
-        )?.item.name,
-      ),
-    )
-    .toBe("A cleanup failure");
-  const aDraft = await page.evaluate(() =>
-    Object.values(window.testHarness.snapshot().state.drafts).find(
-      (draft) => draft.base_item_id === "painted-1",
-    ),
-  );
-  expect(aDraft).toBeTruthy();
-  await page.evaluate(() => {
-    window.testHarness.backend.delayNext("library/update", 1000);
-    window.testHarness.backend.failNext("draft/delete");
-  });
-  await studio
-    .locator(".editor")
-    .getByRole("button", { name: "Save", exact: true })
-    .click();
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        window.testHarness
-          .snapshot()
-          .calls.filter(
-            (call) =>
-              call.type === "ha_govee_led_ble/editor/library/update",
-          ).length,
-      ),
-    )
-    .toBe(1);
-
-  await studio.getByRole("button", { name: "Zeta painted effect" }).click();
-  await expect(studio.getByLabel("Effect name")).toHaveValue(
-    "B notice retained",
-  );
-  const status = studio.locator(".notice");
-  await expect(status).toHaveText("Recovered an unfinished draft.");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        window.testHarness
-          .snapshot()
-          .calls.filter(
-            (call) =>
-              call.type === "ha_govee_led_ble/editor/draft/delete",
-          ).length,
-      ),
-    )
-    .toBe(1);
-
-  await expect(status).toHaveText("Recovered an unfinished draft.");
-  await expect(studio.getByLabel("Effect name")).toHaveValue(
-    "B notice retained",
-  );
-  await expect(studio.getByText("Recovery drafts")).toHaveCount(0);
-  const finalState = await page.evaluate(() => window.testHarness.snapshot());
-  expect(finalState.state.drafts[aDraft!.id]).toMatchObject({
-    id: aDraft!.id,
-    revision: aDraft!.revision,
-    item: {
-      name: "A cleanup failure",
-    },
-  });
 });
 
 test("save conflict keeps feedback when the library refresh fails", async ({
@@ -1555,27 +1238,12 @@ test("unknown layered values stay raw", async ({
   await expect(advanced.getByLabel("Brightness order")).toHaveValue("253");
 
   await studio.getByLabel("Effect name").fill("Raw values preserved");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        window.testHarness
-          .snapshot()
-          .calls.filter(
-            (call) =>
-              call.type === "ha_govee_led_ble/editor/draft/create",
-          ).length,
-      ),
-    )
-    .toBe(1);
-  const draftContent = await page.evaluate(() => {
-    const calls = window.testHarness
-      .snapshot()
-      .calls.filter(
-        (call) => call.type === "ha_govee_led_ble/editor/draft/create",
-      );
-    return calls.at(-1)?.content;
+  await studio.getByRole("button", { name: "Save" }).click();
+  const savedContent = await page.evaluate(() => {
+    const items = Object.values(window.testHarness.snapshot().state.items);
+    return items.find((item) => item.name === "Raw values preserved")?.content;
   });
-  expect(draftContent).toMatchObject({
+  expect(savedContent).toMatchObject({
     kind: "advanced",
     layers: [
       expect.objectContaining({
@@ -1738,15 +1406,12 @@ test("empty layered scene imports remain inspectable and unchanged", async ({
     studio.locator(".editor").getByRole("button", { name: "Apply" }),
   ).toBeDisabled();
 
-  const draftContent = await page.evaluate(() => {
-    const calls = window.testHarness
-      .snapshot()
-      .calls.filter(
-        (call) => call.type === "ha_govee_led_ble/editor/draft/create",
-      );
-    return calls.at(-1)?.content;
+  await studio.getByRole("button", { name: "Save" }).click();
+  const savedContent = await page.evaluate(() => {
+    const items = Object.values(window.testHarness.snapshot().state.items);
+    return items.find((item) => item.name === "Ocean Layers layered")?.content;
   });
-  expect(draftContent).toEqual({
+  expect(savedContent).toEqual({
     kind: "scene_layered",
     template: {
       sku: "H617A",
@@ -1780,15 +1445,14 @@ test("empty brightness pattern imports remain inspectable and unchanged", async 
   await expect(
     advanced.getByRole("button", { name: "Add brightness pattern" }),
   ).toBeEnabled();
-  const draftContent = await page.evaluate(() => {
-    const calls = window.testHarness
-      .snapshot()
-      .calls.filter(
-        (call) => call.type === "ha_govee_led_ble/editor/draft/create",
-      );
-    return calls.at(-1)?.content;
+  await studio.getByRole("button", { name: "Save" }).click();
+  const savedContent = await page.evaluate(() => {
+    const items = Object.values(window.testHarness.snapshot().state.items);
+    return items.find(
+      (item) => item.name === "Empty Pattern Layers layered",
+    )?.content;
   });
-  expect(draftContent).toMatchObject({
+  expect(savedContent).toMatchObject({
     kind: "scene_layered",
     template: {
       sku: "H617A",
@@ -1812,12 +1476,9 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
 }) => {
   const studio = await openStudio(page);
   const sceneBrowser = await openLayeredScene(page);
-  await sceneBrowser.getByRole("button", { name: "Faster" }).click();
+  await sceneBrowser.getByLabel("Scene speed").press("End");
   await sceneBrowser.getByRole("button", { name: "Use as template" }).click();
 
-  await expect(
-    studio.getByText("Scene template opened as a recovery draft."),
-  ).toBeVisible();
   const advancedApply = studio
     .locator(".editor")
     .getByRole("button", { name: "Apply" });
@@ -1829,27 +1490,15 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
   ).toBeVisible();
 
   await studio.getByLabel("Effect name").fill("Aurora authored");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        window.testHarness
-          .snapshot()
-          .calls.filter(
-            (call) =>
-              call.type === "ha_govee_led_ble/editor/draft/update",
-          ).length,
-      ),
-    )
-    .toBe(1);
-  const draftContent = await page.evaluate(() => {
-    const calls = window.testHarness
-      .snapshot()
-      .calls.filter(
-        (call) => call.type === "ha_govee_led_ble/editor/draft/update",
-      );
-    return calls.at(-1)?.content;
+  await studio.getByRole("button", { name: "Save" }).click();
+  await expect(
+    studio.getByRole("status").filter({ hasText: "Saved." }),
+  ).toBeVisible();
+  const savedContent = await page.evaluate(() => {
+    const items = Object.values(window.testHarness.snapshot().state.items);
+    return items.find((item) => item.name === "Aurora authored")?.content;
   });
-  expect(draftContent).toMatchObject({
+  expect(savedContent).toMatchObject({
     kind: "scene_layered",
     template: {
       sku: "H617A",
@@ -1872,16 +1521,6 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
     },
   });
 
-  await studio.getByRole("button", { name: "Save" }).click();
-  await expect(
-    studio.getByRole("status").filter({ hasText: "Saved." }),
-  ).toBeVisible();
-  const savedContent = await page.evaluate(() => {
-    const items = Object.values(window.testHarness.snapshot().state.items);
-    return items.find((item) => item.name === "Aurora authored")?.content;
-  });
-  expect(savedContent).toEqual(draftContent);
-
   await studio.getByRole("button", { name: "Back to Scenes" }).click();
   await expect(
     sceneBrowser.getByRole("button", { name: "Nature" }),
@@ -1890,11 +1529,11 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
     sceneBrowser.getByRole("button", { name: /Aurora Layers/ }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    sceneBrowser.getByRole("button", { name: "Faster" }),
-  ).toHaveAttribute("aria-pressed", "true");
+    sceneBrowser.getByLabel("Scene speed"),
+  ).toHaveValue("2");
 });
 
-test("a failed draft flush blocks Back navigation", async ({ page }) => {
+test("Back navigation discards an unsaved scene template", async ({ page }) => {
   const studio = await openStudio(page);
   const sceneBrowser = await openLayeredScene(page);
   await sceneBrowser.getByRole("button", { name: "Use as template" }).click();
@@ -1902,24 +1541,16 @@ test("a failed draft flush blocks Back navigation", async ({ page }) => {
     studio.getByRole("button", { name: "Back to Scenes" }),
   ).toBeVisible();
 
-  await studio.getByLabel("Effect name").fill("Unsaved blocked handoff");
-  await page.evaluate(() =>
-    window.testHarness.backend.failNext("draft/update"),
-  );
+  await studio.getByLabel("Effect name").fill("Unsaved handoff");
   await studio.getByRole("button", { name: "Back to Scenes" }).click();
 
   await expect(
-    studio.getByRole("status").filter({
-      hasText:
-        "The recovery draft could not be saved: Injected draft/update failure",
-    }),
-  ).toBeVisible();
-  await expect(
-    studio.getByRole("button", { name: "Back to Scenes" }),
-  ).toBeVisible();
-  await expect(
-    studio.getByRole("button", { name: "Advanced" }),
+    studio.getByRole("button", { name: "Scenes", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  const items = await page.evaluate(() =>
+    Object.values(window.testHarness.snapshot().state.items),
+  );
+  expect(items.some((item) => item.name === "Unsaved handoff")).toBe(false);
 });
 
 test("stale delayed scene detail responses are discarded", async ({ page }) => {

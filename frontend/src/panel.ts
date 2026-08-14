@@ -17,7 +17,6 @@ import type {
   DeploymentRecord,
   DeviceCapabilities,
   EffectContent,
-  EffectDraft,
   HomeAssistant,
   LayeredSceneContent,
   LibraryItem,
@@ -72,13 +71,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private customCatalogue?: CustomEffectCatalogue;
 
   @state()
-  private drafts: EffectDraft[] = [];
-
-  @state()
   private currentItem?: LibraryItem;
-
-  @state()
-  private currentDraft?: EffectDraft;
 
   @state()
   private name = "";
@@ -106,11 +99,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private api?: EffectStudioApi;
   private savedBaseline?: string;
-  private draftTimer?: number;
-  private draftSaveInFlight?: Promise<boolean>;
-  private draftPersistPending = false;
   private editorTransitionEpoch = 0;
-  private sceneTemplateHandoffInFlight = false;
   private unsubscribeLibrary?: () => void;
   private unsubscribeDeployments?: () => void;
   private loadEpoch = 0;
@@ -175,24 +164,6 @@ export class GoveeLedEffectStudio extends LitElement {
     ]);
   }
 
-  private get customDrafts(): EffectDraft[] {
-    return this.drafts.filter(
-      (draft) => isCustomEffectKind(draft.item.content.kind),
-    );
-  }
-
-  private get advancedDrafts(): EffectDraft[] {
-    return this.drafts.filter(
-      (draft) => isAdvancedEditableKind(draft.item.content.kind),
-    );
-  }
-
-  private get editableDrafts(): EffectDraft[] {
-    return this.drafts.filter(
-      (draft) => isEditableEffectContent(draft.item.content),
-    );
-  }
-
   public connectedCallback(): void {
     super.connectedCallback();
     if (this.hass && !this.api) {
@@ -204,11 +175,6 @@ export class GoveeLedEffectStudio extends LitElement {
     super.disconnectedCallback();
     this.loadEpoch += 1;
     this.beginEditorTransition();
-    if (this.draftTimer !== undefined) {
-      window.clearTimeout(this.draftTimer);
-      this.draftTimer = undefined;
-      void this.persistDraft();
-    }
     this.stopSubscriptions();
     this.api = undefined;
   }
@@ -399,8 +365,7 @@ export class GoveeLedEffectStudio extends LitElement {
           <small>Multi</small>
         </button>
 
-        ${this.library.items.some((item) => isCustomEffectKind(item.kind)) ||
-        this.customDrafts.length
+        ${this.library.items.some((item) => isCustomEffectKind(item.kind))
           ? html`
               <p class="eyebrow saved-heading">Saved</p>
               ${this.renderLibraryGroup("h617a_painted", "Painted")}
@@ -409,8 +374,7 @@ export class GoveeLedEffectStudio extends LitElement {
             `
           : nothing}
 
-        ${!this.library.items.some((item) => isCustomEffectKind(item.kind)) &&
-        !this.customDrafts.length
+        ${!this.library.items.some((item) => isCustomEffectKind(item.kind))
           ? html`
               <p class="empty">
                 ${this.isAdmin
@@ -422,7 +386,7 @@ export class GoveeLedEffectStudio extends LitElement {
       </aside>
 
       <section class="editor">
-        ${this.name || this.currentItem || this.currentDraft
+        ${this.name || this.currentItem
           ? isCustomEffectContent(this.content)
             ? this.content.kind === "h617a_painted"
               ? this.renderPaintedEditor()
@@ -474,8 +438,7 @@ export class GoveeLedEffectStudio extends LitElement {
               ${advancedItems.map(
                 (item) => html`
                   <button
-                    class="selector item ${this.currentItem?.id === item.id &&
-                    !this.currentDraft
+                    class="selector item ${this.currentItem?.id === item.id
                       ? "selected"
                       : ""}"
                     type="button"
@@ -495,8 +458,7 @@ export class GoveeLedEffectStudio extends LitElement {
               ${opaqueItems.map(
                 (item) => html`
                   <button
-                    class="selector item ${this.currentItem?.id === item.id &&
-                    !this.currentDraft
+                    class="selector item ${this.currentItem?.id === item.id
                       ? "selected"
                       : ""}"
                     type="button"
@@ -510,10 +472,7 @@ export class GoveeLedEffectStudio extends LitElement {
             `
           : nothing}
 
-        ${!advancedItems.length &&
-        !this.advancedDrafts.length &&
-        !opaqueItems.length &&
-        !this.currentDraft
+        ${!advancedItems.length && !opaqueItems.length
           ? html`
               <p class="empty">
                 ${this.isAdmin
@@ -525,7 +484,7 @@ export class GoveeLedEffectStudio extends LitElement {
       </aside>
 
       <section class="editor">
-        ${this.name || this.currentItem || this.currentDraft
+        ${this.name || this.currentItem
           ? isAdvancedEditableContent(this.content)
             ? this.renderAdvancedEditor()
             : this.content.kind === "opaque"
@@ -629,7 +588,6 @@ export class GoveeLedEffectStudio extends LitElement {
             this.content,
             event.detail.content,
           );
-          this.scheduleDraft();
         }}
       ></govee-advanced-effect-editor>
     `;
@@ -685,8 +643,7 @@ export class GoveeLedEffectStudio extends LitElement {
       ${items.map(
         (item) => html`
           <button
-            class="selector item ${this.currentItem?.id === item.id &&
-            !this.currentDraft
+            class="selector item ${this.currentItem?.id === item.id
               ? "selected"
               : ""}"
             type="button"
@@ -904,7 +861,6 @@ export class GoveeLedEffectStudio extends LitElement {
           event: CustomEvent<{ content: CustomEffectContent }>,
         ) => {
           this.content = cloneCustomEffect(event.detail.content);
-          this.scheduleDraft();
         }}
       ></govee-custom-effect-editor>
 
@@ -1020,13 +976,6 @@ export class GoveeLedEffectStudio extends LitElement {
     if (section === this.section) {
       return;
     }
-    const flushed = await this.flushDraft();
-    if (
-      !flushed ||
-      !this.editorTransitionIsCurrent(transitionEpoch)
-    ) {
-      return;
-    }
     this.section = section;
     this.notice = undefined;
     if (section === "scenes") {
@@ -1040,22 +989,6 @@ export class GoveeLedEffectStudio extends LitElement {
     ) {
       return;
     }
-    const drafts =
-      section === "advanced" ? this.advancedDrafts : this.customDrafts;
-    const recovery = this.newestRecoveryForDevice(drafts);
-    if (recovery) {
-      const selected = await this.selectDraft(
-        recovery,
-        transitionEpoch,
-      );
-      if (
-        selected &&
-        this.editorTransitionIsCurrent(transitionEpoch)
-      ) {
-        this.notice = "Recovered an unfinished draft.";
-      }
-      return;
-    }
     const item = this.library.items.find((candidate) =>
       section === "advanced"
         ? isAdvancedEditableKind(candidate.kind)
@@ -1066,32 +999,20 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     if (this.isAdmin) {
-      await this.newEffect(
+      this.newEffect(
         section === "advanced" ? "advanced" : "h617a_painted",
         transitionEpoch,
       );
     } else {
       this.currentItem = undefined;
-      this.currentDraft = undefined;
       this.name = "";
     }
   }
 
-  private async resumeOrCreateEffect(
+  private resumeOrCreateEffect(
     section: "custom" | "advanced",
-  ): Promise<void> {
-    const drafts =
-      section === "advanced" ? this.advancedDrafts : this.customDrafts;
-    const recovery = this.newestRecoveryForDevice(drafts);
-    if (recovery) {
-      const selected = await this.selectDraft(recovery);
-      if (selected) {
-        this.section = section;
-        this.notice = "Recovered an unfinished draft.";
-      }
-      return;
-    }
-    await this.newEffect(
+  ): void {
+    this.newEffect(
       section === "advanced" ? "advanced" : "h617a_painted",
     );
   }
@@ -1128,16 +1049,6 @@ export class GoveeLedEffectStudio extends LitElement {
           (device) => device.custom_effects.painted === "supported",
         )?.config_entry_id ??
         devices[0]?.config_entry_id;
-
-      if (this.isAdmin) {
-        const summaries = await api.drafts();
-        this.drafts = await Promise.all(
-          summaries.map((summary) => api.draft(summary.id)),
-        );
-        if (!this.loadIsCurrent(loadEpoch, api)) {
-          return;
-        }
-      }
 
       const unsubscribeLibrary = await api.subscribeLibrary(
         (snapshot) => {
@@ -1176,22 +1087,13 @@ export class GoveeLedEffectStudio extends LitElement {
         this.unsubscribeDeployments = unsubscribeDeployments;
       }
 
-      const recovery = this.newestRecoveryForDevice();
       const firstCustom = library.items.find((item) =>
         isCustomEffectKind(item.kind),
       );
-      if (recovery) {
-        const selected = await this.selectDraft(recovery);
-        if (selected) {
-          this.section = isCustomEffectContent(recovery.item.content)
-            ? "custom"
-            : "advanced";
-          this.notice = "Recovered an unfinished draft.";
-        }
-      } else if (firstCustom) {
+      if (firstCustom) {
         await this.selectItem(firstCustom.id);
       } else if (this.isAdmin) {
-        await this.newEffect("h617a_painted");
+        this.newEffect("h617a_painted");
       }
     } catch (error) {
       if (this.loadIsCurrent(loadEpoch, api)) {
@@ -1244,18 +1146,6 @@ export class GoveeLedEffectStudio extends LitElement {
     return match?.[1] ? decodeURIComponent(match[1]) : undefined;
   }
 
-  private newestRecoveryForDevice(
-    drafts: EffectDraft[] = this.editableDrafts,
-  ): EffectDraft | undefined {
-    return [...drafts]
-      .filter(
-        (draft) =>
-          (!draft.selected_config_entry_id ||
-            draft.selected_config_entry_id === this.selectedDeviceId),
-      )
-      .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0];
-  }
-
   private async libraryChanged(snapshot: LibrarySnapshot): Promise<void> {
     const previousRevision = this.library.library_revision;
     if (snapshot.library_revision < previousRevision) {
@@ -1277,7 +1167,7 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     if (this.dirty) {
       this.notice =
-        "This effect changed elsewhere. Reload it before saving your draft.";
+        "This effect changed elsewhere. Reload it before saving.";
       return;
     }
     const transitionEpoch = this.beginEditorTransition();
@@ -1305,70 +1195,30 @@ export class GoveeLedEffectStudio extends LitElement {
     };
   }
 
-  private async sceneTemplateSelected(
+  private sceneTemplateSelected(
     event: CustomEvent<{
       content: LayeredSceneContent;
       config_entry_id: string;
       name: string;
     }>,
-  ): Promise<void> {
+  ): void {
     if (
-      !this.api ||
       !this.isAdmin ||
-      event.detail.config_entry_id !== this.selectedDeviceId ||
-      this.sceneTemplateHandoffInFlight
+      event.detail.config_entry_id !== this.selectedDeviceId
     ) {
       return;
     }
-    const api = this.api;
-    const transitionEpoch = this.beginEditorTransition();
-    this.sceneTemplateHandoffInFlight = true;
-    try {
-      const flushed = await this.flushDraft();
-      if (
-        !flushed ||
-        !this.editorTransitionIsCurrent(transitionEpoch)
-      ) {
-        return;
-      }
-      const content = cloneLayeredSceneContent(event.detail.content);
-      const name = event.detail.name.trim() || "Layered scene template";
-      const draft = await api.createDraft(
-        name,
-        content,
-        this.selectedDeviceId ?? null,
-      );
-      if (!this.editorTransitionIsCurrent(transitionEpoch)) {
-        await this.discardStaleDraft(api, draft);
-        return;
-      }
-      this.currentItem = undefined;
-      this.currentDraft = draft;
-      this.name = draft.item.name;
-      if (!isAdvancedEditableContent(draft.item.content)) {
-        throw new Error("The scene template draft returned an unsupported definition.");
-      }
-      this.content = cloneEditableEffect(draft.item.content);
-      this.savedBaseline = undefined;
-      this.draftPersistPending = false;
-      this.drafts = replaceDraft(this.drafts, draft);
-      this.section = "advanced";
-      this.notice = "Scene template opened as a recovery draft.";
-    } catch (error) {
-      if (this.editorTransitionIsCurrent(transitionEpoch)) {
-        this.notice = `The scene template draft could not be created: ${errorMessage(error)}`;
-      }
-    } finally {
-      this.sceneTemplateHandoffInFlight = false;
-    }
+    this.beginEditorTransition();
+    this.currentItem = undefined;
+    this.name = event.detail.name.trim() || "Layered scene template";
+    this.content = cloneLayeredSceneContent(event.detail.content);
+    this.savedBaseline = undefined;
+    this.section = "advanced";
+    this.notice = undefined;
   }
 
-  private async backToScenes(): Promise<void> {
-    const transitionEpoch = this.beginEditorTransition();
-    const flushed = await this.flushDraft();
-    if (!flushed || !this.editorTransitionIsCurrent(transitionEpoch)) {
-      return;
-    }
+  private backToScenes(): void {
+    this.beginEditorTransition();
     this.section = "scenes";
     this.notice = undefined;
   }
@@ -1382,17 +1232,6 @@ export class GoveeLedEffectStudio extends LitElement {
     return epoch === this.editorTransitionEpoch;
   }
 
-  private async discardStaleDraft(
-    api: EffectStudioApi,
-    draft: EffectDraft,
-  ): Promise<void> {
-    try {
-      await api.deleteDraft(draft);
-    } catch (error) {
-      console.warn("A stale recovery draft could not be removed.", error);
-    }
-  }
-
   private deviceChanged(event: Event): void {
     this.beginEditorTransition();
     this.selectedDeviceId = (event.target as HTMLSelectElement).value;
@@ -1403,7 +1242,6 @@ export class GoveeLedEffectStudio extends LitElement {
       "verifying",
       "interrupted",
     ])?.operation_id;
-    this.scheduleDraft();
     this.notice = this.applyAvailabilityNotice();
   }
 
@@ -1491,18 +1329,17 @@ export class GoveeLedEffectStudio extends LitElement {
     if (/^New (Painted|Single|Multi) effect$/.test(this.name)) {
       this.name = `New ${customKindLabel(kind)} effect`;
     }
-    this.scheduleDraft();
     this.notice = this.applyAvailabilityNotice();
   }
 
-  private async newEffect(
+  private newEffect(
     kind: NewEffectKind,
     existingTransitionEpoch?: number,
     initial?: {
       name: string;
       content: CustomEffectContent;
     },
-  ): Promise<void> {
+  ): void {
     const transitionEpoch =
       existingTransitionEpoch ?? this.beginEditorTransition();
     if (
@@ -1512,45 +1349,15 @@ export class GoveeLedEffectStudio extends LitElement {
     ) {
       return;
     }
-    const api = this.api;
-    const flushed = await this.flushDraft();
-    if (
-      !flushed ||
-      !this.editorTransitionIsCurrent(transitionEpoch)
-    ) {
-      return;
-    }
     this.currentItem = undefined;
-    this.currentDraft = undefined;
     this.name = initial?.name ?? `New ${customKindLabel(kind)} effect`;
     this.content =
       initial?.content ??
       (kind === "advanced"
         ? blankAdvancedContent()
         : blankCustomEffect(kind, this.customCatalogue!));
-    this.savedBaseline =
-      kind === "advanced"
-        ? serialiseEditable(this.name, this.content)
-        : undefined;
-    this.draftPersistPending = false;
+    this.savedBaseline = undefined;
     this.notice = this.applyAvailabilityNotice();
-    try {
-      const draft = await api.createDraft(
-        this.name,
-        this.content,
-        this.selectedDeviceId ?? null,
-      );
-      if (!this.editorTransitionIsCurrent(transitionEpoch)) {
-        await this.discardStaleDraft(api, draft);
-        return;
-      }
-      this.currentDraft = draft;
-      this.drafts = replaceDraft(this.drafts, draft);
-    } catch (error) {
-      if (this.editorTransitionIsCurrent(transitionEpoch)) {
-        this.notice = `The recovery draft could not be created: ${errorMessage(error)}`;
-      }
-    }
   }
 
   private async selectItem(
@@ -1562,38 +1369,16 @@ export class GoveeLedEffectStudio extends LitElement {
     if (!this.api) {
       return false;
     }
-    const api = this.api;
-    const flushed = await this.flushDraft();
-    if (
-      !flushed ||
-      !this.editorTransitionIsCurrent(transitionEpoch)
-    ) {
-      return false;
-    }
     try {
-      const item = await api.item(itemId);
+      const item = await this.api.item(itemId);
       if (!this.editorTransitionIsCurrent(transitionEpoch)) {
         return false;
       }
-      const recoveryCandidate = this.drafts.find(
-        (draft) => draft.base_item_id === item.id,
-      );
       if (item.content.kind === "opaque") {
-        const recovery =
-          recoveryCandidate?.item.content.kind === "opaque"
-            ? recoveryCandidate
-            : undefined;
-        const recoveryContent = recovery?.item.content;
-        const selectedContent =
-          recoveryContent?.kind === "opaque"
-            ? recoveryContent
-            : item.content;
         this.currentItem = item;
-        this.currentDraft = recovery;
-        this.name = recovery?.item.name ?? item.name;
-        this.content = cloneOpaqueContent(selectedContent);
+        this.name = item.name;
+        this.content = cloneOpaqueContent(item.content);
         this.savedBaseline = undefined;
-        this.draftPersistPending = false;
         this.notice =
           "This effect definition is preserved, but this editor cannot change or apply it.";
         return true;
@@ -1602,27 +1387,14 @@ export class GoveeLedEffectStudio extends LitElement {
         this.notice = "This item cannot be edited here.";
         return false;
       }
-      const recovery =
-        recoveryCandidate &&
-        isEditableEffectContent(recoveryCandidate.item.content)
-          ? recoveryCandidate
-          : undefined;
-      const selectedContent = recovery?.item.content ?? item.content;
-      if (!isEditableEffectContent(selectedContent)) {
-        return false;
-      }
       this.currentItem = item;
-      this.currentDraft = recovery;
-      this.name = recovery?.item.name ?? item.name;
-      this.content = cloneEditableEffect(selectedContent);
+      this.name = item.name;
+      this.content = cloneEditableEffect(item.content);
       this.savedBaseline = serialiseEditable(
         item.name,
         item.content,
       );
-      this.draftPersistPending = false;
-      this.notice = recovery
-        ? "Recovered an unfinished draft."
-        : this.applyAvailabilityNotice();
+      this.notice = this.applyAvailabilityNotice();
       return true;
     } catch (error) {
       if (this.editorTransitionIsCurrent(transitionEpoch)) {
@@ -1632,96 +1404,8 @@ export class GoveeLedEffectStudio extends LitElement {
     }
   }
 
-  private async selectDraft(
-    draft: EffectDraft,
-    existingTransitionEpoch?: number,
-  ): Promise<boolean> {
-    const transitionEpoch =
-      existingTransitionEpoch ?? this.beginEditorTransition();
-    if (!this.api) {
-      return false;
-    }
-    const api = this.api;
-    if (this.currentDraft?.id === draft.id) {
-      return (
-        (await this.flushDraft()) &&
-        this.editorTransitionIsCurrent(transitionEpoch)
-      );
-    }
-    const flushed = await this.flushDraft();
-    if (
-      !flushed ||
-      !this.editorTransitionIsCurrent(transitionEpoch)
-    ) {
-      return false;
-    }
-    draft = this.drafts.find((item) => item.id === draft.id) ?? draft;
-    if (draft.item.content.kind === "opaque") {
-      let baseItem: LibraryItem | undefined;
-      if (draft.base_item_id) {
-        try {
-          const candidate = await api.item(draft.base_item_id);
-          if (!this.editorTransitionIsCurrent(transitionEpoch)) {
-            return false;
-          }
-          if (candidate.content.kind === "opaque") {
-            baseItem = candidate;
-          }
-        } catch {
-          if (!this.editorTransitionIsCurrent(transitionEpoch)) {
-            return false;
-          }
-          this.notice =
-            "The saved effect behind this draft is no longer available.";
-        }
-      }
-      this.currentItem = baseItem;
-      this.currentDraft = draft;
-      this.name = draft.item.name;
-      this.content = cloneOpaqueContent(draft.item.content);
-      this.savedBaseline = undefined;
-      this.draftPersistPending = false;
-      this.notice =
-        "This effect definition is preserved, but this editor cannot change or apply it.";
-      return true;
-    }
-    if (!isEditableEffectContent(draft.item.content)) {
-      this.notice = "This draft cannot be edited here.";
-      return false;
-    }
-    let baseItem: LibraryItem | undefined;
-    if (draft.base_item_id) {
-      try {
-        baseItem = await api.item(draft.base_item_id);
-        if (!this.editorTransitionIsCurrent(transitionEpoch)) {
-          return false;
-        }
-      } catch {
-        if (!this.editorTransitionIsCurrent(transitionEpoch)) {
-          return false;
-        }
-        this.notice =
-          "The saved effect behind this draft is no longer available.";
-      }
-    }
-    this.currentItem = baseItem;
-    this.currentDraft = draft;
-    this.name = draft.item.name;
-    this.content = cloneEditableEffect(draft.item.content);
-    this.savedBaseline = baseItem
-      && isEditableEffectContent(baseItem.content)
-      ? serialiseEditable(baseItem.name, baseItem.content)
-      : undefined;
-    this.draftPersistPending = false;
-    if (!this.notice) {
-      this.notice = this.applyAvailabilityNotice();
-    }
-    return true;
-  }
-
   private nameChanged(event: Event): void {
     this.name = (event.target as HTMLInputElement).value;
-    this.scheduleDraft();
   }
 
   private foregroundChanged(event: Event): void {
@@ -1754,7 +1438,6 @@ export class GoveeLedEffectStudio extends LitElement {
       ...this.content,
       groups: groupsFromColours(colours, this.content.background),
     };
-    this.scheduleDraft();
   }
 
   private paintAll(): void {
@@ -1771,7 +1454,6 @@ export class GoveeLedEffectStudio extends LitElement {
         this.content.background,
       ),
     };
-    this.scheduleDraft();
   }
 
   private resetPaint(): void {
@@ -1782,7 +1464,6 @@ export class GoveeLedEffectStudio extends LitElement {
       ...this.content,
       groups: [],
     };
-    this.scheduleDraft();
   }
 
   private updateContent(update: Partial<PaintedContent>): void {
@@ -1793,190 +1474,6 @@ export class GoveeLedEffectStudio extends LitElement {
       ...this.content,
       ...update,
     };
-    this.scheduleDraft();
-  }
-
-  private scheduleDraft(): void {
-    if (!this.isAdmin || !this.api) {
-      return;
-    }
-    this.draftPersistPending = true;
-    if (this.draftTimer !== undefined) {
-      window.clearTimeout(this.draftTimer);
-    }
-    this.draftTimer = window.setTimeout(() => {
-      this.draftTimer = undefined;
-      void this.persistDraft();
-    }, 700);
-  }
-
-  private async flushDraft(): Promise<boolean> {
-    if (this.draftTimer !== undefined) {
-      window.clearTimeout(this.draftTimer);
-      this.draftTimer = undefined;
-    }
-    if (!this.draftPersistPending && !this.draftSaveInFlight) {
-      return true;
-    }
-    return this.persistDraft();
-  }
-
-  private async persistDraft(): Promise<boolean> {
-    let previousSaveSucceeded = true;
-    if (this.draftSaveInFlight) {
-      previousSaveSucceeded = await this.draftSaveInFlight;
-    }
-    if (!this.draftPersistPending) {
-      return previousSaveSucceeded;
-    }
-    if (!this.api || !this.isAdmin) {
-      return false;
-    }
-    if (
-      !this.dirty ||
-      !this.name.trim() ||
-      !isEditableEffectContent(this.content)
-    ) {
-      this.draftPersistPending = false;
-      return true;
-    }
-    const content = this.content;
-    const snapshot = serialiseDraft(
-      this.name,
-      content,
-      this.selectedDeviceId,
-    );
-    this.draftPersistPending = false;
-    const save = this.persistDraftNow();
-    this.draftSaveInFlight = save;
-    let saveSucceeded: boolean;
-    try {
-      saveSucceeded = await save;
-    } finally {
-      if (this.draftSaveInFlight === save) {
-        this.draftSaveInFlight = undefined;
-      }
-    }
-    if (!saveSucceeded) {
-      this.draftPersistPending = true;
-    }
-    const contentChanged =
-      isEditableEffectContent(this.content) &&
-      snapshot !== serialiseDraft(
-        this.name,
-        this.content,
-        this.selectedDeviceId,
-      );
-    if (contentChanged) {
-      this.scheduleDraft();
-    }
-    return saveSucceeded;
-  }
-
-  private async persistDraftNow(): Promise<boolean> {
-    if (!this.api || !isEditableEffectContent(this.content)) {
-      return false;
-    }
-    const api = this.api;
-    const originatingDraft = this.currentDraft;
-    const originatingItem = this.currentItem;
-    const name = this.name.trim();
-    const content = this.content;
-    const selectedDeviceId = this.selectedDeviceId ?? null;
-    const snapshot = serialiseDraft(
-      name,
-      content,
-      selectedDeviceId ?? undefined,
-    );
-    try {
-      const draft = originatingDraft
-        ? await api.updateDraft(
-            originatingDraft,
-            name,
-            content,
-            selectedDeviceId,
-          )
-        : await api.createDraft(
-            name,
-            content,
-            selectedDeviceId,
-            originatingItem,
-          );
-      if (!this.draftIdentityIsCurrent(api, originatingDraft, originatingItem)) {
-        return true;
-      }
-      this.currentDraft = draft;
-      this.drafts = replaceDraft(this.drafts, draft);
-      return true;
-    } catch (error) {
-      if (
-        errorCode(error) === "conflict" &&
-        originatingDraft &&
-        this.draftContextIsCurrent(
-          api,
-          originatingDraft,
-          originatingItem,
-          snapshot,
-        )
-      ) {
-        try {
-          const fork = await api.createDraft(
-            name,
-            content,
-            selectedDeviceId,
-            originatingItem,
-          );
-          if (
-            this.draftContextIsCurrent(
-              api,
-              originatingDraft,
-              originatingItem,
-              snapshot,
-            )
-          ) {
-            this.currentDraft = fork;
-            this.drafts = replaceDraft(this.drafts, fork);
-            this.notice =
-              "This draft changed elsewhere, so your work was saved as a separate recovery draft.";
-          }
-          return true;
-        } catch (forkError) {
-          error = forkError;
-        }
-      }
-      this.notice = `The recovery draft could not be saved: ${errorMessage(error)}`;
-      return false;
-    }
-  }
-
-  private draftIdentityIsCurrent(
-    api: EffectStudioApi,
-    draft: EffectDraft | undefined,
-    item: LibraryItem | undefined,
-  ): boolean {
-    return (
-      this.api === api &&
-      sameDraftRevision(this.currentDraft, draft) &&
-      sameLibraryItemRevision(this.currentItem, item) &&
-      isEditableEffectContent(this.content)
-    );
-  }
-
-  private draftContextIsCurrent(
-    api: EffectStudioApi,
-    draft: EffectDraft | undefined,
-    item: LibraryItem | undefined,
-    snapshot: string,
-  ): boolean {
-    return (
-      this.draftIdentityIsCurrent(api, draft, item) &&
-      isEditableEffectContent(this.content) &&
-      serialiseDraft(
-        this.name.trim(),
-        this.content,
-        this.selectedDeviceId,
-      ) === snapshot
-    );
   }
 
   private async save(): Promise<void> {
@@ -1997,7 +1494,6 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     const transitionEpoch = this.beginEditorTransition();
     const originatingItem = this.currentItem;
-    const originatingDraft = this.currentDraft;
     const content = cloneEditableEffect(this.content);
     const originatingLibraryRevision = this.library.library_revision;
     this.saving = true;
@@ -2036,7 +1532,6 @@ export class GoveeLedEffectStudio extends LitElement {
         this.name = result.item.name;
         this.content = cloneEditableEffect(savedContent);
         this.savedBaseline = serialiseEditable(this.name, this.content);
-        this.draftPersistPending = false;
       }
       const savedResultIsCurrent = () =>
         this.editorTransitionIsCurrent(transitionEpoch) &&
@@ -2044,27 +1539,6 @@ export class GoveeLedEffectStudio extends LitElement {
         isEditableEffectContent(this.content) &&
         serialiseEditable(this.name, this.content) ===
           serialiseEditable(result.item.name, savedContent);
-      if (originatingDraft) {
-        try {
-          await api.deleteDraft(originatingDraft);
-          this.drafts = this.drafts.filter(
-            (draft) => !sameDraftRevision(draft, originatingDraft),
-          );
-          if (
-            this.editorTransitionIsCurrent(transitionEpoch) &&
-            sameDraftRevision(this.currentDraft, originatingDraft)
-          ) {
-            this.currentDraft = undefined;
-          }
-        } catch (error) {
-          if (savedResultIsCurrent()) {
-            this.notice =
-              `Saved ${name}, but its recovery draft could not be cleared: ` +
-              errorMessage(error);
-          }
-          return;
-        }
-      }
       if (savedResultIsCurrent()) {
         this.notice = "Saved.";
       }
@@ -3006,18 +2480,6 @@ function serialiseEditable(
   });
 }
 
-function serialiseDraft(
-  name: string,
-  content: EditableEffectContent,
-  selectedDeviceId: string | undefined,
-): string {
-  return JSON.stringify({
-    name: name.trim(),
-    content,
-    selectedDeviceId: selectedDeviceId ?? null,
-  });
-}
-
 function isCustomEffectKind(
   kind: unknown,
 ): kind is CustomEffectContent["kind"] {
@@ -3091,23 +2553,9 @@ function customKindLabel(kind: unknown): string {
   }
 }
 
-function replaceDraft(drafts: EffectDraft[], next: EffectDraft): EffectDraft[] {
-  return [
-    next,
-    ...drafts.filter((draft) => draft.id !== next.id),
-  ].sort((left, right) => right.updated_at.localeCompare(left.updated_at));
-}
-
 function sameLibraryItemRevision(
   left: LibraryItem | undefined,
   right: LibraryItem | undefined,
-): boolean {
-  return left?.id === right?.id && left?.revision === right?.revision;
-}
-
-function sameDraftRevision(
-  left: EffectDraft | undefined,
-  right: EffectDraft | undefined,
 ): boolean {
   return left?.id === right?.id && left?.revision === right?.revision;
 }
