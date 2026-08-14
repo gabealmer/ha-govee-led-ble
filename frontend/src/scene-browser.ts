@@ -3,6 +3,11 @@ import { property, state } from "lit/decorators.js";
 
 import { cloneLayeredSceneContent } from "./advanced-effect-editor";
 import type { EffectStudioApi } from "./api";
+import type {
+  SegmentedControlChange,
+  SegmentedControlOption,
+} from "./segmented-control";
+import "./segmented-control";
 import {
   studioActionStyles,
   studioBaseStyles,
@@ -329,7 +334,7 @@ export class GoveeSceneBrowser extends LitElement {
     const speedIndex = this.speedIndex ?? speed?.default_index ?? 0;
     const custom = this.selectedItem !== undefined || this.editingCopy;
     return html`
-      <header class="detail-heading">
+      <header class="editor-heading">
         <div>
           ${custom
             ? html`
@@ -416,28 +421,20 @@ export class GoveeSceneBrowser extends LitElement {
         <div class="parameter-list">
           ${speed
             ? html`
-                <label class="speed-parameter">
-                  <span class="parameter-heading">
-                    <span class="parameter-label">Speed</span>
-                    <output>
-                      ${speedLabel(speedIndex, speed.default_index)}
-                    </output>
-                  </span>
-                  <input
-                    type="range"
-                    aria-label="Scene speed"
-                    min="0"
-                    max=${speed.option_count - 1}
-                    step="1"
-                    .value=${String(speedIndex)}
-                    ?disabled=${!this.isAdmin}
-                    @input=${(event: Event) => {
-                      this.speedIndex = Number(
-                        (event.target as HTMLInputElement).value,
-                      );
-                    }}
-                  />
-                </label>
+                <govee-segmented-control
+                  .label=${"Speed"}
+                  .value=${speedIndex}
+                  .options=${sceneSpeedOptions(
+                    speed.option_count,
+                    speed.default_index,
+                  )}
+                  .disabled=${!this.isAdmin}
+                  @value-changed=${(
+                    event: CustomEvent<SegmentedControlChange<number>>,
+                  ) => {
+                    this.speedIndex = event.detail.value;
+                  }}
+                ></govee-segmented-control>
               `
             : nothing}
           ${palette
@@ -966,27 +963,6 @@ export class GoveeSceneBrowser extends LitElement {
       );
     }
 
-    .parameter-heading {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 16px;
-    }
-
-    .parameter-heading output {
-      color: var(--studio-muted);
-      font-weight: 600;
-    }
-
-    .speed-parameter {
-      display: grid;
-      gap: 10px;
-    }
-
-    .speed-parameter input {
-      width: 100%;
-    }
-
     .visual-parameter {
       display: grid;
       gap: 12px;
@@ -1080,14 +1056,24 @@ function sceneKey(scene: SceneSummary): string {
   return `builtin:${scene.scene_id}:${scene.effect_id}`;
 }
 
-function speedLabel(index: number, defaultIndex: number): string {
+function sceneSpeedOptions(
+  optionCount: number,
+  defaultIndex: number,
+): SegmentedControlOption<number>[] {
+  return Array.from({ length: optionCount }, (_unused, index) => ({
+    value: index,
+    label: sceneSpeedLabel(index, defaultIndex),
+  }));
+}
+
+function sceneSpeedLabel(index: number, defaultIndex: number): string {
   const offset = index - defaultIndex;
   if (offset === 0) {
     return "Default";
   }
 
   const magnitude = Math.abs(offset);
-  return `${offset < 0 ? "Slower" : "Faster"}${magnitude > 1 ? ` ${magnitude}` : ""}`;
+  return `${magnitude} ${magnitude === 1 ? "step" : "steps"} ${offset < 0 ? "lower" : "higher"}`;
 }
 
 function clonePaletteSceneContent(

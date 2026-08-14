@@ -6,6 +6,8 @@ import type {
   GoveeReorderableStrip,
   ReorderableStripItem,
 } from "./reorderable-strip";
+import type { SegmentedControlChange } from "./segmented-control";
+import "./segmented-control";
 import {
   studioActionStyles,
   studioBaseStyles,
@@ -808,32 +810,21 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     return html`
       <section class="card wide-card">
         <h3 class="section-title">Brightness</h3>
-        <div
-          class="parameter-options"
-          role="group"
-          aria-label="Brightness distribution"
-        >
-          <button
-            class=${layer.brightness_gradient ? "" : "selected"}
-            type="button"
-            aria-pressed=${!layer.brightness_gradient}
-            ?disabled=${this.disabled}
-            @click=${() =>
-              this.updateLayer({ brightness_gradient: false })}
-          >
-            Unified
-          </button>
-          <button
-            class=${layer.brightness_gradient ? "selected" : ""}
-            type="button"
-            aria-pressed=${layer.brightness_gradient}
-            ?disabled=${this.disabled}
-            @click=${() =>
-              this.updateLayer({ brightness_gradient: true })}
-          >
-            Gradient
-          </button>
-        </div>
+        <govee-segmented-control
+          .label=${"Distribution"}
+          .value=${layer.brightness_gradient}
+          .options=${[
+            { value: false, label: "Unified" },
+            { value: true, label: "Gradient" },
+          ]}
+          .disabled=${this.disabled}
+          @value-changed=${(
+            event: CustomEvent<SegmentedControlChange<boolean>>,
+          ) =>
+            this.updateLayer({
+              brightness_gradient: event.detail.value,
+            })}
+        ></govee-segmented-control>
 
         <div class="pattern-toolbar">
           <div

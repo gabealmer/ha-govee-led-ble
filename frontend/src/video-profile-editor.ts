@@ -1,6 +1,12 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
+import type {
+  SegmentedControlChange,
+  SegmentedControlOption,
+  SegmentedControlValue,
+} from "./segmented-control";
+import "./segmented-control";
 import {
   studioBaseStyles,
   studioCardStyles,
@@ -262,35 +268,22 @@ export class GoveeVideoProfileEditor extends LitElement {
     `;
   }
 
-  private renderSegmentedField<T extends string | boolean>(
+  private renderSegmentedField<T extends SegmentedControlValue>(
     label: string,
     selected: T,
-    options: readonly { value: T; label: string }[],
+    options: readonly SegmentedControlOption<T>[],
     changed: (value: T) => void,
   ) {
     return html`
-      <div class="field-group">
-        <span class="parameter-label">${label}</span>
-        <div class="parameter-options" role="group" aria-label=${label}>
-          ${options.map(
-            (option) => html`
-              <button
-                class=${selected === option.value ? "selected" : ""}
-                type="button"
-                aria-pressed=${selected === option.value}
-                ?disabled=${this.disabled}
-                @click=${() => {
-                  if (selected !== option.value) {
-                    changed(option.value);
-                  }
-                }}
-              >
-                ${option.label}
-              </button>
-            `,
-          )}
-        </div>
-      </div>
+      <govee-segmented-control
+        .label=${label}
+        .value=${selected}
+        .options=${options}
+        .disabled=${this.disabled}
+        @value-changed=${(
+          event: CustomEvent<SegmentedControlChange<T>>,
+        ) => changed(event.detail.value)}
+      ></govee-segmented-control>
     `;
   }
 
@@ -450,17 +443,8 @@ export class GoveeVideoProfileEditor extends LitElement {
         grid-column: 1 / -1;
       }
 
-      .field-group {
-        display: grid;
-      }
-
-      .field-group {
-        gap: 10px;
-      }
-
       .field,
-      .range-field,
-      .field-group {
+      .range-field {
         margin-top: 0;
       }
 

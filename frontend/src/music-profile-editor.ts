@@ -4,6 +4,12 @@ import { live } from "lit/directives/live.js";
 
 import { recentColour } from "./colour-picker";
 import "./colour-picker";
+import type {
+  SegmentedControlChange,
+  SegmentedControlOption,
+  SegmentedControlValue,
+} from "./segmented-control";
+import "./segmented-control";
 import {
   studioBaseStyles,
   studioCardStyles,
@@ -27,12 +33,6 @@ type OwnedMusicParameterKey =
   | "speed";
 
 type FountainDirection = "clockwise" | "two_way" | "counterclockwise";
-
-interface SegmentedOption {
-  label: string;
-  selected: boolean;
-  activate: () => void;
-}
 
 const STYLE_MODE_IDS = new Set(["rhythm", "bloom", "shiny"]);
 const OWNED_MUSIC_PARAMETER_KEYS = new Set<OwnedMusicParameterKey>([
@@ -131,18 +131,15 @@ export class GoveeMusicProfileEditor extends LitElement {
               }),
           )}
 
-          ${this.renderSegmentedField("Colour mode", "Colour mode", [
-            {
-              label: "Automatic",
-              selected: colourMode === "automatic",
-              activate: () => this.colourModeChanged(false),
-            },
-            {
-              label: "Fixed",
-              selected: colourMode === "fixed",
-              activate: () => this.colourModeChanged(true),
-            },
-          ])}
+          ${this.renderSegmentedField(
+            "Colour mode",
+            colourMode,
+            [
+              { value: "automatic", label: "Automatic" },
+              { value: "fixed", label: "Fixed" },
+            ] as const,
+            (value) => this.colourModeChanged(value === "fixed"),
+          )}
 
           ${colourMode === "fixed"
             ? html`
@@ -161,18 +158,15 @@ export class GoveeMusicProfileEditor extends LitElement {
             : nothing}
 
           ${isStyleMode(this.content.mode)
-            ? this.renderSegmentedField("Style", "Style", [
-                {
-                  label: "Dynamic",
-                  selected: !this.content.calm,
-                  activate: () => this.styleChanged(false),
-                },
-                {
-                  label: "Calm",
-                  selected: Boolean(this.content.calm),
-                  activate: () => this.styleChanged(true),
-                },
-              ])
+            ? this.renderSegmentedField(
+                "Style",
+                Boolean(this.content.calm),
+                [
+                  { value: false, label: "Dynamic" },
+                  { value: true, label: "Calm" },
+                ] as const,
+                (value) => this.styleChanged(value),
+              )
             : nothing}
 
           ${this.renderModeParameters(this.content)}
@@ -181,30 +175,22 @@ export class GoveeMusicProfileEditor extends LitElement {
     `;
   }
 
-  private renderSegmentedField(
+  private renderSegmentedField<T extends SegmentedControlValue>(
     label: string,
-    ariaLabel: string,
-    options: ReadonlyArray<SegmentedOption>,
+    value: T,
+    options: readonly SegmentedControlOption<T>[],
+    changed: (value: T) => void,
   ) {
     return html`
-      <div class="parameter-group">
-        <span class="parameter-label">${label}</span>
-        <div class="parameter-options" role="group" aria-label=${ariaLabel}>
-          ${options.map(
-            (option) => html`
-              <button
-                class=${option.selected ? "selected" : ""}
-                type="button"
-                aria-pressed=${option.selected ? "true" : "false"}
-                ?disabled=${this.disabled}
-                @click=${option.activate}
-              >
-                ${option.label}
-              </button>
-            `,
-          )}
-        </div>
-      </div>
+      <govee-segmented-control
+        .label=${label}
+        .value=${value}
+        .options=${options}
+        .disabled=${this.disabled}
+        @value-changed=${(
+          event: CustomEvent<SegmentedControlChange<T>>,
+        ) => changed(event.detail.value)}
+      ></govee-segmented-control>
     `;
   }
 
@@ -450,20 +436,12 @@ export class GoveeMusicProfileEditor extends LitElement {
         width: 100%;
       }
 
-      .parameter-options button {
-        min-width: 120px;
-      }
-
       .range-field {
         grid-template-columns: minmax(112px, auto) minmax(100px, 1fr) 56px;
         font-variant-numeric: tabular-nums;
       }
 
       @media (max-width: 560px) {
-        .parameter-options button {
-          min-width: 0;
-        }
-
         .range-field {
           grid-template-columns: 1fr 56px;
         }
