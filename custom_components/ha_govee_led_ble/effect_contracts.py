@@ -17,9 +17,9 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 1
-EDITOR_ASSET_VERSION: Final = 1
-EFFECT_COMPILER_VERSION: Final = 1
+EDITOR_API_VERSION: Final = 2
+EDITOR_ASSET_VERSION: Final = 2
+EFFECT_COMPILER_VERSION: Final = 2
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
 
@@ -59,6 +59,7 @@ class ApplicationRoute(StrEnum):
 class CompilerDeployerStrategy(StrEnum):
     NATIVE_EFFECT_SELECTION = "native_effect_selection"
     H617A_CUSTOM_ENGINE = "h617a_custom_engine"
+    H6199_CUSTOM_ENGINE = "h6199_custom_engine"
     COORDINATOR_WRITER = "coordinator_writer"
     CANONICAL_ENCODER_ONLY = "canonical_encoder_only"
     STRUCTURAL_DEFINITION_ONLY = "structural_definition_only"
@@ -310,8 +311,8 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.PALETTE_DIY,
         "Palette DIY",
         "palette_diy",
-        ApplicationRoute.NONE,
-        CompilerDeployerStrategy.STRUCTURAL_PARSER_ONLY,
+        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        CompilerDeployerStrategy.H6199_CUSTOM_ENGINE,
         VerificationConfidence.UNVERIFIED,
         PhysicalValidationState.CAPTURE_VALIDATED,
         EvidenceClassification.STRUCTURAL,
@@ -459,6 +460,7 @@ class DeviceEffectCapabilities:
     painted: CapabilityState
     single: CapabilityState
     multi: CapabilityState
+    palette_diy: CapabilityState
     advanced: CapabilityState
     readback: str
 
@@ -472,6 +474,7 @@ class DeviceEffectCapabilities:
                 "painted": self.painted.value,
                 "single": self.single.value,
                 "multi": self.multi.value,
+                "palette_diy": self.palette_diy.value,
                 "advanced": self.advanced.value,
             },
             "readback": self.readback,
@@ -492,6 +495,7 @@ def device_effect_capabilities(
         painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED),
         single=studio_apply_capability_state(model, CapabilityWorkflow.SINGLE),
         multi=studio_apply_capability_state(model, CapabilityWorkflow.MULTI),
+        palette_diy=studio_apply_capability_state(model, CapabilityWorkflow.PALETTE_DIY),
         advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED),
         readback="diy_code_only" if model == "H617A" else "mode_only",
     )

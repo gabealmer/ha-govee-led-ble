@@ -231,6 +231,7 @@ export class MockHomeAssistantBackend {
         error_code: phase === "failed" ? "test_failure" : null,
         progress_current: phase === "compiling" || phase === "pending" ? 0 : 1,
         progress_total: 2,
+        verification_confidence: "unknown",
       },
     ];
     this.writeState(state);
@@ -254,9 +255,9 @@ export class MockHomeAssistantBackend {
     switch (command) {
       case "info":
         return this.result<T>({
-          api_version: this.apiMismatch ? 2 : 1,
+          api_version: this.apiMismatch ? 3 : 2,
           effect_schema_version: 1,
-          compiler_version: 1,
+          compiler_version: 2,
           limits: {
             effect_name: 128,
             effect_document_bytes: 65_536,
@@ -570,19 +571,22 @@ export class MockHomeAssistantBackend {
     const state = this.readState();
     const operationId = `operation-${state.nextOperationId}`;
     state.nextOperationId += 1;
+    const device = requiredDevice(String(message.config_entry_id));
+    const h6199 = device.model === "H6199";
     const deployment: DeploymentRecord = {
       operation_id: operationId,
       config_entry_id: String(message.config_entry_id),
-      diy_code: 1,
-      phase: "confirmed",
+      diy_code: h6199 ? 401 : 1,
+      phase: h6199 ? "uncertain" : "confirmed",
       updated_at: new Date().toISOString(),
       item_id:
         typeof message.item_id === "string" ? message.item_id : null,
       item_revision:
         typeof message.revision === "number" ? message.revision : null,
-      error_code: null,
-      progress_current: 1,
-      progress_total: 1,
+      error_code: h6199 ? "activation_readback_unproven" : null,
+      progress_current: h6199 ? 3 : 1,
+      progress_total: h6199 ? 3 : 1,
+      verification_confidence: h6199 ? "unknown" : "activation_match",
     };
     state.deployments.unshift(deployment);
     this.writeState(state);

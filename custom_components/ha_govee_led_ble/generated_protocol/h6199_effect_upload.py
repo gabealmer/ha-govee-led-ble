@@ -546,6 +546,16 @@ class H6199EffectUpload(ReadWriteKaitaiStruct):
 
             self._dirty = False
 
+        @property
+        def padding_len(self):
+            if hasattr(self, '_m_padding_len'):
+                return self._m_padding_len
+
+            self._m_padding_len = (self._parent.diy_chunk_count * 17 - 7) - self.palette_len
+            return getattr(self, '_m_padding_len', None)
+
+        def _invalidate_padding_len(self):
+            del self._m_padding_len
 
     class SceneContent(ReadWriteKaitaiStruct):
         def __init__(self, _io=None, _parent=None, _root=None):
@@ -620,4 +630,14 @@ class H6199EffectUpload(ReadWriteKaitaiStruct):
             self._dirty = False
 
 
+    @property
+    def diy_chunk_count(self):
+        if hasattr(self, '_m_diy_chunk_count'):
+            return self._m_diy_chunk_count
+
+        self._m_diy_chunk_count = 2
+        return getattr(self, '_m_diy_chunk_count', None)
+
+    def _invalidate_diy_chunk_count(self):
+        del self._m_diy_chunk_count
 

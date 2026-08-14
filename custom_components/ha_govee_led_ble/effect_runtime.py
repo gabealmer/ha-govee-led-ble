@@ -10,8 +10,8 @@ from dataclasses import replace
 from uuid import UUID, uuid4
 
 from .coordinator import GoveeBLECoordinator
-from .effect_catalogue import H617A_TYPE04_APPLY_CODE
-from .effect_compiler import CompiledEffect, compile_h617a
+from .effect_catalogue import H617A_TYPE04_APPLY_CODE, H6199_PALETTE_DIY_APPLY_CODE
+from .effect_compiler import CompiledEffect, VerificationStrategy, compile_effect
 from .effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
@@ -21,7 +21,7 @@ from .effect_deployments import (
     ObservedDeviceState,
     PriorControlState,
 )
-from .effect_domain import LibraryItem, MultiEffect, PaintedEffect, SingleEffect
+from .effect_domain import LibraryItem, MultiEffect, PaintedEffect, PaletteDiyEffect, SingleEffect
 
 ACTIVATION_ATTEMPTS = 2
 VERIFICATION_ATTEMPTS = 2
@@ -30,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EffectDeploymentEngine:
-    """Apply immutable H617A definitions through one coordinator transaction."""
+    """Apply immutable custom-effect definitions through one coordinator transaction."""
 
     def __init__(
         self,
@@ -53,9 +53,8 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        _require_h617a(coordinator)
         diy_code = resolve_diy_code(self._deployments, item, config_entry_id) if diy_code is None else diy_code
-        compiled = compile_h617a(item, diy_code)
+        compiled = compile_effect(item, coordinator.model, diy_code)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -77,9 +76,8 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        _require_h617a(coordinator)
         diy_code = resolve_diy_code(self._deployments, item, config_entry_id) if diy_code is None else diy_code
-        compiled = compile_h617a(item, diy_code)
+        compiled = compile_effect(item, coordinator.model, diy_code)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -195,6 +193,29 @@ class EffectDeploymentEngine:
                     next_record = replace(current, phase=DeploymentPhase.VERIFYING)
                     await self._deployments.async_put(next_record, expected_revision=None)
                     current = next_record
+                    if compiled.verification_strategy is VerificationStrategy.UNPROVEN_H6199_SLOT:
+                        selector_observed = await self._async_observe_unproven_h6199_slot(
+                            coordinator,
+                            compiled.diy_code,
+                        )
+                        uncertain = replace(
+                            current,
+                            phase=DeploymentPhase.UNCERTAIN,
+                            error_code=(
+                                "effect_content_readback_unproven"
+                                if selector_observed
+                                else "activation_readback_unproven"
+                            ),
+                            verification_confidence=ObservationConfidence.UNKNOWN,
+                        )
+                        await self._deployments.async_put(uncertain, expected_revision=None)
+                        self._reconcile_observation(
+                            coordinator,
+                            config_entry_id=record.config_entry_id,
+                            observed_at=record.updated_at,
+                            refreshed=False,
+                        )
+                        return uncertain
                     confirmed, current = await self._async_verify(
                         coordinator,
                         compiled.activation_packet,
@@ -307,6 +328,23 @@ class EffectDeploymentEngine:
                 current = replace(current, phase=DeploymentPhase.VERIFYING)
                 await self._deployments.async_put(current, expected_revision=None)
         return False, current
+
+    async def _async_observe_unproven_h6199_slot(
+        self,
+        coordinator: GoveeBLECoordinator,
+        scene_code: int,
+    ) -> bool:
+        if not coordinator.profile.state_readable:
+            return False
+        for _attempt in range(VERIFICATION_ATTEMPTS):
+            try:
+                refreshed = await coordinator.refresh_state()
+            except Exception:
+                _LOGGER.debug("Could not observe the H6199 user-effect slot after activation", exc_info=True)
+                continue
+            if refreshed and getattr(coordinator, "unknown_scene_code", None) == scene_code:
+                return True
+        return False
 
     async def _async_finish_failure(
         self,
@@ -491,6 +529,8 @@ def _coordinator_mode(coordinator: GoveeBLECoordinator) -> str:
         return mode
     if not getattr(coordinator, "is_on", True):
         return "off"
+    if getattr(coordinator, "unknown_scene_code", None) is not None:
+        return "scene"
     if coordinator.diy_code is not None:
         return "custom"
     if getattr(coordinator, "effect", None) is not None:
@@ -502,11 +542,6 @@ def _coordinator_mode(coordinator: GoveeBLECoordinator) -> str:
     return "colour"
 
 
-def _require_h617a(coordinator: GoveeBLECoordinator) -> None:
-    if coordinator.model != "H617A":
-        raise ValueError(f"{coordinator.model} custom-effect upload is not supported")
-
-
 def resolve_diy_code(
     deployments: EffectDeploymentRepository,
     item: LibraryItem,
@@ -516,4 +551,6 @@ def resolve_diy_code(
         return 800
     if isinstance(item.content, SingleEffect | MultiEffect):
         return H617A_TYPE04_APPLY_CODE
-    raise ValueError("this content kind has no H617A DIY-code allocation")
+    if isinstance(item.content, PaletteDiyEffect):
+        return H6199_PALETTE_DIY_APPLY_CODE
+    raise ValueError("this content kind has no custom-effect selector allocation")

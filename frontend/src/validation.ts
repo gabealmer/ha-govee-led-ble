@@ -37,10 +37,10 @@ import type {
 } from "./types";
 import { DEPLOYMENT_PHASES } from "./types";
 
-const EDITOR_API_VERSION = 1;
+const EDITOR_API_VERSION = 2;
 const EFFECT_SCHEMA_VERSION = 1;
-const EFFECT_COMPILER_VERSION = 1;
-const CUSTOM_CATALOGUE_SCHEMA_VERSION = 3;
+const EFFECT_COMPILER_VERSION = 2;
+const CUSTOM_CATALOGUE_SCHEMA_VERSION = 4;
 const MAX_EFFECT_NAME_LENGTH = 128;
 const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
 const MAX_EDITOR_DEVICES = 512;
@@ -87,6 +87,11 @@ const RELEASE_WORKFLOW_APPLICATIONS = [
   "studio",
   "home_assistant",
   "planned",
+] as const;
+const VERIFICATION_CONFIDENCE = [
+  "exact_session",
+  "activation_match",
+  "unknown",
 ] as const;
 const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = {
   H617A: [
@@ -205,6 +210,10 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         painted: capabilityValue(effects.painted, "painted capability"),
         single: capabilityValue(effects.single, "single capability"),
         multi: capabilityValue(effects.multi, "multi capability"),
+        palette_diy: capabilityValue(
+          effects.palette_diy,
+          "palette DIY capability",
+        ),
         advanced: capabilityValue(effects.advanced, "advanced capability"),
       },
       readback: boundedString(
@@ -352,6 +361,10 @@ function decodeModelEffectCatalogue(
       painted: capabilityValue(apply.painted, `${name} Painted Apply capability`),
       single: capabilityValue(apply.single, `${name} Single Apply capability`),
       multi: capabilityValue(apply.multi, `${name} Multi Apply capability`),
+      palette_diy: capabilityValue(
+        apply.palette_diy,
+        `${name} palette DIY Apply capability`,
+      ),
     },
   };
 }
@@ -720,6 +733,11 @@ export function decodeDeployment(value: unknown): DeploymentRecord {
       "deployment progress total",
       0,
       1024,
+    ),
+    verification_confidence: enumString(
+      deployment.verification_confidence,
+      VERIFICATION_CONFIDENCE,
+      "deployment verification confidence",
     ),
   };
   if (decoded.progress_current > decoded.progress_total) {

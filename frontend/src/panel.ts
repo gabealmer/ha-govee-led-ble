@@ -265,7 +265,10 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private get applyCapability() {
-    if (!isCustomEffectContent(this.content)) {
+    if (
+      !isCustomEffectContent(this.content) &&
+      this.content.kind !== "palette_diy"
+    ) {
       return undefined;
     }
     const capabilities = this.selectedDevice?.custom_effects;
@@ -279,12 +282,15 @@ export class GoveeLedEffectStudio extends LitElement {
         return capabilities.single;
       case "h617a_multi":
         return capabilities.multi;
+      case "palette_diy":
+        return capabilities.palette_diy;
     }
   }
 
   private get canApply(): boolean {
     return (
-      isCustomEffectContent(this.content) &&
+      (isCustomEffectContent(this.content) ||
+        this.content.kind === "palette_diy") &&
       this.isAdmin &&
       !this.applying &&
       !this.deletingCurrentItem &&
@@ -1661,7 +1667,12 @@ export class GoveeLedEffectStudio extends LitElement {
         message = `Applied to ${deviceName}. The selected custom-effect code was confirmed, but exact effect contents cannot be read back.`;
         break;
       case "uncertain":
-        message = `The final state of ${deviceName} is uncertain. The selected effect could not be confirmed.`;
+        message =
+          deployment.error_code === "effect_content_readback_unproven"
+            ? `${deviceName} reported the selected H6199 user-effect slot, but the uploaded effect content cannot be read back. The result remains uncertain.`
+            : deployment.error_code === "activation_readback_unproven"
+              ? `The H6199 effect upload was sent to ${deviceName}, but activation and readback remain unproven. The result is uncertain.`
+              : `The final state of ${deviceName} is uncertain. The selected effect could not be confirmed.`;
         break;
       case "recovering":
         message = `Restoring the previous state on ${deviceName} after the apply failed.`;
@@ -2763,7 +2774,8 @@ export class GoveeLedEffectStudio extends LitElement {
     if (
       !this.api ||
       !this.canApply ||
-      !isCustomEffectContent(this.content) ||
+      (!isCustomEffectContent(this.content) &&
+        this.content.kind !== "palette_diy") ||
       !this.selectedDeviceId
     ) {
       return;

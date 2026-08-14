@@ -438,9 +438,9 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
 
     assert api == {
-        "api_version": 1,
+        "api_version": 2,
         "effect_schema_version": 1,
-        "compiler_version": 1,
+        "compiler_version": 2,
         "limits": {
             "effect_name": MAX_EFFECT_NAME_LENGTH,
             "effect_document_bytes": MAX_EFFECT_DOCUMENT_BYTES,
@@ -454,8 +454,10 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert h617a.painted is CapabilityState.SUPPORTED
     assert h617a.single is CapabilityState.SUPPORTED
     assert h617a.multi is CapabilityState.SUPPORTED
+    assert h617a.palette_diy is CapabilityState.UNSUPPORTED
     assert h617a.advanced is CapabilityState.EVIDENCE_GAP
     assert h6199.single is CapabilityState.UNSUPPORTED
+    assert h6199.palette_diy is CapabilityState.SUPPORTED
     assert h6199.advanced is CapabilityState.EVIDENCE_GAP
     assert h6199.to_dict()["readback"] == "mode_only"
 
