@@ -230,7 +230,6 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       <header class="topbar">
         <div>
-          <p class="eyebrow">Govee LED BLE</p>
           <h1>Effect Studio</h1>
         </div>
         <label class="device-picker">
@@ -263,21 +262,9 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <main class="studio ${this.section === "scenes" ? "scenes-mode" : ""}">
         <nav class="primary-nav" aria-label="Create">
-          <p class="nav-heading">Create</p>
           ${this.navButton("scenes", "Scenes")}
           ${this.navButton("custom", "Custom Effects")}
           ${this.navButton("advanced", "Advanced")}
-          <div class="device-summary">
-            ${this.selectedDevice
-              ? html`
-                  <strong>${this.selectedDevice.display_name}</strong>
-                  <span>
-                    ${this.selectedDevice.segment_count} segments /
-                    ${this.selectedDevice.model}
-                  </span>
-                `
-              : html`<span>No loaded devices</span>`}
-          </div>
         </nav>
 
         <govee-scene-browser
@@ -329,7 +316,6 @@ export class GoveeLedEffectStudio extends LitElement {
       <aside class="library" aria-label="Custom effects">
         <div class="library-heading">
           <div>
-            <p class="eyebrow">Library</p>
             <h2>Custom effects</h2>
           </div>
           ${this.isAdmin
@@ -345,16 +331,90 @@ export class GoveeLedEffectStudio extends LitElement {
             : nothing}
         </div>
 
-        ${this.renderLibraryGroup("h617a_painted", "Painted")}
-        ${this.renderLibraryGroup("h617a_single", "Single")}
-        ${this.renderLibraryGroup("h617a_multi", "Multi")}
+        <p class="eyebrow">Painted</p>
+        ${this.customCatalogue?.painted_effects.map(
+          (effect) => html`
+            <button
+              class="selector"
+              type="button"
+              ?disabled=${!this.isAdmin}
+              @click=${() =>
+                void this.newEffect("h617a_painted", undefined, {
+                  name: `New ${effect.label} effect`,
+                  content: {
+                    ...blankPainted(),
+                    effect: effect.id,
+                  },
+                })}
+            >
+              <span>${effect.label}</span>
+              <small>Painted</small>
+            </button>
+          `,
+        )}
+
+        <p class="eyebrow">Single</p>
+        ${this.customCatalogue?.effects.map(
+          (effect) => html`
+            <button
+              class="selector"
+              type="button"
+              ?disabled=${!this.isAdmin}
+              @click=${() => {
+                const content = blankCustomEffect(
+                  "h617a_single",
+                  this.customCatalogue!,
+                );
+                void this.newEffect("h617a_single", undefined, {
+                  name: `New ${effect.label} effect`,
+                  content: {
+                    ...content,
+                    family: effect.family,
+                    variant: effect.variant,
+                  },
+                });
+              }}
+            >
+              <span>${effect.label}</span>
+              <small>Single</small>
+            </button>
+          `,
+        )}
+
+        <p class="eyebrow">Multi</p>
+        <button
+          class="selector"
+          type="button"
+          ?disabled=${!this.isAdmin}
+          @click=${() =>
+            void this.newEffect("h617a_multi", undefined, {
+              name: "New Mix effect",
+              content: blankCustomEffect(
+                "h617a_multi",
+                this.customCatalogue!,
+              ),
+            })}
+        >
+          <span>Mix</span>
+          <small>Multi</small>
+        </button>
+
+        ${this.library.items.some((item) => isCustomEffectKind(item.kind)) ||
+        this.customDrafts.length
+          ? html`
+              <p class="eyebrow saved-heading">Saved</p>
+              ${this.renderLibraryGroup("h617a_painted", "Painted")}
+              ${this.renderLibraryGroup("h617a_single", "Single")}
+              ${this.renderLibraryGroup("h617a_multi", "Multi")}
+            `
+          : nothing}
 
         ${!this.library.items.some((item) => isCustomEffectKind(item.kind)) &&
         !this.customDrafts.length
           ? html`
               <p class="empty">
                 ${this.isAdmin
-                  ? "Create your first custom effect."
+                  ? "Choose an effect to begin."
                   : "No custom effects have been saved yet."}
               </p>
             `
@@ -644,11 +704,11 @@ export class GoveeLedEffectStudio extends LitElement {
     if (this.content.kind !== "h617a_painted") {
       return nothing;
     }
+    const selectedEffect = this.content.effect;
     const deployment = this.activeDeployment;
     return html`
       <div class="editor-heading">
         <div>
-          <p class="eyebrow">Custom Effects / Painted</p>
           <input
             class="name-input"
             aria-label="Effect name"
@@ -752,16 +812,23 @@ export class GoveeLedEffectStudio extends LitElement {
         </section>
 
         <section class="card">
-          <h3>Movement</h3>
+          <h3>Effect</h3>
           <label class="field">
-            <span>Direction</span>
+            <span>Effect</span>
             <select
-              .value=${this.content.effect}
               ?disabled=${!this.isAdmin}
               @change=${this.effectChanged}
             >
-              <option value="clockwise">Clockwise</option>
-              <option value="counter_clockwise">Counterclockwise</option>
+              ${this.customCatalogue?.painted_effects.map(
+                (effect) => html`
+                  <option
+                    value=${effect.id}
+                    ?selected=${effect.id === selectedEffect}
+                  >
+                    ${effect.label}
+                  </option>
+                `,
+              )}
             </select>
           </label>
           ${this.rangeField("Speed", "speed", this.content.speed)}
@@ -789,9 +856,6 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       <div class="editor-heading">
         <div>
-          <p class="eyebrow">
-            Custom Effects / ${customKindLabel(content.kind)}
-          </p>
           <input
             class="name-input"
             aria-label="Effect name"
@@ -1434,6 +1498,10 @@ export class GoveeLedEffectStudio extends LitElement {
   private async newEffect(
     kind: NewEffectKind,
     existingTransitionEpoch?: number,
+    initial?: {
+      name: string;
+      content: CustomEffectContent;
+    },
   ): Promise<void> {
     const transitionEpoch =
       existingTransitionEpoch ?? this.beginEditorTransition();
@@ -1454,11 +1522,12 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     this.currentItem = undefined;
     this.currentDraft = undefined;
-    this.name = `New ${customKindLabel(kind)} effect`;
+    this.name = initial?.name ?? `New ${customKindLabel(kind)} effect`;
     this.content =
-      kind === "advanced"
+      initial?.content ??
+      (kind === "advanced"
         ? blankAdvancedContent()
-        : blankCustomEffect(kind, this.customCatalogue!);
+        : blankCustomEffect(kind, this.customCatalogue!));
     this.savedBaseline =
       kind === "advanced"
         ? serialiseEditable(this.name, this.content)
@@ -2182,7 +2251,6 @@ export class GoveeLedEffectStudio extends LitElement {
     }
 
     .eyebrow,
-    .nav-heading,
     .list-label {
       margin-bottom: 6px;
       color: var(--studio-muted);
@@ -2266,20 +2334,6 @@ export class GoveeLedEffectStudio extends LitElement {
       color: var(--studio-blue);
       background: var(--studio-blue-soft);
       font-weight: 650;
-    }
-
-    .device-summary {
-      display: grid;
-      gap: 4px;
-      margin-top: auto;
-      padding: 14px 10px 2px;
-      color: var(--studio-muted);
-      font-size: 12px;
-    }
-
-    .device-summary strong {
-      color: var(--primary-text-color);
-      font-size: 13px;
     }
 
     .library {
@@ -2648,11 +2702,6 @@ export class GoveeLedEffectStudio extends LitElement {
         padding: 10px 16px;
         border-inline-end: 0;
         border-bottom: 1px solid var(--studio-border);
-      }
-
-      .nav-heading,
-      .device-summary {
-        display: none;
       }
 
       .selector {

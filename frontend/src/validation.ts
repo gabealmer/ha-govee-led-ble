@@ -17,6 +17,7 @@ import type {
   LibraryItem,
   LibrarySnapshot,
   PaletteSceneContent,
+  PaintedContent,
   RGB,
   SceneCatalogue,
   SceneDetail,
@@ -170,6 +171,32 @@ export function decodeCustomCatalogue(value: unknown): CustomEffectCatalogue {
   return {
     schema_version: integerValue(catalogue.schema_version, "catalogue schema", 1),
     sku: stringValue(catalogue.sku, "catalogue SKU") as "H617A",
+    painted_effects: arrayValue(
+      catalogue.painted_effects,
+      "painted-effect templates",
+      MAX_JSON_COLLECTION_ITEMS,
+    ).map((item, index) => {
+      const effect = objectValue(item, `painted-effect templates[${index}]`);
+      return {
+        id: enumString(
+          effect.id,
+          [
+            "cycle",
+            "clockwise",
+            "counter_clockwise",
+            "twinkle",
+            "gradient",
+            "breathe",
+          ],
+          "painted-effect ID",
+        ) as PaintedContent["effect"],
+        label: boundedString(
+          effect.label,
+          "painted-effect label",
+          MAX_EFFECT_NAME_LENGTH,
+        ),
+      };
+    }),
     effects: arrayValue(
       catalogue.effects,
       "custom-effect templates",
@@ -493,7 +520,14 @@ export function decodeEffectContent(value: unknown): EffectContent {
         kind,
         effect: enumString(
           content.effect,
-          ["clockwise", "counter_clockwise"],
+          [
+            "cycle",
+            "clockwise",
+            "counter_clockwise",
+            "twinkle",
+            "gradient",
+            "breathe",
+          ],
           "painted effect",
         ),
         speed: integerValue(content.speed, "painted speed", 0, 100),

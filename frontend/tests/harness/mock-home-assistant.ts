@@ -15,6 +15,7 @@ import type {
   SceneDetail,
   SceneSummary,
 } from "../../src/types";
+import h617aData from "./h617a-data.json";
 
 const PREFIX = "ha_govee_led_ble/editor/";
 const STORAGE_KEY = "effect-studio-playwright-backend";
@@ -105,6 +106,7 @@ export class MockHomeAssistantBackend {
   private readonly failures = new Map<string, number>();
   private readonly delays = new Map<string, number>();
   private readonly calls: Record<string, unknown>[] = [];
+  private readonly storageKey: string;
   private readonly stats: Record<SubscriptionKind, SubscriptionStats> = {
     library: { installs: 0, unsubscribes: 0, deliveries: 0 },
     deployment: { installs: 0, unsubscribes: 0, deliveries: 0 },
@@ -116,9 +118,11 @@ export class MockHomeAssistantBackend {
     private readonly slowLoad: boolean,
     private readonly malformedLibrary: boolean,
     private readonly rejectDeploymentSubscription: boolean,
+    private readonly useTestFixtures: boolean,
   ) {
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      this.writeState(initialState());
+    this.storageKey = `${STORAGE_KEY}:${useTestFixtures ? "fixtures" : "production"}`;
+    if (!localStorage.getItem(this.storageKey)) {
+      this.writeState(initialState(useTestFixtures));
     }
     this.hass = {
       callWS: <T>(message: Record<string, unknown>) =>
@@ -157,6 +161,12 @@ export class MockHomeAssistantBackend {
         },
       },
     };
+  }
+
+  private get sceneCatalogue(): SceneCatalogue {
+    return this.useTestFixtures
+      ? TEST_SCENE_CATALOGUE
+      : REAL_SCENE_CATALOGUE;
   }
 
   public validateEffectContent(value: unknown): EffectContent {
@@ -220,7 +230,7 @@ export class MockHomeAssistantBackend {
       case "devices":
         return this.result<T>({ devices: DEVICES });
       case "custom/catalogue":
-        return this.result<T>({ catalogue: CUSTOM_CATALOGUE });
+        return this.result<T>({ catalogue: REAL_CUSTOM_CATALOGUE });
       case "library/list":
         if (this.malformedLibrary) {
           return this.result<T>({
@@ -259,12 +269,13 @@ export class MockHomeAssistantBackend {
       case "draft/delete":
         return this.deleteDraft<T>(message);
       case "scene/catalogue/list":
-        return this.result<T>({ catalogue: SCENE_CATALOGUE });
+        return this.result<T>({ catalogue: this.sceneCatalogue });
       case "scene/catalogue/get":
         return this.sceneDetail<T>(message);
       case "scene/apply":
         return this.result<T>({
           scene: requiredScene(
+            this.sceneCatalogue.scenes,
             Number(message.scene_id),
             Number(message.effect_id),
           ),
@@ -475,10 +486,13 @@ export class MockHomeAssistantBackend {
     message: Record<string, unknown>,
   ): Promise<T> {
     const scene = requiredScene(
+      this.sceneCatalogue.scenes,
       Number(message.scene_id),
       Number(message.effect_id),
     );
-    const detail = sceneDetail(scene);
+    const detail = this.useTestFixtures
+      ? testSceneDetail(scene)
+      : requiredRealSceneDetail(scene);
     await delay(scene.scene_id === 1 ? 300 : 10);
     return this.result<T>(detail);
   }
@@ -567,7 +581,7 @@ export class MockHomeAssistantBackend {
   }
 
   private readState(): BackendState {
-    const value = localStorage.getItem(STORAGE_KEY);
+    const value = localStorage.getItem(this.storageKey);
     if (!value) {
       throw new Error("The mock backend state is unavailable");
     }
@@ -575,7 +589,7 @@ export class MockHomeAssistantBackend {
   }
 
   private writeState(state: BackendState): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(this.storageKey, JSON.stringify(state));
   }
 
   private result<T>(value: unknown): T {
@@ -599,47 +613,14 @@ const DEVICES: DeviceCapabilities[] = [
   },
 ];
 
-const CUSTOM_CATALOGUE: CustomEffectCatalogue = {
-  schema_version: 1,
-  sku: "H617A",
-  effects: [
-    {
-      id: "fade",
-      label: "Fade",
-      family: 0,
-      variant: 0,
-    },
-    {
-      id: "jumping",
-      label: "Jumping",
-      family: 1,
-      variant: 0,
-    },
-    {
-      id: "marquee",
-      label: "Marquee",
-      family: 3,
-      variant: 3,
-    },
-    {
-      id: "chasing",
-      label: "Chasing",
-      family: 8,
-      variant: 9,
-    },
-  ],
-  limits: {
-    palette_min: 1,
-    palette_max: 8,
-    multi_max: 4,
-  },
-  apply: {
-    single: "supported",
-    multi: "supported",
-  },
-};
+const REAL_CUSTOM_CATALOGUE =
+  h617aData.custom_catalogue as CustomEffectCatalogue;
+const REAL_SCENE_CATALOGUE =
+  h617aData.scene_catalogue as SceneCatalogue;
+const REAL_SCENE_DETAILS =
+  h617aData.scene_details as Record<string, SceneDetail>;
 
-const SCENES: SceneSummary[] = [
+const TEST_SCENES: SceneSummary[] = [
   {
     scene_id: 100,
     effect_id: 200,
@@ -738,7 +719,7 @@ const SCENES: SceneSummary[] = [
   },
 ];
 
-const SCENE_CATALOGUE: SceneCatalogue = {
+const TEST_SCENE_CATALOGUE: SceneCatalogue = {
   schema_version: 1,
   sku: "H617A",
   enabled: true,
@@ -750,10 +731,21 @@ const SCENE_CATALOGUE: SceneCatalogue = {
     { id: 136, name: "Life" },
     { id: 999, name: "Synthetic schema-only" },
   ],
-  scenes: SCENES,
+  scenes: TEST_SCENES,
 };
 
-function initialState(): BackendState {
+function initialState(useTestFixtures: boolean): BackendState {
+  if (!useTestFixtures) {
+    return {
+      libraryRevision: 0,
+      items: {},
+      drafts: {},
+      deployments: [],
+      nextItemId: 1,
+      nextDraftId: 1,
+      nextOperationId: 1,
+    };
+  }
   const advanced = advancedFixture();
   const rawAdvanced = cloneAdvancedContent(advanced);
   rawAdvanced.layers[0].selection.type = 0xfe;
@@ -978,8 +970,12 @@ function expectRevision(
   }
 }
 
-function requiredScene(sceneId: number, effectId: number): SceneSummary {
-  const scene = SCENES.find(
+function requiredScene(
+  scenes: SceneSummary[],
+  sceneId: number,
+  effectId: number,
+): SceneSummary {
+  const scene = scenes.find(
     (candidate) =>
       candidate.scene_id === sceneId && candidate.effect_id === effectId,
   );
@@ -989,7 +985,7 @@ function requiredScene(sceneId: number, effectId: number): SceneSummary {
   return scene;
 }
 
-function sceneDetail(scene: SceneSummary): SceneDetail {
+function testSceneDetail(scene: SceneSummary): SceneDetail {
   if (scene.scene_type === 0) {
     return sceneDetailResult(scene, {
       kind: "scene_builtin",
@@ -1031,6 +1027,17 @@ function sceneDetail(scene: SceneSummary): SceneDetail {
           ? "0129000100320201ff3200ff321901fc000600ffff00a3ff0074ff00000000000000000000000000000000"
           : "102030405060708090a0b0c0",
   });
+}
+
+function requiredRealSceneDetail(scene: SceneSummary): SceneDetail {
+  const detail =
+    REAL_SCENE_DETAILS[`${scene.scene_id}:${scene.effect_id}`];
+  if (!detail) {
+    throw new Error(
+      `Missing real scene detail: ${scene.scene_id}/${scene.effect_id}`,
+    );
+  }
+  return detail;
 }
 
 function sceneDetailResult(
