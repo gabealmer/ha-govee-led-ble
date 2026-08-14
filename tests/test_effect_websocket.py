@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from copy import deepcopy
 from hashlib import sha256
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 from uuid import uuid4
 
 import pytest
@@ -19,6 +20,7 @@ from homeassistant.setup import async_setup_component
 from custom_components.ha_govee_led_ble.const import EFFECT_FAMILY_SCENES
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import H6199_DIY_EFFECTS
+from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
@@ -34,6 +36,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SingleEffect,
     TargetHint,
     VideoProfile,
+    effect_content_from_dict,
     effect_content_to_dict,
 )
 from custom_components.ha_govee_led_ble.effect_limits import (
@@ -1409,6 +1412,82 @@ async def test_unsaved_painted_effect_can_be_applied_as_snapshot(
     assert "artifact_sha256" not in applied["result"]["deployment"]
     assert "compiler_version" not in applied["result"]["deployment"]
     apply_mock.assert_awaited_once()
+
+
+async def test_unsaved_layered_scene_api_compiles_and_sends_authored_packets(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+    content = _layered_scene_content()
+    expected = compile_effect(
+        LibraryItem.new("Unsaved layered scene", effect_content_from_dict(content)),
+        "H617A",
+    )
+    coordinator = SimpleNamespace(
+        _control_lock=asyncio.Lock(),
+        address="AA:BB:CC:DD:EE:FF",
+        model="H617A",
+        profile=SimpleNamespace(state_readable=True),
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        color_temp_kelvin=None,
+        effect=None,
+        diy_code=None,
+        music_mode="off",
+        video_mode="off",
+        music_sensitivity=50,
+        music_calm=False,
+        music_color=None,
+        send_command=AsyncMock(),
+        refresh_state=AsyncMock(),
+    )
+
+    async def refresh() -> bool:
+        if coordinator.refresh_state.await_count >= 2:
+            coordinator.effect = expected.expected_effect
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain="ha_govee_led_ble",
+        state=ConfigEntryState.LOADED,
+        runtime_data=coordinator,
+    )
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == "entry-a" else None,
+    )
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_APPLY_SNAPSHOT,
+            "config_entry_id": "entry-a",
+            "name": "Unsaved layered scene",
+            "content": content,
+            "updated_at": "2026-08-11T00:00:00Z",
+        }
+    )
+    applied = await client.receive_json()
+
+    assert applied["success"] is True
+    assert applied["result"]["deployment"]["target_mode"] == "scene"
+    assert applied["result"]["deployment"]["verification_confidence"] == "activation_match"
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in expected.packets]
+    assert backend.deployments.snapshot().records[0].snapshot is not None
+    assert {
+        event["code"]
+        for event in backend.diagnostics.snapshot(config_entry_id="entry-a")["events"]
+        if event["stage"] == "evidence_gap"
+    } == {
+        "scene_payload_readback_unavailable",
+        "layered_field_semantics_uncalibrated",
+    }
 
 
 async def test_admin_draft_lifecycle(hass: HomeAssistant, hass_ws_client) -> None:

@@ -151,6 +151,41 @@ async def test_restore_effect_control_state_cannot_recover_overwritten_diy_slot(
     send.assert_not_awaited()
 
 
+async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
+    for coordinator in (coord, h6199):
+        effect, scene = next(
+            (name, entry)
+            for name, entry in MODEL_SCENES[coordinator.model].items()
+            if entry.param
+        )
+        state = PriorControlState(
+            mode="scene",
+            is_on=True,
+            brightness_pct=72,
+            rgb_color=(1, 2, 3),
+            effect=effect,
+        )
+        expected = (
+            proto.build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
+            if coordinator.model == "H6199"
+            else proto.build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed)
+        )
+
+        with (
+            patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
+            patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+        ):
+            recovered = await coordinator.async_restore_effect_control_state(
+                state,
+                overwritten_diy_code=-1,
+            )
+
+        assert recovered is True
+        assert send.await_args_list == [call(packet) for packet in expected]
+        refresh.assert_awaited_once_with(expected_effect=effect)
+        assert coordinator.active_mode == "scene"
+
+
 async def test_send_command(coord):
     c = _c(write_gatt_char=AsyncMock(side_effect=[BleakError("f"), BleakError("f"), None]))
     with patch.object(coord, "_ensure_connected", return_value=c):

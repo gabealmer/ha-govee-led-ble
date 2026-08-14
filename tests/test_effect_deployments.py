@@ -282,12 +282,20 @@ def test_deployment_round_trip_preserves_prior_state_and_verification_confidence
         _deployment(DeploymentPhase.CONFIRMED),
         prior_state=prior_state,
         verification_confidence=ObservationConfidence.ACTIVATION_MATCH,
+        target_mode="scene",
+        target_effect="forest",
+        evidence_codes=(
+            "scene_payload_readback_unavailable",
+            "layered_field_semantics_uncalibrated",
+        ),
     )
 
     restored = DeploymentRecord.from_dict(record.to_dict())
 
     assert restored == record
     assert restored.to_public_dict()["verification_confidence"] == "activation_match"
+    assert restored.to_public_dict()["target_mode"] == "scene"
+    assert restored.to_public_dict()["target_effect"] == "forest"
 
 
 @pytest.mark.parametrize(
@@ -295,6 +303,8 @@ def test_deployment_round_trip_preserves_prior_state_and_verification_confidence
     [
         {"config_entry_id": ""},
         {"diy_code": -1},
+        {"target_mode": "invalid"},
+        {"target_mode": "scene", "target_effect": None},
         {"compiler_version": 0},
         {"artifact_sha256": "short"},
         {"updated_at": ""},
@@ -355,6 +365,7 @@ def test_observation_does_not_contain_authored_definition() -> None:
         observed_at="2026-08-11T00:00:00Z",
         confidence=ObservationConfidence.ACTIVATION_MATCH,
         diy_code=800,
+        effect="forest",
         matched_operation_id=uuid4(),
     )
 

@@ -11,8 +11,8 @@ the ``advanced`` and ``scene_layered`` JSON bodies to the value converters here.
 wire values survive persistence.  Their enums provide names for known values only.
 Authoring limits belong in UX editor and capability validation, not this module.
 Decoders source split flag values from generated Kaitai properties.  The
-``raw_param`` field records source provenance; these converters do not encode edited
-DTOs back to wire bytes.
+``raw_param`` field records immutable source provenance.  The shared encoder writes
+canonical fields, including unknown flags and excess bytes, rather than replaying it.
 """
 
 from __future__ import annotations

@@ -704,6 +704,15 @@ export function decodeDeployment(value: unknown): DeploymentRecord {
       MAX_IDENTIFIER_LENGTH,
     ),
     diy_code: integerValue(deployment.diy_code, "deployment DIY code", 0, 65_535),
+    target_mode: enumString(
+      deployment.target_mode,
+      ["custom", "scene"] as const,
+      "deployment target mode",
+    ),
+    target_effect: nullableBoundedString(
+      deployment.target_effect,
+      "deployment target effect",
+    ),
     phase,
     updated_at: timestampString(
       deployment.updated_at,

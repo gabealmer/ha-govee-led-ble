@@ -322,3 +322,30 @@ async def test_deployment_bridge_records_bounded_transition_summary() -> None:
     ]
     assert events[2]["details"] == {"current": 3, "total": 3}
     assert events[-1]["presentation"] == "diagnostic_only"
+
+
+async def test_scene_compiler_evidence_is_diagnostic_only() -> None:
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    initial = await repository.async_load()
+    history = _history()
+    bridge = EffectDeploymentDiagnosticBridge(repository, history, initial)
+    scene = replace(
+        _deployment(DeploymentPhase.COMPILING),
+        target_mode="scene",
+        target_effect="forest",
+        evidence_codes=(
+            "scene_payload_readback_unavailable",
+            "layered_field_semantics_uncalibrated",
+        ),
+    )
+
+    await repository.async_put(scene, expected_revision=None)
+    events = history.snapshot(config_entry_id="entry-a")["events"]
+    bridge.close()
+
+    assert [event["code"] for event in events] == [
+        "artifact_compiled",
+        "scene_payload_readback_unavailable",
+        "layered_field_semantics_uncalibrated",
+    ]
+    assert all(event["presentation"] == "diagnostic_only" for event in events[1:])

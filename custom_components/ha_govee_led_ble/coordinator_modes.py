@@ -61,7 +61,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             return "off"
         if self.diy_code is not None:
             return "custom"
-        if self.effect in self.scene_name_set:
+        if self.effect is not None:
             return "scene"
         if self.music_mode not in (None, "off"):
             return "music"

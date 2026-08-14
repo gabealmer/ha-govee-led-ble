@@ -1,4 +1,4 @@
-"""Decode catalogue layered scenes into canonical, non-compilable values."""
+"""Decode and encode catalogue layered scenes as canonical values."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def decode_layered_scene(
     *,
     speed_index: int | None = None,
 ) -> LayeredScene:
-    """Decode a type-2 parameter without adding an application or compilation path."""
+    """Decode a type-2 parameter while preserving source-only bytes."""
     parsed, trailing_padding = parse_scene_body(raw_param)
     return LayeredScene(
         template=template,

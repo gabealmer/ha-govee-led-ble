@@ -10,9 +10,18 @@ from typing import Any, cast
 import pytest
 from kaitaistruct import KaitaiStructError
 
+from custom_components.ha_govee_led_ble import protocol
+from custom_components.ha_govee_led_ble.effect_compiler import (
+    ActivationMode,
+    CompatibilityState,
+    compatibility,
+    compile_effect,
+)
 from custom_components.ha_govee_led_ble.effect_domain import (
+    BuiltinScene,
     CatalogueRef,
     EffectValidationError,
+    LibraryItem,
     PaletteScene,
     SceneStep,
     effect_content_from_dict,
@@ -91,6 +100,72 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
             fixtures += 1
 
     assert fixtures == 4
+
+
+def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
+    for model, entries in SCENE_ENTRIES.items():
+        entry = next(scene for scene in entries if scene.scene_type == 1)
+        decoded = decode_catalogue_palette_scene(model, entry)
+        assert decoded is not None
+
+        compiled = compile_effect(LibraryItem.new("Palette scene", decoded), model)
+        expected = (
+            protocol.build_h6199_scene_multi(entry.param, entry.code, entry.scene_type, entry.music_code)
+            if model == "H6199"
+            else protocol.build_scene_multi(entry.param, entry.code, entry.scene_type)
+        )
+
+        assert compiled.activation_mode is ActivationMode.SCENE
+        assert compiled.packets == tuple(expected)
+        assert compiled.evidence_codes == ("scene_payload_readback_unavailable",)
+
+
+def test_edited_palette_scene_compiles_authored_definition_not_catalogue_bytes() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 1)
+    decoded = decode_catalogue_palette_scene("H617A", entry)
+    assert decoded is not None
+    edited = replace(
+        decoded,
+        steps=(
+            replace(decoded.steps[0], colour=(1, 2, 3)),
+            *decoded.steps[1:],
+        ),
+    )
+    encoded = encode_palette_scene(edited)
+
+    compiled = compile_effect(LibraryItem.new("Edited palette scene", edited), "H617A")
+
+    assert encoded != base64.b64decode(entry.param, validate=True)
+    assert compiled.upload_packets == tuple(protocol.build_a3_multi(1, encoded))
+    assert compiled.activation_packet == protocol.build_scene(entry.code)
+
+
+def test_native_scene_identity_remains_outside_the_authored_compiler() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 1)
+    item = LibraryItem.new("Native scene", BuiltinScene(CatalogueRef("H617A", entry.scene_id, entry.effect_id)))
+
+    assert compatibility(item, "H617A").state is CompatibilityState.INCOMPATIBLE
+    with pytest.raises(ValueError, match="direct scene selection"):
+        compile_effect(item, "H617A")
+
+
+def test_palette_scene_rejects_a_layered_scene_identity_and_speed() -> None:
+    palette_entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 1)
+    layered_entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 2)
+    decoded = decode_catalogue_palette_scene("H617A", palette_entry)
+    assert decoded is not None
+
+    mismatched = replace(
+        decoded,
+        template=CatalogueRef("H617A", layered_entry.scene_id, layered_entry.effect_id),
+    )
+    assert compatibility(LibraryItem.new("Mismatched palette scene", mismatched), "H617A").state is CompatibilityState.INCOMPATIBLE
+
+    with pytest.raises(ValueError, match="do not expose a documented Speed control"):
+        compile_effect(
+            LibraryItem.new("Palette scene with speed", replace(decoded, speed_index=1)),
+            "H617A",
+        )
 
 
 def test_layout_1_decoding_is_synthetic_schema_support_without_hardware_evidence() -> None:

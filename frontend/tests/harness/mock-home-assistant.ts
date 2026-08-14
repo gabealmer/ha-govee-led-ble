@@ -224,6 +224,8 @@ export class MockHomeAssistantBackend {
         operation_id: "phase-contract-operation",
         config_entry_id: "h617a-main",
         diy_code: 800,
+        target_mode: "custom",
+        target_effect: null,
         phase,
         updated_at: new Date().toISOString(),
         item_id: "painted-1",
@@ -231,7 +233,8 @@ export class MockHomeAssistantBackend {
         error_code: phase === "failed" ? "test_failure" : null,
         progress_current: phase === "compiling" || phase === "pending" ? 0 : 1,
         progress_total: 2,
-        verification_confidence: "unknown",
+        verification_confidence:
+          phase === "confirmed" ? "activation_match" : "unknown",
       },
     ];
     this.writeState(state);
@@ -571,22 +574,35 @@ export class MockHomeAssistantBackend {
     const state = this.readState();
     const operationId = `operation-${state.nextOperationId}`;
     state.nextOperationId += 1;
+    const content =
+      typeof message.item_id === "string"
+        ? requiredItem(state, message.item_id).content
+        : decodeEffectContent(message.content);
+    const sceneTarget =
+      content.kind === "advanced" ||
+      content.kind === "scene_palette" ||
+      content.kind === "scene_layered";
     const device = requiredDevice(String(message.config_entry_id));
-    const h6199 = device.model === "H6199";
+    const h6199PaletteDiy =
+      device.model === "H6199" && content.kind === "palette_diy";
     const deployment: DeploymentRecord = {
       operation_id: operationId,
       config_entry_id: String(message.config_entry_id),
-      diy_code: h6199 ? 401 : 1,
-      phase: h6199 ? "uncertain" : "confirmed",
+      diy_code: h6199PaletteDiy ? 401 : 1,
+      target_mode: sceneTarget ? "scene" : "custom",
+      target_effect: sceneTarget ? "compiled-scene" : null,
+      phase: h6199PaletteDiy ? "uncertain" : "confirmed",
       updated_at: new Date().toISOString(),
       item_id:
         typeof message.item_id === "string" ? message.item_id : null,
       item_revision:
-        typeof message.revision === "number" ? message.revision : null,
-      error_code: h6199 ? "activation_readback_unproven" : null,
-      progress_current: h6199 ? 3 : 1,
-      progress_total: h6199 ? 3 : 1,
-      verification_confidence: h6199 ? "unknown" : "activation_match",
+      typeof message.revision === "number" ? message.revision : null,
+      error_code: h6199PaletteDiy ? "activation_readback_unproven" : null,
+      progress_current: h6199PaletteDiy ? 3 : 1,
+      progress_total: h6199PaletteDiy ? 3 : 1,
+      verification_confidence: h6199PaletteDiy
+      ? "unknown"
+      : "activation_match",
     };
     state.deployments.unshift(deployment);
     this.writeState(state);

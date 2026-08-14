@@ -12,6 +12,9 @@ from typing import Any, cast
 import pytest
 from kaitaistruct import KaitaiStructError
 
+from custom_components.ha_govee_led_ble import protocol
+from custom_components.ha_govee_led_ble.effect_compiler import ActivationMode, compile_effect
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     _A3_MAX_CONTENT,
@@ -134,6 +137,42 @@ def _assert_layer_matches(decoded: EffectLayer, parsed: Any) -> None:
     assert decoded.priority == int(parsed.priority)
     assert decoded.unknown_flags == int(parsed.unknown_flags)
     assert decoded.excess == bytes(parsed.excess)
+
+
+def test_advanced_layers_compile_with_byte_exact_model_framing() -> None:
+    carriers = {
+        "H617A": (1013, 11836),
+        "H6199": (29884, 41599),
+    }
+    effect = LayeredEffect((_layer(),))
+
+    for model, identity in carriers.items():
+        entry = next(
+            scene
+            for scene in SCENE_ENTRIES[model]
+            if (scene.scene_id, scene.effect_id) == identity
+        )
+        encoded = encode_layered_scene(
+            LayeredScene(
+                CatalogueRef(model, entry.scene_id, entry.effect_id),
+                effect,
+            )
+        )
+        activation = (
+            protocol.build_h6199_scene(entry.code, entry.music_code)[0]
+            if model == "H6199"
+            else protocol.build_scene(entry.code)
+        )
+
+        compiled = compile_effect(LibraryItem.new("Advanced", effect), model)
+
+        assert compiled.activation_mode is ActivationMode.SCENE
+        assert compiled.packets == (*protocol.build_a3_multi(2, encoded), activation)
+        assert compiled.evidence_codes == (
+            "scene_payload_readback_unavailable",
+            "layered_field_semantics_uncalibrated",
+            "layered_activation_carrier_uncalibrated",
+        )
 
 
 def test_effect_domain_compatibility_shape_uses_raw_integer_values() -> None:

@@ -46,7 +46,9 @@ from .protocol import (
     build_color_rgb,
     build_color_temp,
     build_h617a_diy_activation,
+    build_h6199_scene_multi,
     build_power,
+    build_scene_multi,
     build_segment_paint,
     decode_command_frame,
     decode_status_frame,
@@ -54,6 +56,7 @@ from .protocol import (
     parse_generated_color_mode,
     parse_static_write,
 )
+from .scenes import MODEL_SCENES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -347,6 +350,22 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             await self.send_command(build_h617a_diy_activation(state.diy_code))
             self.diy_code = state.diy_code
             return self.profile.state_readable and await self.refresh_state() and self.diy_code == state.diy_code
+        if state.mode == "scene" and state.effect is not None:
+            scene = MODEL_SCENES.get(self.model, {}).get(state.effect)
+            if scene is None:
+                return False
+            packets = (
+                build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
+                if self.profile.uses_h6199_scene_protocol
+                else build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed)
+            )
+            for packet in packets:
+                await self.send_command(packet)
+            self.is_on = True
+            self.effect = state.effect
+            self.diy_code = None
+            self.music_mode = self.video_mode = "off"
+            return self.profile.state_readable and await self.refresh_state(expected_effect=state.effect)
         if state.mode == "music" and state.music_mode in self.profile.music_modes:
             self.music_sensitivity = state.music_sensitivity
             self.music_calm = state.music_calm

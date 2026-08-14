@@ -12,11 +12,14 @@ from custom_components.ha_govee_led_ble import effect_domain as effect_domain_mo
 from custom_components.ha_govee_led_ble import layered_scene as layered_scene_module
 from custom_components.ha_govee_led_ble import protocol
 from custom_components.ha_govee_led_ble.effect_compiler import (
+    ActivationMode,
     CompatibilityState,
     compatibility,
+    compile_effect,
     compile_h617a,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import (
+    EFFECT_COMPILER_VERSION,
     CapabilityState,
     EditorApiInfo,
     device_effect_capabilities,
@@ -230,14 +233,15 @@ def test_advanced_and_scene_content_round_trips(content) -> None:
     assert LibraryItem.from_dict(item.to_dict()) == item
 
 
-def test_advanced_effect_is_preserved_but_not_compilable_yet() -> None:
+def test_advanced_effect_compiles_through_the_model_scene_engine() -> None:
     item = LibraryItem.new("Advanced", _layered_effect())
 
     result = compatibility(item, "H617A")
+    compiled = compile_effect(item, "H617A")
 
-    assert result.state is CompatibilityState.UNKNOWN
-    with pytest.raises(ValueError, match="no H617A compiler"):
-        compile_h617a(item, 800)
+    assert result.state is CompatibilityState.COMPATIBLE
+    assert compiled.activation_mode is ActivationMode.SCENE
+    assert compiled.upload_packets
 
 
 def test_layered_area_preserves_raw_zero_distinct_from_full_strip() -> None:
@@ -440,7 +444,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert api == {
         "api_version": 2,
         "effect_schema_version": 1,
-        "compiler_version": 2,
+        "compiler_version": EFFECT_COMPILER_VERSION,
         "limits": {
             "effect_name": MAX_EFFECT_NAME_LENGTH,
             "effect_document_bytes": MAX_EFFECT_DOCUMENT_BYTES,
@@ -455,10 +459,10 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert h617a.single is CapabilityState.SUPPORTED
     assert h617a.multi is CapabilityState.SUPPORTED
     assert h617a.palette_diy is CapabilityState.UNSUPPORTED
-    assert h617a.advanced is CapabilityState.EVIDENCE_GAP
+    assert h617a.advanced is CapabilityState.SUPPORTED
     assert h6199.single is CapabilityState.UNSUPPORTED
     assert h6199.palette_diy is CapabilityState.SUPPORTED
-    assert h6199.advanced is CapabilityState.EVIDENCE_GAP
+    assert h6199.advanced is CapabilityState.SUPPORTED
     assert h6199.to_dict()["readback"] == "mode_only"
 
 

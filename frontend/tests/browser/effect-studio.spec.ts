@@ -890,7 +890,13 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   const apply = studio
     .locator(".editor")
     .getByRole("button", { name: "Apply" });
-  await expect(apply).toBeDisabled();
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(
+    studio.getByRole("status").filter({
+      hasText: "authored scene contents cannot be read back",
+    }),
+  ).toBeVisible();
   await expect(apply).not.toHaveAttribute("aria-describedby");
   await expect(studio.locator("#advanced-apply-reason")).toHaveCount(0);
   await expect(
@@ -1628,7 +1634,7 @@ test("schema-only layout 1 exposes decoded parameters", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("palette scenes copy on Edit, save losslessly and cannot Apply", async ({
+test("palette scenes apply native identity and authored saved or unsaved definitions", async ({
   page,
 }) => {
   await openStudio(page);
@@ -1659,6 +1665,12 @@ test("palette scenes copy on Edit, save losslessly and cannot Apply", async ({
   await expect(sceneBrowser.getByLabel("Scene name")).toHaveValue(
     /Halloween.* copy/,
   );
+  await sceneBrowser.getByRole("button", { name: "Apply" }).click();
+  await expect(
+    sceneBrowser.getByRole("status").filter({
+      hasText: "authored parameters remain write-only",
+    }),
+  ).toBeVisible();
   await sceneBrowser.getByRole("button", { name: "Save" }).click();
   await expect(
     sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
@@ -1668,17 +1680,15 @@ test("palette scenes copy on Edit, save losslessly and cannot Apply", async ({
   ).toBeVisible();
 
   const customApply = sceneBrowser.getByRole("button", { name: "Apply" });
-  await expect(customApply).toBeDisabled();
-  await expect(customApply).toHaveAttribute(
-    "aria-describedby",
-    "palette-apply-reason",
-  );
+  await expect(customApply).toBeEnabled();
   await expect(
     sceneBrowser.getByRole("note").filter({
-      hasText: "Saved palette scene copies cannot be applied.",
+      hasText: "Authored scene parameters are uploaded",
     }),
   ).toBeVisible();
+  await customApply.click();
   await sceneBrowser.getByLabel("Scene name").fill("Halloween preserved");
+  await customApply.click();
   await sceneBrowser.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
     sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
@@ -1724,6 +1734,9 @@ test("palette scenes copy on Edit, save losslessly and cannot Apply", async ({
   });
   expect(beforeReload.commands).toEqual([
     "ha_govee_led_ble/editor/scene/apply",
+    "ha_govee_led_ble/editor/apply_snapshot",
+    "ha_govee_led_ble/editor/apply",
+    "ha_govee_led_ble/editor/apply_snapshot",
   ]);
 
   await page.reload();
@@ -1740,7 +1753,16 @@ test("palette scenes copy on Edit, save losslessly and cannot Apply", async ({
   await expect(reloadedBrowser.getByText("Raw value 6")).toBeVisible();
   await expect(
     reloadedBrowser.getByRole("button", { name: "Apply" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
+  await expect(
+    reloadedBrowser.getByRole("button", { name: "Delete" }),
+  ).toBeEnabled();
+  await reloadedBrowser.getByRole("button", { name: "Delete" }).click();
+  const deleteDialog = studio.getByRole("dialog", { name: "Delete effect?" });
+  await deleteDialog.getByRole("button", { name: "Delete effect" }).click();
+  await expect(
+    reloadedBrowser.getByRole("button", { name: "Halloween preserved" }),
+  ).toHaveCount(0);
 });
 
 test("a temporarily unavailable URL device is not reported as unsupported", async ({
@@ -1922,6 +1944,8 @@ test("deployment phases decode and render without contract drift", async ({
         operation_id: "phase-contract-operation",
         config_entry_id: "h617a-main",
         diy_code: 800,
+        target_mode: "custom",
+        target_effect: null,
         phase,
         updated_at: "2026-08-14T00:00:00Z",
         item_id: "painted-1",
@@ -1941,6 +1965,8 @@ test("deployment phases decode and render without contract drift", async ({
         operation_id: "phase-contract-operation",
         config_entry_id: "h617a-main",
         diy_code: 800,
+        target_mode: "custom",
+        target_effect: null,
         phase: "drifted",
         updated_at: "2026-08-14T00:00:00Z",
         item_id: "painted-1",
@@ -2687,9 +2713,11 @@ test("empty layered scene imports remain inspectable and unchanged", async ({
   await expect(
     advanced.getByRole("tablist", { name: "Effect layers" }),
   ).toHaveCount(0);
-  await expect(
-    studio.locator(".editor").getByRole("button", { name: "Apply" }),
-  ).toBeDisabled();
+  const apply = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply" });
+  await expect(apply).toBeEnabled();
+  await apply.click();
 
   await studio.getByRole("button", { name: "Save" }).click();
   const savedContent = await page.evaluate(() => {
@@ -2707,6 +2735,15 @@ test("empty layered scene imports remain inspectable and unchanged", async ({
     effect: { layers: [] },
     speed_index: 1,
     raw_param: "102030405060708090a0b0c0",
+  });
+  const applyCall = await page.evaluate(() =>
+    [...window.testHarness.snapshot().calls].reverse().find(
+      (call) => String(call.type).endsWith("/apply_snapshot"),
+    ),
+  );
+  expect(applyCall).toMatchObject({
+    name: "Ocean Layers copy",
+    content: savedContent,
   });
 });
 
@@ -2768,7 +2805,8 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
   const advancedApply = studio
     .locator(".editor")
     .getByRole("button", { name: "Apply" });
-  await expect(advancedApply).toBeDisabled();
+  await expect(advancedApply).toBeEnabled();
+  await advancedApply.click();
 
   await studio.getByLabel("Effect name").fill("Aurora authored");
   await studio.getByRole("button", { name: "Save" }).click();
@@ -2801,6 +2839,19 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
       ]),
     },
   });
+  const layeredApply = await page.evaluate(() =>
+    [...window.testHarness.snapshot().calls].reverse().find(
+      (call) => String(call.type).endsWith("/apply_snapshot"),
+    ),
+  );
+  expect(layeredApply).toMatchObject({
+    name: "Aurora Layers copy",
+    content: expect.objectContaining({
+      kind: "scene_layered",
+      speed_index: 2,
+      raw_param: "aabbccddeeff001122334455",
+    }),
+  });
 
   await studio.getByRole("button", { name: "Back to Scenes" }).click();
   await expect(
@@ -2812,6 +2863,48 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
   await expect(
     speed.getByRole("button", { name: "1 step higher" }),
   ).toHaveAttribute("aria-pressed", "true");
+
+  await sceneBrowser.getByRole("button", { name: "Custom", exact: true }).click();
+  await sceneBrowser.getByRole("button", { name: "Aurora authored" }).click();
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(studio.getByLabel("Effect name")).toHaveValue("Aurora authored");
+  await studio.getByLabel("Effect name").fill("Aurora revised");
+  await studio.getByRole("button", { name: "Save", exact: true }).click();
+  const revised = await page.evaluate(() =>
+    Object.values(window.testHarness.snapshot().state.items).filter(
+      (item) => item.name === "Aurora revised",
+    ),
+  );
+  expect(revised).toHaveLength(1);
+  expect(revised[0]?.revision).toBe(2);
+
+  await studio.getByRole("button", { name: "Back to Scenes" }).click();
+  await expect(sceneBrowser.getByLabel("Scene name")).toHaveValue(
+    "Aurora revised",
+  );
+  await sceneBrowser.getByRole("button", { name: "Apply" }).click();
+  const revisedApply = await page.evaluate(() =>
+    [...window.testHarness.snapshot().calls].reverse().find(
+      (call) => String(call.type).endsWith("/apply"),
+    ),
+  );
+  expect(revisedApply).toMatchObject({
+    item_id: revised[0]?.id,
+    revision: 2,
+  });
+
+  await sceneBrowser.getByRole("button", { name: "Delete", exact: true }).click();
+  const dialog = studio.getByRole("dialog", { name: "Delete effect?" });
+  await dialog.getByRole("button", { name: "Delete effect" }).click();
+  await expect(
+    studio.getByRole("status").filter({ hasText: "Deleted Aurora revised." }),
+  ).toBeVisible();
+  const remaining = await page.evaluate(() =>
+    Object.values(window.testHarness.snapshot().state.items).filter(
+      (item) => item.name === "Aurora revised",
+    ),
+  );
+  expect(remaining).toEqual([]);
 });
 
 test("Back navigation discards an unsaved scene template", async ({ page }) => {

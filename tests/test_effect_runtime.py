@@ -1,4 +1,4 @@
-"""H617A custom-effect deployment transactions."""
+"""Effect Studio deployment transactions."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import H6199_PALETTE_DIY_APPLY_CODE
-from custom_components.ha_govee_led_ble.effect_compiler import compile_h617a, compile_h6199
+from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, compile_h617a, compile_h6199
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
@@ -31,6 +31,8 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
     resolve_diy_code,
 )
+from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -122,6 +124,102 @@ async def test_saved_effect_uploads_activates_then_confirms_selector(
     assert cache.get("entry-a") is not None
     assert cache.get("entry-a").confidence is ObservationConfidence.ACTIVATION_MATCH
     assert cache.get("entry-a").matched_operation_id == result.operation_id
+
+
+async def test_layered_scene_uses_shared_transaction_and_identity_verification(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 2 and scene.param)
+    content = decode_catalogue_layered_scene("H617A", entry)
+    assert content is not None
+    item = LibraryItem.new("Layered scene", content)
+    compiled = compile_effect(item, "H617A")
+
+    async def refresh() -> bool:
+        if coordinator.refresh_state.await_count >= 2:
+            coordinator.effect = compiled.expected_effect
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.target_mode == "scene"
+    assert result.target_effect == compiled.expected_effect
+    assert result.verification_confidence is ObservationConfidence.ACTIVATION_MATCH
+    assert result.evidence_codes == (
+        "scene_payload_readback_unavailable",
+        "layered_field_semantics_uncalibrated",
+    )
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
+    assert cache.get("entry-a").effect == compiled.expected_effect
+    assert cache.get("entry-a").matched_operation_id == result.operation_id
+
+
+async def test_h6199_layered_scene_uses_model_framing_and_identity_verification(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    entry = next(scene for scene in SCENE_ENTRIES["H6199"] if scene.scene_type == 2 and scene.param)
+    content = decode_catalogue_layered_scene("H6199", entry)
+    assert content is not None
+    item = LibraryItem.new("Layered scene", content)
+    compiled = compile_effect(item, "H6199")
+
+    async def refresh() -> bool:
+        if coordinator.refresh_state.await_count >= 2:
+            coordinator.effect = compiled.expected_effect
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.target_mode == "scene"
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
+    assert cache.get("entry-a").effect == compiled.expected_effect
+
+
+async def test_failed_layered_scene_recovers_prior_state(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.effect = "sunrise"
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 2 and scene.param)
+    content = decode_catalogue_layered_scene("H617A", entry)
+    assert content is not None
+    item = LibraryItem.new("Layered scene", content)
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.FAILED
+    coordinator.async_restore_effect_control_state.assert_awaited_once_with(
+        result.prior_state,
+        overwritten_diy_code=-1,
+    )
 
 
 async def test_verification_retry_only_repeats_safe_activation(
