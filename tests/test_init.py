@@ -15,9 +15,9 @@ from custom_components.ha_govee_led_ble import (
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, MODEL_PROFILES
 from custom_components.ha_govee_led_ble.editor import (
     EDITOR_ELEMENT_NAME,
-    EDITOR_MODULE_URL,
     EDITOR_PANEL_PATH,
     EDITOR_ROUTE_SEGMENT,
+    _editor_module_url,
     editor_url,
 )
 
@@ -52,6 +52,25 @@ async def test_setup_entry(hass: HomeAssistant):
     assert entry.runtime_data is cls.return_value
     cleanup.assert_awaited_once_with(hass, entry)
     fwd.assert_awaited_once()
+
+
+async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):
+    entry = _entry()
+    backend = MagicMock(async_reconcile_coordinator=AsyncMock())
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble.get_effect_setup", return_value=MagicMock(backend=backend)),
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
+    ):
+        cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.profile = MODEL_PROFILES["H617A"]
+
+        assert await async_setup_entry(hass, entry) is True
+
+    backend.async_reconcile_coordinator.assert_awaited_once()
+    assert backend.async_reconcile_coordinator.await_args.args == (cls.return_value,)
+    assert backend.async_reconcile_coordinator.await_args.kwargs["config_entry_id"] == entry.entry_id
 
 
 @pytest.mark.parametrize("data", [{}, {CONF_MODEL: "H9999"}])
@@ -145,13 +164,19 @@ def test_white_balance_replacement_issue_names_old_and_new_entities(hass: HomeAs
 async def test_async_setup_registers_hidden_editor_fallback():
     hass = MagicMock()
     hass.data = {}
+    hass.async_add_executor_job = AsyncMock()
     hass.http.async_register_static_paths = AsyncMock()
     with (
         patch("custom_components.ha_govee_led_ble.editor.frontend.async_panel_exists", return_value=False),
         patch("custom_components.ha_govee_led_ble.editor.frontend.async_register_built_in_panel") as register,
+        patch(
+            "custom_components.ha_govee_led_ble.async_setup_effects",
+            new_callable=AsyncMock,
+        ) as setup_effects,
     ):
         assert await async_setup(hass, {}) is True
 
+    setup_effects.assert_awaited_once_with(hass)
     hass.http.async_register_static_paths.assert_awaited_once()
     (static_path,) = hass.http.async_register_static_paths.await_args.args[0]
     assert static_path.url_path == f"/{DOMAIN}_static"
@@ -165,12 +190,12 @@ async def test_async_setup_registers_hidden_editor_fallback():
             "configuration_path": f"/config/integrations/integration/{DOMAIN}",
             "_panel_custom": {
                 "name": EDITOR_ELEMENT_NAME,
-                "module_url": EDITOR_MODULE_URL,
+                "module_url": _editor_module_url(),
                 "embed_iframe": False,
                 "trust_external": False,
             },
         },
-        require_admin=True,
+        require_admin=False,
         show_in_sidebar=False,
     )
 

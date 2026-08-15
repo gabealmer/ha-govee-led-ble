@@ -40,7 +40,7 @@ from .entity import GoveeBLEEntity
 from .light_services import (
     _GoveeLightServicesMixin,
 )
-from .light_services import apply_active_video_mode as apply_active_video_mode
+from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .protocol import (
     ParsedMode,
     build_brightness,

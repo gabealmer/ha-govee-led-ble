@@ -201,3 +201,20 @@ async def test_apply_active_video_mode_requires_readback(h6199):
         expected_video_sound_effects=True,
         expected_video_sound_effects_softness=27,
     )
+
+
+async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
+    h6199.is_on, h6199.video_mode = False, "movie"
+    with (
+        patch.object(h6199, "send_command", new_callable=AsyncMock) as send,
+        patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=False) as refresh,
+        pytest.raises(RuntimeError, match="Video-mode write was not confirmed"),
+    ):
+        await apply_active_video_mode(h6199)
+
+    assert _sent(send) == [
+        proto.build_power(True, "H6199"),
+        proto.build_video_mode(True, False, 100, False, 100),
+        proto.build_video_mode(True, False, 100, False, 100),
+    ]
+    assert refresh.await_count == 2

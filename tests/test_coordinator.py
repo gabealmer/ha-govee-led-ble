@@ -1,9 +1,9 @@
 import time
 from dataclasses import replace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from bleak import BleakError
+from bleak import BleakClient, BleakError
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
@@ -11,6 +11,11 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import protocol as proto
+from custom_components.ha_govee_led_ble.ble_device_resolver import (
+    BLEDeviceResolution,
+    BLEDeviceResolver,
+    BLEDeviceSource,
+)
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES
 from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
@@ -19,6 +24,7 @@ from custom_components.ha_govee_led_ble.coordinator import (
     _expectations_from_packet,
     _expected_color_mode_from_packet,
 )
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
 
 M = "custom_components.ha_govee_led_ble.coordinator"
@@ -49,6 +55,14 @@ def _c(**kw):
     return MagicMock(is_connected=True, **kw)
 
 
+def _resolution(
+    device=None,
+    client_class=BleakClient,
+    source=BLEDeviceSource.HA_CACHE,
+):
+    return BLEDeviceResolution(MagicMock() if device is None else device, client_class, source)
+
+
 async def test_initial_state_and_update(coord, h6199):
     assert (coord.is_on, coord.brightness_pct, coord.rgb_color) == (False, 100, (255, 255, 255))
     assert coord.effect is None and coord.address == "AA:BB:CC:DD:EE:FF" and coord.model == "H617A"
@@ -72,6 +86,300 @@ async def test_initial_state_and_update(coord, h6199):
         patch.object(coord, "_send_state_queries", new_callable=AsyncMock),
     ):
         assert await coord._async_update_data() == exp
+
+
+def test_capture_effect_control_state(coord):
+    coord.is_on = True
+    coord.brightness_pct = 72
+    coord.rgb_color = (1, 2, 3)
+    coord.music_sensitivity = 50
+
+    state = coord.capture_effect_control_state()
+
+    assert state == PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        music_sensitivity=50,
+    )
+
+
+async def test_restore_effect_control_state_reapplies_static_state(coord):
+    state = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+    )
+
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=800,
+        )
+
+    assert recovered is True
+    assert send.await_args_list == [
+        call(proto.build_power(True)),
+        call(proto.build_brightness(72)),
+        call(proto.build_color_rgb(1, 2, 3)),
+    ]
+    refresh.assert_awaited_once_with()
+    assert coord.active_mode == "colour"
+
+
+async def test_restore_effect_control_state_cannot_recover_overwritten_diy_slot(coord):
+    state = PriorControlState(
+        mode="custom",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        diy_code=800,
+    )
+
+    with patch.object(coord, "send_command", new_callable=AsyncMock) as send:
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=800,
+        )
+
+    assert recovered is False
+    send.assert_not_awaited()
+
+
+async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
+    for coordinator in (coord, h6199):
+        effect, scene = next((name, entry) for name, entry in MODEL_SCENES[coordinator.model].items() if entry.param)
+        state = PriorControlState(
+            mode="scene",
+            is_on=True,
+            brightness_pct=72,
+            rgb_color=(1, 2, 3),
+            effect=effect,
+        )
+        expected = (
+            proto.build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
+            if coordinator.model == "H6199"
+            else proto.build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed)
+        )
+
+        with (
+            patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
+            patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+        ):
+            recovered = await coordinator.async_restore_effect_control_state(
+                state,
+                overwritten_diy_code=-1,
+            )
+
+        assert recovered is True
+        assert send.await_args_list == [call(packet) for packet in expected]
+        refresh.assert_awaited_once_with(expected_effect=effect)
+        assert coordinator.active_mode == "scene"
+
+
+async def test_restore_effect_control_state_reapplies_powered_off_state(coord):
+    state = PriorControlState(
+        mode="colour",
+        is_on=False,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+    )
+
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=None,
+        )
+
+    assert recovered is True
+    send.assert_awaited_once_with(proto.build_power(False))
+    refresh.assert_awaited_once_with(expected_on=False)
+
+
+async def test_restore_effect_control_state_reactivates_unmodified_diy_slot(coord):
+    state = PriorControlState(
+        mode="custom",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        diy_code=700,
+    )
+
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=800,
+        )
+
+    assert recovered is True
+    send.assert_awaited_once_with(proto.build_h617a_diy_activation(700))
+    refresh.assert_awaited_once_with()
+    assert coord.diy_code == 700
+
+
+async def test_restore_effect_control_state_reapplies_complete_music_profile(coord):
+    state = PriorControlState(
+        mode="music",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        music_mode="separation",
+        music_sensitivity=50,
+        music_color=(4, 5, 6),
+        music_separation_point=4,
+        music_separation_gradient=False,
+    )
+
+    with (
+        patch.object(coord, "install_music_profile_state") as install,
+        patch.object(coord, "async_select_music_slug", new_callable=AsyncMock) as select,
+        patch.object(coord, "async_apply_music_params", new_callable=AsyncMock) as parameters,
+        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await coord.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=None,
+        )
+
+    assert recovered is True
+    install.assert_called_once_with(
+        mode="separation",
+        sensitivity=50,
+        colour=(4, 5, 6),
+        calm=False,
+        parameters={
+            "point": 4,
+            "gradient": False,
+            "relative_brightness": 50,
+            "key_count": 15,
+            "direction": "clockwise",
+            "segment_count": 1,
+            "speed": 10,
+        },
+    )
+    select.assert_awaited_once_with("separation")
+    parameters.assert_awaited_once_with(0x32)
+    refresh.assert_awaited_once_with(expected_music_mode="separation")
+
+
+def test_install_music_profile_state_updates_only_the_selected_modes_parameters(coord):
+    coord.music_separation_gradient = True
+    coord.music_daynight_gradient = True
+
+    coord.install_music_profile_state(
+        mode="separation",
+        sensitivity=50,
+        colour=None,
+        calm=False,
+        parameters={"point": 4, "gradient": False},
+    )
+    recovery_snapshot = coord.capture_effect_control_state()
+
+    assert coord.music_separation_point == 4
+    assert coord.music_separation_gradient is False
+    assert coord.music_daynight_gradient is True
+    assert recovery_snapshot.music_daynight_gradient is True
+
+
+async def test_restore_effect_control_state_reapplies_complete_video_profile(h6199):
+    state = PriorControlState(
+        mode="video",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        video_mode="game",
+        video_full_screen=False,
+        video_saturation=63,
+        video_sound_effects=True,
+        video_sound_effects_softness=27,
+        white_balance_red=21,
+        white_balance_blue=5,
+        relative_brightness_left=20,
+        relative_brightness_top=30,
+        relative_brightness_right=40,
+        relative_brightness_bottom=50,
+        blank_screen=True,
+        blank_screen_detection=2,
+        blank_screen_low_brightness_duration_seconds=10,
+        blank_screen_same_tone_duration_seconds=120,
+    )
+
+    with (
+        patch(f"{M}.apply_white_balance", new_callable=AsyncMock, return_value=True) as white_balance,
+        patch(f"{M}.apply_relative_brightness", new_callable=AsyncMock, return_value=True) as relative_brightness,
+        patch(f"{M}.apply_blank_screen", new_callable=AsyncMock, return_value=True) as blank_screen,
+        patch(f"{M}.apply_active_video_mode", new_callable=AsyncMock, return_value=True) as video_mode,
+    ):
+        recovered = await h6199.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=None,
+        )
+
+    assert recovered is True
+    white_balance.assert_awaited_once_with(h6199)
+    relative_brightness.assert_awaited_once_with(h6199)
+    blank_screen.assert_awaited_once_with(h6199)
+    video_mode.assert_awaited_once_with(h6199)
+    assert (
+        h6199.video_mode,
+        h6199.video_full_screen,
+        h6199.video_saturation,
+        h6199.video_sound_effects,
+        h6199.video_sound_effects_softness,
+    ) == ("game", False, 63, True, 27)
+    assert (h6199.white_balance_red, h6199.white_balance_blue) == (21, 5)
+    assert (
+        h6199.relative_brightness_left,
+        h6199.relative_brightness_top,
+        h6199.relative_brightness_right,
+        h6199.relative_brightness_bottom,
+    ) == (20, 30, 40, 50)
+    assert h6199.blank_screen is True
+
+
+async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):
+    state = PriorControlState(
+        mode="scene",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        effect="forest",
+    )
+    scene = MODEL_SCENES["H6199"]["forest"]
+
+    with (
+        patch.object(h6199, "send_command", new_callable=AsyncMock) as send,
+        patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await h6199.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=None,
+        )
+
+    assert recovered is True
+    assert send.await_args_list == [
+        call(packet)
+        for packet in proto.build_h6199_scene_multi(
+            scene.param,
+            scene.code,
+            scene.scene_type,
+            scene.music_code,
+        )
+    ]
+    refresh.assert_awaited_once_with(expected_effect="forest")
+    assert h6199.effect == "forest"
+    assert (h6199.diy_code, h6199.music_mode, h6199.video_mode) == (None, "off", "off")
 
 
 async def test_send_command(coord):
@@ -220,26 +528,80 @@ async def test_ensure_connected(coord):
     assert await coord._ensure_connected() is c
     coord._client = None
     with (
-        patch(f"{M}.bluetooth") as bt,
+        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=None) as resolve,
         patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
         pytest.raises(BleakError, match="not found"),
     ):
-        bt.async_ble_device_from_address.return_value = None
         await coord._ensure_connected()
+    assert resolve.await_count == 4
+
+
+async def test_ensure_connected_retries_cache_resolution_with_wrapped_client(coord):
+    device = MagicMock()
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(side_effect=[None, _resolution(device)])
+    coord._device_resolver = resolver
+    client = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+
+    with (
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock) as sleep,
+        patch(f"{M}.establish_connection", return_value=client) as connect,
+        patch.object(coord, "_start_notify", new_callable=AsyncMock),
+        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+        patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=True),
+    ):
+        assert await coord._ensure_connected() is client
+
+    assert resolver.async_resolve.await_count == 2
+    sleep.assert_awaited_once()
+    connect.assert_awaited_once_with(BleakClient, device, coord.address)
+
+
+async def test_portable_cache_resolution_reuses_original_client_after_disconnect(coord):
+    device = MagicMock()
+    original_client_class = type("OriginalClient", (), {})
+    resolution = _resolution(device, original_client_class, BLEDeviceSource.PORTABLE_CACHE)
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(return_value=resolution)
+    coord._device_resolver = resolver
+    first = _c(disconnect=AsyncMock())
+    second = _c(disconnect=AsyncMock())
+
+    with (
+        patch(f"{M}.establish_connection", side_effect=[first, second]) as connect,
+        patch.object(coord, "_start_notify", new_callable=AsyncMock),
+        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+        patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=True),
+    ):
+        assert await coord._ensure_connected() is first
+        await coord.disconnect()
+        assert await coord._ensure_connected() is second
+
+    assert resolver.async_resolve.await_count == 2
+    assert connect.await_args_list == [
+        call(original_client_class, device, coord.address),
+        call(original_client_class, device, coord.address),
+    ]
+    first.disconnect.assert_awaited_once()
+    await coord.disconnect()
 
 
 async def test_start_notify(coord, h6199):
     c = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
-    with patch(f"{M}.bluetooth") as bt, patch(f"{M}.establish_connection", return_value=c):
-        bt.async_ble_device_from_address.return_value = MagicMock()
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=c),
+    ):
         assert await h6199._ensure_connected() is c
     c.start_notify.assert_called_once()
     for q in (proto.KEEP_ALIVE, proto.BRIGHTNESS_QUERY, proto.COLOR_MODE_QUERY):
         c.write_gatt_char.assert_any_await(proto.WRITE_UUID, q, response=False)
     await h6199.disconnect()
     c2 = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
-    with patch(f"{M}.bluetooth") as bt, patch(f"{M}.establish_connection", return_value=c2):
-        bt.async_ble_device_from_address.return_value = MagicMock()
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=c2),
+    ):
         await coord._ensure_connected()
     c2.start_notify.assert_called_once()
     for q in (proto.KEEP_ALIVE, proto.BRIGHTNESS_QUERY, proto.COLOR_MODE_QUERY):
@@ -254,11 +616,10 @@ async def test_start_notify(coord, h6199):
 async def test_ensure_connected_cleans_up_notify_failure(coord):
     client = _c(start_notify=AsyncMock(side_effect=BleakError("notify failed")), disconnect=AsyncMock())
     with (
-        patch(f"{M}.bluetooth") as bt,
+        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=client),
         pytest.raises(BleakError, match="notify failed"),
     ):
-        bt.async_ble_device_from_address.return_value = MagicMock()
         await coord._ensure_connected()
     client.disconnect.assert_awaited_once()
     assert coord._client is None
@@ -289,10 +650,9 @@ async def test_ensure_connected_replaces_receive_stale_client(coord):
     coord._notify_started_monotonic = 1.0
     with (
         patch(f"{M}.time.monotonic", return_value=RX_STALE_TIMEOUT + 2),
-        patch(f"{M}.bluetooth") as bt,
+        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=new),
     ):
-        bt.async_ble_device_from_address.return_value = MagicMock()
         assert await coord._ensure_connected() is new
     old.disconnect.assert_awaited_once()
     new.start_notify.assert_awaited_once()

@@ -1,9 +1,22 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.coordinator import (
+    PACKET_LOG_LIMIT,
+    PACKET_LOG_RAW_BYTES_LIMIT,
+)
 from custom_components.ha_govee_led_ble.diagnostics import async_get_config_entry_diagnostics
+from custom_components.ha_govee_led_ble.effect_diagnostics import (
+    DiagnosticOutcome,
+    DiagnosticStage,
+    EffectDiagnosticHistory,
+)
+from custom_components.ha_govee_led_ble.effect_setup import EFFECT_SETUP_DATA_KEY
+
+REDACTED = "**REDACTED**"
 
 
 def _prep(coord, *, packet_log=None, segment_colors=None):
@@ -20,10 +33,10 @@ def _entry(**kw):
     return MockConfigEntry(domain=DOMAIN, unique_id="AA:BB:CC:DD:EE:FF", data={CONF_MODEL: "H6199"}, **kw)
 
 
-async def _run(coord, entry=None):
+async def _run(coord, entry=None, hass=None):
     entry = entry or _entry()
     entry.runtime_data = coord
-    return await async_get_config_entry_diagnostics(MagicMock(), entry)
+    return await async_get_config_entry_diagnostics(hass or MagicMock(), entry)
 
 
 async def test_surfaces_segment_fields(mock_h6199_coordinator):
@@ -35,6 +48,31 @@ async def test_surfaces_segment_fields(mock_h6199_coordinator):
     assert coord["segment_colors"] == colors
     assert coord["diy_code"] is None
     assert coord["color_mode"] is None
+
+
+async def test_surfaces_release_capability_evidence_without_hiding_planned_workflows(
+    mock_h6199_coordinator,
+) -> None:
+    diag = await _run(_prep(mock_h6199_coordinator))
+    contract = diag["coordinator"]["release_capabilities"]
+    capabilities = {capability["workflow"]: capability for capability in contract["capabilities"]}
+
+    assert contract["schema_version"] == 1
+    assert contract["model"] == "H6199"
+    assert capabilities["palette_diy"] == {
+        "workflow": "palette_diy",
+        "frontend_visibility": "visible",
+        "persistent_content_kind": "palette_diy",
+        "application_route": "studio_custom_apply",
+        "compiler_deployer_strategy": "h6199_custom_engine",
+        "verification_confidence": "unverified",
+        "physical_validation_state": "capture_validated",
+        "evidence_classification": "structural",
+    }
+    assert capabilities["special_diy"]["frontend_visibility"] == "visible"
+    assert capabilities["special_diy"]["application_route"] == "studio_custom_apply"
+    assert capabilities["special_diy"]["compiler_deployer_strategy"] == "h6199_custom_engine"
+    assert capabilities["special_diy"]["evidence_classification"] == "structural"
 
 
 async def test_stale_experimental_option_ignored(mock_h6199_coordinator):
@@ -144,6 +182,80 @@ async def test_full_diagnostics_contains_no_ble_address(mock_h6199_coordinator):
     blob = str(diag)
     assert "11:22:33:44:55:66" not in blob
     assert "AA:BB:CC:DD:EE:FF" not in blob
+
+
+async def test_diagnostics_defensively_bound_and_redact_packet_history(
+    mock_h6199_coordinator,
+) -> None:
+    log = [
+        {
+            "dir": "rx",
+            "raw": f"aa05{index:04x}",
+            "address": "11:22:33:44:55:66",
+        }
+        for index in range(PACKET_LOG_LIMIT + 10)
+    ]
+
+    diag = await _run(_prep(mock_h6199_coordinator, packet_log=log))
+    packet_log = diag["coordinator"]["packet_log"]
+
+    assert len(packet_log) == PACKET_LOG_LIMIT
+    assert packet_log[0]["raw"] == "aa05000a"
+    assert all(packet["address"] == "**REDACTED**" for packet in packet_log)
+
+
+async def test_diagnostics_truncate_oversized_raw_packet_data(
+    mock_h6199_coordinator,
+) -> None:
+    raw = "aa" * (PACKET_LOG_RAW_BYTES_LIMIT + 1)
+
+    diag = await _run(
+        _prep(
+            mock_h6199_coordinator,
+            packet_log=[{"dir": "rx", "raw": raw}],
+        )
+    )
+    packet = diag["coordinator"]["packet_log"][0]
+
+    assert len(packet["raw"]) == PACKET_LOG_RAW_BYTES_LIMIT * 2
+    assert packet["truncated"] is True
+
+
+async def test_surfaces_only_bounded_deployment_diagnostics_for_this_entry(
+    mock_h6199_coordinator,
+) -> None:
+    entry = _entry()
+    history = EffectDiagnosticHistory(maximum_events=2)
+    history.record(
+        DiagnosticStage.API_SERVICE,
+        DiagnosticOutcome.STARTED,
+        "apply_request_received",
+        config_entry_id=entry.entry_id,
+        details={"password": "never-visible"},
+    )
+    history.record_evidence_gap(
+        "unsupported_capability",
+        config_entry_id="other-entry",
+        details={"capability": "special_diy"},
+    )
+    hass = SimpleNamespace(
+        data={
+            DOMAIN: {
+                EFFECT_SETUP_DATA_KEY: SimpleNamespace(
+                    backend=SimpleNamespace(diagnostics=history),
+                )
+            }
+        }
+    )
+
+    diag = await _run(_prep(mock_h6199_coordinator), entry, hass)
+    deployment = diag["effect_deployment_diagnostics"]
+
+    assert deployment["schema_version"] == 1
+    assert deployment["limits"]["event_count"] == 2
+    assert len(deployment["events"]) == 1
+    assert deployment["events"][0]["details"]["password"] == REDACTED
+    assert "never-visible" not in str(diag)
 
 
 async def test_unknown_white_balance_is_not_reported_as_neutral(mock_h6199_coordinator):
