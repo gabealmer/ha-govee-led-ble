@@ -1309,10 +1309,11 @@ export class GoveeLedEffectStudio extends LitElement {
           <div class="parameter-stack">
             ${this.renderPaintedVariationField()}
             ${this.sliderField("Speed", "speed", this.content.speed)}
-            ${this.rangeField(
+            ${this.sliderField(
               "Brightness",
               "brightness",
               this.content.brightness,
+              `${this.content.brightness}%`,
             )}
           </div>
         </section>
@@ -1613,34 +1614,11 @@ export class GoveeLedEffectStudio extends LitElement {
     }
   }
 
-  private rangeField(
-    label: string,
-    key: "speed" | "brightness",
-    value: number,
-  ) {
-    return html`
-      <label class="range-field">
-        <span class="parameter-label">${label}</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          .value=${String(value)}
-          ?disabled=${this.editorReadOnly}
-          @input=${(event: Event) =>
-            this.updateContent({
-              [key]: Number((event.target as HTMLInputElement).value),
-            })}
-        />
-        <output>${value}%</output>
-      </label>
-    `;
-  }
-
   private sliderField(
     label: string,
     key: "speed" | "brightness",
     value: number,
+    valueText?: string,
   ) {
     return html`
       <govee-slider-control
@@ -1648,6 +1626,7 @@ export class GoveeLedEffectStudio extends LitElement {
         .value=${value}
         .minimum=${0}
         .maximum=${100}
+        .valueText=${valueText}
         .disabled=${this.editorReadOnly}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
           this.updateContent({ [key]: event.detail.value })}
@@ -3058,20 +3037,13 @@ export class GoveeLedEffectStudio extends LitElement {
       grid-template-columns: 190px 190px 230px minmax(0, 1fr);
     }
 
-    .studio.video-mode {
-      grid-template-columns: 190px 230px minmax(0, 1fr);
-    }
-
-    .primary-nav {
-      padding: 22px 16px;
-      border-inline-end: 1px solid var(--studio-border);
-      background: var(--secondary-background-color, #f5f6f8);
-    }
-
     .primary-nav {
       display: flex;
       flex-direction: column;
       gap: 6px;
+      padding: 22px 16px;
+      border-inline-end: 1px solid var(--studio-border);
+      background: var(--secondary-background-color, #f5f6f8);
     }
 
     .effect-categories .new-effect-action {
@@ -3224,10 +3196,6 @@ export class GoveeLedEffectStudio extends LitElement {
       margin-top: 18px;
     }
 
-    .range-field {
-      grid-template-columns: 80px minmax(100px, 1fr) 44px;
-    }
-
     .deployment {
       margin-top: 18px;
       margin-bottom: 0;
@@ -3258,19 +3226,16 @@ export class GoveeLedEffectStudio extends LitElement {
       }
 
       .studio.scenes-mode,
-      .studio.custom-mode,
-      .studio.video-mode {
+      .studio.custom-mode {
         grid-template-columns: 170px minmax(0, 1fr);
       }
 
       .custom-mode .effect-categories,
-      .custom-mode .library,
-      .custom-mode .editor {
+      .custom-mode .library {
         grid-column: 2;
       }
 
-      .video-mode .library,
-      .video-mode .editor {
+      .video-mode .library {
         grid-column: 2;
       }
 

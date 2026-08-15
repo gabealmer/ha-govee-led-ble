@@ -1079,9 +1079,12 @@ export class GoveeSceneBrowser extends LitElement {
     }
 
     .empty {
+      max-width: 680px;
+      padding: 28px;
       border: 1px solid var(--studio-border);
       border-radius: 10px;
       background: var(--studio-card);
+      line-height: 1.55;
     }
 
     .scene-parameters {
@@ -1187,12 +1190,6 @@ export class GoveeSceneBrowser extends LitElement {
         var(--studio-border)
       );
       background: var(--studio-blue-soft);
-    }
-
-    .empty {
-      max-width: 680px;
-      padding: 28px;
-      line-height: 1.55;
     }
 
     .empty p {

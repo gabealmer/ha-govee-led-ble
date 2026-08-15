@@ -2,6 +2,8 @@ import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 
+import type { CheckboxControlChange } from "./checkbox-control";
+import "./checkbox-control";
 import { recentColour } from "./colour-picker";
 import "./colour-picker";
 import type {
@@ -333,16 +335,13 @@ export class GoveeMusicProfileEditor extends LitElement {
     commit: (checked: boolean) => void,
   ) {
     return html`
-      <label class="check-field">
-        <input
-          type="checkbox"
-          .checked=${checked}
-          ?disabled=${this.disabled}
-          @change=${(event: Event) =>
-            commit((event.target as HTMLInputElement).checked)}
-        />
-        <span class="parameter-label">${label}</span>
-      </label>
+      <govee-checkbox-control
+        .label=${label}
+        .checked=${checked}
+        .disabled=${this.disabled}
+        @checked-changed=${(event: CustomEvent<CheckboxControlChange>) =>
+          commit(event.detail.checked)}
+      ></govee-checkbox-control>
     `;
   }
 

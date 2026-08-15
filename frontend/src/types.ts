@@ -238,8 +238,6 @@ export interface PaletteDiyVariation {
   variant: number;
 }
 
-export type DiyEffectVariation = PaletteDiyVariation;
-
 export interface PaletteDiyFamily {
   id: string;
   label: string;

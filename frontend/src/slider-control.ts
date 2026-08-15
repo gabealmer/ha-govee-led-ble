@@ -29,14 +29,21 @@ export class GoveeSliderControl extends LitElement {
   @property({ type: Boolean })
   public showValue = false;
 
+  @property({ attribute: false })
+  public valueText?: string;
+
+  @property({ attribute: false })
+  public describedBy?: string;
+
   protected render() {
     const value = clamp(this.value, this.minimum, this.maximum);
+    const output = this.valueText ?? String(value);
     return html`
       <label class="slider-field">
         <span class="slider-heading">
           <span class="parameter-label">${this.label}</span>
-          ${this.showValue
-            ? html`<output aria-label="${this.label} value">${value}</output>`
+          ${this.showValue || this.valueText !== undefined
+            ? html`<output aria-label="${this.label} value">${output}</output>`
             : nothing}
         </span>
         <input
@@ -46,6 +53,7 @@ export class GoveeSliderControl extends LitElement {
           step=${this.step}
           .value=${String(value)}
           aria-label=${this.label}
+          aria-describedby=${this.describedBy ?? nothing}
           ?disabled=${this.disabled}
           @input=${this.inputChanged}
         />

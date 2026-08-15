@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
 import { studioBaseStyles, studioFormStyles } from "./studio-styles";
@@ -31,10 +31,15 @@ export class GoveeSegmentedControl extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
+  @property({ type: Boolean })
+  public hideLabel = false;
+
   protected render() {
     return html`
       <div class="parameter-group">
-        <span class="parameter-label">${this.label}</span>
+        ${this.hideLabel
+          ? nothing
+          : html`<span class="parameter-label">${this.label}</span>`}
         <div class="parameter-options" role="group" aria-label=${this.label}>
           ${this.options.map((option) => {
             const selected = option.value === this.value;

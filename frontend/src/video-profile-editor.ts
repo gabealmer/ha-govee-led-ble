@@ -1,12 +1,16 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
+import type { CheckboxControlChange } from "./checkbox-control";
+import "./checkbox-control";
 import type {
   SegmentedControlChange,
   SegmentedControlOption,
   SegmentedControlValue,
 } from "./segmented-control";
 import "./segmented-control";
+import type { SliderControlChange } from "./slider-control";
+import "./slider-control";
 import {
   studioBaseStyles,
   studioCardStyles,
@@ -293,16 +297,13 @@ export class GoveeVideoProfileEditor extends LitElement {
     changed: (checked: boolean) => void,
   ) {
     return html`
-      <label class="check-field">
-        <input
-          type="checkbox"
-          .checked=${checked}
-          ?disabled=${this.disabled}
-          @change=${(event: Event) =>
-            changed((event.target as HTMLInputElement).checked)}
-        />
-        <span class="parameter-label">${label}</span>
-      </label>
+      <govee-checkbox-control
+        .label=${label}
+        .checked=${checked}
+        .disabled=${this.disabled}
+        @checked-changed=${(event: CustomEvent<CheckboxControlChange>) =>
+          changed(event.detail.checked)}
+      ></govee-checkbox-control>
     `;
   }
 
@@ -316,21 +317,17 @@ export class GoveeVideoProfileEditor extends LitElement {
     describedBy?: string,
   ) {
     return html`
-      <label class="range-field">
-        <span class="parameter-label">${label}</span>
-        <input
-          type="range"
-          min=${minimum}
-          max=${maximum}
-          .value=${String(clamp(value, minimum, maximum))}
-          aria-label=${label}
-          aria-describedby=${describedBy ?? nothing}
-          ?disabled=${this.disabled}
-          @input=${(event: Event) =>
-            changed(Number((event.target as HTMLInputElement).value))}
-        />
-        <output aria-label="${label} value">${output}</output>
-      </label>
+      <govee-slider-control
+        .label=${label}
+        .value=${value}
+        .minimum=${minimum}
+        .maximum=${maximum}
+        .valueText=${output}
+        .describedBy=${describedBy}
+        .disabled=${this.disabled}
+        @value-changed=${(event: CustomEvent<SliderControlChange>) =>
+          changed(event.detail.value)}
+      ></govee-slider-control>
     `;
   }
 
@@ -441,11 +438,6 @@ export class GoveeVideoProfileEditor extends LitElement {
 
       .brightness-card {
         grid-column: 1 / -1;
-      }
-
-      .field,
-      .range-field {
-        margin-top: 0;
       }
 
       .muted,
@@ -637,9 +629,6 @@ export class GoveeVideoProfileEditor extends LitElement {
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-      }
-
-      .card-heading {
         margin-bottom: 14px;
       }
 
@@ -651,6 +640,7 @@ export class GoveeVideoProfileEditor extends LitElement {
         grid-template-columns: minmax(118px, auto) minmax(0, 1fr) 64px;
         align-items: center;
         gap: 10px;
+        margin-top: 0;
         font-variant-numeric: tabular-nums;
       }
 

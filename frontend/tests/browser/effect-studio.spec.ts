@@ -3014,7 +3014,7 @@ test("mobile form controls expose touch-sized hit areas", async ({
 test("advanced layer and palette keyboard focus follows edits", async ({
   page,
 }) => {
-  const { studio, advanced } = await openLayeredLibraryEffect(page);
+  const { advanced } = await openLayeredLibraryEffect(page);
   const layerTabs = advanced.getByRole("tab", { name: /Layer \d/ });
 
   await expect(
@@ -3039,6 +3039,17 @@ test("advanced layer and palette keyboard focus follows edits", async ({
     advanced.getByRole("slider", { name: "Speed" }).first(),
   ).toBeVisible();
   await expect(advanced.locator("output")).toHaveCount(2);
+  const prioritySwitch = advanced.getByRole("switch", {
+    name: "Layer priority enabled",
+  });
+  if ((await prioritySwitch.getAttribute("aria-checked")) === "false") {
+    await prioritySwitch.click();
+  }
+  const priority = advanced.getByRole("group", { name: "Priority" });
+  await priority.getByRole("button", { name: "3", exact: true }).click();
+  await expect(
+    priority.getByRole("button", { name: "3", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
 
   const selectionSegments = advanced.getByRole("spinbutton", {
     name: "Segments",

@@ -1,15 +1,22 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import type { CheckboxControlChange } from "./checkbox-control";
+import "./checkbox-control";
 import "./reorderable-strip";
 import type {
   GoveeReorderableStrip,
   ReorderableStripItem,
 } from "./reorderable-strip";
-import type { SegmentedControlChange } from "./segmented-control";
+import type {
+  SegmentedControlChange,
+  SegmentedControlOption,
+} from "./segmented-control";
 import "./segmented-control";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
+import type { SwitchControlChange } from "./switch-control";
+import "./switch-control";
 import {
   studioActionStyles,
   studioBaseStyles,
@@ -34,6 +41,10 @@ const AUTHORING_PALETTE_LIMIT = 8;
 const DEFAULT_SEGMENT_COUNT = 15;
 const KNOWN_SELECTION_TYPES: SelectionType[] = [1, 2, 0, 3];
 const KNOWN_BRIGHTNESS_ORDERS: BrightnessOrder[] = [0, 1, 2, 3];
+const PRIORITY_OPTIONS = [1, 2, 3, 4, 5].map((value) => ({
+  value,
+  label: String(value),
+})) satisfies readonly SegmentedControlOption<number>[];
 
 const SELECTION_LABELS: Record<SelectionType, string> = {
   0: "Segment",
@@ -777,22 +788,19 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       <section class="card">
         <div class="card-heading">
           <h3 class="section-title">${label}</h3>
-          <button
-            class="switch ${movement.enabled ? "on" : ""}"
-            type="button"
-            role="switch"
-            aria-checked=${movement.enabled}
-            aria-label="${label} enabled"
-            ?disabled=${this.disabled}
-            @click=${() =>
+          <govee-switch-control
+            .label=${`${label} enabled`}
+            .checked=${movement.enabled}
+            .disabled=${this.disabled}
+            @checked-changed=${(
+              event: CustomEvent<SwitchControlChange>,
+            ) =>
               this.updateMovement(
                 key,
-                { enabled: !movement.enabled },
-                `${label} ${movement.enabled ? "disabled" : "enabled"}.`,
+                { enabled: event.detail.checked },
+                `${label} ${event.detail.checked ? "enabled" : "disabled"}.`,
               )}
-          >
-            <span aria-hidden="true"></span>
-          </button>
+          ></govee-switch-control>
         </div>
         ${movement.enabled
           ? html`
@@ -837,14 +845,15 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                     `${label} speed ${bytePercent(value)} per cent.`,
                   ),
               )}
-              <label class="check-field">
-                <input
-                  type="checkbox"
-                  .checked=${movement.enter_exit}
-                  ?disabled=${this.disabled}
-                  @change=${(event: Event) => {
-                    const enterExit = (event.target as HTMLInputElement)
-                      .checked;
+              <govee-checkbox-control
+                class="movement-enter-exit"
+                label="Enter and exit"
+                .checked=${movement.enter_exit}
+                .disabled=${this.disabled}
+                @checked-changed=${(
+                  event: CustomEvent<CheckboxControlChange>,
+                ) => {
+                    const enterExit = event.detail.checked;
                     this.updateMovement(
                       key,
                       { enter_exit: enterExit },
@@ -853,9 +862,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                         : "disabled"}.`,
                     );
                   }}
-                />
-                <span>Enter and exit</span>
-              </label>
+              ></govee-checkbox-control>
             `
           : nothing}
       </section>
@@ -868,36 +875,29 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       <section class="card">
         <div class="card-heading">
           <h3 class="section-title">Priority</h3>
-          <button
-            class="switch ${enabled ? "on" : ""}"
-            type="button"
-            role="switch"
-            aria-checked=${enabled}
-            aria-label="Layer priority enabled"
-            ?disabled=${this.disabled}
-            @click=${() =>
-              this.updateLayer({ priority: enabled ? 0 : 1 })}
-          >
-            <span aria-hidden="true"></span>
-          </button>
+          <govee-switch-control
+            label="Layer priority enabled"
+            .checked=${enabled}
+            .disabled=${this.disabled}
+            @checked-changed=${(
+              event: CustomEvent<SwitchControlChange>,
+            ) =>
+              this.updateLayer({ priority: event.detail.checked ? 1 : 0 })}
+          ></govee-switch-control>
         </div>
         ${enabled
           ? html`
-              <div class="priority-row" role="group" aria-label="Priority">
-                ${[1, 2, 3, 4, 5].map(
-                  (priority) => html`
-                    <button
-                      class=${layer.priority === priority ? "selected" : ""}
-                      type="button"
-                      aria-pressed=${layer.priority === priority}
-                      ?disabled=${this.disabled}
-                      @click=${() => this.updateLayer({ priority })}
-                    >
-                      ${priority}
-                    </button>
-                  `,
-                )}
-              </div>
+              <govee-segmented-control
+                class="priority-control"
+                label="Priority"
+                .value=${layer.priority}
+                .options=${PRIORITY_OPTIONS}
+                .disabled=${this.disabled}
+                .hideLabel=${true}
+                @value-changed=${(
+                  event: CustomEvent<SegmentedControlChange<number>>,
+                ) => this.updateLayer({ priority: event.detail.value })}
+              ></govee-segmented-control>
               ${layer.priority > 5
                 ? this.byteNumberField(
                     "Priority (raw byte)",
@@ -1355,8 +1355,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       scrollbar-width: thin;
     }
 
-    .pattern-tabs button,
-    .priority-row button {
+    .pattern-tabs button {
       flex: 0 0 auto;
       padding: 8px 14px;
       border: 1px solid var(--studio-border);
@@ -1366,8 +1365,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       cursor: pointer;
     }
 
-    .pattern-tabs button.selected,
-    .priority-row button.selected {
+    .pattern-tabs button.selected {
       color: var(--studio-blue);
       border-color: var(--studio-blue);
       background: var(--studio-blue-soft);
@@ -1379,15 +1377,11 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       padding: 8px 14px;
       border: 1px solid var(--studio-border);
       border-radius: var(--studio-control-radius);
-      color: var(--primary-text-color);
+      color: var(--studio-blue);
       background: var(--studio-card);
       font-weight: 600;
-      cursor: pointer;
-    }
-
-    .add-button {
-      color: var(--studio-blue);
       border-style: dashed;
+      cursor: pointer;
     }
 
     .layer-actions-popover {
@@ -1512,12 +1506,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       margin-bottom: 4px;
     }
 
-    .priority-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-
     .pattern-toolbar {
       align-items: stretch;
       margin-top: 16px;
@@ -1558,50 +1546,12 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       margin-bottom: 0;
     }
 
-    .switch {
-      position: relative;
-      width: 60px;
-      min-height: 44px;
-      height: 44px;
-      padding: 0;
-      border: 1px solid var(--studio-border);
-      border-radius: 999px;
-      background: var(--secondary-background-color, #f5f6f8);
-      cursor: pointer;
-    }
-
-    .switch span {
-      position: absolute;
-      top: 6px;
-      left: 6px;
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      background: var(--studio-muted);
-      transition: transform 120ms ease;
-    }
-
-    .switch.on {
-      border-color: var(--studio-blue);
-      background: var(--studio-blue);
-    }
-
-    .switch.on span {
-      background: var(--text-primary-color, #fff);
-      transform: translateX(18px);
-    }
-
-    .check-field {
+    .movement-enter-exit {
       margin-top: 12px;
     }
 
-    .priority-row {
+    .priority-control {
       margin-top: 16px;
-    }
-
-    .priority-row button {
-      flex: 1;
-      min-width: 44px;
     }
 
     details summary {
@@ -1646,11 +1596,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       }
     }
 
-    @media (prefers-reduced-motion: reduce) {
-      .switch span {
-        transition: none;
-      }
-    }
   `];
 }
 
