@@ -214,11 +214,19 @@ const Ge=globalThis,Lt=Ge.ShadowRoot&&(Ge.ShadyCSS===void 0||Ge.ShadyCSS.nativeS
   .field select {
     width: 100%;
     min-width: 0;
+    min-height: var(--studio-control-height);
     padding: 8px 10px;
     border: 1px solid var(--studio-border);
     border-radius: var(--studio-control-radius);
     color: var(--primary-text-color);
     background: var(--studio-card);
+  }
+
+  .range-field input[type="range"] {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--studio-control-height);
+    margin: 0;
   }
 
   .range-field output {
@@ -566,6 +574,7 @@ const Ge=globalThis,Lt=Ge.ShadowRoot&&(Ge.ShadyCSS===void 0||Ge.ShadyCSS.nativeS
       input {
         width: 100%;
         min-width: 0;
+        min-height: var(--studio-control-height);
         margin: 0;
       }
     `]}}ue([h()],ee.prototype,"label");ue([h({type:Number})],ee.prototype,"value");ue([h({type:Number})],ee.prototype,"minimum");ue([h({type:Number})],ee.prototype,"maximum");ue([h({type:Number})],ee.prototype,"step");ue([h({type:Boolean})],ee.prototype,"disabled");ue([h({type:Boolean})],ee.prototype,"showValue");function Us(s,e,t){return Math.min(t,Math.max(e,s))}customElements.get("govee-slider-control")||customElements.define("govee-slider-control",ee);function X(s){return s.map(e=>[...e])}function k(s){return`#${s.map(e=>e.toString(16).padStart(2,"0")).join("")}`}function oi(s){return[Number.parseInt(s.slice(1,3),16),Number.parseInt(s.slice(3,5),16),Number.parseInt(s.slice(5,7),16)]}function Te(s,e){return s.localeCompare(e,"en-AU",{sensitivity:"base"})}function Qe(s,e,t){return s===void 0||e===t?s:s===e?t:e<t&&s>e&&s<=t?s-1:t<e&&s>=t&&s<e?s+1:s}function M(s){return s instanceof Error||typeof s=="object"&&s!==null&&"message"in s&&typeof s.message=="string"?s.message:"An unexpected error occurred."}function kt(s){if(typeof s=="object"&&s!==null&&"code"in s&&typeof s.code=="string")return s.code}var Hs=Object.defineProperty,pe=(s,e,t,i)=>{for(var n=void 0,r=s.length-1,a;r>=0;r--)(a=s[r])&&(n=a(e,t,n)||n);return n&&Hs(e,t,n),n};const me=5,li=8,di=15,Fi=[1,2,0,3],Ui=[0,1,2,3],qs={0:"Segment",1:"Continuous",2:"Random",3:"Custom"},Vs={0:"Brightest to darkest",1:"Brightest, darkest, brightest",2:"Darkest to brightest",3:"Darkest, brightest, darkest"},ci={0:"Forward",1:"Backward",2:"Forward and back",3:"Back and forward"};class te extends D{constructor(){super(...arguments),this.disabled=!1,this.segmentCount=di,this.activeLayerIndex=0,this.activePatternIndex=0,this.movementAnnouncement=""}willUpdate(e){if(!(!e.has("content")||!this.content)){if(this.content.layers.length===0){this.activeLayerIndex=0,this.activePatternIndex=0;return}if(this.activeLayerIndex=ve(this.activeLayerIndex,0,this.content.layers.length-1),this.activeLayer.brightness_patterns.length===0){this.activePatternIndex=0;return}this.activePatternIndex=ve(this.activePatternIndex,0,this.activeLayer.brightness_patterns.length-1)}}render(){if(!this.content)return d;if(this.content.layers.length===0)return this.renderEmptyLayers();const e=this.activeLayer,t=this.content.layers.map((i,n)=>({key:`layer-${n}`,label:`Layer ${n+1}`,ariaLabel:`Layer ${n+1}. Drag to reorder or use arrow keys.`,id:`advanced-layer-tab-${n}`,ariaControls:"advanced-layer-panel"}));return o`
@@ -1425,7 +1434,7 @@ const Ge=globalThis,Lt=Ge.ShadowRoot&&(Ge.ShadyCSS===void 0||Ge.ShadyCSS.nativeS
     .preset-grid button,
     .custom-colour {
       position: relative;
-      min-height: 40px;
+      min-height: var(--studio-control-height);
       border: 1px solid rgb(0 0 0 / 12%);
       border-radius: 6px;
       cursor: pointer;
@@ -2599,6 +2608,11 @@ const Ge=globalThis,Lt=Ge.ShadowRoot&&(Ge.ShadyCSS===void 0||Ge.ShadyCSS.nativeS
         grid-template-columns: 48px minmax(120px, 1fr) 44px;
       }
 
+      .edge-control-top input,
+      .edge-control-bottom input {
+        min-height: var(--studio-control-height);
+      }
+
       .edge-control-top {
         grid-area: top;
       }
@@ -2624,7 +2638,7 @@ const Ge=globalThis,Lt=Ge.ShadowRoot&&(Ge.ShadyCSS===void 0||Ge.ShadyCSS.nativeS
 
       .edge-control-left input,
       .edge-control-right input {
-        width: 24px;
+        width: var(--studio-control-height);
         height: 100%;
         writing-mode: vertical-lr;
         direction: rtl;

@@ -104,7 +104,7 @@ export class GoveeColourPicker extends LitElement {
     .preset-grid button,
     .custom-colour {
       position: relative;
-      min-height: 40px;
+      min-height: var(--studio-control-height);
       border: 1px solid rgb(0 0 0 / 12%);
       border-radius: 6px;
       cursor: pointer;

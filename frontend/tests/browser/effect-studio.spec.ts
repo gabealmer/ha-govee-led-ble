@@ -6,6 +6,39 @@ import {
 
 const studioSelector = "ha-govee-led-ble-editor";
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+async function touchDrag(page: Page, from: Point, to: Point): Promise<void> {
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [from],
+    });
+    for (let step = 1; step <= 10; step += 1) {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          {
+            x: from.x + ((to.x - from.x) * step) / 10,
+            y: from.y + ((to.y - from.y) * step) / 10,
+          },
+        ],
+      });
+      await page.waitForTimeout(20);
+    }
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await session.detach();
+  }
+}
+
 async function openStudio(page: Page, query = "") {
   const path = query && !query.startsWith("?") ? `/${query}` : "/";
   const parameters = new URLSearchParams(
@@ -2737,6 +2770,125 @@ test("applied area boundaries support touch on a narrow screen", async ({
   }
 });
 
+test("mobile touch dragging reorders layers and preserves vertical scrolling", async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "CDP touch input requires Chromium.");
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const { advanced } = await openLayeredLibraryEffect(page);
+    const tabs = advanced.getByRole("tab", { name: /Layer \d/ });
+    await tabs.nth(0).scrollIntoViewIfNeeded();
+    const firstBox = await tabs.nth(0).boundingBox();
+    const secondBox = await tabs.nth(1).boundingBox();
+    if (!firstBox || !secondBox) {
+      throw new Error("Layer tabs are not visible.");
+    }
+
+    await touchDrag(
+      page,
+      {
+        x: firstBox.x + firstBox.width / 2,
+        y: firstBox.y + firstBox.height / 2,
+      },
+      {
+        x: secondBox.x + secondBox.width / 2,
+        y: secondBox.y + secondBox.height / 2,
+      },
+    );
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+    await expect(
+      advanced.getByRole("slider", { name: "Applied area left edge" }),
+    ).toHaveValue("0");
+
+    await page.evaluate(() => scrollTo(0, 0));
+    const selectedBox = await tabs.nth(1).boundingBox();
+    if (!selectedBox) {
+      throw new Error("Selected layer tab is not visible.");
+    }
+    await touchDrag(
+      page,
+      {
+        x: selectedBox.x + selectedBox.width / 2,
+        y: selectedBox.y + selectedBox.height / 2,
+      },
+      {
+        x: selectedBox.x + selectedBox.width / 2,
+        y: selectedBox.y - 220,
+      },
+    );
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  } finally {
+    await context.close();
+  }
+});
+
+test("mobile touch painting crosses segment rows", async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "CDP touch input requires Chromium.");
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const studio = await openStudio(page);
+    await studio
+      .getByRole("complementary", { name: "Effects" })
+      .getByRole("button", { name: "Paint", exact: true })
+      .click();
+    await studio.getByRole("button", { name: "Edit", exact: true }).click();
+    const segments = studio
+      .locator("govee-painted-segment-editor")
+      .getByRole("button", { name: /Segment/ });
+    await segments.nth(0).scrollIntoViewIfNeeded();
+    const firstBox = await segments.nth(0).boundingBox();
+    const eleventhBox = await segments.nth(10).boundingBox();
+    if (!firstBox || !eleventhBox) {
+      throw new Error("Painted segments are not visible.");
+    }
+
+    await touchDrag(
+      page,
+      {
+        x: firstBox.x + firstBox.width / 2,
+        y: firstBox.y + firstBox.height / 2,
+      },
+      {
+        x: eleventhBox.x + eleventhBox.width / 2,
+        y: eleventhBox.y + eleventhBox.height / 2,
+      },
+    );
+    for (const index of [0, 5, 10]) {
+      await expect(segments.nth(index)).toHaveAccessibleName(
+        `Segment ${index + 1}, #ff0000`,
+      );
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test("advanced template brightness controls support touch", async ({
   browser,
 }) => {
@@ -2783,6 +2935,77 @@ test("advanced template brightness controls support touch", async ({
     await expect(
       advanced.getByRole("tab", { name: "Pattern 2", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
+  } finally {
+    await context.close();
+  }
+});
+
+test("mobile form controls expose touch-sized hit areas", async ({
+  browser,
+}) => {
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const { studio, advanced } = await openLayeredLibraryEffect(page);
+    const speedBox = await advanced
+      .getByRole("slider", { name: "Colour speed" })
+      .boundingBox();
+    const numberBox = await advanced
+      .getByRole("spinbutton", { name: "Segments", exact: true })
+      .boundingBox();
+    if (!speedBox || !numberBox) {
+      throw new Error("Advanced form controls are not visible.");
+    }
+    expect(speedBox.height).toBeGreaterThanOrEqual(44);
+    expect(numberBox.height).toBeGreaterThanOrEqual(44);
+
+    const palette = advanced.locator("govee-palette-editor");
+    await palette.getByRole("button", { name: /Edit colour 1/ }).click();
+    const presetBox = await palette
+      .getByRole("button", { name: "Use #ff9f0a" })
+      .boundingBox();
+    if (!presetBox) {
+      throw new Error("Colour preset is not visible.");
+    }
+    expect(presetBox.height).toBeGreaterThanOrEqual(44);
+
+    await studio
+      .getByRole("combobox", { name: "Development device" })
+      .selectOption("h6199-main");
+    await studio.getByRole("button", { name: "Video", exact: true }).click();
+    await studio
+      .getByRole("complementary", { name: "Video profiles" })
+      .getByRole("button", { name: "Movie", exact: true })
+      .click();
+    await studio
+      .locator(".editor")
+      .getByRole("button", { name: "Edit", exact: true })
+      .click();
+    const video = studio.locator("govee-video-profile-editor");
+    await video
+      .getByRole("group", { name: "Capture area" })
+      .getByRole("button", { name: "Part screen" })
+      .click();
+    const topBox = await video
+      .getByRole("slider", { name: "Top", exact: true })
+      .boundingBox();
+    const leftBox = await video
+      .getByRole("slider", { name: "Left", exact: true })
+      .boundingBox();
+    if (!topBox || !leftBox) {
+      throw new Error("Video edge controls are not visible.");
+    }
+    expect(topBox.height).toBeGreaterThanOrEqual(44);
+    expect(leftBox.width).toBeGreaterThanOrEqual(44);
   } finally {
     await context.close();
   }

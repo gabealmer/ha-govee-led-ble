@@ -591,6 +591,11 @@ export class GoveeVideoProfileEditor extends LitElement {
         grid-template-columns: 48px minmax(120px, 1fr) 44px;
       }
 
+      .edge-control-top input,
+      .edge-control-bottom input {
+        min-height: var(--studio-control-height);
+      }
+
       .edge-control-top {
         grid-area: top;
       }
@@ -616,7 +621,7 @@ export class GoveeVideoProfileEditor extends LitElement {
 
       .edge-control-left input,
       .edge-control-right input {
-        width: 24px;
+        width: var(--studio-control-height);
         height: 100%;
         writing-mode: vertical-lr;
         direction: rtl;

@@ -222,11 +222,19 @@ export const studioFormStyles = css`
   .field select {
     width: 100%;
     min-width: 0;
+    min-height: var(--studio-control-height);
     padding: 8px 10px;
     border: 1px solid var(--studio-border);
     border-radius: var(--studio-control-radius);
     color: var(--primary-text-color);
     background: var(--studio-card);
+  }
+
+  .range-field input[type="range"] {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--studio-control-height);
+    margin: 0;
   }
 
   .range-field output {

@@ -91,6 +91,7 @@ export class GoveeSliderControl extends LitElement {
       input {
         width: 100%;
         min-width: 0;
+        min-height: var(--studio-control-height);
         margin: 0;
       }
     `,
