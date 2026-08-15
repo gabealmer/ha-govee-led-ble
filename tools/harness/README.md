@@ -11,6 +11,95 @@ bash tools/harness/down.sh
 Run `tools/harness/preflight.sh app` or `tools/harness/preflight.sh direct` before taking a
 device link when setting up a host.
 
+The manifest-driven camera, direct-effect and vendor-app corpus workflow is documented in
+[Animation capture campaign](ANIMATION_CAPTURE.md).
+
+## Household Home Assistant Effect Studio validation
+
+`effect-studio-home-assistant.sh` selects the `cupboard` entry through the untracked device identity, authenticates through the platform helper, restarts Home Assistant once, applies every H617A Effect Studio route, verifies diagnostics, and restores the saved library and light state.
+
+```bash
+bash tools/harness/effect-studio-home-assistant.sh
+```
+
+The restart boundary can be split across two invocations when deployment timing requires it.  The first stage retains only the temporary library item and protected recovery state.  The second stage verifies persistence, completes physical validation, removes the item, and restores the light.
+
+```bash
+bash tools/harness/effect-studio-home-assistant.sh --stage before-restart
+bash tools/harness/effect-studio-home-assistant.sh --stage after-restart
+```
+
+## Isolated Home Assistant Container
+
+`container.sh` runs a separate [Home Assistant Container](https://www.home-assistant.io/installation/linux#install-home-assistant-container) through Podman.  It does not deploy to, restart or otherwise repurpose the household Home Assistant instance.
+
+The household config entry remains the normal BLE owner.  `up` verifies that entry is loaded and enabled, verifies Podman plus `org.bluez`, pulls and inspects the pinned image, and runs Home Assistant's `bluetooth_adapters.dbus.get_bluetooth_adapter_details()` inside that image with the final D-Bus mounts and environment.  In proxied mode it also probes `PF_BLUETOOTH` before changing ownership.  These image-level authentication and adapter checks must pass before the household entry is disabled.  Once Home Assistant confirms `state: not_loaded` with `disabled_by: user`, the active rollback trap protects ownership while portable mode runs a bounded direct `BleakScanner.find_device_by_address()` discovery.  A single-link light cannot be required to advertise while household Home Assistant still holds its connection.  The address is supplied through protected standard input and is not placed in process arguments or output.  Cache mode skips this direct scan.  The long-running isolated container starts only after the scan succeeds, and a scan failure restores household ownership.  The scan does not connect; the isolated coordinator's first refresh validates the connection path.  `require_restart` is refused.  A failed start stops the container and restores the household entry.  `down` stops the container and Vite first, then enables and polls the recorded household entry.  A failed restore retains retryable ownership state rather than reporting the rig as down.
+
+The container image is pinned to the Home Assistant version used by this repository's test environment.  It uses host networking and a read-only D-Bus socket-directory mount without `--privileged`; host BlueZ retains controller ownership.  Ordinary Linux mounts `/run/dbus` and uses its system bus directly.  A host using the existing `WITH_HOST_BLUETOOTH` convention resolves the wrapper's D-Bus address and Bleak authentication UID, preflights `org.bluez` through that wrapper, mounts the resolved directory at the same container path, and passes the matching environment to Home Assistant.
+
+Proxied mode also mounts `container_python/sitecustomize.py` and enables it with an isolated-container flag.  The compatibility hook supplies dbus-fast's `AuthExternal(UID_NOT_SPECIFIED)` only when a caller omits an authenticator, which emits the [D-Bus bare `AUTH EXTERNAL` exchange](https://dbus.freedesktop.org/doc/dbus-specification.html#auth-protocol).  Bleak continues to receive `BLEAK_DBUS_AUTH_UID=-1` explicitly.  The hook is absent on direct Linux and cannot affect the production integration or household Home Assistant.
+
+When the proxied image can authenticate to BlueZ but its `PF_BLUETOOTH` probe fails, the harness passes `HA_GOVEE_LED_BLE_PORTABLE_BLE_FALLBACK=1` to the disposable container.  The integration still checks Home Assistant's Bluetooth cache first.  A cached device whose source has a registered Home Assistant scanner keeps the wrapped client and slot management.  A stale cached device with no registered source scanner is reused without another scan and receives the original unwrapped client.  A cache miss uses `habluetooth`'s original scanner and tags that result for the same original client.  The variable accepts exactly `1`; every other configured value is rejected.  `container.sh` owns this switch and never passes it to ordinary Linux containers.  It exists only for this isolated nested LXC/Proxmox development topology and is not a production deployment recommendation.
+
+The integration directory is bind-mounted read-only, while Home Assistant configuration, onboarding credentials, refresh tokens and config-entry state persist under the gitignored `.harness/ha-container/devices/<device>/` directory.  The HTTP listener defaults to `127.0.0.1:8123` to avoid exposing an unfinished onboarding flow on the LAN.  Readiness handles both first onboarding and later boots where Home Assistant removes the onboarding route.
+
+Configure these values in the untracked `devices.local.env`:
+
+- `HA_CONTAINER_USERNAME` and `HA_CONTAINER_PASSWORD` for the isolated administrator only.
+- `DEVICE_HA_CONTAINER_ADDRESS[<device>]` when a sniff-only device needs explicit container access.  Devices already present in `DEVICE_BLE_ADDRESS` are eligible without another address.
+- Optionally, `HA_GOVEE_LED_BLE_EDITOR_DEV_MODULE_URL=http://127.0.0.1:5173/src/panel.ts` for live frontend development.
+- Optionally, `HA_CONTAINER_FRONTEND_ORIGIN` when the browser opens isolated Home Assistant through another local address.  Vite grants CORS only to this exact origin.
+- Optionally, `HA_CONTAINER_PODMAN_COMMAND=(sudo -n /usr/bin/podman)` for an explicitly approved rootful fallback.  It must be a Bash indexed array; command strings and runtime evaluation are not accepted.
+
+No household token is copied into container state.  Household API access continues through `ha.sh` and Bitwarden Secrets Manager.  Generated Home Assistant refresh tokens stay in the ignored per-device state, while short-lived access tokens are sent only through HTTP or WebSocket authentication fields.  Tokens are never passed in process arguments or included in HTTP error diagnostics.
+
+Use one command surface for the lifecycle:
+
+```bash
+# Verify the handover plan without calling Podman or either Home Assistant API.
+bash tools/harness/container.sh --dry-run up strip
+
+# Optional Vite development server.  Start this before up when the module URL is set.
+bash tools/harness/container.sh frontend strip
+
+# Transfer BLE ownership and automate onboarding plus config-entry creation.
+bash tools/harness/container.sh up strip
+bash tools/harness/container.sh status strip
+
+# Reload bind-mounted Python after backend changes.
+bash tools/harness/container.sh restart strip
+
+# Stop isolated processes, then restore and poll household ownership.
+bash tools/harness/container.sh down strip
+```
+
+Dry-run output includes the selected transport and container arguments but redacts the
+household config-entry ID and device address.
+
+Vite serves only the `frontend/` tree, with HMR and an exact Home Assistant origin, so frontend edits do not rebuild committed assets or expose repository configuration.  The integration accepts the external module only when the development environment variable is present, the URL uses local HTTP with an explicit port, and the path names a JavaScript or TypeScript module.  A malformed value degrades to the committed safe module.  Production module selection and `trust_external: false` remain unchanged when the variable is absent.
+
+`status` reports the selected owner, household entry state, container running state, health and the isolated config entry.  It reports a conflict explicitly if both Home Assistant instances appear active.  Container presence and runtime inspection are tri-state: Podman errors are reported as unknown rather than absent or stopped.  `down` and rollback restore household ownership only after Podman confirms the isolated container is stopped or absent; uncertainty retains `container-stop-failed`, leaves the household entry disabled, and requires `down` after Podman access is restored.  Rollback ignores further termination signals while it performs this sequence.
+
+Rootless Podman inside a nested user namespace can fail before it creates a runtime namespace.  This is a pre-handover failure: the household entry remains enabled.  Do not change host subuid mappings for the harness; run it on the lab host or configure the reviewed command-array prefix instead.
+
+### Container workflow contract
+
+Without the development module variable, the bind-mounted integration registers the production `editor-loader.js`, which selects the manifest-pinned bootstrap from the same integration tree.  The process setup test exercises that panel registration together with the real editor WebSocket commands, Home Assistant storage repositories, committed scene catalogue and a real `GoveeBLECoordinator` instance.
+
+`frontend`, `up` and `restart` share `.harness/ha-container/`.  Vite is a separate transient process, while Home Assistant keeps one per-device `/config` directory across container restarts.  `restart` does not recreate the container or rewrite its storage; `down` removes the container and Vite process but retains the ignored development configuration for the next session.
+
+The per-device config-entry ID is written as soon as Home Assistant creates the entry, before the harness waits for `loaded`.  A later `up` validates and resumes that exact enabled integration entry after `setup_retry`.  If an older config has no recorded ID and the flow reports `already_configured`, recovery succeeds only when the isolated Home Assistant config contains exactly one enabled `ha_govee_led_ble` entry.
+
+The non-hardware workflow is covered by:
+
+```bash
+TMPDIR="$PWD/.harness/test-tmp" uv run --no-sync pytest \
+  tests/test_editor_panel.py \
+  tests/test_harness_container.py \
+  tests/test_harness_container_sitecustomize.py \
+  tests/test_harness_container_ha.py -q
+```
+
 When PacketLogger is unavailable, UI automation can still be used without claiming the run
 is capture evidence:
 
@@ -127,3 +216,11 @@ on that unknown.
 The AI lab receives the iPhone through Proxmox USB passthrough. Its BlueZ daemon remains on
 the host and direct BLE commands use `with-host-bluetooth`. The host udev rule restarts the
 guest usbmuxd service after an iPhone hotplug.
+
+The isolated Home Assistant Container follows that same wrapper convention.  On this LXC,
+the wrapper supplies `unix:path=/var/host-dbus/system_bus_socket` and
+`BLEAK_DBUS_AUTH_UID=-1`; the harness mounts `/var/host-dbus` read-only and passes both
+values into the container.  The pre-handover check confirms D-Bus authentication and hci0.
+When the nested container's `PF_BLUETOOTH` probe fails, direct Bleak discovery runs only
+after household ownership is released and before the isolated container starts.  No
+operator-managed topology switch is required.
