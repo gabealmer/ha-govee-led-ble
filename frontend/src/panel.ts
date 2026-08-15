@@ -1167,12 +1167,15 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <govee-advanced-effect-editor
         .content=${advancedEditorContent(this.content)}
-        .disabled=${this.editorReadOnly}
+        .disabled=${!this.isAdmin}
         .segmentCount=${this.selectedDevice?.segment_count ?? 15}
         @content-changed=${(
           event: CustomEvent<{ content: AdvancedContent }>,
         ) => {
-          if (!isAdvancedEditableContent(this.content)) {
+          if (
+            !isAdvancedEditableContent(this.content) ||
+            !this.prepareTemplateEdit()
+          ) {
             return;
           }
           this.content = updateAdvancedEditorContent(
@@ -2601,15 +2604,21 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private editTemplate(): void {
+    this.prepareTemplateEdit(true);
+  }
+
+  private prepareTemplateEdit(focusName = false): boolean {
     const source = this.templateSourceLabel;
+    if (!source) {
+      return true;
+    }
     if (
-      !source ||
       !this.isAdmin ||
       this.saving ||
       this.applying ||
       this.deletingCurrentItem
     ) {
-      return;
+      return false;
     }
     const transitionEpoch = this.beginEditorTransition();
     this.templateSourceLabel = undefined;
@@ -2617,7 +2626,10 @@ export class GoveeLedEffectStudio extends LitElement {
     this.customCopyStarted = true;
     this.name = `Custom ${source}`;
     this.savedBaseline = undefined;
-    this.selectNewEffectName(transitionEpoch);
+    if (focusName) {
+      this.selectNewEffectName(transitionEpoch);
+    }
+    return true;
   }
 
   private paintBrushesChanged(
