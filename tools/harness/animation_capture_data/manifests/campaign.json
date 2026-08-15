@@ -1,0 +1,2949 @@
+{
+  "analysis": {
+    "container": "webm",
+    "crop": {
+      "calibration_target": "calibration-all-white",
+      "height": 125,
+      "width": 800,
+      "x": 0,
+      "y": 0
+    },
+    "fps": 30,
+    "music_audio_codec": "opus",
+    "video_codec": "vp9-lossless"
+  },
+  "campaign_id": "animation-campaign-v1",
+  "device_baseline": {
+    "direct": {
+      "brightness_percent": 5,
+      "diy_activation_code": 240,
+      "power": false
+    },
+    "vendor_app": {
+      "household_light_service": "light.turn_off"
+    }
+  },
+  "schema_version": 1,
+  "targets": [
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "calibration",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "calibration",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 10,
+      "family": "calibration-static",
+      "id": "calibration-black",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "state": "black"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "calibration",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "calibration",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 10,
+      "family": "calibration-static",
+      "id": "calibration-first-red",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "state": "first_segment_red"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "calibration",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "calibration",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 10,
+      "family": "calibration-static",
+      "id": "calibration-last-blue",
+      "model": "H617A",
+      "palette": [
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "state": "last_segment_blue"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "calibration",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "calibration",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 10,
+      "family": "calibration-static",
+      "id": "calibration-all-white",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          255,
+          255
+        ]
+      ],
+      "parameters": {
+        "state": "all_segments_white"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "pilot",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "pilot-single-chasing-rgb-step-below-default",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "speed": 40,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 40,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": -1,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 15,
+      "family": "type04-single",
+      "id": "type04-single-fade-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "fade",
+        "family": 0,
+        "speed": 50,
+        "variant": 0
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 15,
+      "family": "type04-single",
+      "id": "type04-single-jumping-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "jumping",
+        "family": 1,
+        "speed": 50,
+        "variant": 0
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 15,
+      "family": "type04-single",
+      "id": "type04-single-marquee-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "marquee",
+        "family": 3,
+        "speed": 50,
+        "variant": 3
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 15,
+      "family": "type04-single",
+      "id": "type04-single-chasing-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-fade-reversed",
+      "model": "H617A",
+      "palette": [
+        [
+          0,
+          0,
+          255
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "effect": "fade",
+        "family": 0,
+        "palette_variant": "reversed",
+        "speed": 50,
+        "variant": 0
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-fade-single-red",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "effect": "fade",
+        "family": 0,
+        "palette_variant": "single-red",
+        "speed": 50,
+        "variant": 0
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-fade-black-sentinel",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "fade",
+        "family": 0,
+        "palette_variant": "black-sentinel",
+        "speed": 50,
+        "variant": 0
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-jumping-reversed",
+      "model": "H617A",
+      "palette": [
+        [
+          0,
+          0,
+          255
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "effect": "jumping",
+        "family": 1,
+        "palette_variant": "reversed",
+        "speed": 50,
+        "variant": 0
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-jumping-single-red",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "effect": "jumping",
+        "family": 1,
+        "palette_variant": "single-red",
+        "speed": 50,
+        "variant": 0
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-jumping-black-sentinel",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "jumping",
+        "family": 1,
+        "palette_variant": "black-sentinel",
+        "speed": 50,
+        "variant": 0
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-marquee-reversed",
+      "model": "H617A",
+      "palette": [
+        [
+          0,
+          0,
+          255
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "effect": "marquee",
+        "family": 3,
+        "palette_variant": "reversed",
+        "speed": 50,
+        "variant": 3
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-marquee-single-red",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "effect": "marquee",
+        "family": 3,
+        "palette_variant": "single-red",
+        "speed": 50,
+        "variant": 3
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-marquee-black-sentinel",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "marquee",
+        "family": 3,
+        "palette_variant": "black-sentinel",
+        "speed": 50,
+        "variant": 3
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-chasing-reversed",
+      "model": "H617A",
+      "palette": [
+        [
+          0,
+          0,
+          255
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "palette_variant": "reversed",
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-chasing-single-red",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "palette_variant": "single-red",
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-single-colours",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-single",
+      "id": "type04-single-chasing-black-sentinel",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "palette_variant": "black-sentinel",
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-multi",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_multi",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-multi",
+      "id": "type04-multi-1-effect-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effects": [
+          {
+            "effect": "fade",
+            "family": 0,
+            "variant": 0
+          }
+        ],
+        "speed": 50
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-multi",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_multi",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-multi",
+      "id": "type04-multi-2-effect-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effects": [
+          {
+            "effect": "fade",
+            "family": 0,
+            "variant": 0
+          },
+          {
+            "effect": "jumping",
+            "family": 1,
+            "variant": 0
+          }
+        ],
+        "speed": 50
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-multi",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_multi",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-multi",
+      "id": "type04-multi-3-effect-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effects": [
+          {
+            "effect": "fade",
+            "family": 0,
+            "variant": 0
+          },
+          {
+            "effect": "jumping",
+            "family": 1,
+            "variant": 0
+          },
+          {
+            "effect": "marquee",
+            "family": 3,
+            "variant": 3
+          }
+        ],
+        "speed": 50
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "type04-multi",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_multi",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "type04-multi",
+      "id": "type04-multi-4-effect-default-rgb",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effects": [
+          {
+            "effect": "fade",
+            "family": 0,
+            "variant": 0
+          },
+          {
+            "effect": "jumping",
+            "family": 1,
+            "variant": 0
+          },
+          {
+            "effect": "marquee",
+            "family": 3,
+            "variant": 3
+          },
+          {
+            "effect": "chasing",
+            "family": 8,
+            "variant": 9
+          }
+        ],
+        "speed": 50
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "special-diy",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "special-diy",
+      "id": "special-diy-fade-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open DIY, select the named Special Effects template and leave every control at the app default.",
+        "Set the palette to red, green and blue where the template exposes colours.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "template": "fade",
+        "variation": "app_default"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "special-diy",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "special-diy",
+      "id": "special-diy-jumping-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open DIY, select the named Special Effects template and leave every control at the app default.",
+        "Set the palette to red, green and blue where the template exposes colours.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "template": "jumping",
+        "variation": "app_default"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "special-diy",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "special-diy",
+      "id": "special-diy-chasing-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open DIY, select the named Special Effects template and leave every control at the app default.",
+        "Set the palette to red, green and blue where the template exposes colours.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "template": "chasing",
+        "variation": "app_default"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "special-diy",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "special-diy",
+      "id": "special-diy-marquee-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open DIY, select the named Special Effects template and leave every control at the app default.",
+        "Set the palette to red, green and blue where the template exposes colours.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "template": "marquee",
+        "variation": "app_default"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "special-diy",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "special-diy",
+      "id": "special-diy-crossing-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open DIY, select the named Special Effects template and leave every control at the app default.",
+        "Set the palette to red, green and blue where the template exposes colours.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "template": "crossing",
+        "variation": "app_default"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "special-diy",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "special-diy",
+      "id": "special-diy-rainbow-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open DIY, select the named Special Effects template and leave every control at the app default.",
+        "Set the palette to red, green and blue where the template exposes colours.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "template": "rainbow",
+        "variation": "app_default"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "special-diy",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "special-diy",
+      "id": "special-diy-twinkle-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open DIY, select the named Special Effects template and leave every control at the app default.",
+        "Set the palette to red, green and blue where the template exposes colours.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "template": "twinkle",
+        "variation": "app_default"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-movement-baseline-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "movement-baseline",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-selected-area-movement-direction-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "selected-area-movement-direction",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-overall-movement-direction-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "overall-movement-direction",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-two-colour-continuous-selection-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "two-colour-continuous-selection",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-three-colour-palette-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "three-colour-palette",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-brightness-scope-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "brightness-scope",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-two-layer-priority-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "two-layer-priority",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-distribution-direction-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "distribution-direction",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-matrix-customise-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "matrix-customise",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-five-layer-applied-area-baseline",
+      "model": "H617A",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "five-layer-applied-area",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-movement-baseline-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "movement-baseline",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-selected-area-movement-direction-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "selected-area-movement-direction",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-overall-movement-direction-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "overall-movement-direction",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-two-colour-continuous-selection-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "two-colour-continuous-selection",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-three-colour-palette-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "three-colour-palette",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-brightness-scope-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "brightness-scope",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-two-layer-priority-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "two-layer-priority",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-distribution-direction-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "distribution-direction",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-matrix-customise-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "matrix-customise",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "advanced-workshop",
+      "brightness_percent": 30,
+      "driver": "vendor_app",
+      "duration_seconds": 20,
+      "family": "workshop-primitive",
+      "id": "workshop-h6199-five-layer-applied-area-baseline",
+      "model": "H6199",
+      "operator_steps": [
+        "Open Workshop and build only the named primitive using the app defaults.",
+        "Use red, green and blue for exposed palette controls and avoid unrelated controls.",
+        "Stop before Apply, return to the terminal, then follow the Apply prompt."
+      ],
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "primitive": "five-layer-applied-area",
+        "variation": "app_default_baseline"
+      },
+      "speed_policy": {
+        "kind": "app_default"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.0
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p0-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.0,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.05
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p05-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.05,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.1
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p1-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.1,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p25-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.25,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "native-gaps",
+      "brightness_percent": 30,
+      "direct": {
+        "activation_code": 24,
+        "kind": "type04_single",
+        "send_gap_seconds": 0.5
+      },
+      "driver": "direct",
+      "duration_seconds": 12,
+      "family": "native-gap",
+      "id": "native-gap-0p5-seconds",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "effect": "chasing",
+        "family": 8,
+        "gap_seconds": 0.5,
+        "speed": 50,
+        "variant": 9
+      },
+      "speed_policy": {
+        "applied": 50,
+        "default": 50,
+        "kind": "relative_step",
+        "offset_steps": 0,
+        "step": 10
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-energetic-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "energetic",
+        "mode_id": 5,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-rhythm-dynamic",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "rhythm",
+        "mode_id": 3,
+        "sensitivity": 99,
+        "style": "dynamic"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-rhythm-calm",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "rhythm",
+        "mode_id": 3,
+        "sensitivity": 99,
+        "style": "calm"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-spectrum-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "spectrum",
+        "mode_id": 4,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-rolling-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "rolling",
+        "mode_id": 6,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-separation-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "separation",
+        "mode_id": 50,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-hopping-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "hopping",
+        "mode_id": 51,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-piano-keys-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "piano_keys",
+        "mode_id": 52,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-fountain-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "fountain",
+        "mode_id": 53,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-day-and-night-default",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "day_and_night",
+        "mode_id": 55,
+        "sensitivity": 99,
+        "style": "default"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-bloom-dynamic",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "bloom",
+        "mode_id": 48,
+        "sensitivity": 99,
+        "style": "dynamic"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-bloom-calm",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "bloom",
+        "mode_id": 48,
+        "sensitivity": 99,
+        "style": "calm"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-shiny-dynamic",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "shiny",
+        "mode_id": 49,
+        "sensitivity": 99,
+        "style": "dynamic"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": true,
+        "stimulus_notes": "Play music-v1.wav through the fixed external speaker at the marked volume and position.  The 20-second sequence is 2 s silence, 4 s 440 Hz tone, 8 s of 120 BPM deterministic noise bursts, 4 s stepped tones at 100/400/1600/6400 Hz, then 2 s silence."
+      },
+      "batch": "music",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "music",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 20,
+      "family": "music",
+      "id": "music-shiny-calm",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "manual_colour": null,
+        "mode": "shiny",
+        "mode_id": 49,
+        "sensitivity": 99,
+        "style": "calm"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    }
+  ],
+  "viewer": {
+    "expected_height": 720,
+    "expected_width": 1280,
+    "sample_count": 9,
+    "sample_interval_seconds": 0.5,
+    "session": "govee-camera",
+    "stable_seconds": 2.0,
+    "url": "https://vdo.ninja/?view=7MdKzqF"
+  }
+}

@@ -674,6 +674,9 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
         def _read(self):
             self.scene_id = self._io.read_u2le()
             self.music_code = self._io.read_u2le()
+            self.reserved = self._io.read_bytes(12)
+            if not self.reserved == b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00":
+                raise kaitaistruct.ValidationNotEqualError(b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", self.reserved, self._io, u"/types/scene_body/seq/2")
             self._dirty = False
 
 
@@ -685,9 +688,14 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
             super(H6199CommandWrite.SceneBody, self)._write__seq(io)
             self._io.write_u2le(self.scene_id)
             self._io.write_u2le(self.music_code)
+            self._io.write_bytes(self.reserved)
 
 
         def _check(self):
+            if len(self.reserved) != 12:
+                raise kaitaistruct.ConsistencyError(u"reserved", 12, len(self.reserved))
+            if not self.reserved == b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00":
+                raise kaitaistruct.ValidationNotEqualError(b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", self.reserved, None, u"/types/scene_body/seq/2")
             self._dirty = False
 
 

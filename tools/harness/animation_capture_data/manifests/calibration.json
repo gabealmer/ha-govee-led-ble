@@ -1,0 +1,152 @@
+{
+  "analysis": {
+    "container": "webm",
+    "crop": {
+      "calibration_target": "calibration-all-white",
+      "height": 125,
+      "width": 800,
+      "x": 0,
+      "y": 0
+    },
+    "fps": 30,
+    "music_audio_codec": "opus",
+    "video_codec": "vp9-lossless"
+  },
+  "campaign_id": "animation-calibration-v1",
+  "device_baseline": {
+    "direct": {
+      "brightness_percent": 5,
+      "diy_activation_code": 240,
+      "power": false
+    },
+    "vendor_app": {
+      "household_light_service": "light.turn_off"
+    }
+  },
+  "schema_version": 1,
+  "targets": [
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "calibration",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "calibration",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 10,
+      "family": "calibration-static",
+      "id": "calibration-black",
+      "model": "H617A",
+      "palette": [],
+      "parameters": {
+        "state": "black"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "calibration",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "calibration",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 10,
+      "family": "calibration-static",
+      "id": "calibration-first-red",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "state": "first_segment_red"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "calibration",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "calibration",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 10,
+      "family": "calibration-static",
+      "id": "calibration-last-blue",
+      "model": "H617A",
+      "palette": [
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "parameters": {
+        "state": "last_segment_blue"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    },
+    {
+      "audio": {
+        "retain_in_reduced": false,
+        "stimulus_notes": null
+      },
+      "batch": "calibration",
+      "brightness_percent": 30,
+      "direct": {
+        "kind": "calibration",
+        "send_gap_seconds": 0.25
+      },
+      "driver": "direct",
+      "duration_seconds": 10,
+      "family": "calibration-static",
+      "id": "calibration-all-white",
+      "model": "H617A",
+      "palette": [
+        [
+          255,
+          255,
+          255
+        ]
+      ],
+      "parameters": {
+        "state": "all_segments_white"
+      },
+      "speed_policy": {
+        "kind": "not_applicable"
+      }
+    }
+  ],
+  "viewer": {
+    "expected_height": 720,
+    "expected_width": 1280,
+    "sample_count": 9,
+    "sample_interval_seconds": 0.5,
+    "session": "govee-camera",
+    "stable_seconds": 2.0,
+    "url": "https://vdo.ninja/?view=7MdKzqF"
+  }
+}

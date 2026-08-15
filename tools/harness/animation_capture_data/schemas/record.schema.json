@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/home-assistant-custom-components/ha-govee-led-ble/animation-capture-record.schema.json",
+  "title": "Animation capture provenance record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_id",
+    "campaign_sha256",
+    "family",
+    "parameters",
+    "palette",
+    "speed_policy",
+    "wire",
+    "media",
+    "timestamps",
+    "requested_duration_seconds",
+    "brightness_percent",
+    "audio_stimulus_notes",
+    "apply_status",
+    "camera_status",
+    "restore_status",
+    "outcome",
+    "error"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "target_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "campaign_sha256": {
+      "$ref": "#/$defs/hash"
+    },
+    "family": {
+      "type": "string"
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "palette": {
+      "type": "array"
+    },
+    "speed_policy": {
+      "type": "object"
+    },
+    "wire": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_file",
+        "frame_file_sha256",
+        "frame_sha256",
+        "hci_capture_file",
+        "hci_capture_sha256"
+      ],
+      "properties": {
+        "frame_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "frame_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frame_file_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hci_capture_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hci_capture_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_file",
+        "raw_sha256",
+        "reduced_file",
+        "reduced_sha256",
+        "calibration_file",
+        "calibration_sha256",
+        "duration_seconds",
+        "audio_retained"
+      ],
+      "properties": {
+        "raw_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raw_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reduced_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reduced_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "calibration_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "calibration_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "audio_retained": {
+          "type": "boolean"
+        }
+      }
+    },
+    "timestamps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "started_at",
+        "applied_at",
+        "finished_at"
+      ],
+      "properties": {
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "applied_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "requested_duration_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "brightness_percent": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "audio_stimulus_notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "apply_status": {
+      "$ref": "#/$defs/status"
+    },
+    "camera_status": {
+      "$ref": "#/$defs/status"
+    },
+    "restore_status": {
+      "$ref": "#/$defs/status"
+    },
+    "outcome": {
+      "enum": [
+        "complete",
+        "failed"
+      ]
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "status": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
