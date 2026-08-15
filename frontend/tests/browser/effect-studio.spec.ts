@@ -1,0 +1,3899 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  DEPLOYMENT_PHASES,
+  type DeploymentPhase,
+} from "../../src/types";
+
+const studioSelector = "ha-govee-led-ble-editor";
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+async function touchDrag(page: Page, from: Point, to: Point): Promise<void> {
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [from],
+    });
+    for (let step = 1; step <= 10; step += 1) {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          {
+            x: from.x + ((to.x - from.x) * step) / 10,
+            y: from.y + ((to.y - from.y) * step) / 10,
+          },
+        ],
+      });
+      await page.waitForTimeout(20);
+    }
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await session.detach();
+  }
+}
+
+async function openStudio(page: Page, query = "") {
+  const path = query && !query.startsWith("?") ? `/${query}` : "/";
+  const parameters = new URLSearchParams(
+    query.startsWith("?") ? query.slice(1) : "",
+  );
+  parameters.set("fixtures", "1");
+  await page.goto(`${path}?${parameters.toString()}`);
+  const studio = page.locator(studioSelector);
+  await expect(
+    studio.getByRole("navigation", { name: "Create" }),
+  ).toBeVisible();
+  return studio;
+}
+
+async function expectApplyCallCount(page: Page, count: number): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.testHarness
+            .snapshot()
+            .calls.filter((call) => {
+              const type = String(call.type);
+              return (
+                type.endsWith("/scene/apply") ||
+                type.endsWith("/apply") ||
+                type.endsWith("/apply_snapshot")
+              );
+            }).length,
+      ),
+    )
+    .toBe(count);
+}
+
+async function openScene(
+  page: Page,
+  category: string,
+  name: RegExp,
+) {
+  const studio = page.locator(studioSelector);
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const sceneBrowser = studio.locator("govee-scene-browser");
+  await expect(
+    sceneBrowser.getByRole("complementary", { name: "Scene categories" }),
+  ).toBeVisible();
+  await sceneBrowser.getByRole("button", { name: category }).click();
+  await sceneBrowser.getByRole("button", { name }).click();
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Edit", exact: true }),
+  ).toBeEnabled();
+  return sceneBrowser;
+}
+
+async function selectSavedPainted(studio: Locator) {
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "Supported painted effect", exact: true })
+    .click();
+}
+
+async function openEffectSaveDialog(studio: Locator) {
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: /^(Save|Save as Custom)$/ })
+    .click();
+  const dialog = studio.getByRole("dialog", { name: "Save effect" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+async function saveNewEffect(studio: Locator, name?: string): Promise<void> {
+  const dialog = await openEffectSaveDialog(studio);
+  const input = dialog.getByLabel("Effect name");
+  if (name !== undefined) {
+    await input.fill(name);
+  }
+  await dialog.getByRole("button", { name: "Save effect" }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
+async function openLayeredScene(page: Page) {
+  return openScene(page, "Nature", /Aurora Layers/);
+}
+
+async function openPaletteScene(
+  page: Page,
+  category: string,
+  name: RegExp,
+) {
+  const studio = page.locator(studioSelector);
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const sceneBrowser = studio.locator("govee-scene-browser");
+  await expect(
+    sceneBrowser.getByRole("complementary", { name: "Scene categories" }),
+  ).toBeVisible();
+  await sceneBrowser.getByRole("button", { name: category }).click();
+  await sceneBrowser.getByRole("button", { name }).click();
+  await expect(
+    sceneBrowser.getByText("Layout", { exact: true }),
+  ).toBeVisible();
+  return sceneBrowser;
+}
+
+async function openLayeredLibraryEffect(page: Page) {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", {
+      name: "Layered library effect",
+      exact: true,
+    })
+    .click();
+  return {
+    studio,
+    advanced: studio.locator("govee-advanced-effect-editor"),
+  };
+}
+
+test("default harness uses complete production H617A catalogues", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const studio = page.locator(studioSelector);
+  await expect(
+    studio.getByRole("navigation", { name: "Create" }),
+  ).toBeVisible();
+  await expect(studio.locator("header.topbar")).toHaveCount(0);
+  const devicePicker = studio
+    .getByRole("navigation", { name: "Create" })
+    .getByRole("combobox", { name: "Development device" });
+  await expect(devicePicker).toBeVisible();
+  await expect(devicePicker.locator("option")).toHaveText([
+    "H617A LED Strip / H617A",
+    "H6199 DreamView T1 / H6199",
+  ]);
+  await expect(
+    studio
+      .getByRole("navigation", { name: "Create" })
+      .getByText("Device", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("navigation", { name: "Create" }).locator(":scope > :last-child"),
+  ).toHaveClass(/device-picker/);
+  await expect(
+    studio.getByRole("navigation", { name: "Create" }).locator(".device-picker"),
+  ).toHaveCSS("border-top-width", "0px");
+
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const sceneBrowser = studio.locator("govee-scene-browser");
+  await expect(
+    sceneBrowser.locator("aside.scenes").getByRole("button"),
+  ).toHaveCount(83);
+  await expect(sceneBrowser.locator("aside.scenes small")).toHaveCount(0);
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Natural", exact: true }),
+  ).toBeVisible();
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Funny", exact: true }),
+  ).toBeVisible();
+  await expect(
+    sceneBrowser
+      .getByRole("complementary", { name: "Scene categories" })
+      .getByRole("button"),
+  ).toHaveText([
+    "All",
+    "Emotion",
+    "Festival",
+    "Funny",
+    "Life",
+    "Natural",
+  ]);
+  await expect(
+    sceneBrowser.getByText("No scenes in this category."),
+  ).toHaveCount(0);
+  await sceneBrowser.getByRole("button", { name: "Aurora", exact: true }).click();
+  const sceneSpeed = sceneBrowser.getByRole("group", { name: "Speed" });
+  await expect(sceneSpeed.getByRole("button")).toHaveText([
+    "2 steps lower",
+    "1 step lower",
+    "Default",
+  ]);
+  await expect(
+    sceneBrowser.getByRole("slider", { name: "Scene speed" }),
+  ).toHaveCount(0);
+  const orderedSceneNames = await sceneBrowser
+    .locator("aside.scenes button.scene > span:first-child")
+    .allTextContents();
+  expect(orderedSceneNames).toHaveLength(83);
+  expect(orderedSceneNames.slice(0, 10)).toEqual([
+    "Afternoon",
+    "Aurora",
+    "Aurora B",
+    "Birthday",
+    "Bloom",
+    "Breathe",
+    "Candlelight",
+    "Candy",
+    "Cheerful",
+    "Cherry blossoms",
+  ]);
+  const sceneSearch = sceneBrowser.getByRole("searchbox", {
+    name: "Search scenes",
+  });
+  await sceneSearch.fill("Bloom");
+  await expect(
+    sceneBrowser.locator("aside.scenes").getByRole("button"),
+  ).toHaveText(["Bloom"]);
+  await sceneSearch.fill("");
+
+  await studio
+    .getByRole("button", { name: "Effects", exact: true })
+    .click();
+  await expect(
+    studio
+      .getByRole("complementary", { name: "Effect categories" })
+      .getByRole("button"),
+  ).toHaveText([
+    "All",
+    "Music",
+    "Single Layer",
+    "Multi Layer",
+    "Advanced",
+  ]);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  const effectList = studio.getByRole("complementary", {
+    name: "Effects",
+  });
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await expect(effectList.getByRole("button")).toHaveText([
+    "New",
+    "Blinking",
+    "Chase",
+    "Fade",
+    "Flow",
+    "Jumping",
+    "Marquee",
+    "Music",
+    "Paint",
+    "Stream",
+  ]);
+  await categories
+    .getByRole("button", { name: "Music", exact: true })
+    .click();
+  await expect(effectList.getByRole("button")).toHaveText([
+    "Bloom",
+    "Day And Night",
+    "Energetic",
+    "Fountain",
+    "Hopping",
+    "Piano Keys",
+    "Rhythm",
+    "Rolling",
+    "Separation",
+    "Shiny",
+    "Spectrum",
+  ]);
+  await effectList.getByRole("button", { name: "Bloom", exact: true }).click();
+  const musicEditor = studio.locator("govee-music-profile-editor");
+  await expect(musicEditor).toBeVisible();
+  await expect(
+    musicEditor.locator(".parameter-stack").first(),
+  ).toHaveCSS("row-gap", "18px");
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("heading", { name: "Bloom", exact: true }),
+  ).toBeVisible();
+  await expect(studio.locator(".editor-heading .eyebrow")).toHaveCount(0);
+  await effectList
+    .getByRole("button", { name: "Separation", exact: true })
+    .click();
+  await expect(
+    musicEditor.getByRole("heading", { name: "Music profile" }),
+  ).toHaveCount(0);
+  await expect(
+    musicEditor.getByRole("heading", { name: "Mode-specific controls" }),
+  ).toHaveCount(0);
+  await expect(musicEditor.locator(".mode-parameters")).toHaveCount(0);
+  const musicParameterLabels = [
+    "Sensitivity",
+    "Colour mode",
+    "Point",
+    "Gradient",
+  ].map((label) => musicEditor.getByText(label, { exact: true }));
+  for (const label of musicParameterLabels) {
+    await expect(label).toHaveCount(1);
+  }
+  await expect(
+    musicEditor.getByRole("slider", { name: "Sensitivity" }),
+  ).toBeVisible();
+  await expect(musicEditor.locator("output")).toHaveCount(0);
+  const musicLabelStyles = await Promise.all(
+    musicParameterLabels.map((label) =>
+      label.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return `${style.fontSize}|${style.fontWeight}|${style.color}`;
+      }),
+    ),
+  );
+  expect(new Set(musicLabelStyles).size).toBe(1);
+  const colourModeOptions = musicEditor
+    .getByRole("group", { name: "Colour mode" })
+    .getByRole("button");
+  await expect(colourModeOptions).toHaveText(["Automatic", "Fixed"]);
+  await expect(colourModeOptions.first()).toHaveCSS("font-size", "13px");
+  await expect(colourModeOptions.first()).toHaveCSS("font-weight", "600");
+  await effectList
+    .getByRole("button", { name: "Day And Night", exact: true })
+    .click();
+  const segmentCount = musicEditor.getByRole("slider", {
+    name: "Segment count",
+  });
+  const segmentCountValue = musicEditor.getByRole("status", {
+    name: "Segment count value",
+  });
+  await expect(segmentCount).toBeVisible();
+  await expect(segmentCountValue).toHaveText("1");
+  await expect(segmentCount).toBeDisabled();
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await segmentCount.press("ArrowRight");
+  await expect(segmentCountValue).toHaveText("2");
+  await categories
+    .getByRole("button", { name: "All", exact: true })
+    .click();
+  await expect(
+    effectList.getByRole("button", { name: "Fade", exact: true }),
+  ).toBeVisible();
+  await expect(
+    effectList.getByRole("button", { name: "Mix", exact: true }),
+  ).toBeVisible();
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await effectList.getByRole("button", { name: "Paint", exact: true }).click();
+  await expect(effectList.locator("small")).toHaveCount(0);
+  await expect(
+    effectList.getByRole("button", { name: "Unsupported special DIY pair" }),
+  ).toHaveCount(0);
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("heading", { name: "Paint", exact: true }),
+  ).toBeVisible();
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio.locator(".editor").getByRole("button", {
+      name: "Edit",
+    }),
+  ).toBeVisible();
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("combobox", {
+      name: "Effect",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  const variation = studio.getByRole("combobox", {
+    name: "Variation",
+    exact: true,
+  });
+  await expect(variation.locator("option")).toHaveText([
+    "Cycle",
+    "Clockwise",
+    "Counterclockwise",
+    "Twinkle",
+    "Gradient",
+    "Breathe",
+  ]);
+  await expect(variation).toHaveValue("clockwise");
+
+  await effectList.getByRole("button", { name: "Fade", exact: true }).click();
+  await expect(variation.locator("option")).toHaveText([
+    "Whole strip",
+    "Sections",
+    "Cycle",
+  ]);
+  await expect(variation).toHaveValue("0");
+  await expect(
+    studio.locator("govee-painted-segment-editor"),
+  ).toHaveCount(0);
+  const speedParameters = studio.locator("govee-custom-effect-editor");
+  await expect(
+    speedParameters.locator(".parameter-stack"),
+  ).toHaveCSS("row-gap", "18px");
+  await expect(
+    speedParameters.getByText("Speed", { exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    speedParameters.getByRole("heading", { name: "Parameters" }),
+  ).toHaveCount(0);
+  const paletteParameterLabels = ["Variation", "Colours", "Speed"].map(
+    (label) => speedParameters.getByText(label, { exact: true }),
+  );
+  for (const label of paletteParameterLabels) {
+    await expect(label).toHaveCount(1);
+  }
+  const paletteLabelStyles = await Promise.all(
+    paletteParameterLabels.map((label) =>
+      label.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return `${style.fontSize}|${style.fontWeight}|${style.color}`;
+      }),
+    ),
+  );
+  expect(new Set(paletteLabelStyles).size).toBe(1);
+  await expect(
+    speedParameters.getByRole("slider", { name: "Speed" }),
+  ).toBeVisible();
+  await expect(speedParameters.locator("output")).toHaveCount(0);
+
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await effectList.getByRole("button", { name: "Music", exact: true }).click();
+  await expect(
+    studio.locator(".editor").getByRole("heading", { name: "Music" }),
+  ).toBeVisible();
+  await expect(variation.locator("option")).toHaveText([
+    "Rhythm",
+    "Spectrum",
+    "Rolling",
+  ]);
+  await expect(variation).toHaveValue("8");
+  await expect(
+    studio
+      .locator("govee-custom-effect-editor")
+      .getByText("Sensitivity", { exact: true }),
+  ).toHaveCount(1);
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await expect(
+    studio.getByRole("combobox", { name: "Effect", exact: true }),
+  ).toHaveValue("music");
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("button", { name: "Save as Custom" }),
+  ).toBeVisible();
+
+  await categories
+    .getByRole("button", { name: "All", exact: true })
+    .click();
+  await effectList.getByRole("button", { name: "Paint", exact: true }).click();
+  await expect(
+    studio.locator("govee-painted-segment-editor"),
+  ).toBeVisible();
+  await expect(studio.getByRole("dialog")).toHaveCount(0);
+
+  await devicePicker.selectOption("h6199-main");
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  await expect(
+    sceneBrowser.locator("aside.scenes").getByRole("button"),
+  ).toHaveCount(240);
+  await expect(
+    sceneBrowser.getByRole("button", {
+      name: "House of the Dragon",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Zootopia 2", exact: true }),
+  ).toBeVisible();
+});
+
+test("native templates become editable copies through shared actions", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  const effects = studio.getByRole("complementary", { name: "Effects" });
+
+  await expect(
+    categories.getByRole("button", { name: "New", exact: true }),
+  ).toHaveCount(0);
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  const newEffect = effects.getByRole("button", {
+    name: "New",
+    exact: true,
+  });
+  await expect(effects.getByRole("button").first()).toHaveAccessibleName("New");
+  await expect(newEffect).toHaveClass("selector item new-effect-action");
+  await expect(newEffect).toHaveCSS("position", "sticky");
+  await expect(newEffect).not.toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await newEffect.click();
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Save", exact: true }),
+  ).toBeEnabled();
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio.locator(".editor").getByRole("heading", {
+      name: "New effect",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  const chase = effects.getByRole("button", { name: "Chase", exact: true });
+  await chase.click();
+  await expect(
+    studio.getByRole("combobox", { name: "Effect", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("combobox", { name: "Variation", exact: true }),
+  ).toHaveCount(0);
+
+  const flow = effects.getByRole("button", { name: "Flow", exact: true });
+  await flow.click();
+
+  await expect(
+    categories.getByRole("button", { name: "Single Layer", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(flow).toHaveClass(/selected/);
+  await expect(
+    studio.locator(".editor").getByRole("heading", { name: "Flow" }),
+  ).toBeVisible();
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio.getByRole("combobox", { name: "Effect", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("combobox", { name: "Variation", exact: true }),
+  ).toHaveValue("9");
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("combobox", { name: "Variation", exact: true }),
+  ).toBeDisabled();
+  const edit = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Edit", exact: true });
+  await edit.click();
+  await expect(flow).not.toHaveClass(/selected/);
+
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  const saveDialog = await openEffectSaveDialog(studio);
+  const name = saveDialog.getByLabel("Effect name");
+  await expect(name).toBeFocused();
+  await expect(name).toHaveValue("Custom Flow");
+  await expect
+    .poll(() =>
+      name.evaluate((input: HTMLInputElement) => ({
+        start: input.selectionStart,
+        end: input.selectionEnd,
+      })),
+    )
+    .toEqual({ start: 0, end: "Custom Flow".length });
+  await name.fill(" ");
+  await saveDialog.getByRole("button", { name: "Save effect" }).click();
+  await expect(
+    saveDialog.getByRole("alert").filter({ hasText: "Enter an effect name." }),
+  ).toBeVisible();
+  await name.fill("Custom Flow");
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  await saveDialog.getByRole("button", { name: "Save effect" }).click();
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Save", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  await expect(
+    categories.getByRole("button", { name: "Single Layer", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+
+  await categories
+    .getByRole("button", { name: "Multi Layer", exact: true })
+    .click();
+  await effects.getByRole("button", { name: "Mix", exact: true }).click();
+  const addEffect = studio.getByRole("button", {
+    name: "Add layer",
+  });
+  await expect(addEffect).toBeDisabled();
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await expect(addEffect).toBeEnabled();
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("button", { name: "Save as Custom", exact: true }),
+  ).toBeEnabled();
+});
+
+test("Workshop and Special DIY templates use shared editors and apply safely", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  const effects = studio.getByRole("complementary", { name: "Effects" });
+
+  await categories.getByRole("button", { name: "Advanced", exact: true }).click();
+  await effects.getByRole("button", { name: "Movement", exact: true }).click();
+  await expect(studio.locator("govee-advanced-effect-editor")).toBeVisible();
+  await expect(
+    studio
+      .locator("govee-advanced-effect-editor")
+      .getByRole("button", { name: "Add layer" }),
+  ).toBeEnabled();
+  await studio.locator(".editor").getByRole("button", { name: "Apply" }).click();
+  await expectApplyCallCount(page, 1);
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await categories
+    .getByRole("button", { name: "Special DIY", exact: true })
+    .click();
+  await expect(effects.getByRole("button")).toHaveText([
+    "Chasing",
+    "Crossing",
+    "Fade",
+    "Jumping",
+    "Marquee",
+    "Rainbow",
+    "Twinkle",
+  ]);
+  await effects.getByRole("button", { name: "Fade", exact: true }).click();
+  const specialEditor = studio.locator("govee-custom-effect-editor");
+  await expect(specialEditor.getByText("Colours", { exact: true })).toBeVisible();
+  await expect(specialEditor.getByText("Speed", { exact: true })).toBeVisible();
+  await expect(
+    specialEditor.getByRole("slider", { name: "Speed" }),
+  ).toBeDisabled();
+  await expect(studio.getByText("raw_payload", { exact: false })).toHaveCount(0);
+  await studio.locator(".editor").getByRole("button", { name: "Apply" }).click();
+  await expect(
+    studio.getByRole("alert").filter({
+      hasText:
+        "The H6199 effect upload was sent to H6199 DreamView T1, but activation and readback remain unproven. The result is uncertain.",
+    }),
+  ).toBeVisible();
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await expect(
+    specialEditor.getByRole("slider", { name: "Speed" }),
+  ).toBeEnabled();
+});
+
+test("Single and Multi variation selects track same-sized family changes", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  const effects = studio.getByRole("complementary", { name: "Effects" });
+
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await effects.getByRole("button", { name: "New", exact: true }).click();
+  const singleEffect = studio.getByRole("combobox", {
+    name: "Effect",
+    exact: true,
+  });
+  const singleVariation = studio.getByRole("combobox", {
+    name: "Variation",
+    exact: true,
+  });
+
+  await singleEffect.selectOption("paint");
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  await singleEffect.selectOption("fade");
+  await singleEffect.selectOption("blinking");
+  await expect(singleVariation).toHaveValue("0");
+  await singleEffect.selectOption("stream");
+  await expect(singleVariation).toHaveValue("9");
+  await singleEffect.selectOption("flow");
+  await expect(singleVariation).toHaveValue("9");
+  await singleEffect.selectOption("music");
+  await expect(singleVariation).toHaveValue("8");
+  await expect(
+    studio
+      .locator("govee-custom-effect-editor")
+      .getByText("Sensitivity", { exact: true }),
+  ).toBeVisible();
+  await categories
+    .getByRole("button", { name: "Multi Layer", exact: true })
+    .click();
+  await effects.getByRole("button", { name: "New", exact: true }).click();
+  const multiEditor = studio.locator("govee-custom-effect-editor");
+  const multiEffect = multiEditor.getByRole("combobox", {
+    name: "Layer 1 effect",
+  });
+  const multiVariation = multiEditor.getByRole("combobox", {
+    name: "Layer 1 variation",
+  });
+  await multiEffect.selectOption("marquee");
+  await expect(multiVariation).toHaveValue("3");
+  await multiEffect.selectOption("blinking");
+  await expect(multiVariation).toHaveValue("0");
+  await multiEffect.selectOption("stream");
+  await expect(multiVariation).toHaveValue("9");
+  await multiEffect.selectOption("flow");
+  await expect(multiVariation).toHaveValue("9");
+});
+
+test("Multi Layer drag handles reorder without wrapping form controls", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  const effects = studio.getByRole("complementary", { name: "Effects" });
+  await categories
+    .getByRole("button", { name: "Multi Layer", exact: true })
+    .click();
+  await effects.getByRole("button", { name: "New", exact: true }).click();
+  const editor = studio.locator("govee-custom-effect-editor");
+  await editor.getByRole("button", { name: "Add layer" }).click();
+
+  const rows = editor.locator(".effect-row");
+  const handles = editor.locator(".drag-handle");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).not.toHaveAttribute("draggable");
+  await expect(handles).toHaveCount(2);
+  await expect(handles.nth(0)).toHaveAttribute("draggable", "true");
+  await expect(
+    editor.getByRole("combobox", { name: "Layer 1 effect" }),
+  ).toHaveValue("fade");
+  await expect(
+    editor.getByRole("combobox", { name: "Layer 2 effect" }),
+  ).toHaveValue("jumping");
+
+  await handles.nth(0).dragTo(rows.nth(1));
+  await expect(
+    editor.getByRole("combobox", { name: "Layer 1 effect" }),
+  ).toHaveValue("jumping");
+  await expect(
+    editor.getByRole("combobox", { name: "Layer 2 effect" }),
+  ).toHaveValue("fade");
+});
+
+test("mobile native selects and row menus remain tappable", async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "Touch input requires Chromium.");
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const studio = await openStudio(page);
+    const categories = studio.getByRole("complementary", {
+      name: "Effect categories",
+    });
+    const effects = studio.getByRole("complementary", { name: "Effects" });
+    await categories
+      .getByRole("button", { name: "Single Layer", exact: true })
+      .tap();
+    await effects.getByRole("button", { name: "New", exact: true }).tap();
+    const singleVariation = studio.getByRole("combobox", {
+      name: "Variation",
+      exact: true,
+    });
+    await singleVariation.tap();
+    await expect(singleVariation).toBeFocused();
+    await singleVariation.selectOption("1");
+    await expect(singleVariation).toHaveValue("1");
+
+    await categories
+      .getByRole("button", { name: "Multi Layer", exact: true })
+      .tap();
+    await effects.getByRole("button", { name: "New", exact: true }).tap();
+    const multiEditor = studio.locator("govee-custom-effect-editor");
+    await expect(
+      multiEditor.getByRole("heading", { name: "Layers" }),
+    ).toBeVisible();
+    await multiEditor
+      .getByRole("button", { name: "Add layer" })
+      .tap();
+    const rows = multiEditor.locator(".effect-row");
+    await expect(rows).toHaveCount(2);
+    await expect(multiEditor.locator(".layer-heading")).toHaveText([
+      "Layer 1",
+      "Layer 2",
+    ]);
+    await expect(multiEditor.locator(".effect-label:visible")).toHaveCount(0);
+    await expect(rows.nth(0)).toHaveCSS("border-top-width", "1px");
+    const [firstRow, secondRow] = await Promise.all([
+      rows.nth(0).boundingBox(),
+      rows.nth(1).boundingBox(),
+    ]);
+    if (!firstRow || !secondRow) {
+      throw new Error("Multi Layer cards are not visible.");
+    }
+    expect(secondRow.y - (firstRow.y + firstRow.height)).toBeGreaterThanOrEqual(
+      10,
+    );
+
+    const effect = multiEditor.getByRole("combobox", {
+      name: "Layer 1 effect",
+    });
+    await effect.tap();
+    await expect(effect).toBeFocused();
+    await effect.selectOption("marquee");
+    await expect(effect).toHaveValue("marquee");
+
+    const variation = multiEditor.getByRole("combobox", {
+      name: "Layer 1 variation",
+    });
+    await variation.tap();
+    await expect(variation).toBeFocused();
+    await variation.selectOption("4");
+    await expect(variation).toHaveValue("4");
+
+    const firstMenu = multiEditor.getByLabel("Layer actions for Layer 1");
+    await firstMenu.tap();
+    await expect(
+      multiEditor.getByRole("button", { name: "Move down" }),
+    ).toBeVisible();
+    await multiEditor.getByRole("heading", { name: "Layers" }).tap();
+    await expect(multiEditor.locator("details.row-menu[open]")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("saved Painted effects retain their content kind", async ({ page }) => {
+  const studio = await openStudio(page);
+  await selectSavedPainted(studio);
+
+  await expect(
+    studio.getByRole("combobox", {
+      name: "Effect",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("combobox", {
+      name: "Variation",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    studio.locator("govee-painted-segment-editor"),
+  ).toBeVisible();
+  const speed = studio.getByRole("slider", { name: "Speed" });
+  await expect(speed).toBeVisible();
+  await expect(
+    studio
+      .locator("govee-slider-control")
+      .filter({ has: speed })
+      .locator("output"),
+  ).toHaveCount(0);
+});
+
+test("custom catalogues reject families without variations", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const rejected = await page.evaluate(async () => {
+    const response = await window.testHarness.backend.hass.callWS<{
+      catalogue: {
+        effects: { variations: unknown[] }[];
+        models: {
+          H617A: {
+            effects: { variations: unknown[] }[];
+          };
+        };
+      };
+    }>({
+      type: "ha_govee_led_ble/editor/custom/catalogue",
+    });
+    const catalogue = structuredClone(response.catalogue);
+    catalogue.effects[0].variations = [];
+    catalogue.models.H617A.effects[0].variations = [];
+    try {
+      window.testHarness.backend.validateCustomCatalogue(catalogue);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+
+  expect(rejected).toBe(true);
+});
+
+test("custom catalogues require explicit single-layer family categories", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const rejected = await page.evaluate(async () => {
+    const response = await window.testHarness.backend.hass.callWS<{
+      catalogue: {
+        effects: { id: string; category: string }[];
+        models: {
+          H617A: {
+            effects: { id: string; category: string }[];
+          };
+        };
+      };
+    }>({
+      type: "ha_govee_led_ble/editor/custom/catalogue",
+    });
+    const catalogue = structuredClone(response.catalogue);
+    const legacyMusic = catalogue.effects.find((effect) => effect.id === "music")!;
+    const modelMusic = catalogue.models.H617A.effects.find(
+      (effect) => effect.id === "music",
+    )!;
+    legacyMusic.category = "music";
+    modelMusic.category = "music";
+    try {
+      window.testHarness.backend.validateCustomCatalogue(catalogue);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+
+  expect(rejected).toBe(true);
+});
+
+test("custom catalogues require every planned release workflow", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const rejected = await page.evaluate(async () => {
+    const response = await window.testHarness.backend.hass.callWS<{
+      catalogue: {
+        models: {
+          H6199: {
+            workflows: { id: string }[];
+          };
+        };
+      };
+    }>({
+      type: "ha_govee_led_ble/editor/custom/catalogue",
+    });
+    const catalogue = structuredClone(response.catalogue);
+    catalogue.models.H6199.workflows =
+      catalogue.models.H6199.workflows.filter(
+        (workflow) => workflow.id !== "special_diy",
+      );
+    try {
+      window.testHarness.backend.validateCustomCatalogue(catalogue);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+
+  expect(rejected).toBe(true);
+});
+
+test("unknown library models remain optional compatibility hints", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const decoded = await page.evaluate(() =>
+    window.testHarness.backend.validateLibrarySnapshot({
+      library_revision: 1,
+      items: [
+        {
+          id: "future-item",
+          revision: 1,
+          name: "Future",
+          kind: "future_private",
+          model: "future-model",
+        },
+      ],
+    }),
+  );
+
+  expect(decoded.items).toEqual([
+    {
+      id: "future-item",
+      revision: 1,
+      name: "Future",
+      kind: "future_private",
+    },
+  ]);
+});
+
+test("Painted effects keep multiple brushes and their picker visible", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await selectSavedPainted(studio);
+  const brushes = studio.locator("govee-palette-editor.paint-brushes");
+  const brushTabs = brushes.getByRole("tab", { name: /^Brush / });
+
+  await expect(brushTabs).toHaveCount(7);
+  await expect(brushTabs.first()).toHaveAttribute("aria-selected", "true");
+  await expect(
+    brushes.getByRole("group", { name: "Edit brush 1" }),
+  ).toBeVisible();
+
+  await brushTabs.first().press("ArrowRight");
+  await expect(brushTabs.nth(1)).toBeFocused();
+  const picker = brushes.getByRole("group", { name: "Edit brush 2" });
+  await expect(picker).toBeVisible();
+  await picker.getByRole("button", { name: "Use #ff9f0a" }).click();
+  await expect(picker).toBeVisible();
+  await expect(
+    brushes.getByRole("tab", { name: /Brush 2, #ff9f0a, selected/ }),
+  ).toBeVisible();
+
+  const firstSegment = studio
+    .locator("govee-painted-segment-editor")
+    .getByRole("button", { name: /^Segment 1,/ });
+  await firstSegment.click();
+  await expect(firstSegment).toHaveAccessibleName("Segment 1, #ff9f0a");
+});
+
+test("saved effects can be deleted from the editor", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const effectList = studio.getByRole("complementary", {
+    name: "Effects",
+  });
+  await selectSavedPainted(studio);
+  const editorDelete = studio
+    .locator(".editor-heading .actions")
+    .getByRole("button", { name: "Delete", exact: true });
+
+  await editorDelete.click();
+  let dialog = studio.getByRole("dialog", { name: "Delete effect?" });
+  await expect(dialog.getByText("Supported painted effect")).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(editorDelete).toBeFocused();
+  await expect(
+    effectList.getByRole("button", {
+      name: "Delete Supported painted effect",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+
+  await editorDelete.click();
+  dialog = studio.getByRole("dialog", { name: "Delete effect?" });
+  await dialog.getByRole("button", { name: "Delete effect" }).click();
+
+  await expect(
+    effectList.getByRole("button", {
+      name: "Supported painted effect",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio.getByRole("status").filter({
+      hasText: "Deleted Supported painted effect.",
+    }),
+  ).toBeVisible();
+  const deleteCall = await page.evaluate(() =>
+    window.testHarness
+      .snapshot()
+      .calls.find(
+        (call) =>
+          typeof call.type === "string" &&
+          call.type.endsWith("/library/delete"),
+      ),
+  );
+  expect(deleteCall).toMatchObject({
+    item_id: "painted-1",
+    expected_revision: 1,
+    expected_library_revision: 1,
+  });
+});
+
+test("capability gates Apply while retaining supported H617A custom Apply", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+
+  await expect(
+    studio.getByRole("navigation", { name: "Create" }),
+  ).toBeVisible();
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  const effects = studio.getByRole("complementary", { name: "Effects" });
+  await expect(
+    categories.getByRole("button", { name: "New", exact: true }),
+  ).toHaveCount(0);
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await expect(effects.getByRole("button").first()).toHaveAccessibleName("New");
+  await effects.getByRole("button", { name: "New", exact: true }).click();
+  const newEffect = studio.getByRole("combobox", {
+    name: "Effect",
+    exact: true,
+  });
+  await newEffect.selectOption("paint");
+  await newEffect.selectOption("fade");
+  await categories
+    .getByRole("button", { name: "Multi Layer", exact: true })
+    .click();
+  await expect(effects.getByRole("button").first()).toHaveAccessibleName("New");
+  await effects.getByRole("button", { name: "New", exact: true }).click();
+  await expect(
+    studio.getByRole("combobox", { name: "Layer 1 effect" }),
+  ).toBeVisible();
+  await categories
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await expect(effects.getByRole("button").first()).toHaveAccessibleName("New");
+  await effects.getByRole("button", { name: "New", exact: true }).click();
+  await expect(studio.locator("govee-advanced-effect-editor")).toBeVisible();
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "Paint", exact: true })
+    .click();
+  await expect(
+    studio.getByRole("tablist", { name: "Custom effect type" }),
+  ).toHaveCount(0);
+  await expect(
+    studio.locator(".editor").getByRole("button", {
+      name: "Edit",
+    }),
+  ).toBeVisible();
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("heading", { name: "Paint", exact: true }),
+  ).toBeVisible();
+  await expect(
+    studio.getByLabel("Effect name"),
+  ).toHaveCount(
+    0,
+  );
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Apply" }),
+  ).toBeEnabled();
+  await expect(
+    studio.getByRole("button", { name: /^Segment 1,/ }),
+  ).toBeDisabled();
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("button", { name: "Save as Custom", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    studio.getByRole("button", { name: /^Segment 1,/ }),
+  ).toBeEnabled();
+
+  await categories
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "Layered", exact: true })
+    .click();
+  await expect(
+    studio
+      .locator(".editor")
+      .getByRole("heading", { name: "Layered", exact: true }),
+  ).toBeVisible();
+  await expect(studio.locator(".editor-heading .eyebrow")).toHaveCount(0);
+  const apply = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply" });
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expectApplyCallCount(page, 1);
+  await expect(
+    studio.getByText("Applied to H617A LED Strip.", { exact: true }),
+  ).toHaveCount(0);
+  await expect(apply).not.toHaveAttribute("aria-describedby");
+  await expect(studio.locator("#advanced-apply-reason")).toHaveCount(0);
+  await expect(
+    studio.getByRole("tablist", { name: "Effect layers" }),
+  ).toBeVisible();
+  await expect(studio.getByRole("tabpanel")).toBeVisible();
+  await expect(
+    studio.getByRole("list", { name: "Colours" }),
+  ).toBeVisible();
+  const distribution = studio.getByRole("group", { name: "Distribution" });
+  await expect(distribution.getByRole("button")).toHaveText([
+    "Unified",
+    "Gradient",
+  ]);
+  await expect(
+    distribution.getByRole("button", { name: "Gradient" }),
+  ).toBeEnabled();
+  await distribution.getByRole("button", { name: "Gradient" }).click();
+  await expect(
+    distribution.getByRole("button", { name: "Gradient" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio.getByRole("button", { name: "Save as Custom", exact: true }),
+  ).toBeEnabled();
+});
+
+test("H617A Music applies saved and edited profile snapshots", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Music", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "Saved separation profile", exact: true })
+    .click();
+  await expect(studio.getByLabel("Effect name")).toBeEnabled();
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Save", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Delete", exact: true }),
+  ).toBeEnabled();
+
+  const apply = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply" });
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expectApplyCallCount(page, 1);
+
+  const point = studio
+    .locator("govee-music-profile-editor")
+    .getByRole("slider", { name: "Point" });
+  await point.press("ArrowRight");
+  await apply.click();
+  await expectApplyCallCount(page, 2);
+
+  const calls = await page.evaluate(() =>
+    window.testHarness
+      .snapshot()
+      .calls.filter((call) =>
+        String(call.type).endsWith("/apply") ||
+        String(call.type).endsWith("/apply_snapshot"),
+      ),
+  );
+  expect(calls).toHaveLength(2);
+  expect(calls[0]).toMatchObject({
+    type: "ha_govee_led_ble/editor/apply",
+    item_id: "music-h617a",
+  });
+  expect(calls[1]).toMatchObject({
+    type: "ha_govee_led_ble/editor/apply_snapshot",
+    content: {
+      kind: "music_profile",
+      model: "H617A",
+      mode: "separation",
+      parameters: {
+        point: 4,
+        gradient: true,
+      },
+    },
+  });
+});
+
+test("H6199 Music and Video expose gated Apply with saved and snapshot routes", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await studio.getByRole("button", { name: "Video", exact: true }).click();
+  await studio
+    .getByRole("complementary", { name: "Video profiles" })
+    .getByRole("button", { name: "Saved movie profile", exact: true })
+    .click();
+  await expect(studio.getByLabel("Effect name")).toBeEnabled();
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Save", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Delete", exact: true }),
+  ).toBeEnabled();
+
+  const videoApply = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply" });
+  await expect(videoApply).toBeEnabled();
+  await videoApply.click();
+  await studio
+    .locator("govee-video-profile-editor")
+    .getByRole("slider", { name: "Saturation" })
+    .press("ArrowRight");
+  await videoApply.click();
+
+  await studio.getByRole("button", { name: "Effects", exact: true }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Music", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "Saved rolling profile", exact: true })
+    .click();
+  const musicApply = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply" });
+  await expect(musicApply).toBeEnabled();
+  await musicApply.click();
+
+  const calls = await page.evaluate(() =>
+    window.testHarness
+      .snapshot()
+      .calls.filter((call) =>
+        String(call.type).endsWith("/apply") ||
+        String(call.type).endsWith("/apply_snapshot"),
+      ),
+  );
+  expect(calls).toHaveLength(3);
+  expect(calls[0]).toMatchObject({
+    type: "ha_govee_led_ble/editor/apply",
+    item_id: "video-h6199",
+  });
+  expect(calls[1]).toMatchObject({
+    type: "ha_govee_led_ble/editor/apply_snapshot",
+    content: {
+      kind: "video_profile",
+      model: "H6199",
+      saturation: 71,
+    },
+  });
+  expect(calls[2]).toMatchObject({
+    type: "ha_govee_led_ble/editor/apply",
+    item_id: "music-h6199",
+  });
+});
+
+test("device catalogues expose complete model-specific effect families", async ({ page }) => {
+  const studio = await openStudio(page);
+  const devicePicker = studio.getByRole("combobox", {
+    name: "Development device",
+  });
+  const categories = studio.getByRole("complementary", {
+    name: "Effect categories",
+  });
+  const effects = studio.getByRole("complementary", { name: "Effects" });
+
+  await categories
+    .getByRole("button", { name: "Music", exact: true })
+    .click();
+  await effects.getByRole("button", { name: "Bloom", exact: true }).click();
+  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveCount(0);
+  await expect(
+    studio.getByRole("slider", { name: "Sensitivity" }),
+  ).toHaveAttribute("min", "0");
+  await expect(
+    studio.getByRole("slider", { name: "Sensitivity" }),
+  ).toHaveAttribute("max", "99");
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveValue(
+    "bloom",
+  );
+  await devicePicker.selectOption("h6199-main");
+
+  await expect(
+    studio
+      .getByRole("navigation", { name: "Create" })
+      .getByRole("button"),
+  ).toHaveText(["Video", "Scenes", "Effects"]);
+  await expect(categories.getByRole("button")).toHaveText([
+    "All",
+    "Music",
+    "Single Layer",
+    "Advanced",
+    "Special DIY",
+    "My effects",
+  ]);
+  await expect(studio.getByRole("combobox", { name: "Mode" })).toHaveCount(0);
+  await expect(
+    studio.getByRole("slider", { name: "Sensitivity" }),
+  ).toHaveAttribute("min", "1");
+  await expect(
+    studio.getByRole("slider", { name: "Sensitivity" }),
+  ).toHaveAttribute("max", "100");
+  await expect(
+    studio.locator(".editor").getByRole("heading", {
+      name: "Energetic",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    categories.getByRole("button", { name: "Multi Layer", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    categories.getByRole("button", { name: "My effects", exact: true }),
+  ).toHaveCount(1);
+  await expect(effects.getByRole("button")).toHaveText([
+    "Energetic",
+    "Rhythm",
+    "Rolling",
+    "Saved rolling profile",
+    "Spectrum",
+  ]);
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await effects.getByRole("button", { name: "Music", exact: true }).click();
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await expect(
+    studio.getByRole("combobox", { name: "Effect", exact: true }),
+  ).toHaveValue("music");
+  await categories
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await expect(effects.getByRole("button")).toHaveText([
+    "New",
+    "Chasing",
+    "Crossing",
+    "Fade",
+    "Jumping",
+    "Marquee",
+    "Music",
+    "Rainbow",
+    "Twinkle",
+  ]);
+  await effects.getByRole("button", { name: "Fade", exact: true }).click();
+  await expect(
+    studio.locator(".editor").getByRole("heading", {
+      name: "Fade",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await effects.getByRole("button", { name: "New", exact: true }).click();
+  await expect(
+    studio
+      .getByRole("combobox", { name: "Effect", exact: true })
+      .getByRole("option", { name: "Paint", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("status").filter({
+      hasText: "cannot be applied to this device",
+    }),
+  ).toHaveCount(0);
+});
+
+test("H6199 palette DIY Apply covers every visible family and variation", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await studio.getByRole("button", { name: "Effects", exact: true }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "New", exact: true })
+    .click();
+
+  const effect = studio.getByRole("combobox", {
+    name: "Effect",
+    exact: true,
+  });
+  const variation = studio.getByRole("combobox", {
+    name: "Variation",
+    exact: true,
+  });
+  const apply = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply", exact: true });
+  const options = [
+    ["fade", "default", 0, 0],
+    ["jumping", "default", 1, 0],
+    ["twinkle", "default", 2, 0],
+    ["marquee", "default", 3, 3],
+    ["music", "default", 4, 8],
+    ["chasing", "clockwise", 8, 9],
+    ["chasing", "counter_clockwise", 8, 10],
+    ["rainbow", "default", 9, 9],
+    ["crossing", "default", 10, 0],
+  ] as const;
+
+  for (const [familyId, variationId] of options) {
+    await effect.selectOption(familyId);
+    if (familyId === "chasing") {
+      await variation.selectOption(variationId === "clockwise" ? "9" : "10");
+    }
+    await expect(apply).toBeEnabled();
+    await apply.click();
+    await expect(
+      studio.getByRole("alert").filter({
+        hasText: "activation and readback remain unproven",
+      }),
+    ).toBeVisible();
+  }
+
+  const calls = await page.evaluate(() =>
+    window.testHarness
+      .snapshot()
+      .calls.filter(
+        (call) =>
+          call.type === "ha_govee_led_ble/editor/apply_snapshot",
+      )
+      .map((call) => call.content),
+  );
+  expect(calls).toHaveLength(options.length);
+  expect(
+    calls.map((content) => {
+      const value = content as { family: number; variant: number };
+      return [value.family, value.variant];
+    }),
+  ).toEqual([
+    ...options.map(([, , family, variant]) => [family, variant]),
+  ]);
+});
+
+test("H6199 Video exposes complete reusable profile controls", async ({ page }) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await studio.getByRole("button", { name: "Video", exact: true }).click();
+
+  const profiles = studio.getByRole("complementary", {
+    name: "Video profiles",
+  });
+  await expect(profiles.getByRole("button")).toHaveText([
+    "Movie",
+    "Game",
+    "Saved movie profile",
+  ]);
+  await profiles.getByRole("button", { name: "Movie", exact: true }).click();
+
+  const editor = studio.locator("govee-video-profile-editor");
+  await expect(
+    editor.getByRole("heading", { name: "Profile", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    editor.locator(".parameter-stack").first(),
+  ).toHaveCSS("row-gap", "18px");
+  await expect(
+    editor.getByRole("group", { name: "Mode" }),
+  ).toHaveCount(0);
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Edit" })
+    .click();
+  await expect(
+    editor.getByRole("group", { name: "Mode" }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("group", { name: "Capture area" }),
+  ).toBeVisible();
+  await editor
+    .getByRole("group", { name: "Capture area" })
+    .getByRole("button", { name: "Part screen" })
+    .click();
+  await expect(
+    editor
+      .getByRole("group", { name: "Capture area" })
+      .getByRole("button", { name: "Part screen" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(editor.getByRole("slider", { name: "Saturation" })).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "White balance" }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("status", { name: "White balance value" }),
+  ).toHaveText("17");
+  await expect(editor.locator(".endpoint-labels span")).toHaveText([
+    "Cool",
+    "Warm",
+  ]);
+  await expect(
+    editor.getByRole("slider", { name: "Uniform brightness" }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("group", { name: "Screen edge brightness" }),
+  ).toBeVisible();
+  await expect(editor.locator(".virtual-screen")).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "Left", exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "Top", exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "Right", exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("slider", { name: "Bottom", exact: true }),
+  ).toBeVisible();
+  const leftBrightness = editor.getByRole("slider", {
+    name: "Left",
+    exact: true,
+  });
+  await leftBrightness.fill("25");
+  await expect(
+    editor.getByRole("status", { name: "Left value" }),
+  ).toHaveText("25%");
+  await expect(editor.locator(".screen-edge-left")).toHaveAttribute(
+    "style",
+    "--edge-level: 0.25",
+  );
+  await editor
+    .getByRole("slider", { name: "Uniform brightness" })
+    .fill("60");
+  for (const edge of ["Left", "Top", "Right", "Bottom"]) {
+    await expect(
+      editor.getByRole("status", { name: `${edge} value` }),
+    ).toHaveText("60%");
+  }
+  await expect(
+    editor.getByRole("checkbox", { name: "Sound effects" }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("checkbox", { name: "Blank screen" }),
+  ).toBeVisible();
+  await expect(
+    editor.getByRole("checkbox", { name: "Sound effects" }),
+  ).toHaveCSS("width", "20px");
+  await expect(
+    editor.getByText("Sound effects", { exact: true }),
+  ).toHaveCSS("font-size", "13px");
+});
+
+test("Home Assistant mode omits the fixture device picker", async ({ page }) => {
+  const studio = await openStudio(page, "?devicePicker=0");
+
+  await expect(
+    studio.getByRole("combobox", { name: "Development device" }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("heading", { name: "Effect Studio" }),
+  ).toBeAttached();
+});
+
+test("palette scene parameters preserve decoded order", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const halloween = await openPaletteScene(page, "Festival", /^Halloween/);
+
+  await expect(
+    halloween.getByRole("heading", { name: "Common settings" }),
+  ).toHaveCount(0);
+  await expect(
+    halloween.getByRole("heading", { name: "Parameters" }),
+  ).toHaveCount(0);
+  await expect(halloween.getByText("Layout", { exact: true })).toBeVisible();
+  await expect(halloween.getByText("0", { exact: true })).toBeVisible();
+  await expect(halloween.getByText("Brightness flag")).toBeVisible();
+  await expect(halloween.getByText("Set", { exact: true })).toBeVisible();
+  await expect(halloween.getByText("Palette", { exact: true })).toBeVisible();
+  await expect(halloween.getByText("Sequence", { exact: true })).toBeVisible();
+  await expect(
+    halloween
+      .getByRole("list", { name: "Ordered scene steps" })
+      .getByRole("listitem"),
+  ).toHaveCount(6);
+  await expect(halloween.getByText("Raw value 5")).toHaveCount(5);
+  await expect(halloween.getByText("Raw value 6")).toHaveCount(1);
+  await expect(
+    halloween
+      .getByRole("list", { name: "Scene palette" })
+      .getByRole("listitem"),
+  ).toHaveCount(4);
+  await expect(halloween.getByLabel("Colour 1, #ff1e00")).toBeVisible();
+
+  await halloween.getByRole("button", { name: "Life" }).click();
+  await halloween.getByRole("button", { name: /^Sweet/ }).click();
+  await expect(halloween.getByText("Raw value 50")).toBeVisible();
+  await expect(halloween.getByLabel("Colour 4, #e300ff")).toBeVisible();
+});
+
+test("palette scene validation enforces schema boundaries and layout rules", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() => {
+    const decodeEffectContent = (value: unknown) =>
+      window.testHarness.backend.validateEffectContent(value);
+    const template = {
+      sku: "SYNTHETIC",
+      scene_id: 1,
+      effect_id: 2,
+      catalogue_schema_version: 1,
+    };
+    const syntheticSchemaOnlyLayout1 = {
+      kind: "scene_palette",
+      template,
+      layout: 1,
+      brightness_flag: true,
+      steps: [
+        {
+          value: 0x1234,
+          colour: [1, 2, 3],
+          inline_colour: [4, 5, 6],
+        },
+        {
+          value: 2,
+          colour: [7, 8, 9],
+          inline_colour: [10, 11, 12],
+        },
+      ],
+      palette: [],
+      speed_index: 255,
+    };
+    const boundaryLayout0 = {
+      kind: "scene_palette",
+      template,
+      layout: 0,
+      brightness_flag: false,
+      steps: Array.from({ length: 255 }, (_, value) => ({
+        value,
+        colour: [1, 2, 3],
+        inline_colour: null,
+      })),
+      palette: Array.from({ length: 255 }, () => [4, 5, 6]),
+      speed_index: null,
+    };
+    const invalidPayloads = [
+      { ...syntheticSchemaOnlyLayout1, layout: 2 },
+      { ...syntheticSchemaOnlyLayout1, brightness_flag: 1 },
+      { ...syntheticSchemaOnlyLayout1, steps: "not-an-array" },
+      {
+        ...syntheticSchemaOnlyLayout1,
+        steps: Array.from({ length: 256 }, () => syntheticSchemaOnlyLayout1.steps[0]),
+      },
+      {
+        ...syntheticSchemaOnlyLayout1,
+        steps: [{ ...syntheticSchemaOnlyLayout1.steps[0], value: 65_536 }],
+      },
+      {
+        ...syntheticSchemaOnlyLayout1,
+        steps: [{ ...syntheticSchemaOnlyLayout1.steps[0], colour: [1, 2] }],
+      },
+      {
+        ...syntheticSchemaOnlyLayout1,
+        steps: [{ ...syntheticSchemaOnlyLayout1.steps[0], inline_colour: null }],
+      },
+      { ...syntheticSchemaOnlyLayout1, palette: [[1, 2, 3]] },
+      { ...syntheticSchemaOnlyLayout1, speed_index: 256 },
+      {
+        ...boundaryLayout0,
+        steps: [{ value: 1, colour: [1, 2, 3], inline_colour: [4, 5, 6] }],
+      },
+      {
+        ...boundaryLayout0,
+        palette: Array.from({ length: 256 }, () => [4, 5, 6]),
+      },
+    ];
+    const synthetic = decodeEffectContent(syntheticSchemaOnlyLayout1);
+    const boundary = decodeEffectContent(boundaryLayout0);
+    return {
+      synthetic,
+      boundaryStepCount:
+        boundary.kind === "scene_palette" ? boundary.steps.length : -1,
+      boundaryPaletteCount:
+        boundary.kind === "scene_palette" ? boundary.palette.length : -1,
+      rejected: invalidPayloads.map((payload) => {
+        try {
+          decodeEffectContent(payload);
+          return false;
+        } catch {
+          return true;
+        }
+      }),
+    };
+  });
+
+  expect(result.synthetic).toMatchObject({
+    kind: "scene_palette",
+    layout: 1,
+    speed_index: 255,
+    steps: [
+      { value: 0x1234, inline_colour: [4, 5, 6] },
+      { value: 2, inline_colour: [10, 11, 12] },
+    ],
+  });
+  expect(result.boundaryStepCount).toBe(255);
+  expect(result.boundaryPaletteCount).toBe(255);
+  expect(result.rejected).toEqual(Array.from({ length: 11 }, () => true));
+});
+
+test("palette scene reserved config flags survive decoding and wire round trips", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() => {
+    const decode = (value: unknown) =>
+      window.testHarness.backend.validateEffectContent(value);
+    const base = {
+      kind: "scene_palette",
+      template: {
+        sku: "SYNTHETIC",
+        scene_id: 1,
+        effect_id: 2,
+        catalogue_schema_version: 1,
+      },
+      layout: 0,
+      brightness_flag: false,
+      steps: [{ value: 1, colour: [1, 2, 3], inline_colour: null }],
+      palette: [[4, 5, 6]],
+      speed_index: null,
+    };
+    const decoded = decode({ ...base, config_flags: 0x08 });
+    // A decoded scene is its own wire content, so re-decoding proves the field survives.
+    const roundTripped = decode(decoded);
+    const omitted = decode(base);
+    return {
+      decoded:
+        decoded.kind === "scene_palette" ? decoded.config_flags ?? null : null,
+      roundTripped:
+        roundTripped.kind === "scene_palette"
+          ? roundTripped.config_flags ?? null
+          : null,
+      omittedHasField:
+        omitted.kind === "scene_palette" ? "config_flags" in omitted : true,
+      rejectsNonReservedBit: (() => {
+        try {
+          decode({ ...base, config_flags: 0x01 });
+          return false;
+        } catch {
+          return true;
+        }
+      })(),
+    };
+  });
+
+  expect(result.decoded).toBe(0x08);
+  expect(result.roundTripped).toBe(0x08);
+  expect(result.omittedHasField).toBe(false);
+  expect(result.rejectsNonReservedBit).toBe(true);
+});
+
+test("palette and layered trailing padding survive decoding and wire round trips", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() => {
+    const decode = (value: unknown) =>
+      window.testHarness.backend.validateEffectContent(value);
+    const paletteBase = {
+      kind: "scene_palette",
+      template: {
+        sku: "SYNTHETIC",
+        scene_id: 1,
+        effect_id: 2,
+        catalogue_schema_version: 1,
+      },
+      layout: 0,
+      brightness_flag: false,
+      steps: [{ value: 1, colour: [1, 2, 3], inline_colour: null }],
+      palette: [[4, 5, 6]],
+      speed_index: null,
+    };
+    const layeredBase = {
+      kind: "scene_layered",
+      template: {
+        sku: "SYNTHETIC",
+        scene_id: 3,
+        effect_id: 4,
+        catalogue_schema_version: 1,
+      },
+      effect: { layers: [] },
+      speed_index: null,
+      raw_param: "00",
+    };
+    const roundTrippedPadding = (value: unknown) => {
+      const decoded = decode(value);
+      // A decoded scene is its own wire content, so re-decoding proves the field survives.
+      const roundTripped = decode(decoded) as { trailing_padding?: number };
+      return roundTripped.trailing_padding ?? null;
+    };
+    const rejects = (value: unknown) => {
+      try {
+        decode(value);
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    const oversize = 0xff * 17 + 1;
+    return {
+      palettePadding: roundTrippedPadding({
+        ...paletteBase,
+        trailing_padding: 34,
+      }),
+      paletteOmitsField: "trailing_padding" in decode(paletteBase),
+      paletteRejectsOversize: rejects({
+        ...paletteBase,
+        trailing_padding: oversize,
+      }),
+      paletteRejectsNegative: rejects({
+        ...paletteBase,
+        trailing_padding: -1,
+      }),
+      layeredPadding: roundTrippedPadding({
+        ...layeredBase,
+        trailing_padding: 34,
+      }),
+      layeredOmitsField: "trailing_padding" in decode(layeredBase),
+      layeredRejectsOversize: rejects({
+        ...layeredBase,
+        trailing_padding: oversize,
+      }),
+    };
+  });
+
+  expect(result.palettePadding).toBe(34);
+  expect(result.paletteOmitsField).toBe(false);
+  expect(result.paletteRejectsOversize).toBe(true);
+  expect(result.paletteRejectsNegative).toBe(true);
+  expect(result.layeredPadding).toBe(34);
+  expect(result.layeredOmitsField).toBe(false);
+  expect(result.layeredRejectsOversize).toBe(true);
+});
+
+test("layer and movement unknown flags reject known bits and survive round trips", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() => {
+    const decode = (value: unknown) =>
+      window.testHarness.backend.validateEffectContent(value);
+    const movement = (unknownFlags: number) => ({
+      enabled: false,
+      enter_exit: false,
+      direction: 0,
+      distance: 1,
+      speed: 128,
+      unknown_flags: unknownFlags,
+    });
+    const layer = (overrides: Record<string, unknown>) => ({
+      area: { start_tenths: 0, width_tenths: 10 },
+      selection: { type: 0, param_1: 0, param_2: 1 },
+      brightness_gradient: false,
+      brightness_patterns: [
+        {
+          scope_high: 255,
+          scope_low: 0,
+          order: 0,
+          change_speed: 128,
+          brightest_retention: 20,
+          darkest_retention: 20,
+        },
+      ],
+      distribution: { method: 1, backwards: false },
+      colour_speed: 128,
+      colour_retention: 20,
+      palette: [
+        [255, 0, 0],
+        [0, 0, 255],
+      ],
+      selected_movement: movement(0),
+      overall_movement: movement(0),
+      priority: 0,
+      unknown_flags: 0,
+      excess: "",
+      ...overrides,
+    });
+    const advanced = (singleLayer: unknown) => ({
+      kind: "advanced",
+      layers: [singleLayer],
+    });
+    const layered = (singleLayer: unknown) => ({
+      kind: "scene_layered",
+      template: {
+        sku: "SYNTHETIC",
+        scene_id: 3,
+        effect_id: 4,
+        catalogue_schema_version: 1,
+      },
+      effect: { layers: [singleLayer] },
+      speed_index: null,
+      raw_param: "00",
+    });
+    const rejects = (value: unknown) => {
+      try {
+        decode(value);
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    type DecodedLayer = {
+      unknown_flags: number;
+      selected_movement: { unknown_flags: number };
+      overall_movement: { unknown_flags: number };
+    };
+    const reservedLayer = layer({
+      unknown_flags: 0xfd,
+      selected_movement: movement(0xe8),
+      overall_movement: movement(0xe8),
+    });
+    // A decoded scene is its own wire content, so re-decoding proves the fields survive.
+    const advancedRoundTrip = decode(
+      decode(advanced(reservedLayer)),
+    ) as { layers: DecodedLayer[] };
+    const layeredRoundTrip = decode(
+      decode(layered(reservedLayer)),
+    ) as { effect: { layers: DecodedLayer[] } };
+    return {
+      advancedLayerReserved: advancedRoundTrip.layers[0].unknown_flags,
+      advancedMovementReserved:
+        advancedRoundTrip.layers[0].selected_movement.unknown_flags,
+      layeredLayerReserved: layeredRoundTrip.effect.layers[0].unknown_flags,
+      layeredMovementReserved:
+        layeredRoundTrip.effect.layers[0].overall_movement.unknown_flags,
+      advancedRejectsMovementKnownBit: rejects(
+        advanced(layer({ selected_movement: movement(0x17) })),
+      ),
+      advancedRejectsLayerBrightnessBit: rejects(
+        advanced(layer({ unknown_flags: 0x02 })),
+      ),
+      layeredRejectsMovementKnownBit: rejects(
+        layered(layer({ overall_movement: movement(0x17) })),
+      ),
+      layeredRejectsLayerBrightnessBit: rejects(
+        layered(layer({ unknown_flags: 0x02 })),
+      ),
+    };
+  });
+
+  expect(result.advancedLayerReserved).toBe(0xfd);
+  expect(result.advancedMovementReserved).toBe(0xe8);
+  expect(result.layeredLayerReserved).toBe(0xfd);
+  expect(result.layeredMovementReserved).toBe(0xe8);
+  expect(result.advancedRejectsMovementKnownBit).toBe(true);
+  expect(result.advancedRejectsLayerBrightnessBit).toBe(true);
+  expect(result.layeredRejectsMovementKnownBit).toBe(true);
+  expect(result.layeredRejectsLayerBrightnessBit).toBe(true);
+});
+
+test("schema-only layout 1 exposes decoded parameters", async ({ page }) => {
+  await openStudio(page);
+  const sceneBrowser = await openPaletteScene(
+    page,
+    "Synthetic schema-only",
+    /Synthetic Layout 1/,
+  );
+  await expect(sceneBrowser.getByText("Raw value 4660")).toBeVisible();
+  await expect(sceneBrowser.getByLabel("Step colour #010203")).toBeVisible();
+  await expect(sceneBrowser.getByText("Inline colour #040506")).toBeVisible();
+  await expect(
+    sceneBrowser.getByRole("list", { name: "Scene palette" }),
+  ).toHaveCount(0);
+});
+
+test("palette scenes apply native identity and authored saved or unsaved definitions", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const sceneBrowser = await openPaletteScene(page, "Festival", /^Halloween/);
+  const nativeApply = sceneBrowser.getByRole("button", { name: "Apply" });
+  const edit = sceneBrowser.getByRole("button", { name: "Edit" });
+  const heading = sceneBrowser.locator(".editor-heading");
+
+  await expect(heading).toBeVisible();
+  await expect(heading.locator(":scope > .actions")).toHaveCount(1);
+  await expect(nativeApply).toBeEnabled();
+  await expect(nativeApply).toHaveClass("primary");
+  await expect(edit).toHaveClass("secondary");
+  await expect(edit).toHaveCSS("min-height", "44px");
+  await expect(nativeApply).toHaveCSS("min-height", "44px");
+  const [editBox, applyBox] = await Promise.all([
+    edit.boundingBox(),
+    nativeApply.boundingBox(),
+  ]);
+  expect(editBox?.y).toBe(applyBox?.y);
+  await nativeApply.click();
+  await expectApplyCallCount(page, 1);
+  await expect(
+    sceneBrowser.getByText("Applied to H617A LED Strip.", { exact: true }),
+  ).toHaveCount(0);
+  await edit.click();
+  await expect(sceneBrowser.getByLabel("Scene name")).toHaveValue(
+    /Halloween.* copy/,
+  );
+  await sceneBrowser.getByRole("button", { name: "Apply" }).click();
+  await expectApplyCallCount(page, 2);
+  await sceneBrowser
+    .getByRole("button", { name: "Save as Custom", exact: true })
+    .click();
+  await expect(
+    sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
+  ).toBeVisible();
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Custom", exact: true }),
+  ).toBeVisible();
+
+  const customApply = sceneBrowser.getByRole("button", { name: "Apply" });
+  await expect(customApply).toBeEnabled();
+  await customApply.click();
+  await expectApplyCallCount(page, 3);
+  await sceneBrowser.getByLabel("Scene name").fill("Halloween preserved");
+  await customApply.click();
+  await expectApplyCallCount(page, 4);
+  await sceneBrowser.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
+  ).toBeVisible();
+
+  const beforeReload = await page.evaluate(() => {
+    const snapshot = window.testHarness.snapshot();
+    const item = Object.values(snapshot.state.items).find(
+      (candidate) => candidate.name === "Halloween preserved",
+    );
+    return {
+      content: item?.content,
+      commands: snapshot.calls
+        .map((call) => String(call.type))
+        .filter((type) => type.endsWith("/scene/apply") || type.endsWith("/apply") || type.endsWith("/apply_snapshot")),
+    };
+  });
+  expect(beforeReload.content).toEqual({
+    kind: "scene_palette",
+    template: {
+      sku: "H617A",
+      scene_id: 1041,
+      effect_id: 1103,
+      catalogue_schema_version: 1,
+    },
+    layout: 0,
+    brightness_flag: true,
+    steps: [
+      { value: 5, colour: [255, 245, 0], inline_colour: null },
+      { value: 5, colour: [255, 255, 255], inline_colour: null },
+      { value: 5, colour: [255, 233, 255], inline_colour: null },
+      { value: 5, colour: [255, 255, 255], inline_colour: null },
+      { value: 5, colour: [255, 233, 217], inline_colour: null },
+      { value: 6, colour: [255, 248, 255], inline_colour: null },
+    ],
+    palette: [
+      [255, 30, 0],
+      [255, 90, 0],
+      [255, 50, 0],
+      [255, 120, 0],
+    ],
+    speed_index: null,
+  });
+  expect(beforeReload.commands).toEqual([
+    "ha_govee_led_ble/editor/scene/apply",
+    "ha_govee_led_ble/editor/apply_snapshot",
+    "ha_govee_led_ble/editor/apply",
+    "ha_govee_led_ble/editor/apply_snapshot",
+  ]);
+
+  await page.reload();
+  const studio = page.locator(studioSelector);
+  await expect(
+    studio.getByRole("navigation", { name: "Create" }),
+  ).toBeVisible();
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const reloadedBrowser = studio.locator("govee-scene-browser");
+  await reloadedBrowser
+    .getByRole("button", { name: "Custom", exact: true })
+    .click();
+  await reloadedBrowser.getByRole("button", { name: /Halloween preserved/ }).click();
+  await expect(reloadedBrowser.getByText("Raw value 6")).toBeVisible();
+  await expect(
+    reloadedBrowser.getByRole("button", { name: "Apply" }),
+  ).toBeEnabled();
+  await expect(
+    reloadedBrowser.getByRole("button", { name: "Delete" }),
+  ).toBeEnabled();
+  await reloadedBrowser.getByRole("button", { name: "Delete" }).click();
+  const deleteDialog = studio.getByRole("dialog", { name: "Delete effect?" });
+  await deleteDialog.getByRole("button", { name: "Delete effect" }).click();
+  await expect(
+    reloadedBrowser.getByRole("button", { name: "Halloween preserved" }),
+  ).toHaveCount(0);
+});
+
+test("a temporarily unavailable URL device does not inherit another model", async ({
+  page,
+}) => {
+  const studio = await openStudio(
+    page,
+    "ha-govee-led-ble/editor/missing-entry",
+  );
+
+  await expect(
+    studio.getByRole("heading", { name: "No loaded device" }),
+  ).toBeVisible();
+  await expect(
+    studio.getByRole("button", { name: "Effects", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("button", { name: "Video", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    studio.getByRole("button", { name: "Scenes", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+});
+
+test("non-admin users receive a read-only editor", async ({ page }) => {
+  const studio = await openStudio(page, "?admin=0");
+  await selectSavedPainted(studio);
+
+  await expect(studio.getByLabel("Effect name")).toBeDisabled();
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Save", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Apply" }),
+  ).toBeDisabled();
+  await expect(
+    studio.getByRole("button", { name: "Segment 1, #2f6fed" }),
+  ).toBeDisabled();
+  await expect(
+    studio.getByRole("note").filter({
+      hasText: "An administrator is required to edit or apply them",
+    }),
+  ).toBeVisible();
+  await expect(
+    studio.getByRole("group", { name: "Create custom effect" }),
+  ).toHaveCount(0);
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "Layered library effect", exact: true })
+    .click();
+  const advanced = studio.locator("govee-advanced-effect-editor");
+  await expect(
+    advanced.getByRole("slider", { name: "Applied area left edge" }),
+  ).toBeDisabled();
+  await expect(
+    advanced.getByRole("slider", { name: "Applied area right edge" }),
+  ).toBeDisabled();
+  expect(
+    await page.evaluate(() => window.testHarness.snapshot().subscriptions),
+  ).toEqual({
+    library: {
+      installs: 1,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 1,
+    },
+    deployment: {
+      installs: 0,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 0,
+    },
+  });
+});
+
+test("non-admin profile templates and controls remain read-only", async ({
+  page,
+}) => {
+  const studio = await openStudio(page, "?admin=0");
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await studio.getByRole("button", { name: "Video", exact: true }).click();
+
+  await expect(
+    studio
+      .getByRole("complementary", { name: "Video profiles" })
+      .getByRole("button", { name: "Game", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    studio
+      .locator("govee-video-profile-editor")
+      .getByRole("button", { name: "Game", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    studio
+      .locator("govee-video-profile-editor")
+      .getByRole("slider", { name: "Saturation" }),
+  ).toBeDisabled();
+
+  await studio.getByRole("button", { name: "Effects", exact: true }).click();
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Music", exact: true })
+    .click();
+  await expect(
+    studio
+      .getByRole("complementary", { name: "Effects" })
+      .getByRole("button", { name: "Energetic", exact: true }),
+  ).toBeDisabled();
+});
+
+test("non-admin users cannot inspect opaque library bodies", async ({
+  page,
+}) => {
+  const studio = await openStudio(page, "?admin=0");
+
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await studio.getByRole("button", { name: "Future backend effect" }).click();
+
+  await expect(
+    studio.getByRole("status").filter({ hasText: "Unauthorized" }),
+  ).toBeVisible();
+  await expect(studio.getByLabel("Preserved opaque content")).toHaveCount(0);
+  await expect(studio.getByRole("code")).toHaveCount(0);
+  await expect(studio.getByText("opaque-summary-secret")).toHaveCount(0);
+});
+
+test("API mismatch renders only the fatal fallback", async ({ page }) => {
+  await page.goto("/?apiMismatch=1");
+  const studio = page.locator(studioSelector);
+
+  await expect(
+    studio.getByRole("heading", {
+      name: "Effect Studio is unavailable",
+    }),
+  ).toBeVisible();
+  await expect(studio.getByRole("alert")).toHaveText(
+    "This editor bundle is not compatible with the installed backend.",
+  );
+  await expect(
+    studio.getByRole("link", { name: "Open integration configuration" }),
+  ).toHaveAttribute(
+    "href",
+    "/config/integrations/integration/ha_govee_led_ble",
+  );
+  await expect(
+    studio.getByRole("heading", { name: "Effect Studio", exact: true }),
+  ).toHaveCount(0);
+  const subscriptions = await page.evaluate(
+    () => window.testHarness.snapshot().subscriptions,
+  );
+  expect(subscriptions.library.installs).toBe(0);
+  expect(subscriptions.deployment.installs).toBe(0);
+});
+
+test("malformed initial payloads fail closed before subscriptions", async ({
+  page,
+}) => {
+  await page.goto("/?malformedLibrary=1");
+  const studio = page.locator(studioSelector);
+
+  await expect(
+    studio.getByRole("heading", {
+      name: "Effect Studio is unavailable",
+    }),
+  ).toBeVisible();
+  await expect(studio.getByRole("alert")).toContainText(
+    "Malformed Effect Studio server payload",
+  );
+  const subscriptions = await page.evaluate(
+    () => window.testHarness.snapshot().subscriptions,
+  );
+  expect(subscriptions.library.active).toBe(0);
+  expect(subscriptions.deployment.active).toBe(0);
+});
+
+test("deployment phases decode and render without contract drift", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await selectSavedPainted(studio);
+  const decoded = await page.evaluate((phases) =>
+    phases.map((phase) =>
+      window.testHarness.backend.validateDeployment({
+        operation_id: "phase-contract-operation",
+        config_entry_id: "h617a-main",
+        diy_code: 800,
+        content_kind: "h617a_painted",
+        target_mode: "custom",
+        target_effect: null,
+        phase,
+        updated_at: "2026-08-14T00:00:00Z",
+        item_id: "painted-1",
+        item_revision: 1,
+        error_code: null,
+        progress_current: 0,
+        progress_total: 2,
+        verification_confidence: "unknown",
+      }).phase,
+    ),
+    DEPLOYMENT_PHASES,
+  );
+  expect(decoded).toEqual(DEPLOYMENT_PHASES);
+  const invalidRejected = await page.evaluate(() => {
+    try {
+      window.testHarness.backend.validateDeployment({
+        operation_id: "phase-contract-operation",
+        config_entry_id: "h617a-main",
+        diy_code: 800,
+        content_kind: "h617a_painted",
+        target_mode: "custom",
+        target_effect: null,
+        phase: "drifted",
+        updated_at: "2026-08-14T00:00:00Z",
+        item_id: "painted-1",
+        item_revision: 1,
+        error_code: null,
+        progress_current: 0,
+        progress_total: 2,
+        verification_confidence: "unknown",
+      });
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  expect(invalidRejected).toBe(true);
+
+  const messages: Partial<Record<DeploymentPhase, string>> = {
+    compiling: "Preparing to apply to H617A LED Strip.",
+    pending: "Preparing to apply to H617A LED Strip.",
+    uploading: "Applying to H617A LED Strip: 1 of 2.",
+    activating: "Activating the selected effect on H617A LED Strip.",
+    verifying: "Checking the selected effect on H617A LED Strip.",
+    uncertain: "The final state of H617A LED Strip is uncertain.",
+    recovering: "Restoring the previous state on H617A LED Strip",
+    failed: "Apply to H617A LED Strip failed.",
+    interrupted: "Apply to H617A LED Strip was interrupted",
+    unknown: "Applied to H617A LED Strip, but the requested settings could not be confirmed.",
+  };
+  const alertPhases = new Set<DeploymentPhase>([
+    "failed",
+    "uncertain",
+    "interrupted",
+    "unknown",
+  ]);
+  for (const phase of DEPLOYMENT_PHASES) {
+    await page.evaluate(
+      (visiblePhase) =>
+        window.testHarness.backend.emitDeploymentPhase(visiblePhase),
+      phase,
+    );
+    const message = messages[phase];
+    if (message === undefined) {
+      await expect(studio.locator(".feedback.deployment")).toHaveCount(0);
+      continue;
+    }
+    await expect(
+      studio
+        .getByRole(alertPhases.has(phase) ? "alert" : "status")
+        .filter({ hasText: message }),
+    ).toBeVisible();
+  }
+});
+
+test("partial subscription setup is rolled back on permission failure", async ({
+  page,
+}) => {
+  await page.goto("/?rejectDeploymentSubscription=1");
+  const studio = page.locator(studioSelector);
+
+  await expect(
+    studio.getByRole("heading", {
+      name: "Effect Studio is unavailable",
+    }),
+  ).toBeVisible();
+  await expect(studio.getByRole("alert")).toHaveText("Unauthorized");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => window.testHarness.snapshot().subscriptions),
+    )
+    .toEqual({
+      library: {
+        installs: 1,
+        unsubscribes: 1,
+        deliveries: 0,
+        active: 0,
+      },
+      deployment: {
+        installs: 0,
+        unsubscribes: 0,
+        deliveries: 0,
+        active: 0,
+      },
+    });
+});
+
+test("malformed subscription events close every active subscription", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+
+  await page.evaluate(() =>
+    window.testHarness.backend.emitMalformedLibrary(),
+  );
+  await expect(
+    studio.getByRole("heading", {
+      name: "Effect Studio is unavailable",
+    }),
+  ).toBeVisible();
+  await expect(studio.getByRole("alert")).toContainText(
+    "Malformed Effect Studio server payload",
+  );
+  await expect
+    .poll(async () =>
+      page.evaluate(() => window.testHarness.snapshot().subscriptions),
+    )
+    .toEqual({
+      library: {
+        installs: 1,
+        unsubscribes: 1,
+        deliveries: 0,
+        active: 0,
+      },
+      deployment: {
+        installs: 1,
+        unsubscribes: 1,
+        deliveries: 0,
+        active: 0,
+      },
+    });
+});
+
+test("stale subscription snapshots cannot roll back visible state", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await selectSavedPainted(studio);
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply" })
+    .click();
+  await expectApplyCallCount(page, 1);
+  await expect(studio.locator(".feedback.deployment")).toHaveCount(0);
+
+  await page.evaluate(() => window.testHarness.backend.emitStaleSnapshots());
+
+  await expect(
+    studio.getByRole("button", {
+      name: "Supported painted effect",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(studio.locator(".feedback.deployment")).toHaveCount(0);
+});
+
+test("disconnect during initial load cannot install stale subscriptions", async ({
+  page,
+}) => {
+  await page.goto("/?slowLoad=1");
+  await page.evaluate(() => window.testHarness.disconnectEditor());
+  await page.waitForTimeout(600);
+  expect(
+    await page.evaluate(() => window.testHarness.snapshot().subscriptions),
+  ).toEqual({
+    library: {
+      installs: 0,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 0,
+    },
+    deployment: {
+      installs: 0,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 0,
+    },
+  });
+
+  await page.evaluate(() => window.testHarness.reconnectEditor());
+  await expect(
+    page
+      .locator(studioSelector)
+      .getByRole("navigation", { name: "Create" }),
+  ).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => window.testHarness.snapshot().subscriptions),
+    )
+    .toEqual({
+      library: {
+        installs: 1,
+        unsubscribes: 0,
+        deliveries: 0,
+        active: 1,
+      },
+      deployment: {
+        installs: 1,
+        unsubscribes: 0,
+        deliveries: 0,
+        active: 1,
+      },
+    });
+});
+
+test("subscriptions cleanly uninstall and reload after reconnect", async ({
+  page,
+}) => {
+  await openStudio(page);
+  expect(
+    await page.evaluate(() => window.testHarness.snapshot().subscriptions),
+  ).toEqual({
+    library: {
+      installs: 1,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 1,
+    },
+    deployment: {
+      installs: 1,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 1,
+    },
+  });
+
+  await page.evaluate(() => window.testHarness.disconnectEditor());
+  await expect(page.locator(studioSelector)).toHaveCount(0);
+  await page.evaluate(() => {
+    window.testHarness.backend.emitLibrary();
+    window.testHarness.backend.emitDeployments();
+  });
+  expect(
+    await page.evaluate(() => window.testHarness.snapshot().subscriptions),
+  ).toEqual({
+    library: {
+      installs: 1,
+      unsubscribes: 1,
+      deliveries: 0,
+      active: 0,
+    },
+    deployment: {
+      installs: 1,
+      unsubscribes: 1,
+      deliveries: 0,
+      active: 0,
+    },
+  });
+
+  await page.evaluate(() => window.testHarness.reconnectEditor());
+  const studio = page.locator(studioSelector);
+  await expect(
+    studio.getByRole("navigation", { name: "Create" }),
+  ).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        () => window.testHarness.snapshot().subscriptions.library.installs,
+      ),
+    )
+    .toBe(2);
+  await page.evaluate(() => {
+    window.testHarness.backend.emitLibrary();
+    window.testHarness.backend.emitDeployments();
+  });
+  await expect
+    .poll(async () =>
+      page.evaluate(() => window.testHarness.snapshot().subscriptions),
+    )
+    .toEqual({
+      library: {
+        installs: 2,
+        unsubscribes: 1,
+        deliveries: 1,
+        active: 1,
+      },
+      deployment: {
+        installs: 2,
+        unsubscribes: 1,
+        deliveries: 1,
+        active: 1,
+      },
+    });
+});
+
+test("a second tab preserves dirty work when the library changes", async ({
+  context,
+  page,
+}) => {
+  const firstStudio = await openStudio(page);
+  const secondPage = await context.newPage();
+  const secondStudio = await openStudio(secondPage);
+  await selectSavedPainted(firstStudio);
+  await selectSavedPainted(secondStudio);
+
+  await secondStudio.getByLabel("Effect name").fill("Tab two dirty work");
+  await firstStudio.getByLabel("Effect name").fill("Tab one saved revision");
+  await firstStudio.getByRole("button", { name: "Save", exact: true }).click();
+
+  await expect(
+    firstStudio.getByRole("status").filter({ hasText: "Saved." }),
+  ).toBeVisible();
+  await expect(
+    secondStudio.getByRole("status").filter({
+      hasText:
+        "This effect changed elsewhere. Reload it before saving.",
+    }),
+  ).toBeVisible();
+  await expect(secondStudio.getByLabel("Effect name")).toHaveValue(
+    "Tab two dirty work",
+  );
+  const savedName = await secondPage.evaluate(() => {
+    const items = Object.values(window.testHarness.snapshot().state.items);
+    return items.find((item) => item.id === "painted-1")?.name;
+  });
+  expect(savedName).toBe("Tab one saved revision");
+});
+
+test("save conflict keeps feedback when the library refresh fails", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  const studio = await openStudio(page);
+  await selectSavedPainted(studio);
+
+  await studio.getByLabel("Effect name").fill("Conflict edit");
+  await page.evaluate(() => {
+    window.testHarness.backend.conflictNext("library/update");
+    window.testHarness.backend.failNext("library/list");
+  });
+  await studio
+    .locator(".editor")
+    .getByRole("button", { name: "Save", exact: true })
+    .click();
+
+  await expect(
+    studio.getByRole("status").filter({
+      hasText:
+        "This effect or library changed elsewhere. Reload before saving.",
+    }),
+  ).toContainText("Library refresh failed: Injected library/list failure");
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        window.testHarness
+          .snapshot()
+          .calls.filter(
+            (call) =>
+              call.type === "ha_govee_led_ble/editor/library/list",
+          ).length,
+      ),
+    )
+    .toBe(2);
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Save", exact: true }),
+  ).toBeEnabled();
+  await page.waitForTimeout(50);
+  expect(pageErrors).toEqual([]);
+});
+
+test("applied area boundaries enforce valid mouse and keyboard ranges", async ({
+  page,
+}) => {
+  const { advanced } = await openLayeredLibraryEffect(page);
+  const appliedArea = advanced.getByLabel("Applied area, 15 segments");
+  await expect(appliedArea.locator("span")).toHaveCount(15);
+  const leftEdge = advanced.getByRole("slider", {
+    name: "Applied area left edge",
+  });
+  const rightEdge = advanced.getByRole("slider", {
+    name: "Applied area right edge",
+  });
+  await expect(leftEdge).toHaveValue("0");
+  await expect(leftEdge).toHaveAttribute("max", "9");
+  await expect(rightEdge).toHaveValue("10");
+  await expect(rightEdge).toHaveAttribute("min", "1");
+  await expect(
+    advanced.getByRole("button", { name: /^Move applied area/ }),
+  ).toHaveCount(0);
+
+  const leftBox = await leftEdge.boundingBox();
+  if (!leftBox) {
+    throw new Error("Applied area left edge is not visible.");
+  }
+  await leftEdge.click({
+    position: {
+      x: Math.round(leftBox.width * 0.35),
+      y: Math.round(leftBox.height / 2),
+    },
+  });
+  await expect(leftEdge).toHaveValue("3");
+  await expect(rightEdge).toHaveAttribute("min", "4");
+
+  await rightEdge.press("Home");
+  await expect(rightEdge).toHaveValue("4");
+  await expect(leftEdge).toHaveAttribute("max", "3");
+  await leftEdge.press("ArrowRight");
+  await expect(leftEdge).toHaveValue("3");
+  await expect(appliedArea.locator("span.covered")).toHaveCount(2);
+
+  await rightEdge.press("End");
+  await expect(rightEdge).toHaveValue("10");
+  await leftEdge.press("End");
+  await expect(leftEdge).toHaveValue("9");
+  await expect(rightEdge).toHaveAttribute("min", "10");
+  await rightEdge.press("ArrowLeft");
+  await expect(rightEdge).toHaveValue("10");
+  await expect(appliedArea.locator("span.covered")).toHaveCount(2);
+
+  await leftEdge.press("Home");
+  await expect(leftEdge).toHaveValue("0");
+  await expect(
+    advanced.getByLabel("Applied area left edge value"),
+  ).toHaveText("0%");
+  await expect(
+    advanced.getByLabel("Applied area right edge value"),
+  ).toHaveText("100%");
+
+  const layerTabs = advanced.getByRole("tab", { name: /Layer \d/ });
+  await leftEdge.press("ArrowRight");
+  await leftEdge.press("ArrowRight");
+  await expect(leftEdge).toHaveValue("2");
+  await layerTabs.nth(1).click();
+  await expect(leftEdge).toHaveValue("2");
+  await expect(rightEdge).toHaveValue("8");
+  await rightEdge.press("ArrowLeft");
+  await expect(rightEdge).toHaveValue("7");
+  await layerTabs.nth(0).click();
+  await expect(leftEdge).toHaveValue("2");
+  await expect(rightEdge).toHaveValue("10");
+  await layerTabs.nth(1).click();
+  await expect(rightEdge).toHaveValue("7");
+});
+
+test("applied area boundaries support touch on a narrow screen", async ({
+  browser,
+}) => {
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const { advanced } = await openLayeredLibraryEffect(page);
+    const leftEdge = advanced.getByRole("slider", {
+      name: "Applied area left edge",
+    });
+    const rightEdge = advanced.getByRole("slider", {
+      name: "Applied area right edge",
+    });
+    const leftBox = await leftEdge.boundingBox();
+    const rightBox = await rightEdge.boundingBox();
+    if (!leftBox || !rightBox) {
+      throw new Error("Applied area touch controls are not visible.");
+    }
+    expect(leftBox.height).toBeGreaterThanOrEqual(44);
+    expect(rightBox.height).toBeGreaterThanOrEqual(44);
+
+    await leftEdge.tap({
+      position: {
+        x: Math.round(leftBox.width * 0.45),
+        y: Math.round(leftBox.height / 2),
+      },
+    });
+    await expect.poll(async () => Number(await leftEdge.inputValue())).toBeGreaterThan(0);
+    const leftValue = Number(await leftEdge.inputValue());
+
+    await rightEdge.tap({
+      position: {
+        x: Math.round(rightBox.width * 0.7),
+        y: Math.round(rightBox.height / 2),
+      },
+    });
+    await expect.poll(async () => Number(await rightEdge.inputValue())).toBeLessThan(10);
+    expect(Number(await rightEdge.inputValue())).toBeGreaterThan(leftValue);
+
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+  } finally {
+    await context.close();
+  }
+});
+
+test("mobile touch dragging reorders layers and preserves vertical scrolling", async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "CDP touch input requires Chromium.");
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const { advanced } = await openLayeredLibraryEffect(page);
+    const tabs = advanced.getByRole("tab", { name: /Layer \d/ });
+    await tabs.nth(0).scrollIntoViewIfNeeded();
+    const firstBox = await tabs.nth(0).boundingBox();
+    const secondBox = await tabs.nth(1).boundingBox();
+    if (!firstBox || !secondBox) {
+      throw new Error("Layer tabs are not visible.");
+    }
+
+    await touchDrag(
+      page,
+      {
+        x: firstBox.x + firstBox.width / 2,
+        y: firstBox.y + firstBox.height / 2,
+      },
+      {
+        x: secondBox.x + secondBox.width / 2,
+        y: secondBox.y + secondBox.height / 2,
+      },
+    );
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+    await expect(
+      advanced.getByRole("slider", { name: "Applied area left edge" }),
+    ).toHaveValue("0");
+
+    await page.evaluate(() => scrollTo(0, 0));
+    const selectedBox = await tabs.nth(1).boundingBox();
+    if (!selectedBox) {
+      throw new Error("Selected layer tab is not visible.");
+    }
+    await touchDrag(
+      page,
+      {
+        x: selectedBox.x + selectedBox.width / 2,
+        y: selectedBox.y + selectedBox.height / 2,
+      },
+      {
+        x: selectedBox.x + selectedBox.width / 2,
+        y: selectedBox.y - 220,
+      },
+    );
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  } finally {
+    await context.close();
+  }
+});
+
+test("mobile taps open colour and layer action popovers", async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "Touch input requires Chromium.");
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const { advanced } = await openLayeredLibraryEffect(page);
+    const secondLayer = advanced.getByRole("tab", { name: /Layer 2/ });
+
+    await secondLayer.tap();
+    await expect(secondLayer).toHaveAttribute("aria-selected", "true");
+    const layerActions = advanced.getByRole("dialog", {
+      name: "Layer actions",
+    });
+    await expect(layerActions).toHaveCount(0);
+    const layerActionsButton = advanced.getByRole("button", {
+      name: "Layer actions for Layer 2",
+    });
+    await layerActionsButton.tap();
+    await expect(layerActions).toBeVisible();
+    await expect(
+      layerActions.getByRole("button", { name: "Copy layer" }),
+    ).toBeVisible();
+    await advanced.getByRole("heading", { name: "Applied area" }).tap();
+    await expect(layerActions).toHaveCount(0);
+
+    const palette = advanced.locator("govee-palette-editor");
+    const firstColour = palette.getByRole("button", {
+      name: /Edit colour 1/,
+    });
+    await firstColour.tap();
+    const colourDialog = palette.getByRole("dialog", {
+      name: "Edit colour",
+    });
+    await expect(colourDialog).toBeVisible();
+    await colourDialog.getByRole("button", { name: /^Use #/ }).nth(1).tap();
+    await expect(colourDialog).toHaveCount(0);
+    await expect(
+      palette.getByRole("button", {
+        name: /Edit colour 1, #ff9f0a/,
+      }),
+    ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test("mobile touch painting crosses segment rows", async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "CDP touch input requires Chromium.");
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const studio = await openStudio(page);
+    await studio
+      .getByRole("complementary", { name: "Effects" })
+      .getByRole("button", { name: "Paint", exact: true })
+      .click();
+    await studio.getByRole("button", { name: "Edit", exact: true }).click();
+    const segments = studio
+      .locator("govee-painted-segment-editor")
+      .getByRole("button", { name: /Segment/ });
+    await segments.nth(0).scrollIntoViewIfNeeded();
+    const firstBox = await segments.nth(0).boundingBox();
+    const eleventhBox = await segments.nth(10).boundingBox();
+    if (!firstBox || !eleventhBox) {
+      throw new Error("Painted segments are not visible.");
+    }
+
+    await touchDrag(
+      page,
+      {
+        x: firstBox.x + firstBox.width / 2,
+        y: firstBox.y + firstBox.height / 2,
+      },
+      {
+        x: eleventhBox.x + eleventhBox.width / 2,
+        y: eleventhBox.y + eleventhBox.height / 2,
+      },
+    );
+    for (const index of [0, 5, 10]) {
+      await expect(segments.nth(index)).toHaveAccessibleName(
+        `Segment ${index + 1}, #ff0000`,
+      );
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+test("advanced template brightness controls support touch", async ({
+  browser,
+}) => {
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const studio = await openStudio(page);
+    await studio
+      .getByRole("complementary", { name: "Effect categories" })
+      .getByRole("button", { name: "Advanced", exact: true })
+      .click();
+    await studio
+      .getByRole("complementary", { name: "Effects" })
+      .getByRole("button", { name: "Movement", exact: true })
+      .click();
+    const advanced = studio.locator("govee-advanced-effect-editor");
+
+    const distribution = advanced.getByRole("group", {
+      name: "Distribution",
+    });
+    const unified = distribution.getByRole("button", {
+      name: "Unified",
+      exact: true,
+    });
+    await unified.tap();
+    await expect(unified).toHaveAttribute("aria-pressed", "true");
+    await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+
+    const addPattern = advanced.getByRole("button", {
+      name: "Add brightness pattern",
+    });
+    await addPattern.tap();
+    await expect(
+      advanced.getByRole("tab", { name: "Pattern 2", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+  } finally {
+    await context.close();
+  }
+});
+
+test("mobile form controls expose touch-sized hit areas", async ({
+  browser,
+}) => {
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error("Playwright base URL is unavailable.");
+  }
+  const context = await browser.newContext({
+    baseURL,
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    const { studio, advanced } = await openLayeredLibraryEffect(page);
+    const speedBox = await advanced
+      .getByRole("slider", { name: "Colour speed" })
+      .boundingBox();
+    const numberBox = await advanced
+      .getByRole("spinbutton", { name: "Segments", exact: true })
+      .boundingBox();
+    if (!speedBox || !numberBox) {
+      throw new Error("Advanced form controls are not visible.");
+    }
+    expect(speedBox.height).toBeGreaterThanOrEqual(44);
+    expect(numberBox.height).toBeGreaterThanOrEqual(44);
+
+    const palette = advanced.locator("govee-palette-editor");
+    await palette.getByRole("button", { name: /Edit colour 1/ }).click();
+    const presetBox = await palette
+      .getByRole("button", { name: "Use #ff9f0a" })
+      .boundingBox();
+    if (!presetBox) {
+      throw new Error("Colour preset is not visible.");
+    }
+    expect(presetBox.height).toBeGreaterThanOrEqual(44);
+
+    await studio
+      .getByRole("combobox", { name: "Development device" })
+      .selectOption("h6199-main");
+    await studio.getByRole("button", { name: "Video", exact: true }).click();
+    await studio
+      .getByRole("complementary", { name: "Video profiles" })
+      .getByRole("button", { name: "Movie", exact: true })
+      .click();
+    await studio
+      .locator(".editor")
+      .getByRole("button", { name: "Edit", exact: true })
+      .click();
+    const video = studio.locator("govee-video-profile-editor");
+    await video
+      .getByRole("group", { name: "Capture area" })
+      .getByRole("button", { name: "Part screen" })
+      .click();
+    const topBox = await video
+      .getByRole("slider", { name: "Top", exact: true })
+      .boundingBox();
+    const leftBox = await video
+      .getByRole("slider", { name: "Left", exact: true })
+      .boundingBox();
+    if (!topBox || !leftBox) {
+      throw new Error("Video edge controls are not visible.");
+    }
+    expect(topBox.height).toBeGreaterThanOrEqual(44);
+    expect(leftBox.width).toBeGreaterThanOrEqual(44);
+  } finally {
+    await context.close();
+  }
+});
+
+test("advanced layer and palette keyboard focus follows edits", async ({
+  page,
+}) => {
+  const { advanced } = await openLayeredLibraryEffect(page);
+  const layerTabs = advanced.getByRole("tab", { name: /Layer \d/ });
+
+  await expect(
+    advanced.getByText("Selection", { exact: true }),
+  ).toBeVisible();
+  await expect(advanced.getByRole("slider", { name: "Scope low" })).toBeVisible();
+  await expect(
+    advanced.getByRole("slider", { name: "Scope high" }),
+  ).toBeVisible();
+  await expect(
+    advanced.getByRole("slider", { name: "Changing speed" }),
+  ).toBeVisible();
+  await expect(advanced.locator("output")).toHaveCount(2);
+
+  const selectedMovement = advanced.getByRole("switch", {
+    name: "Move selected pattern enabled",
+  });
+  if ((await selectedMovement.getAttribute("aria-checked")) === "false") {
+    await selectedMovement.click();
+  }
+  await expect(
+    advanced.getByRole("slider", { name: "Speed" }).first(),
+  ).toBeVisible();
+  await expect(advanced.locator("output")).toHaveCount(2);
+  const prioritySwitch = advanced.getByRole("switch", {
+    name: "Layer priority enabled",
+  });
+  if ((await prioritySwitch.getAttribute("aria-checked")) === "false") {
+    await prioritySwitch.click();
+  }
+  const priority = advanced.getByRole("group", { name: "Priority" });
+  await priority.getByRole("button", { name: "3", exact: true }).click();
+  await expect(
+    priority.getByRole("button", { name: "3", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  const selectionSegments = advanced.getByRole("spinbutton", {
+    name: "Segments",
+    exact: true,
+  });
+  await selectionSegments.fill("3");
+
+  await layerTabs.nth(1).click();
+  await layerTabs.nth(1).press("ArrowLeft");
+  await expect(layerTabs.nth(0)).toHaveAttribute("aria-selected", "true");
+  await expect(layerTabs.nth(0)).toBeFocused();
+  await advanced
+    .getByRole("button", { name: "Layer actions for Layer 1" })
+    .click();
+  const layerActions = advanced.getByRole("dialog", {
+    name: "Layer actions",
+  });
+  await expect(
+    layerActions.getByRole("button", { name: "Copy layer" }),
+  ).toBeVisible();
+  await expect(
+    layerActions.getByRole("button", { name: "Delete layer" }),
+  ).toBeVisible();
+  await expect(
+    layerActions.getByRole("button", { name: "Move left" }),
+  ).toHaveCount(0);
+  await expect(
+    layerActions.getByRole("button", { name: "Move right" }),
+  ).toHaveCount(0);
+
+  await layerTabs.nth(1).click();
+  const palette = advanced.locator("govee-palette-editor");
+  let swatches = palette.getByRole("button", { name: /Edit colour/ });
+  await swatches.nth(1).focus();
+  await swatches.nth(1).press("ArrowRight");
+  swatches = palette.getByRole("button", { name: /Edit colour/ });
+  await expect(swatches.nth(2)).toBeFocused();
+  await swatches.nth(2).click();
+  const dialog = palette.getByRole("dialog", { name: "Edit colour" });
+  await expect(dialog.getByRole("button", { name: "Move left" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Move right" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Remove" })).toHaveCount(0);
+  await expect(dialog.getByText("Custom colour")).toHaveCount(0);
+  await palette.getByRole("button", { name: "Remove colour 3" }).click();
+  swatches = palette.getByRole("button", { name: /Edit colour/ });
+  await expect(swatches).toHaveCount(2);
+  await expect(swatches.nth(1)).toBeFocused();
+});
+
+test("palette choices commit and close the colour picker", async ({ page }) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Single Layer", exact: true })
+    .click();
+  await studio
+    .getByRole("complementary", { name: "Effects" })
+    .getByRole("button", { name: "New", exact: true })
+    .click();
+  const palette = studio
+    .locator("govee-custom-effect-editor")
+    .locator("govee-palette-editor");
+  const firstSwatch = palette.getByRole("button", {
+    name: /Edit colour 1/,
+  });
+
+  await firstSwatch.click();
+  const dialog = palette.getByRole("dialog", { name: "Edit colour" });
+  let presets = dialog.getByRole("button", { name: /^Use #/ });
+  await expect(presets).toHaveCount(17);
+  await expect(dialog.getByLabel("Custom colour")).toBeVisible();
+  await expect(dialog.locator(".preset-grid > *")).toHaveCount(18);
+  await expect(dialog.locator(".preset-grid > *").last()).toHaveClass(
+    "custom-colour",
+  );
+  await presets.nth(1).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    palette.getByRole("button", {
+      name: /Edit colour 1, #ff9f0a/,
+    }),
+  ).toBeVisible();
+  await palette.getByRole("button", { name: /Edit colour 1/ }).click();
+  presets = palette
+    .getByRole("dialog", { name: "Edit colour" })
+    .getByRole("button", { name: /^Use #/ });
+  await expect(presets.first()).toHaveAccessibleName("Use #ff9f0a");
+});
+
+test("unknown layered values stay raw", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await studio
+    .getByRole("button", {
+      name: "Raw layered values",
+      exact: true,
+    })
+    .click();
+  const advanced = studio.locator("govee-advanced-effect-editor");
+  const selection = advanced.getByLabel("Selection type");
+  const order = advanced.getByLabel("Brightness order");
+
+  await expect(selection).toHaveValue("254");
+  await expect(selection.locator("option:checked")).toHaveText(
+    "Raw type 254 (0xFE)",
+  );
+  await expect(advanced.getByLabel("Type (raw byte)")).toHaveValue("254");
+  await expect(order).toHaveValue("253");
+  await expect(order.locator("option:checked")).toHaveText(
+    "Raw order 253 (0xFD)",
+  );
+  await expect(advanced.getByLabel("Order (raw byte)")).toHaveValue("253");
+  await advanced.getByText("Preserved wire values").click();
+  await expect(advanced.getByLabel("Selected movement flags")).toHaveValue(
+    "20",
+  );
+
+  await advanced.getByRole("tab", { name: "Layer 2" }).click();
+  await expect(advanced.getByLabel("Brightness order")).toHaveValue("253");
+
+  await studio.getByLabel("Effect name").fill("Raw values preserved");
+  await studio.getByRole("button", { name: "Save", exact: true }).click();
+  const savedContent = await page.evaluate(() => {
+    const items = Object.values(window.testHarness.snapshot().state.items);
+    return items.find((item) => item.name === "Raw values preserved")?.content;
+  });
+  expect(savedContent).toMatchObject({
+    kind: "advanced",
+    layers: [
+      expect.objectContaining({
+        selection: expect.objectContaining({ type: 254 }),
+        brightness_patterns: [
+          expect.objectContaining({ order: 253 }),
+        ],
+      }),
+      expect.objectContaining({
+        brightness_patterns: [
+          expect.objectContaining({ order: 253 }),
+        ],
+      }),
+    ],
+  });
+});
+
+test("opaque backend content is inspectable but cannot be edited or applied", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await studio
+    .getByRole("complementary", { name: "Effect categories" })
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await studio
+    .getByRole("button", {
+      name: "Future backend effect",
+      exact: true,
+    })
+    .click();
+
+  await expect(
+    studio.getByRole("heading", { name: "Future backend effect" }),
+  ).toBeVisible();
+  await expect(studio.getByRole("code")).toHaveText("future_wave");
+  await expect(
+    studio.getByLabel("Preserved opaque content"),
+  ).toHaveText(JSON.stringify({
+    schema: 7,
+    enabled: false,
+    template: {
+      secret: "opaque-summary-secret",
+    },
+    nested: {
+      mode: "prism",
+      values: [1, null, "three"],
+    },
+  }, null, 2));
+  await expect(
+    studio.getByRole("note").filter({
+      hasText:
+        "This effect definition can be inspected, but this editor cannot change, save or apply it.",
+    }),
+  ).toBeVisible();
+  await expect(studio.getByLabel("Effect name")).toHaveCount(0);
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Save", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    studio.locator(".editor").getByRole("button", { name: "Apply" }),
+  ).toBeDisabled();
+  await expect(
+    studio.locator("govee-advanced-effect-editor"),
+  ).toHaveCount(0);
+});
+
+test("opaque API adapters preserve wire content across every full-content path", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const result = await page.evaluate(() =>
+    window.testHarness.exerciseOpaqueAdapter(),
+  );
+  const publicContent = {
+    kind: "opaque",
+    source_kind: "future_wave",
+    body: {
+      schema: 7,
+      enabled: false,
+      template: {
+        secret: "opaque-summary-secret",
+      },
+      nested: {
+        mode: "prism",
+        values: [1, null, "three"],
+      },
+    },
+  };
+
+  expect(result.loaded.content).toEqual(publicContent);
+  expect(result.created.content).toEqual(publicContent);
+  expect(result.updated.content).toEqual(publicContent);
+  expect(result.fetchedDraft.item.content).toEqual(publicContent);
+  expect(result.updatedDraft.item.content).toEqual(publicContent);
+  expect(result.deployment).not.toHaveProperty("snapshot");
+  expect(result.subscribedDeployment).not.toHaveProperty("snapshot");
+  expect(result.knownKind).toBe("h617a_painted");
+  expect(result.knownFirstChannel).toBe(0);
+
+  const wireContent = {
+    kind: "future_wave",
+    schema: 7,
+    enabled: false,
+    template: {
+      secret: "opaque-summary-secret",
+    },
+    nested: {
+      mode: "prism",
+      values: [1, null, "three"],
+    },
+  };
+  const outgoing = await page.evaluate(() =>
+    window.testHarness
+      .snapshot()
+      .calls.filter(
+        (call) =>
+          typeof call.name === "string" &&
+          call.name.startsWith("Opaque adapter"),
+      )
+      .map((call) => ({
+        command: call.type,
+        content: call.content,
+      })),
+  );
+  expect(outgoing).toEqual([
+    {
+      command: "ha_govee_led_ble/editor/library/create",
+      content: wireContent,
+    },
+    {
+      command: "ha_govee_led_ble/editor/library/update",
+      content: wireContent,
+    },
+    {
+      command: "ha_govee_led_ble/editor/draft/create",
+      content: wireContent,
+    },
+    {
+      command: "ha_govee_led_ble/editor/draft/update",
+      content: wireContent,
+    },
+    {
+      command: "ha_govee_led_ble/editor/apply_snapshot",
+      content: wireContent,
+    },
+  ]);
+});
+
+test("empty layered scene imports remain inspectable and unchanged", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const sceneBrowser = await openScene(page, "Focus", /Ocean Layers/);
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
+  const advanced = studio.locator("govee-advanced-effect-editor");
+
+  await expect(
+    advanced.getByRole("heading", { name: "No layer records" }),
+  ).toBeVisible();
+  await expect(
+    advanced.getByRole("button", { name: "Add layer" }),
+  ).toBeEnabled();
+  await expect(
+    advanced.getByRole("tablist", { name: "Effect layers" }),
+  ).toHaveCount(0);
+  const apply = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply" });
+  await expect(apply).toBeEnabled();
+  await apply.click();
+
+  await saveNewEffect(studio);
+  const savedContent = await page.evaluate(() => {
+    const items = Object.values(window.testHarness.snapshot().state.items);
+    return items.find((item) => item.name === "Ocean Layers copy")?.content;
+  });
+  expect(savedContent).toEqual({
+    kind: "scene_layered",
+    template: {
+      sku: "H617A",
+      scene_id: 2,
+      effect_id: 202,
+      catalogue_schema_version: 1,
+    },
+    effect: { layers: [] },
+    speed_index: 1,
+    raw_param: "102030405060708090a0b0c0",
+  });
+  const applyCall = await page.evaluate(() =>
+    [...window.testHarness.snapshot().calls].reverse().find(
+      (call) => String(call.type).endsWith("/apply_snapshot"),
+    ),
+  );
+  expect(applyCall).toMatchObject({
+    name: "Ocean Layers copy",
+    content: savedContent,
+  });
+});
+
+test("empty brightness pattern imports remain inspectable and unchanged", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const sceneBrowser = await openScene(
+    page,
+    "Focus",
+    /Empty Pattern Layers/,
+  );
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
+  const advanced = studio.locator("govee-advanced-effect-editor");
+
+  await expect(
+    advanced.getByRole("heading", {
+      name: "No brightness pattern records",
+    }),
+  ).toBeVisible();
+  await expect(
+    advanced.getByRole("button", { name: "Add brightness pattern" }),
+  ).toBeEnabled();
+  await saveNewEffect(studio);
+  const savedContent = await page.evaluate(() => {
+    const items = Object.values(window.testHarness.snapshot().state.items);
+    return items.find(
+      (item) => item.name === "Empty Pattern Layers copy",
+    )?.content;
+  });
+  expect(savedContent).toMatchObject({
+    kind: "scene_layered",
+    template: {
+      sku: "H617A",
+      scene_id: 3,
+      effect_id: 303,
+      catalogue_schema_version: 1,
+    },
+    effect: {
+      layers: [
+        expect.objectContaining({
+          brightness_patterns: [],
+        }),
+      ],
+    },
+    raw_param: "102030405060708090a0b0c0",
+  });
+});
+
+test("scene type-2 handoff round-trips and Back preserves scene state", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  const sceneBrowser = await openLayeredScene(page);
+  const speed = sceneBrowser.getByRole("group", { name: "Speed" });
+  await speed.getByRole("button", { name: "1 step higher" }).click();
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
+
+  const advancedApply = studio
+    .locator(".editor")
+    .getByRole("button", { name: "Apply" });
+  await expect(advancedApply).toBeEnabled();
+  await advancedApply.click();
+
+  await saveNewEffect(studio, "Aurora authored");
+  await expect(
+    studio.getByRole("status").filter({ hasText: "Saved." }),
+  ).toBeVisible();
+  const savedContent = await page.evaluate(() => {
+    const items = Object.values(window.testHarness.snapshot().state.items);
+    return items.find((item) => item.name === "Aurora authored")?.content;
+  });
+  expect(savedContent).toMatchObject({
+    kind: "scene_layered",
+    template: {
+      sku: "H617A",
+      scene_id: 1,
+      effect_id: 101,
+      catalogue_schema_version: 1,
+    },
+    speed_index: 2,
+    raw_param: "aabbccddeeff001122334455",
+    effect: {
+      layers: expect.arrayContaining([
+        expect.objectContaining({
+          palette: [
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+          ],
+        }),
+      ]),
+    },
+  });
+  const layeredApply = await page.evaluate(() =>
+    [...window.testHarness.snapshot().calls].reverse().find(
+      (call) => String(call.type).endsWith("/apply_snapshot"),
+    ),
+  );
+  expect(layeredApply).toMatchObject({
+    name: "Aurora Layers copy",
+    content: expect.objectContaining({
+      kind: "scene_layered",
+      speed_index: 2,
+      raw_param: "aabbccddeeff001122334455",
+    }),
+  });
+
+  await studio.getByRole("button", { name: "Back to Scenes" }).click();
+  await expect(
+    sceneBrowser.getByRole("button", { name: "Nature" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    sceneBrowser.getByRole("button", { name: /Aurora Layers/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    speed.getByRole("button", { name: "1 step higher" }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await sceneBrowser.getByRole("button", { name: "Custom", exact: true }).click();
+  await sceneBrowser.getByRole("button", { name: "Aurora authored" }).click();
+  await speed.getByRole("button", { name: "Default" }).click();
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(studio.getByLabel("Effect name")).toHaveValue("Aurora authored");
+  await expect(
+    studio.getByRole("button", { name: "Save", exact: true }),
+  ).toBeEnabled();
+  await studio.getByRole("button", { name: "Save", exact: true }).click();
+  const speedRevision = await page.evaluate(() =>
+    Object.values(window.testHarness.snapshot().state.items).find(
+      (item) => item.name === "Aurora authored",
+    ),
+  );
+  expect(speedRevision).toMatchObject({
+    revision: 2,
+    content: {
+      kind: "scene_layered",
+      speed_index: 1,
+    },
+  });
+  await studio.getByLabel("Effect name").fill("Aurora revised");
+  await studio.getByRole("button", { name: "Save", exact: true }).click();
+  const revised = await page.evaluate(() =>
+    Object.values(window.testHarness.snapshot().state.items).filter(
+      (item) => item.name === "Aurora revised",
+    ),
+  );
+  expect(revised).toHaveLength(1);
+  expect(revised[0]).toMatchObject({
+    revision: 3,
+    content: {
+      kind: "scene_layered",
+      speed_index: 1,
+    },
+  });
+
+  await studio.getByRole("button", { name: "Back to Scenes" }).click();
+  await expect(sceneBrowser.getByLabel("Scene name")).toHaveValue(
+    "Aurora revised",
+  );
+  await expect(
+    speed.getByRole("button", { name: "Default" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await sceneBrowser.getByRole("button", { name: "Apply" }).click();
+  const revisedApply = await page.evaluate(() =>
+    [...window.testHarness.snapshot().calls].reverse().find(
+      (call) => String(call.type).endsWith("/apply"),
+    ),
+  );
+  expect(revisedApply).toMatchObject({
+    item_id: revised[0]?.id,
+    revision: 3,
+  });
+
+  await sceneBrowser.getByRole("button", { name: "Delete", exact: true }).click();
+  const dialog = studio.getByRole("dialog", { name: "Delete effect?" });
+  await dialog.getByRole("button", { name: "Delete effect" }).click();
+  await expect(
+    studio.getByRole("status").filter({ hasText: "Deleted Aurora revised." }),
+  ).toBeVisible();
+  const remaining = await page.evaluate(() =>
+    Object.values(window.testHarness.snapshot().state.items).filter(
+      (item) => item.name === "Aurora revised",
+    ),
+  );
+  expect(remaining).toEqual([]);
+});
+
+test("Back navigation discards an unsaved scene template", async ({ page }) => {
+  const studio = await openStudio(page);
+  const sceneBrowser = await openLayeredScene(page);
+  await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(
+    studio.getByRole("button", { name: "Back to Scenes" }),
+  ).toBeVisible();
+
+  const saveDialog = await openEffectSaveDialog(studio);
+  await saveDialog.getByLabel("Effect name").fill("Unsaved handoff");
+  await saveDialog.getByRole("button", { name: "Cancel" }).click();
+  await studio.getByRole("button", { name: "Back to Scenes" }).click();
+
+  await expect(
+    studio.getByRole("button", { name: "Scenes", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  const items = await page.evaluate(() =>
+    Object.values(window.testHarness.snapshot().state.items),
+  );
+  expect(items.some((item) => item.name === "Unsaved handoff")).toBe(false);
+});
+
+test("stale delayed scene detail responses are discarded", async ({ page }) => {
+  const studio = await openStudio(page);
+  await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+  const sceneBrowser = studio.locator("govee-scene-browser");
+  await expect(
+    sceneBrowser.getByRole("button", { name: /Aurora Layers/ }),
+  ).toBeVisible();
+
+  await sceneBrowser.getByRole("button", { name: /Aurora Layers/ }).click();
+  await sceneBrowser.getByRole("button", { name: /Ocean Layers/ }).click();
+  await expect(
+    sceneBrowser.getByRole("heading", { name: "Ocean Layers" }),
+  ).toBeVisible();
+  await page.waitForTimeout(350);
+  await expect(
+    sceneBrowser.getByRole("heading", { name: "Ocean Layers" }),
+  ).toBeVisible();
+  await expect(
+    sceneBrowser.getByRole("heading", { name: "Aurora Layers" }),
+  ).toHaveCount(0);
+  await expect(
+    sceneBrowser.getByRole("button", { name: /Ocean Layers/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+});
+
+for (const direction of ["ltr", "rtl"] as const) {
+  test(`390px ${direction.toUpperCase()} layout has no document overflow`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const studio = await openStudio(
+      page,
+      direction === "rtl" ? "?rtl=1" : "",
+    );
+    await studio
+      .getByRole("complementary", { name: "Effect categories" })
+      .getByRole("button", { name: "Advanced", exact: true })
+      .click();
+    await studio
+      .getByRole("complementary", { name: "Effects" })
+      .getByRole("button", { name: "Layered", exact: true })
+      .click();
+    await expect(
+      studio.getByRole("tablist", { name: "Effect layers" }),
+    ).toBeVisible();
+    await studio.getByRole("button", { name: "Scenes", exact: true }).click();
+    const sceneBrowser = studio.locator("govee-scene-browser");
+    await expect(
+      sceneBrowser.getByRole("complementary", { name: "Scene categories" }),
+    ).toBeVisible();
+    const overflow = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      direction: document.documentElement.dir || "ltr",
+    }));
+    expect(overflow.direction).toBe(direction);
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+  });
+}
