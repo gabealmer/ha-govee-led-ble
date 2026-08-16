@@ -21,8 +21,8 @@ from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
     RX_STALE_TIMEOUT,
     GoveeBLECoordinator,
-    _expectations_from_packet,
 )
+from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
 
@@ -1513,38 +1513,38 @@ def test_expectations_from_packet_covers_every_command_family():
     spectrum_id = next(mid for mid, slug in proto.MUSIC_SLUG_BY_ID.items() if slug == "spectrum")
     scene_code = next(iter(proto.SCENE_EFFECT_BY_ID))
 
-    assert _expectations_from_packet(proto.build_power(True)) == {"is_on": True}
-    assert _expectations_from_packet(proto.build_power(False)) == {"is_on": False}
-    assert _expectations_from_packet(proto.build_brightness(37)) == {"brightness_pct": 37}
+    assert expectations_from_packet(proto.build_power(True)) == {"is_on": True}
+    assert expectations_from_packet(proto.build_power(False)) == {"is_on": False}
+    assert expectations_from_packet(proto.build_brightness(37)) == {"brightness_pct": 37}
 
-    rgb = _expectations_from_packet(proto.build_color_rgb(255, 0, 0))
+    rgb = expectations_from_packet(proto.build_color_rgb(255, 0, 0))
     assert rgb["rgb_color"] == (255, 0, 0)
     # The write-side sub is not echoed back, so expecting it would reject every reply. Models
     # that do echo it keep the discriminator.
     assert rgb["color_mode"] == (proto.ParsedMode.COLOUR, None)
-    echoed = _expectations_from_packet(proto.build_color_rgb(255, 0, 0), static_echoes_color=True)
+    echoed = expectations_from_packet(proto.build_color_rgb(255, 0, 0), static_echoes_color=True)
     assert echoed["color_mode"] == (proto.ParsedMode.COLOUR, 0x01)
 
     # Colour-temperature writes zero the direct RGB field, so they map to a Kelvin
     # expectation rather than an rgb_color one.
-    ct = _expectations_from_packet(proto.build_color_temp(4000))
+    ct = expectations_from_packet(proto.build_color_temp(4000))
     assert ct["color_temp_kelvin"] == 4000
     assert "rgb_color" not in ct
 
     # A deliberate black paint is also all-zero, but it is a colour, not a 0 K temperature.
     # Splitting the two on "any RGB byte set" put this frame in the kelvin branch.
-    black = _expectations_from_packet(proto.build_color_rgb(0, 0, 0))
+    black = expectations_from_packet(proto.build_color_rgb(0, 0, 0))
     assert black["rgb_color"] == (0, 0, 0)
     assert "color_temp_kelvin" not in black
 
-    assert _expectations_from_packet(proto.build_white_brightness(80))["white_brightness"] == 80
+    assert expectations_from_packet(proto.build_white_brightness(80))["white_brightness"] == 80
 
-    assert _expectations_from_packet(proto.build_scene(scene_code))["effect"] == proto.SCENE_EFFECT_BY_ID[scene_code]
+    assert expectations_from_packet(proto.build_scene(scene_code))["effect"] == proto.SCENE_EFFECT_BY_ID[scene_code]
 
-    diy = _expectations_from_packet(proto.build_packet(0x33, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x03]))
+    diy = expectations_from_packet(proto.build_packet(0x33, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x03]))
     assert diy["color_mode"] == (proto.ParsedMode.DIY, 800)
 
-    rhythm = _expectations_from_packet(
+    rhythm = expectations_from_packet(
         proto.build_music_mode_with_color(rhythm_id, sensitivity=50, color=(10, 20, 30), calm=True)
     )
     assert rhythm["music_mode"] == "rhythm"
@@ -1552,12 +1552,12 @@ def test_expectations_from_packet_covers_every_command_family():
     assert rhythm["music_calm"] is True
     assert rhythm["music_color"] == (10, 20, 30)
 
-    auto = _expectations_from_packet(proto.build_music_mode_with_color(spectrum_id, sensitivity=40))
+    auto = expectations_from_packet(proto.build_music_mode_with_color(spectrum_id, sensitivity=40))
     assert auto["music_mode"] == "spectrum"
     assert auto["music_color"] is None
     assert "music_calm" not in auto
 
-    video = _expectations_from_packet(
+    video = expectations_from_packet(
         proto.build_video_mode(
             full_screen=False, game_mode=True, saturation=42, sound_effects=True, sound_effects_softness=55
         ),
@@ -1569,8 +1569,8 @@ def test_expectations_from_packet_covers_every_command_family():
     assert video["video_sound_effects"] is True
     assert video["video_sound_effects_softness"] == 55
 
-    assert _expectations_from_packet(b"\x00\x01") == {}
-    assert _expectations_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) == {}
+    assert expectations_from_packet(b"\x00\x01") == {}
+    assert expectations_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) == {}
 
 
 def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):

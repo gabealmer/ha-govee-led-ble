@@ -23,26 +23,12 @@ from .effect_catalogue import custom_effect_catalogue_payload
 from .effect_contracts import EditorApiInfo, device_effect_capabilities
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
-    BuiltinScene,
     EffectValidationError,
-    LayeredScene,
-    LibraryItem,
     OpaqueContent,
-    PaletteScene,
-    effect_content_to_dict,
 )
-from .effect_drafts import EffectDraft
 from .effect_limits import (
     MAX_EDITOR_DEVICES,
-    MAX_EFFECT_DOCUMENT_BYTES,
-    MAX_EFFECT_NAME_LENGTH,
-    MAX_IDENTIFIER_LENGTH,
-    MAX_PREFERENCES_BYTES,
-    MAX_REVISION,
     MAX_SCENE_CATALOGUE_ENTRIES,
-    MAX_TIMESTAMP_LENGTH,
-    validate_json_document,
-    validate_timestamp,
 )
 from .effect_preview import (
     PreviewError,
@@ -66,100 +52,55 @@ from .effect_storage import (
     EffectStorageError,
     LibrarySnapshot,
 )
+from .effect_websocket_payloads import (
+    draft_summary,
+    library_snapshot_payload,
+)
+from .effect_websocket_schema import (
+    EFFECT_CONTENT,
+    EFFECT_NAME,
+    IDENTIFIER,
+    NON_NEGATIVE_REVISION,
+    POSITIVE_REVISION,
+    PREFERENCES,
+    SCENE_ID,
+    SPEED_INDEX,
+    STRICT_BOOL,
+    TIMESTAMP,
+    UUID_TEXT,
+    WS_APPLY,
+    WS_APPLY_SNAPSHOT,
+    WS_CUSTOM_CATALOGUE,
+    WS_DEPLOYMENT_SUBSCRIBE,
+    WS_DEVICES,
+    WS_DRAFT_CREATE,
+    WS_DRAFT_DELETE,
+    WS_DRAFT_GET,
+    WS_DRAFT_LIST,
+    WS_DRAFT_UPDATE,
+    WS_INFO,
+    WS_LIBRARY_CREATE,
+    WS_LIBRARY_DELETE,
+    WS_LIBRARY_GET,
+    WS_LIBRARY_LIST,
+    WS_LIBRARY_SUBSCRIBE,
+    WS_LIBRARY_UPDATE,
+    WS_PREVIEW_APPLY_SCENE,
+    WS_PREVIEW_APPLY_SNAPSHOT,
+    WS_PREVIEW_CANCEL,
+    WS_PREVIEW_CLOSE,
+    WS_PREVIEW_OPEN,
+    WS_PREVIEW_SUBSCRIBE,
+    WS_SCENE_APPLY,
+    WS_SCENE_CATALOGUE_GET,
+    WS_SCENE_CATALOGUE_LIST,
+    WS_USER_STATE_GET,
+    WS_USER_STATE_RECORD_COLOUR,
+    WS_USER_STATE_UPDATE,
+    strict_int,
+)
 
-WS_INFO = f"{DOMAIN}/editor/info"
-WS_DEVICES = f"{DOMAIN}/editor/devices"
-WS_CUSTOM_CATALOGUE = f"{DOMAIN}/editor/custom/catalogue"
-WS_LIBRARY_LIST = f"{DOMAIN}/editor/library/list"
-WS_LIBRARY_GET = f"{DOMAIN}/editor/library/get"
-WS_LIBRARY_CREATE = f"{DOMAIN}/editor/library/create"
-WS_LIBRARY_UPDATE = f"{DOMAIN}/editor/library/update"
-WS_LIBRARY_DELETE = f"{DOMAIN}/editor/library/delete"
-WS_LIBRARY_SUBSCRIBE = f"{DOMAIN}/editor/library/subscribe"
-WS_DRAFT_LIST = f"{DOMAIN}/editor/draft/list"
-WS_DRAFT_GET = f"{DOMAIN}/editor/draft/get"
-WS_DRAFT_CREATE = f"{DOMAIN}/editor/draft/create"
-WS_DRAFT_UPDATE = f"{DOMAIN}/editor/draft/update"
-WS_DRAFT_DELETE = f"{DOMAIN}/editor/draft/delete"
-WS_DEPLOYMENT_SUBSCRIBE = f"{DOMAIN}/editor/deployment/subscribe"
-WS_USER_STATE_GET = f"{DOMAIN}/editor/user_state/get"
-WS_USER_STATE_UPDATE = f"{DOMAIN}/editor/user_state/update"
-WS_USER_STATE_RECORD_COLOUR = f"{DOMAIN}/editor/user_state/record_colour"
-WS_APPLY = f"{DOMAIN}/editor/apply"
-WS_APPLY_SNAPSHOT = f"{DOMAIN}/editor/apply_snapshot"
-WS_SCENE_CATALOGUE_LIST = f"{DOMAIN}/editor/scene/catalogue/list"
-WS_SCENE_CATALOGUE_GET = f"{DOMAIN}/editor/scene/catalogue/get"
-WS_SCENE_APPLY = f"{DOMAIN}/editor/scene/apply"
-WS_PREVIEW_OPEN = f"{DOMAIN}/editor/preview/session/open"
-WS_PREVIEW_CLOSE = f"{DOMAIN}/editor/preview/session/close"
-WS_PREVIEW_APPLY_SNAPSHOT = f"{DOMAIN}/editor/preview/apply_snapshot"
-WS_PREVIEW_APPLY_SCENE = f"{DOMAIN}/editor/preview/apply_scene"
-WS_PREVIEW_CANCEL = f"{DOMAIN}/editor/preview/cancel"
-WS_PREVIEW_SUBSCRIBE = f"{DOMAIN}/editor/preview/subscribe"
 BACKEND_DATA_KEY = "effect_backend"
-
-
-def _strict_int(value: object) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise vol.Invalid("value must be an integer")
-    return value
-
-
-def _strict_bool(value: object) -> bool:
-    if not isinstance(value, bool):
-        raise vol.Invalid("value must be a boolean")
-    return value
-
-
-def _bounded_effect_content(value: dict[str, Any]) -> dict[str, Any]:
-    try:
-        validate_json_document(
-            value,
-            "effect content",
-            maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
-            error_type=ValueError,
-        )
-    except ValueError as exc:
-        raise vol.Invalid(str(exc)) from exc
-    return value
-
-
-def _bounded_preferences(value: dict[str, Any]) -> dict[str, Any]:
-    try:
-        validate_json_document(
-            value,
-            "preferences",
-            maximum_bytes=MAX_PREFERENCES_BYTES,
-            error_type=ValueError,
-        )
-    except ValueError as exc:
-        raise vol.Invalid(str(exc)) from exc
-    return value
-
-
-def _timestamp(value: str) -> str:
-    try:
-        validate_timestamp(
-            value,
-            "timestamp",
-            error_type=ValueError,
-        )
-    except ValueError as exc:
-        raise vol.Invalid(str(exc)) from exc
-    return value
-
-
-EFFECT_NAME = vol.All(str, vol.Length(max=MAX_EFFECT_NAME_LENGTH))
-IDENTIFIER = vol.All(str, vol.Length(min=1, max=MAX_IDENTIFIER_LENGTH))
-UUID_TEXT = vol.All(str, vol.Length(min=36, max=36))
-TIMESTAMP = vol.All(str, vol.Length(min=1, max=MAX_TIMESTAMP_LENGTH), _timestamp)
-NON_NEGATIVE_REVISION = vol.All(_strict_int, vol.Range(min=0, max=MAX_REVISION))
-POSITIVE_REVISION = vol.All(_strict_int, vol.Range(min=1, max=MAX_REVISION))
-SCENE_ID = vol.All(_strict_int, vol.Range(min=0, max=0xFFFF))
-SPEED_INDEX = vol.All(_strict_int, vol.Range(min=0, max=0xFF))
-EFFECT_CONTENT = vol.All(dict, _bounded_effect_content)
-PREFERENCES = vol.All(dict, _bounded_preferences)
-STRICT_BOOL = vol.All(_strict_bool)
 
 
 @websocket_command({vol.Required("type"): WS_INFO})
@@ -537,7 +478,7 @@ def ws_library_list(
 ) -> None:
     backend = _backend(hass)
     snapshot = backend.application.library_snapshot()
-    connection.send_result(msg["id"], _library_snapshot_payload(snapshot))
+    connection.send_result(msg["id"], library_snapshot_payload(snapshot))
 
 
 @websocket_command({vol.Required("type"): WS_LIBRARY_SUBSCRIBE})
@@ -551,7 +492,7 @@ def ws_library_subscribe(
 
     @callback
     def forward(snapshot: LibrarySnapshot) -> None:
-        connection.send_event(msg["id"], _library_snapshot_payload(snapshot))
+        connection.send_event(msg["id"], library_snapshot_payload(snapshot))
 
     connection.subscriptions[msg["id"]] = application.subscribe_library(forward)
     connection.send_result(msg["id"])
@@ -737,7 +678,7 @@ def ws_draft_list(
     drafts = _backend(hass).application.list_drafts(connection.user.id)
     connection.send_result(
         msg["id"],
-        {"drafts": [_draft_summary(draft) for draft in drafts]},
+        {"drafts": [draft_summary(draft) for draft in drafts]},
     )
 
 
@@ -947,7 +888,7 @@ def ws_user_state_update(
 @websocket_command(
     {
         vol.Required("type"): WS_USER_STATE_RECORD_COLOUR,
-        vol.Required("colour"): [vol.All(_strict_int, vol.Range(min=0, max=255))],
+        vol.Required("colour"): [vol.All(strict_int, vol.Range(min=0, max=255))],
     }
 )
 @require_admin
@@ -1140,56 +1081,3 @@ async def _async_close_preview_session(
         await backend.preview.async_close_session(session_id, connection)
     except PreviewSessionNotFoundError:
         return
-
-
-def _item_summary(item: LibraryItem) -> dict[str, Any]:
-    content = effect_content_to_dict(item.content)
-    kind = content["kind"]
-    summary = {
-        "id": str(item.id),
-        "revision": item.revision,
-        "name": item.name,
-        "kind": kind,
-    }
-    model = (
-        content.get("model")
-        if kind
-        in {
-            "palette_diy",
-            "music_profile",
-            "video_profile",
-            "workshop",
-            "special_diy",
-        }
-        else None
-    )
-    if model in {"H617A", "H6199"}:
-        summary["model"] = model
-    elif kind in {"h617a_painted", "h617a_single", "h617a_multi"}:
-        summary["model"] = "H617A"
-    elif kind in {"scene_builtin", "scene_palette", "scene_layered"}:
-        template = content.get("template")
-        if isinstance(template, dict) and template.get("sku") in {"H617A", "H6199"}:
-            summary["model"] = template["sku"]
-    elif item.target_hint is not None and item.target_hint.model in {"H617A", "H6199"}:
-        summary["model"] = item.target_hint.model
-    if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene):
-        summary["template"] = content["template"]
-    return summary
-
-
-def _library_snapshot_payload(snapshot: LibrarySnapshot) -> dict[str, Any]:
-    return {
-        "library_revision": snapshot.library_revision,
-        "items": [_item_summary(item) for item in snapshot.items],
-    }
-
-
-def _draft_summary(draft: EffectDraft) -> dict[str, Any]:
-    return {
-        "id": str(draft.id),
-        "revision": draft.revision,
-        "name": draft.item.name,
-        "updated_at": draft.updated_at,
-        "selected_config_entry_id": draft.selected_config_entry_id,
-    }

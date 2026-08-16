@@ -10,6 +10,16 @@ import { EffectStudioApi } from "./api";
 import "./colour-picker";
 import "./custom-effect-editor";
 import {
+  buildCustomEffectEntries,
+  customEffectCategoryAvailable,
+  customEffectKindAvailable,
+  effectContentAvailable,
+  libraryItemAvailable,
+  newEffectKindForCategory,
+  type CustomEffectListContext,
+  type CustomEffectListEntry,
+} from "./custom-effect-list";
+import {
   advancedEditorContent,
   blankCustomEffect,
   blankPainted,
@@ -21,7 +31,6 @@ import {
   clonePaletteDiy,
   cloneSpecialDiy,
   coloursForSegments,
-  customEffectCategoryForKind,
   customKindLabel,
   defaultPalette,
   groupsFromColours,
@@ -46,11 +55,16 @@ import type {
 import {
   LivePreviewController,
   type LivePreviewInteraction,
-  type LivePreviewRequest,
 } from "./live-preview-controller";
 import "./music-profile-editor";
 import "./palette-editor";
 import "./painted-segment-editor";
+import {
+  EffectStudioPreviewSession,
+  scenePreviewRequest,
+  snapshotPreviewRequest,
+  type PanelPreviewRequest,
+} from "./panel-preview";
 import { effectStudioPanelStyles } from "./panel-styles";
 import {
   cloneMusicProfileContent,
@@ -88,7 +102,6 @@ import type {
   RGB,
   SpecialDiyContent,
   VideoProfileContent,
-  WorkshopContent,
 } from "./types";
 import {
   compareLabels,
@@ -99,76 +112,6 @@ import { isCompatibleEditorInfo } from "./validation";
 
 type StudioSection = "video" | "scenes" | "custom";
 type DeleteCandidate = Pick<LibrarySummary, "id" | "revision" | "name">;
-type PanelPreviewRequest = LivePreviewRequest &
-  (
-    | {
-        kind: "snapshot";
-        configEntryId: string;
-        name: string;
-        content: EffectContent;
-      }
-    | {
-        kind: "scene";
-        configEntryId: string;
-        scene: ScenePreviewRequest & { kind: "scene" };
-      }
-  );
-type CustomEffectListEntry =
-  | {
-      kind: "paint";
-      key: "template:paint";
-      label: "Paint";
-      category: "single-layer";
-    }
-  | {
-      kind: "single";
-      key: string;
-      label: string;
-      category: "single-layer";
-      family: number;
-      variant: number;
-    }
-  | {
-      kind: "music";
-      key: string;
-      label: string;
-      category: "music";
-      mode: string;
-    }
-  | {
-      kind: "multi";
-      key: "template:mix";
-      label: "Mix";
-      category: "multi-layer";
-    }
-  | {
-      kind: "advanced";
-      key: "template:advanced";
-      label: "Layered";
-      category: "advanced";
-    }
-  | {
-      kind: "workshop";
-      key: string;
-      label: string;
-      category: "advanced";
-      content: WorkshopContent;
-    }
-  | {
-      kind: "special_diy";
-      key: string;
-      label: string;
-      category: "special-diy";
-      content: SpecialDiyContent;
-    }
-  | {
-      kind: "saved";
-      key: string;
-      label: string;
-      category: Exclude<CustomEffectCategory, "all">;
-      item: LibrarySummary;
-    };
-
 export class GoveeLedEffectStudio extends LitElement {
   @property({ attribute: false })
   public hass?: HomeAssistant;
@@ -264,12 +207,10 @@ export class GoveeLedEffectStudio extends LitElement {
   private previewStatus?: PreviewStatus;
 
   private api?: EffectStudioApi;
-  private previewSessionId?: string;
-  private previewSequence = 0;
+  private previewSession?: EffectStudioPreviewSession;
   private savedBaseline?: string;
   private editorTransitionEpoch = 0;
   private unsubscribeLibrary?: () => void;
-  private unsubscribePreview?: () => void;
   private loadEpoch = 0;
   private deleteReturnFocus?: HTMLElement;
   private saveNameReturnFocus?: HTMLElement;
@@ -279,7 +220,12 @@ export class GoveeLedEffectStudio extends LitElement {
   };
   private readonly livePreview = new LivePreviewController<PanelPreviewRequest>({
     submit: (request) => {
-      void this.submitPreview(request);
+      if (
+        this.liveApplyEnabled &&
+        request.configEntryId === this.selectedDeviceId
+      ) {
+        void this.previewSession?.submit(request);
+      }
     },
     cancel: () => {
       void this.cancelPreview();
@@ -329,6 +275,14 @@ export class GoveeLedEffectStudio extends LitElement {
     );
   }
 
+  private get customEffectListContext(): CustomEffectListContext {
+    return {
+      model: this.selectedModel,
+      catalogue: this.modelCatalogue,
+      libraryItems: this.library.items,
+    };
+  }
+
   private get dirty(): boolean {
     if (!isEditableEffectContent(this.content)) {
       return false;
@@ -374,7 +328,7 @@ export class GoveeLedEffectStudio extends LitElement {
       !this.deletingCurrentItem &&
       this.previewCapability === "supported" &&
       this.selectedDevice !== undefined &&
-      this.previewSessionId !== undefined
+      this.previewSession?.ready === true
     );
   }
 
@@ -758,236 +712,31 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private get customEffectEntries(): CustomEffectListEntry[] {
-    const catalogue = this.modelCatalogue;
-    const entries: CustomEffectListEntry[] = [
-      ...(catalogue?.painted_effects.length
-        ? [
-            {
-              kind: "paint" as const,
-              key: "template:paint" as const,
-              label: "Paint" as const,
-              category: "single-layer" as const,
-            },
-          ]
-        : []),
-      ...(catalogue?.music_modes.map(
-        (mode): CustomEffectListEntry => ({
-          kind: "music",
-          key: `template:music:${mode.id}`,
-          label: mode.label,
-          category: "music",
-          mode: mode.id,
-        }),
-      ) ?? []),
-      ...(catalogue?.effects
-        .filter((effect) => effect.category === "single_layer")
-        .map(
-        (effect): CustomEffectListEntry => ({
-          kind: "single",
-          key: `template:single:${effect.family}:${effect.variations[0].variant}`,
-          label: effect.label,
-          category: "single-layer",
-          family: effect.family,
-          variant: effect.variations[0].variant,
-        }),
-      ) ?? []),
-      ...(catalogue?.supports.multi !== "unsupported"
-        ? [
-            {
-              kind: "multi" as const,
-              key: "template:mix" as const,
-              label: "Mix" as const,
-              category: "multi-layer" as const,
-            },
-          ]
-        : []),
-      ...(catalogue?.workshop_templates.map(
-        (template): CustomEffectListEntry => ({
-          kind: "workshop",
-          key: `template:workshop:${template.id}`,
-          label: template.label,
-          category: "advanced",
-          content: template.content,
-        }),
-      ) ?? []),
-      ...(catalogue?.special_diy_templates.map(
-        (template): CustomEffectListEntry => ({
-          kind: "special_diy",
-          key: `template:special-diy:${template.id}`,
-          label: template.label,
-          category: "special-diy",
-          content: template.content,
-        }),
-      ) ?? []),
-      {
-        kind: "advanced",
-        key: "template:advanced",
-        label: "Layered",
-        category: "advanced",
-      },
-      ...this.library.items
-        .filter(
-          (item) =>
-            isMyEffectKind(item.kind) &&
-            item.kind !== "video_profile",
-        )
-        .map(
-          (item): CustomEffectListEntry => ({
-            kind: "saved",
-            key: `saved:${item.id}`,
-            label: item.name,
-            category: customEffectCategoryForKind(item.kind),
-            item,
-          }),
-        ),
-    ];
-    return entries
-      .filter((entry) => this.customEffectEntryAvailable(entry))
-      .filter(
-        (entry) =>
-          this.customEffectCategory === "all" ||
-          (this.customEffectCategory === "my-effects" &&
-            entry.kind === "saved") ||
-          entry.category === this.customEffectCategory,
-      )
-      .sort((left, right) => compareLabels(left.label, right.label));
-  }
-
-  private customEffectEntryAvailable(entry: CustomEffectListEntry): boolean {
-    switch (entry.kind) {
-      case "paint":
-        return this.customEffectKindAvailable("h617a_painted");
-      case "single":
-        return this.customEffectKindAvailable(
-          this.selectedModel === "H617A"
-            ? "h617a_single"
-            : "palette_diy",
-        );
-      case "music":
-        return this.customEffectKindAvailable("music_profile");
-      case "multi":
-        return this.customEffectKindAvailable("h617a_multi");
-      case "advanced":
-        return this.customEffectKindAvailable("advanced");
-      case "workshop":
-        return this.customEffectKindAvailable("workshop");
-      case "special_diy":
-        return this.customEffectKindAvailable("special_diy");
-      case "saved":
-        return this.libraryItemAvailable(entry.item);
-    }
+    return buildCustomEffectEntries(
+      this.customEffectListContext,
+      this.customEffectCategory,
+    );
   }
 
   private libraryItemAvailable(item: LibrarySummary): boolean {
-    const model = this.selectedModel;
-    if (item.model !== undefined && item.model !== model) {
-      return false;
-    }
-    if (item.kind === "video_profile") {
-      return this.videoAvailable;
-    }
-    if (
-      item.model === undefined &&
-      ["h617a_painted", "h617a_single", "h617a_multi"].includes(item.kind) &&
-      model !== "H617A"
-    ) {
-      return false;
-    }
-    return this.customEffectKindAvailable(item.kind);
+    return libraryItemAvailable(this.customEffectListContext, item);
   }
 
   private effectContentAvailable(content: EffectContent): boolean {
-    const model = this.selectedModel;
-    if (
-      content.kind === "h617a_painted" ||
-      content.kind === "h617a_single" ||
-      content.kind === "h617a_multi"
-    ) {
-      return model === "H617A";
-    }
-    if (
-      content.kind === "palette_diy" ||
-      content.kind === "special_diy" ||
-      content.kind === "music_profile" ||
-      content.kind === "video_profile"
-    ) {
-      return content.model === model;
-    }
-    if (content.kind === "workshop") {
-      return content.model === model;
-    }
-    if (content.kind === "scene_layered") {
-      return content.template.sku === model;
-    }
-    return this.customEffectKindAvailable(content.kind);
+    return effectContentAvailable(this.customEffectListContext, content);
   }
 
   private customEffectCategoryAvailable(
     category: CustomEffectCategory,
   ): boolean {
-    switch (category) {
-      case "all":
-        return this.customEffectsAvailable;
-      case "music":
-        return Boolean(this.modelCatalogue?.music_modes.length);
-      case "single-layer":
-        return (
-          this.customEffectKindAvailable("h617a_painted") ||
-          this.customEffectKindAvailable("h617a_single") ||
-          this.customEffectKindAvailable("palette_diy")
-        );
-      case "multi-layer":
-        return this.customEffectKindAvailable("h617a_multi");
-      case "advanced":
-        return (
-          this.customEffectKindAvailable("advanced") ||
-          this.customEffectKindAvailable("workshop")
-        );
-      case "special-diy":
-        return this.customEffectKindAvailable("special_diy");
-      case "my-effects":
-        return this.library.items.some(
-          (item) =>
-            item.kind !== "video_profile" &&
-            isMyEffectKind(item.kind) &&
-            this.libraryItemAvailable(item),
-        );
-    }
+    return customEffectCategoryAvailable(
+      this.customEffectListContext,
+      category,
+    );
   }
 
   private customEffectKindAvailable(kind: string): boolean {
-    const catalogue = this.modelCatalogue;
-    const model = this.selectedModel;
-    if (kind === "h617a_painted") {
-      return model === "H617A" && Boolean(catalogue?.painted_effects.length);
-    }
-    if (kind === "h617a_single") {
-      return model === "H617A" && Boolean(catalogue?.effects.length);
-    }
-    if (kind === "palette_diy") {
-      return model === "H6199" && Boolean(catalogue?.effects.length);
-    }
-    if (kind === "h617a_multi") {
-      return model === "H617A" && catalogue?.supports.multi !== "unsupported";
-    }
-    if (kind === "music_profile") {
-      return Boolean(catalogue?.music_modes.length);
-    }
-    if (kind === "workshop") {
-      return (
-        catalogue !== undefined &&
-        catalogue.supports.workshop !== "unsupported" &&
-        Boolean(catalogue.workshop_templates.length)
-      );
-    }
-    if (kind === "special_diy") {
-      return (
-        catalogue !== undefined &&
-        catalogue.supports.special_diy !== "unsupported" &&
-        Boolean(catalogue.special_diy_templates.length)
-      );
-    }
-    return catalogue?.supports.advanced !== "unsupported";
+    return customEffectKindAvailable(this.customEffectListContext, kind);
   }
 
   private customEffectCategoryButton(
@@ -1029,28 +778,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private newEffectKindForCategory(
     category: CustomEffectCategory,
   ): NewEffectKind | undefined {
-    if (category === "single-layer") {
-      if (this.customEffectKindAvailable("h617a_single")) {
-        return "h617a_single";
-      }
-      if (this.customEffectKindAvailable("palette_diy")) {
-        return "palette_diy";
-      }
-      return this.customEffectKindAvailable("h617a_painted")
-        ? "h617a_painted"
-        : undefined;
-    }
-    if (category === "multi-layer") {
-      return this.customEffectKindAvailable("h617a_multi")
-        ? "h617a_multi"
-        : undefined;
-    }
-    if (category === "advanced") {
-      return this.customEffectKindAvailable("advanced")
-        ? "advanced"
-        : undefined;
-    }
-    return undefined;
+    return newEffectKindForCategory(this.customEffectListContext, category);
   }
 
   private customEffectListButton(entry: CustomEffectListEntry) {
@@ -1868,19 +1596,12 @@ export class GoveeLedEffectStudio extends LitElement {
       }
       this.unsubscribeLibrary = unsubscribeLibrary;
       if (this.isAdmin) {
-        const sessionId = await api.openPreviewSession();
-        if (!this.loadIsCurrent(loadEpoch, api) || this.error) {
-          return;
-        }
-        this.previewSessionId = sessionId;
-        const unsubscribePreview = await api.subscribePreview(
-          sessionId,
+        const previewSession = new EffectStudioPreviewSession(
+          api,
           (status) => {
             if (
-              status.session_id !== this.previewSessionId ||
-              status.config_entry_id !== this.selectedDeviceId ||
-              (this.previewStatus &&
-                status.sequence < this.previewStatus.sequence)
+              status !== undefined &&
+              status.config_entry_id !== this.selectedDeviceId
             ) {
               return;
             }
@@ -1888,11 +1609,16 @@ export class GoveeLedEffectStudio extends LitElement {
           },
           (error) => this.subscriptionFailed(error, loadEpoch, api),
         );
-        if (!this.loadIsCurrent(loadEpoch, api) || this.error) {
-          unsubscribePreview();
+        this.previewSession = previewSession;
+        const opened = await previewSession.open();
+        if (
+          !opened ||
+          !this.loadIsCurrent(loadEpoch, api) ||
+          this.error
+        ) {
+          previewSession.close();
           return;
         }
-        this.unsubscribePreview = unsubscribePreview;
       }
 
       const firstCustom = this.preferredLibraryEffect(library.items);
@@ -2037,20 +1763,10 @@ export class GoveeLedEffectStudio extends LitElement {
   private stopSubscriptions(): void {
     this.livePreview.reset();
     this.previewStatus = undefined;
-    const api = this.api;
-    const sessionId = this.previewSessionId;
     this.unsubscribeLibrary?.();
-    this.unsubscribePreview?.();
     this.unsubscribeLibrary = undefined;
-    this.unsubscribePreview = undefined;
-    this.previewSessionId = undefined;
-    if (api && sessionId) {
-      void api.closePreviewSession(sessionId).catch((error) => {
-        if (errorCode(error) !== "not_found") {
-          console.warn("Could not close Effect Studio preview session", error);
-        }
-      });
-    }
+    this.previewSession?.close();
+    this.previewSession = undefined;
   }
 
   private deviceIdFromPath(): string | undefined {
@@ -3051,18 +2767,12 @@ export class GoveeLedEffectStudio extends LitElement {
       return undefined;
     }
     const name = this.name.trim() || "Live preview";
-    return {
-      kind: "snapshot",
-      configEntryId: this.selectedDeviceId,
+    return snapshotPreviewRequest(
+      this.selectedDeviceId,
       name,
-      content: this.content,
-      fingerprint: JSON.stringify({
-        configEntryId: this.selectedDeviceId,
-        name,
-        content: this.content,
-      }),
+      this.content,
       force,
-    };
+    );
   }
 
   private previewRequestForScene(
@@ -3070,104 +2780,16 @@ export class GoveeLedEffectStudio extends LitElement {
     configEntryId: string,
     force: boolean,
   ): PanelPreviewRequest {
-    if (request.kind === "scene") {
-      return {
-        kind: "scene",
-        configEntryId,
-        scene: request,
-        fingerprint: JSON.stringify({
-          configEntryId,
-          sceneId: request.scene.scene_id,
-          effectId: request.scene.effect_id,
-          speedIndex: request.speedIndex,
-        }),
-        force,
-      };
-    }
-    return {
-      kind: "snapshot",
-      configEntryId,
-      name: request.name,
-      content: request.content,
-      fingerprint: JSON.stringify({
-        configEntryId,
-        name: request.name,
-        content: request.content,
-      }),
-      force,
-    };
-  }
-
-  private async submitPreview(request: PanelPreviewRequest): Promise<void> {
-    const api = this.api;
-    const sessionId = this.previewSessionId;
-    if (
-      !api ||
-      !sessionId ||
-      !this.liveApplyEnabled ||
-      request.configEntryId !== this.selectedDeviceId
-    ) {
-      return;
-    }
-    const sequence = ++this.previewSequence;
-    const transitionEpoch = this.editorTransitionEpoch;
-    this.previewStatus = {
-      session_id: sessionId,
-      sequence,
-      config_entry_id: request.configEntryId,
-      phase: "queued",
-      content_kind:
-        request.kind === "scene" ? "scene_builtin" : request.content.kind,
-      confidence: "unknown",
-      error_code: null,
-    };
-    try {
-      if (request.kind === "scene") {
-        await api.previewScene(
-          sessionId,
-          sequence,
-          request.configEntryId,
-          request.scene.scene,
-          request.scene.speedIndex,
-          request.force,
-        );
-      } else {
-        await api.previewSnapshot(
-          sessionId,
-          sequence,
-          request.configEntryId,
-          request.name,
-          request.content,
-          request.force,
-        );
-      }
-    } catch (error) {
-      if (
-        transitionEpoch === this.editorTransitionEpoch &&
-        request.configEntryId === this.selectedDeviceId
-      ) {
-        this.previewStatus = {
-          session_id: sessionId,
-          sequence,
-          config_entry_id: request.configEntryId,
-          phase: "failed",
-          content_kind:
-            request.kind === "scene" ? "scene_builtin" : request.content.kind,
-          confidence: "unknown",
-          error_code: errorCode(error) ?? "preview_failed",
-        };
-      }
-    }
+    return scenePreviewRequest(request, configEntryId, force);
   }
 
   private async cancelPreview(): Promise<void> {
-    const api = this.api;
-    const sessionId = this.previewSessionId;
-    if (!api || !sessionId) {
+    const previewSession = this.previewSession;
+    if (!previewSession) {
       return;
     }
     try {
-      await api.cancelPreview(sessionId, this.selectedDeviceId);
+      await previewSession.cancel(this.selectedDeviceId);
     } catch (error) {
       if (errorCode(error) !== "not_found") {
         this.notice = `Could not cancel Live apply: ${errorMessage(error)}`;

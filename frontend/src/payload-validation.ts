@@ -1,3 +1,5 @@
+import type { CapabilityState } from "./types";
+
 const MAX_JSON_DEPTH = 16;
 const MAX_JSON_NODES = 4096;
 export const MAX_JSON_COLLECTION_ITEMS = 1024;
@@ -47,6 +49,20 @@ export function stringValue(value: unknown, name: string): string {
 export function booleanValue(value: unknown, name: string): boolean {
   if (typeof value !== "boolean") {
     invalid(`${name} must be a boolean`);
+  }
+  return value;
+}
+
+export function capabilityValue(
+  value: unknown,
+  name: string,
+): CapabilityState {
+  if (
+    value !== "supported" &&
+    value !== "unsupported" &&
+    value !== "evidence_gap"
+  ) {
+    invalid(`${name} is invalid`);
   }
   return value;
 }
