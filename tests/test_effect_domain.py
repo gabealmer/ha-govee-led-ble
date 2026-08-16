@@ -75,6 +75,8 @@ from custom_components.ha_govee_led_ble.effect_limits import (
     MAX_EFFECT_DOCUMENT_BYTES,
     MAX_EFFECT_NAME_LENGTH,
     MAX_LIBRARY_ITEMS,
+    MAX_PREVIEW_REQUESTS_PER_SECOND,
+    MAX_PREVIEW_SEQUENCE,
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 from custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload import H6199EffectUpload
@@ -676,7 +678,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
 
     assert api == {
-        "api_version": 2,
+        "api_version": 3,
         "effect_schema_version": 1,
         "compiler_version": EFFECT_COMPILER_VERSION,
         "limits": {
@@ -687,6 +689,8 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
             "drafts_per_owner": MAX_DRAFTS_PER_OWNER,
             "deployment_records": MAX_DEPLOYMENT_RECORDS,
             "scene_catalogue_entries": MAX_SCENE_CATALOGUE_ENTRIES,
+            "preview_sequence": MAX_PREVIEW_SEQUENCE,
+            "preview_requests_per_second": MAX_PREVIEW_REQUESTS_PER_SECOND,
         },
     }
     assert h617a.painted is CapabilityState.SUPPORTED

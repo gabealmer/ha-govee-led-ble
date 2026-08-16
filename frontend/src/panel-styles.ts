@@ -96,6 +96,121 @@ export const effectStudioPanelStyles = [
       background: var(--studio-blue-soft);
     }
 
+    .live-apply-toolbar {
+      position: sticky;
+      z-index: 4;
+      top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 9px;
+      min-height: 48px;
+      padding: 6px 18px;
+      border-bottom: 1px solid var(--studio-border);
+      background: color-mix(
+        in srgb,
+        var(--primary-background-color, #fff) 94%,
+        transparent
+      );
+      backdrop-filter: blur(10px);
+    }
+
+    .live-apply-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      padding: 4px 8px;
+      border: 0;
+      color: var(--primary-text-color);
+      background: transparent;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .live-apply-track {
+      display: inline-flex;
+      align-items: center;
+      width: 32px;
+      height: 18px;
+      padding: 2px;
+      border-radius: 999px;
+      background: var(--disabled-color, #9e9e9e);
+      transition: background 120ms ease;
+    }
+
+    .live-apply-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+      transition: transform 120ms ease;
+    }
+
+    .live-apply-toggle[aria-checked="true"] .live-apply-track {
+      background: var(--studio-blue);
+    }
+
+    .live-apply-toggle[aria-checked="true"] .live-apply-thumb {
+      transform: translateX(14px);
+    }
+
+    .live-apply-status {
+      position: relative;
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+      border: 2px solid var(--disabled-color, #9e9e9e);
+      border-radius: 50%;
+    }
+
+    .live-apply-status.pending {
+      border-color: color-mix(
+        in srgb,
+        var(--studio-blue) 25%,
+        transparent
+      );
+      border-top-color: var(--studio-blue);
+      animation: live-apply-spin 700ms linear infinite;
+    }
+
+    .live-apply-status.current {
+      border-color: var(--success-color, #2e7d32);
+    }
+
+    .live-apply-status.current::after {
+      position: absolute;
+      width: 7px;
+      height: 4px;
+      border-bottom: 2px solid var(--success-color, #2e7d32);
+      border-left: 2px solid var(--success-color, #2e7d32);
+      content: "";
+      transform: translate(4px, 4px) rotate(-45deg);
+    }
+
+    .live-apply-status.warning {
+      border-color: var(--error-color, #db4437);
+    }
+
+    .live-apply-status.warning::after {
+      position: absolute;
+      inset: -1px 0 0;
+      color: var(--error-color, #db4437);
+      content: "!";
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 16px;
+      text-align: center;
+    }
+
+    @keyframes live-apply-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
     .studio {
       display: grid;
       grid-template-columns: 190px 230px minmax(0, 1fr);
@@ -277,30 +392,6 @@ export const effectStudioPanelStyles = [
       margin-top: 18px;
     }
 
-    .deployment {
-      margin-top: 18px;
-      margin-bottom: 0;
-      border-color: color-mix(
-        in srgb,
-        var(--studio-blue) 35%,
-        var(--studio-border)
-      );
-      background: var(--studio-blue-soft);
-    }
-
-    .deployment.failed,
-    .deployment.uncertain,
-    .deployment.interrupted,
-    .deployment.unknown {
-      border-color: var(--error-color, #db4437);
-      color: var(--error-color, #db4437);
-      background: color-mix(
-        in srgb,
-        var(--error-color, #db4437) 8%,
-        var(--studio-card)
-      );
-    }
-
     @media (max-width: 900px) {
       .studio {
         grid-template-columns: 170px minmax(0, 1fr);
@@ -384,6 +475,15 @@ export const effectStudioPanelStyles = [
     @media (prefers-reduced-motion: reduce) {
       * {
         scroll-behavior: auto !important;
+      }
+
+      .live-apply-status.pending {
+        animation-duration: 1400ms;
+      }
+
+      .live-apply-track,
+      .live-apply-thumb {
+        transition: none;
       }
     }
   `,

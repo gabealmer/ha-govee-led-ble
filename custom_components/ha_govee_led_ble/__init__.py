@@ -198,6 +198,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     if effect_setup := get_effect_setup(hass):
+        await effect_setup.backend.preview.async_load_device(entry.entry_id)
         await effect_setup.backend.async_reconcile_coordinator(
             coordinator,
             config_entry_id=entry.entry_id,
@@ -212,8 +213,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
+    effect_setup = get_effect_setup(hass)
+    if effect_setup is not None:
+        await effect_setup.backend.preview.async_unload_device(entry.entry_id)
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.disconnect()
+    elif effect_setup is not None:
+        await effect_setup.backend.preview.async_load_device(entry.entry_id)
     return unload_ok
 
 

@@ -16,9 +16,11 @@ All models support on/off, brightness, RGB color, color temperature, and state r
 
 ## Advanced Effect Studio prerelease
 
-The prerelease Effect Studio stores its library, recovery drafts and deployment status in the local Home Assistant instance.  Administrators can browse native scenes, author effects and manage the shared library.  Other authenticated users have read-only access to scenes and understood saved effects; unknown opaque definitions remain administrator-only.
+The prerelease Effect Studio stores its library, recovery drafts and durable deployment status in the local Home Assistant instance.  Administrators can browse native scenes, author effects and manage the shared library.  Other authenticated users have read-only access to scenes and understood saved effects; unknown opaque definitions remain administrator-only.
 
-H617A Painted, Single and Multi effects can be applied locally over BLE.  Advanced layered effects are limited to editing, preview and save operations.  H6199 custom-effect writes are unavailable.
+Live apply is enabled when an administrator opens Effect Studio.  Scene selections and device-affecting edits are sent over BLE as ephemeral previews, while Save remains an explicit library action.  Continuous controls are throttled and coalesced so only the newest pending state is written; readback verifies the latest settled preview without delaying further edits.  The Live apply toggle stops queued previews but does not restore the light's earlier state.
+
+Live apply covers native and edited scenes, H617A Painted, Single and Multi effects, H6199 Palette DIY and Special DIY effects, advanced layered effects, music profiles, video profiles and Workshop uploads.  Workshop uploads do not have an evidenced activation command, so the editor reports the write without claiming visible activation.
 
 Recovery drafts are private to their Home Assistant user.  Deployment status does not expose unsaved effect snapshots.  The editor refuses incompatible backend, schema, compiler or frontend asset versions.
 

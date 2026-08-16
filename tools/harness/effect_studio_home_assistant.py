@@ -338,7 +338,7 @@ class EffectStudioValidator:
             raise ValidationError("Effect Studio panel does not use the stable loader module")
 
         info = _object(await self.client.call({"type": WS_INFO}), "editor info")
-        if info.get("api_version") != 2 or info.get("effect_schema_version") != 1:
+        if info.get("api_version") != 3 or info.get("effect_schema_version") != 1:
             raise ValidationError("Effect Studio editor API versions are not supported")
         limits = _object(info.get("limits"), "editor limits")
         if not isinstance(limits.get("deployment_records"), int) or not isinstance(limits.get("library_items"), int):

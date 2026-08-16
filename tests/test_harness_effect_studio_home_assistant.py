@@ -138,7 +138,7 @@ def _surface_client(model="H617A"):
                 }
             },
             harness.WS_INFO: {
-                "api_version": 2,
+                "api_version": 3,
                 "effect_schema_version": 1,
                 "limits": {"deployment_records": 16, "library_items": 16},
             },

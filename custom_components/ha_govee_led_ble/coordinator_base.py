@@ -48,7 +48,12 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         async def send_command(self, packet: bytes) -> None: ...
 
-        async def refresh_state(self, *, expected_effect: str | None = None) -> bool: ...
+        async def refresh_state(
+            self,
+            *,
+            expected_effect: str | None = None,
+            expected_on: bool | None = None,
+        ) -> bool: ...
 
         @property
         def scene_name_set(self) -> frozenset[str]: ...

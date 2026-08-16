@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -1077,6 +1078,91 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if any(self._domain_revisions.get(domain, 0) <= baseline for domain, baseline in domain_baselines.items()):
             await self._disconnect_if_current(client)
         return False
+
+    async def async_preview_preflight(self, *, timeout: float = 8.0) -> None:
+        if self.hass.is_stopping:
+            raise RuntimeError("Home Assistant is stopping")
+        async with asyncio.timeout(timeout):
+            async with self._lock:
+                await self._ensure_connected()
+
+    async def async_preview_write(self, packet: bytes) -> None:
+        if self.hass.is_stopping:
+            raise RuntimeError("Home Assistant is stopping")
+        async with self._lock:
+            client = self._client
+            if client is None or not client.is_connected:
+                raise BleakError(f"Device {self.address} disconnected during preview")
+            self._record_packet("tx", packet)
+            await client.write_gatt_char(WRITE_UUID, packet, response=False)
+
+    async def async_preview_observe(
+        self,
+        expectations: Mapping[str, Any],
+        *,
+        timeout: float = 2.0,
+    ) -> bool | None:
+        if not self.profile.state_readable or not expectations:
+            return None
+        query_power = "is_on" in expectations
+        query_brightness = "brightness_pct" in expectations
+        query_color = bool(
+            set(expectations).intersection(
+                {
+                    "color_mode",
+                    "effect",
+                    "diy_code",
+                    "music_mode",
+                    "music_sensitivity",
+                    "music_calm",
+                    "music_color",
+                    "video_mode",
+                    "video_full_screen",
+                    "video_saturation",
+                    "video_sound_effects",
+                    "video_sound_effects_softness",
+                    "white_brightness",
+                }
+            )
+        )
+        query_white_balance = bool(set(expectations).intersection({"white_balance_red", "white_balance_blue"}))
+        query_blank_screen = "blank_screen" in expectations
+        query_relative_brightness = bool(
+            set(expectations).intersection(
+                {
+                    "relative_brightness",
+                    "relative_brightness_left",
+                    "relative_brightness_top",
+                    "relative_brightness_right",
+                    "relative_brightness_bottom",
+                }
+            )
+        )
+        field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
+        async with self._lock:
+            client = self._client
+            if client is None or not client.is_connected:
+                return None
+            ok = await self._send_state_queries(
+                query_power=query_power,
+                query_brightness=query_brightness,
+                query_color_mode=query_color,
+                query_white_balance=query_white_balance,
+                query_blank_screen=query_blank_screen,
+                query_relative_brightness=query_relative_brightness,
+            )
+        if not ok:
+            return None
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._client is not client:
+                return None
+            if all(self._field_revisions.get(field, 0) > baseline for field, baseline in field_baselines.items()):
+                return all(getattr(self, field) == expected for field, expected in expectations.items())
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                await asyncio.sleep(min(0.05, remaining))
+        return None
 
     def _start_keep_alive(self) -> None:
         self._stop_keep_alive()

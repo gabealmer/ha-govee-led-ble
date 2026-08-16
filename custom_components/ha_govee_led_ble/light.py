@@ -33,7 +33,6 @@ from .const import (
     EFFECT_FAMILY_SCENES,
     EFFECT_FAMILY_VIDEO,
     MUSIC_MODES,
-    ModelProfile,
 )
 from .coordinator import GoveeBLECoordinator
 from .entity import GoveeBLEEntity
@@ -46,12 +45,10 @@ from .protocol import (
     build_brightness,
     build_color_rgb,
     build_color_temp,
-    build_h6199_scene_multi,
     build_power,
-    build_scene_multi,
     kelvin_to_rgb,
 )
-from .scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SceneEntry
+from .scenes import MODEL_SCENE_LABELS, MODEL_SCENES
 
 # fmt: on
 
@@ -76,18 +73,6 @@ _MUSIC_EFFECTS: dict[str, str] = {f"Music: {name.title()}": name.replace(" ", "_
 
 
 _DEFAULT_SEGMENT_COLOR: tuple[int, int, int] = (255, 255, 255)
-
-
-def _scene_packets(profile: ModelProfile, scene: SceneEntry, *, speed_index: int | None = None) -> list[bytes]:
-    """Pick the activation the model's own app sends, which is not the same frame on both.
-
-    The H6199 write carries a third byte saying whether the light already holds the scene, and
-    the H617A write is two bytes with nothing there. Sharing one builder sent an H617A frame to
-    an H6199, which differs from the captured one at exactly that byte.
-    """
-    if profile.uses_h6199_scene_protocol:
-        return build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
-    return build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed, speed_index=speed_index)
 
 
 def _coerce_rgb(raw: Any) -> tuple[int, int, int] | None:
@@ -388,12 +373,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         if scene is not None:
             speed_index = coordinator.scene_speed_index if coordinator.scene_speed_scene_code == scene.code else None
-            for packet in _scene_packets(coordinator.profile, scene, speed_index=speed_index):
-                await coordinator.send_command(packet)
-            coordinator.effect = key
-            coordinator.diy_code = None
-            coordinator.music_mode = coordinator.video_mode = "off"
-            coordinator._sync_scene_speed(key, speed_index=speed_index)
+            await coordinator._async_apply_native_scene_locked(
+                key,
+                speed_index=speed_index,
+                writer=None,
+                verify=False,
+                force=True,
+            )
             return
         if EFFECT_FAMILY_VIDEO in coordinator.effect_families:
             mode = next((m for label, m in _VIDEO_EFFECTS.items() if _normalize_effect_name(label) == key), None)

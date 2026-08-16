@@ -56,7 +56,10 @@ async def test_setup_entry(hass: HomeAssistant):
 
 async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):
     entry = _entry()
-    backend = MagicMock(async_reconcile_coordinator=AsyncMock())
+    backend = MagicMock(
+        async_reconcile_coordinator=AsyncMock(),
+        preview=MagicMock(async_load_device=AsyncMock()),
+    )
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
         patch("custom_components.ha_govee_led_ble.get_effect_setup", return_value=MagicMock(backend=backend)),
@@ -69,6 +72,7 @@ async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass:
         assert await async_setup_entry(hass, entry) is True
 
     backend.async_reconcile_coordinator.assert_awaited_once()
+    backend.preview.async_load_device.assert_awaited_once_with(entry.entry_id)
     assert backend.async_reconcile_coordinator.await_args.args == (cls.return_value,)
     assert backend.async_reconcile_coordinator.await_args.kwargs["config_entry_id"] == entry.entry_id
 
@@ -90,6 +94,30 @@ async def test_unload_entry(hass: HomeAssistant, unload_ok, disc):
     with patch.object(hass.config_entries, "async_unload_platforms", new_callable=AsyncMock, return_value=unload_ok):
         assert await async_unload_entry(hass, entry) is unload_ok
     getattr(entry.runtime_data.disconnect, disc)()
+
+
+async def test_unload_entry_stops_preview_before_platforms_and_disconnect(hass: HomeAssistant):
+    order = []
+    preview = MagicMock()
+    preview.async_unload_device = AsyncMock(side_effect=lambda _entry_id: order.append("preview"))
+    preview.async_load_device = AsyncMock()
+    entry = _entry(runtime_data=MagicMock())
+    entry.runtime_data.disconnect = AsyncMock(side_effect=lambda: order.append("disconnect"))
+
+    async def unload_platforms(_entry, _platforms):
+        order.append("platforms")
+        return True
+
+    with (
+        patch(
+            "custom_components.ha_govee_led_ble.get_effect_setup",
+            return_value=MagicMock(backend=MagicMock(preview=preview)),
+        ),
+        patch.object(hass.config_entries, "async_unload_platforms", side_effect=unload_platforms),
+    ):
+        assert await async_unload_entry(hass, entry) is True
+
+    assert order == ["preview", "platforms", "disconnect"]
 
 
 async def test_cleanup_legacy_entities(hass: HomeAssistant):

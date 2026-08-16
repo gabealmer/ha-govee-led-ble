@@ -6,6 +6,7 @@ import type { CheckboxControlChange } from "./checkbox-control";
 import "./checkbox-control";
 import { recentColour } from "./colour-picker";
 import "./colour-picker";
+import type { LivePreviewInteraction } from "./live-preview-controller";
 import type {
   SegmentedControlChange,
   SegmentedControlOption,
@@ -76,6 +77,7 @@ export class GoveeMusicProfileEditor extends LitElement {
   public showModeSelector = true;
 
   private lastFixedColour?: RGB;
+  private interaction: LivePreviewInteraction = "committed";
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (changed.has("content") && this.content?.colour != null) {
@@ -157,9 +159,9 @@ export class GoveeMusicProfileEditor extends LitElement {
                     .colour=${fixedColour}
                     .disabled=${this.disabled}
                     @colour-changing=${(event: CustomEvent<{ colour: RGB }>) =>
-                      this.fixedColourChanged(event.detail.colour)}
+                      this.fixedColourChanged(event.detail.colour, "changing")}
                     @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
-                      this.fixedColourChanged(event.detail.colour)}
+                      this.fixedColourChanged(event.detail.colour, "committed")}
                   ></govee-colour-picker>
                 </div>
               `
@@ -218,8 +220,14 @@ export class GoveeMusicProfileEditor extends LitElement {
         .maximum=${max}
         .showValue=${showValue}
         .disabled=${this.disabled}
-        @value-changed=${(event: CustomEvent<SliderControlChange>) =>
-          commit(event.detail.value)}
+        @value-changed=${(event: CustomEvent<SliderControlChange>) => {
+          this.interaction = "changing";
+          try {
+            commit(event.detail.value);
+          } finally {
+            this.interaction = "committed";
+          }
+        }}
       ></govee-slider-control>
     `;
   }
@@ -375,12 +383,15 @@ export class GoveeMusicProfileEditor extends LitElement {
     });
   }
 
-  private fixedColourChanged(colour: RGB): void {
+  private fixedColourChanged(
+    colour: RGB,
+    interaction: LivePreviewInteraction,
+  ): void {
     this.lastFixedColour = cloneRgb(colour);
     this.updateContent((content) => {
       content.colour = cloneRgb(colour);
       return content;
-    });
+    }, interaction);
   }
 
   private styleChanged(calm: boolean): void {
@@ -407,6 +418,7 @@ export class GoveeMusicProfileEditor extends LitElement {
 
   private updateContent(
     transform: (content: MusicProfileContent) => MusicProfileContent,
+    interaction: LivePreviewInteraction = this.interaction,
   ): void {
     if (!this.content) {
       return;
@@ -415,8 +427,14 @@ export class GoveeMusicProfileEditor extends LitElement {
     const installed = cloneMusicProfileContent(transform(cloneMusicProfileContent(this.content)));
     this.content = installed;
     this.dispatchEvent(
-      new CustomEvent<{ content: MusicProfileContent }>("content-changed", {
-        detail: { content: cloneMusicProfileContent(installed) },
+      new CustomEvent<{
+        content: MusicProfileContent;
+        interaction: LivePreviewInteraction;
+      }>("content-changed", {
+        detail: {
+          content: cloneMusicProfileContent(installed),
+          interaction,
+        },
         bubbles: true,
         composed: true,
       }),

@@ -1,6 +1,6 @@
 """Active-mode derivation and mode-switching for the Govee BLE coordinator."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -10,6 +10,7 @@ from .protocol import (
     RHYTHM_MODE_ID,
     build_color_rgb,
     build_color_temp,
+    build_h6199_scene_multi,
     build_music_mode_with_color,
     build_music_params_a3,
     build_power,
@@ -196,40 +197,107 @@ class _ActiveModeMixin(_CoordinatorBase):
             raise ValueError(f"scene speed index {resolved} outside 0..{count - 1}")
         self.scene_speed_scene_code, self.scene_speed_index = scene.code, resolved
 
-    async def async_set_scene_speed(self, index: int) -> None:
-        """Re-upload the active scene at one documented Speed position.
-
-        The status reply confirms scene identity but does not carry the Speed position, so the
-        resulting index remains optimistic even after the scene check succeeds.
-        """
+    async def async_apply_native_scene(
+        self,
+        scene_name: str,
+        *,
+        speed_index: int | None = None,
+        writer: Callable[[bytes], Awaitable[None]] | None = None,
+        verify: bool = True,
+        force: bool = True,
+    ) -> None:
         async with self._control_lock:
-            context = self.scene_speed_context
-            if context is None:
-                raise ValueError("The active scene does not expose a documented Speed control")
-            scene_name, scene = context
-            assert scene.speed is not None
-            if not 0 <= index < scene.speed.option_count:
-                raise ValueError(f"scene speed index {index} outside 0..{scene.speed.option_count - 1}")
-            if self.scene_speed_scene_code == scene.code and self.scene_speed_index == index:
-                return
+            await self._async_apply_native_scene_locked(
+                scene_name,
+                speed_index=speed_index,
+                writer=writer,
+                verify=verify,
+                force=force,
+            )
 
-            async def apply() -> None:
-                for packet in build_scene_multi(
+    async def _async_apply_native_scene_locked(
+        self,
+        scene_name: str,
+        *,
+        speed_index: int | None = None,
+        writer: Callable[[bytes], Awaitable[None]] | None = None,
+        verify: bool,
+        force: bool,
+        require_active: bool = False,
+    ) -> None:
+        if EFFECT_FAMILY_SCENES not in self.effect_families:
+            raise ValueError(f"native scenes are not enabled for {self.model}")
+        scene = MODEL_SCENES[self.model].get(scene_name)
+        if scene is None:
+            raise ValueError(f"unknown native scene {scene_name!r}")
+        if require_active and (self.active_mode != "scene" or self.effect != scene_name):
+            raise ValueError("The active scene does not expose a documented Speed control")
+        if scene.speed is None:
+            if speed_index is not None:
+                raise ValueError("This scene does not expose a documented Speed control")
+            resolved_speed = None
+        else:
+            resolved_speed = scene.speed.default_index if speed_index is None else speed_index
+            if not 0 <= resolved_speed < scene.speed.option_count:
+                raise ValueError(f"scene speed index {resolved_speed} outside 0..{scene.speed.option_count - 1}")
+        if (
+            not force
+            and self.effect == scene_name
+            and self.scene_speed_scene_code == scene.code
+            and self.scene_speed_index == resolved_speed
+        ):
+            return
+
+        send = self.send_command if writer is None else writer
+        if not self.is_on:
+            await send(build_power(True, self.model))
+            self.is_on = True
+            if verify and self.profile.state_readable and not await self.refresh_state(expected_on=True):
+                await send(build_power(True, self.model))
+                if not await self.refresh_state(expected_on=True):
+                    raise RuntimeError(f"Failed to confirm power-on before selecting scene {scene_name!r}")
+
+        async def apply() -> None:
+            packets = (
+                build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
+                if self.profile.uses_h6199_scene_protocol
+                else build_scene_multi(
                     scene.param,
                     scene.code,
                     scene.scene_type,
                     scene.speed,
-                    speed_index=index,
-                ):
-                    await self.send_command(packet)
+                    speed_index=resolved_speed,
+                )
+            )
+            for packet in packets:
+                await send(packet)
 
+        await apply()
+        if verify and self.profile.state_readable and not await self.refresh_state(expected_effect=scene_name):
             await apply()
-            if self.profile.state_readable and not await self.refresh_state(expected_effect=scene_name):
-                await apply()
-                if not await self.refresh_state(expected_effect=scene_name):
-                    raise RuntimeError(f"Failed to confirm scene {scene_name!r} after changing Speed")
-            self._sync_scene_speed(scene_name, speed_index=index)
-            self.async_set_updated_data(self.data or {})
+            if not await self.refresh_state(expected_effect=scene_name):
+                raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
+        self.effect = scene_name
+        self.diy_code = None
+        self.music_mode = self.video_mode = "off"
+        self._sync_scene_speed(scene_name, speed_index=resolved_speed)
+        self.async_set_updated_data(self.data or {})
+
+    async def async_set_scene_speed(self, index: int) -> None:
+        """Re-upload the active scene at one documented Speed position."""
+        async with self._control_lock:
+            context = self.scene_speed_context
+            if context is None:
+                raise ValueError("The active scene does not expose a documented Speed control")
+            scene_name, _scene = context
+            await self._async_apply_native_scene_locked(
+                scene_name,
+                speed_index=index,
+                writer=None,
+                verify=True,
+                force=False,
+                require_active=True,
+            )
 
     def _capture_static_state(self) -> PreModeSnapshot:
         if self.color_temp_kelvin is not None:
@@ -242,7 +310,13 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.diy_code = None
         self.music_mode = self.video_mode = "off"
 
-    async def async_select_music_slug(self, slug: str, *, include_parameters: bool = True) -> None:
+    async def async_select_music_slug(
+        self,
+        slug: str,
+        *,
+        include_parameters: bool = True,
+        writer: Callable[[bytes], Awaitable[None]] | None = None,
+    ) -> None:
         if slug == "off":
             await self.async_restore_pre_mode()
             return
@@ -253,9 +327,10 @@ class _ActiveModeMixin(_CoordinatorBase):
         mode_id = MUSIC_MODE_SLUGS[slug]
         calm = self.music_calm if mode_id in MUSIC_STYLE_MODE_IDS else False
         color = self.music_color if self.profile.supports_music_color else None
-        await self.send_command(build_power(True, self.model))
+        send = self.send_command if writer is None else writer
+        await send(build_power(True, self.model))
         self.is_on = True
-        await self.send_command(
+        await send(
             build_music_mode_with_color(
                 mode_id,
                 sensitivity=self.music_sensitivity,
@@ -265,7 +340,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             )
         )
         if include_parameters and mode_id in _MUSIC_STYLE_COMPANION:
-            await self._send_music_params(mode_id)
+            await self._send_music_params(mode_id, writer=send)
         self.music_mode, self.video_mode = slug, "off"
         self.effect = None
         self.diy_code = None
@@ -286,10 +361,20 @@ class _ActiveModeMixin(_CoordinatorBase):
             if spec.profile_key in parameters:
                 setattr(self, spec.key, parameters[spec.profile_key])
 
-    async def async_apply_music_params(self, mode_code: int) -> None:
-        await self._send_music_params(mode_code)
+    async def async_apply_music_params(
+        self,
+        mode_code: int,
+        *,
+        writer: Callable[[bytes], Awaitable[None]] | None = None,
+    ) -> None:
+        await self._send_music_params(mode_code, writer=writer)
 
-    async def _send_music_params(self, mode_code: int) -> None:
+    async def _send_music_params(
+        self,
+        mode_code: int,
+        *,
+        writer: Callable[[bytes], Awaitable[None]] | None = None,
+    ) -> None:
         overrides = {spec.offset: spec.encode(getattr(self, spec.key)) for spec in music_params_for_mode(mode_code)}
         if mode_code == 0x35:
             start_point, piece_num = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
@@ -301,8 +386,9 @@ class _ActiveModeMixin(_CoordinatorBase):
         companion = _MUSIC_STYLE_COMPANION.get(mode_code)
         if companion is not None:
             overrides.update(companion[self.music_calm])
+        send = self.send_command if writer is None else writer
         for packet in build_music_params_a3(mode_code, overrides):
-            await self.send_command(packet)
+            await send(packet)
 
     async def async_restore_pre_mode(self) -> None:
         snap = self._pre_mode_snapshot

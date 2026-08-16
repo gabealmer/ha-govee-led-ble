@@ -6,13 +6,10 @@ import base64
 from dataclasses import dataclass
 from typing import Any
 
-from homeassistant.components.light import ATTR_EFFECT
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID, SERVICE_TURN_ON
-from homeassistant.core import Context, HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, EFFECT_FAMILY_SCENES
+from .const import EFFECT_FAMILY_SCENES
 from .effect_domain import (
     BuiltinScene,
     CatalogueRef,
@@ -30,7 +27,6 @@ from .scenes import (
 )
 
 CATALOGUE_SCHEMA_VERSION = 1
-LIGHT_DOMAIN = "light"
 
 
 class SceneUnavailableError(ValueError):
@@ -117,6 +113,7 @@ async def async_apply_scene(
     speed_index: int | None,
     user_id: str,
 ) -> tuple[ResolvedScene, int | None]:
+    del hass, user_id
     coordinator = config_entry.runtime_data
     if EFFECT_FAMILY_SCENES not in coordinator.effect_families:
         raise SceneUnavailableError(f"native scenes are not enabled for {coordinator.model}")
@@ -131,19 +128,10 @@ async def async_apply_scene(
         if not 0 <= resolved_speed < speed.option_count:
             raise ValueError(f"scene speed index {resolved_speed} outside 0..{speed.option_count - 1}")
 
-    entity_id = _light_entity_id(hass, config_entry.entry_id)
-    await hass.services.async_call(
-        LIGHT_DOMAIN,
-        SERVICE_TURN_ON,
-        {
-            ATTR_ENTITY_ID: entity_id,
-            ATTR_EFFECT: resolved.label,
-        },
-        blocking=True,
-        context=Context(user_id=user_id),
+    await coordinator.async_apply_native_scene(
+        resolved.key,
+        speed_index=resolved_speed,
     )
-    if resolved_speed is not None:
-        await coordinator.async_set_scene_speed(resolved_speed)
     return resolved, resolved_speed
 
 
@@ -177,15 +165,3 @@ def _scene_summary(model: str, entry: SceneEntry) -> dict[str, JsonValue]:
             else None
         ),
     }
-
-
-def _light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str:
-    registry = er.async_get(hass)
-    candidates = [
-        entry.entity_id
-        for entry in er.async_entries_for_config_entry(registry, config_entry_id)
-        if entry.platform == DOMAIN and entry.entity_id.startswith(f"{LIGHT_DOMAIN}.") and entry.disabled_by is None
-    ]
-    if len(candidates) != 1:
-        raise SceneUnavailableError(f"config entry {config_entry_id} does not have one enabled Govee light")
-    return candidates[0]

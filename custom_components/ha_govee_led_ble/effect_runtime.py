@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from uuid import UUID, uuid4
@@ -53,6 +53,106 @@ ACTIVATION_ATTEMPTS = 2
 VERIFICATION_ATTEMPTS = 2
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def async_write_packets(
+    packets: Sequence[bytes],
+    writer: Callable[[bytes], Awaitable[None]],
+    *,
+    progress: Callable[[int], Awaitable[None]] | None = None,
+) -> None:
+    for index, packet in enumerate(packets, start=1):
+        await writer(packet)
+        if progress is not None:
+            await progress(index)
+
+
+async def async_apply_compiled_profile(
+    coordinator: GoveeBLECoordinator,
+    compiled: CompiledMusicProfile | CompiledVideoProfile,
+    *,
+    writer: Callable[[bytes], Awaitable[None]] | None = None,
+    verify: bool = True,
+    progress: Callable[[int], Awaitable[None]] | None = None,
+) -> None:
+    if isinstance(compiled, CompiledMusicProfile):
+        coordinator.install_music_profile_state(
+            mode=compiled.mode,
+            sensitivity=compiled.sensitivity,
+            colour=compiled.colour,
+            calm=compiled.calm,
+            parameters=compiled.parameters,
+        )
+        if writer is None:
+            await coordinator.async_select_music_slug(
+                compiled.mode,
+                include_parameters=False,
+            )
+        else:
+            await coordinator.async_select_music_slug(
+                compiled.mode,
+                include_parameters=False,
+                writer=writer,
+            )
+        if progress is not None:
+            await progress(1)
+        if compiled.progress_total > 1:
+            if writer is None:
+                await coordinator.async_apply_music_params(MUSIC_MODE_SLUGS[compiled.mode])
+            else:
+                await coordinator.async_apply_music_params(
+                    MUSIC_MODE_SLUGS[compiled.mode],
+                    writer=writer,
+                )
+            if progress is not None:
+                await progress(2)
+        return
+
+    coordinator.video_mode = compiled.mode
+    coordinator.video_full_screen = compiled.full_screen
+    coordinator.video_saturation = compiled.saturation
+    coordinator.video_sound_effects = compiled.sound_effects
+    coordinator.video_sound_effects_softness = compiled.sound_effects_softness
+    coordinator.effect = None
+    coordinator.music_mode = "off"
+    coordinator.diy_code = None
+    if writer is None and verify:
+        await apply_active_video_mode(coordinator)
+    else:
+        await apply_active_video_mode(coordinator, writer=writer, verify=verify)
+    if progress is not None:
+        await progress(1)
+
+    red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
+    coordinator.white_balance_red = red
+    coordinator.white_balance_blue = blue
+    if writer is None and verify:
+        await apply_white_balance(coordinator)
+    else:
+        await apply_white_balance(coordinator, writer=writer, verify=verify)
+    if progress is not None:
+        await progress(2)
+
+    left, top, right, bottom = compiled.relative_brightness
+    coordinator.relative_brightness = left if len(set(compiled.relative_brightness)) == 1 else None
+    coordinator.relative_brightness_left = left
+    coordinator.relative_brightness_top = top
+    coordinator.relative_brightness_right = right
+    coordinator.relative_brightness_bottom = bottom
+    if writer is None and verify:
+        await apply_relative_brightness(coordinator)
+    else:
+        await apply_relative_brightness(coordinator, writer=writer, verify=verify)
+    if progress is not None:
+        await progress(3)
+
+    coordinator.blank_screen = compiled.blank_screen
+    if writer is None and verify:
+        await apply_blank_screen(coordinator)
+    else:
+        await apply_blank_screen(coordinator, writer=writer, verify=verify)
+    if progress is not None:
+        await progress(4)
 
 
 class EffectDeploymentEngine:
@@ -227,10 +327,17 @@ class EffectDeploymentEngine:
                     await self._deployments.async_put(next_record, expected_revision=None)
                     current = next_record
                     if isinstance(compiled, CompiledEffect):
-                        for index, packet in enumerate(compiled.upload_packets, start=1):
-                            await coordinator.send_command(packet)
+
+                        async def record_upload_progress(index: int) -> None:
+                            nonlocal current
                             current = replace(current, progress_current=index)
                             await self._deployments.async_put(current, expected_revision=None)
+
+                        await async_write_packets(
+                            compiled.upload_packets,
+                            coordinator.send_command,
+                            progress=record_upload_progress,
+                        )
 
                         if compiled.verification_strategy is VerificationStrategy.WRITE_COMPLETED:
                             completed = replace(
@@ -379,52 +486,17 @@ class EffectDeploymentEngine:
         record: DeploymentRecord,
     ) -> DeploymentRecord:
         current = record
-        if isinstance(compiled, CompiledMusicProfile):
-            coordinator.install_music_profile_state(
-                mode=compiled.mode,
-                sensitivity=compiled.sensitivity,
-                colour=compiled.colour,
-                calm=compiled.calm,
-                parameters=compiled.parameters,
-            )
-            await coordinator.async_select_music_slug(compiled.mode, include_parameters=False)
-            current = replace(current, progress_current=1)
-            await self._deployments.async_put(current, expected_revision=None)
-            if compiled.progress_total > 1:
-                await coordinator.async_apply_music_params(MUSIC_MODE_SLUGS[compiled.mode])
-                current = replace(current, progress_current=2)
-                await self._deployments.async_put(current, expected_revision=None)
-            return current
 
-        coordinator.video_mode = compiled.mode
-        coordinator.video_full_screen = compiled.full_screen
-        coordinator.video_saturation = compiled.saturation
-        coordinator.video_sound_effects = compiled.sound_effects
-        coordinator.video_sound_effects_softness = compiled.sound_effects_softness
-        coordinator.effect = None
-        coordinator.music_mode = "off"
-        coordinator.diy_code = None
-        await apply_active_video_mode(coordinator)
-        current = await self._record_profile_progress(current, 1)
+        async def record_progress(progress_current: int) -> None:
+            nonlocal current
+            current = await self._record_profile_progress(current, progress_current)
 
-        red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
-        coordinator.white_balance_red = red
-        coordinator.white_balance_blue = blue
-        await apply_white_balance(coordinator)
-        current = await self._record_profile_progress(current, 2)
-
-        left, top, right, bottom = compiled.relative_brightness
-        coordinator.relative_brightness = left if len(set(compiled.relative_brightness)) == 1 else None
-        coordinator.relative_brightness_left = left
-        coordinator.relative_brightness_top = top
-        coordinator.relative_brightness_right = right
-        coordinator.relative_brightness_bottom = bottom
-        await apply_relative_brightness(coordinator)
-        current = await self._record_profile_progress(current, 3)
-
-        coordinator.blank_screen = compiled.blank_screen
-        await apply_blank_screen(coordinator)
-        return await self._record_profile_progress(current, 4)
+        await async_apply_compiled_profile(
+            coordinator,
+            compiled,
+            progress=record_progress,
+        )
+        return current
 
     async def _record_profile_progress(
         self,

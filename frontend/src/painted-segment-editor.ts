@@ -5,6 +5,7 @@ import {
   studioBaseStyles,
   studioCardStyles,
 } from "./studio-styles";
+import type { LivePreviewInteraction } from "./live-preview-controller";
 import type { RGB } from "./types";
 import { rgbToHex } from "./ui-utils";
 
@@ -56,7 +57,7 @@ export class GoveePaintedSegmentEditor extends LitElement {
     this.paintingPointerId = event.pointerId;
     this.lastPaintedSegment = index;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    this.selectSegment(index);
+    this.selectSegment(index, "changing");
   }
 
   private pointerMoved(event: PointerEvent): void {
@@ -72,7 +73,7 @@ export class GoveePaintedSegmentEditor extends LitElement {
       index !== this.lastPaintedSegment
     ) {
       this.lastPaintedSegment = index;
-      this.selectSegment(index);
+      this.selectSegment(index, "changing");
     }
   }
 
@@ -92,14 +93,20 @@ export class GoveePaintedSegmentEditor extends LitElement {
 
   private segmentClicked(index: number, event: MouseEvent): void {
     if (!this.disabled && event.detail === 0) {
-      this.selectSegment(index);
+      this.selectSegment(index, "committed");
     }
   }
 
-  private selectSegment(index: number): void {
+  private selectSegment(
+    index: number,
+    interaction: LivePreviewInteraction,
+  ): void {
     this.dispatchEvent(
-      new CustomEvent<{ index: number }>("segment-selected", {
-        detail: { index },
+      new CustomEvent<{
+        index: number;
+        interaction: LivePreviewInteraction;
+      }>("segment-selected", {
+        detail: { index, interaction },
         bubbles: true,
         composed: true,
       }),

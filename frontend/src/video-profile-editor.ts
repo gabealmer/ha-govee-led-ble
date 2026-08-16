@@ -3,6 +3,7 @@ import { property } from "lit/decorators.js";
 
 import type { CheckboxControlChange } from "./checkbox-control";
 import "./checkbox-control";
+import type { LivePreviewInteraction } from "./live-preview-controller";
 import type {
   SegmentedControlChange,
   SegmentedControlOption,
@@ -101,6 +102,8 @@ export class GoveeVideoProfileEditor extends LitElement {
 
   @property({ type: Boolean })
   public showModeSelector = true;
+
+  private interaction: LivePreviewInteraction = "committed";
 
   protected render() {
     if (!this.content) {
@@ -318,7 +321,7 @@ export class GoveeVideoProfileEditor extends LitElement {
         .describedBy=${describedBy}
         .disabled=${this.disabled}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
-          changed(event.detail.value)}
+          this.runInteraction("changing", () => changed(event.detail.value))}
       ></govee-slider-control>
     `;
   }
@@ -336,13 +339,16 @@ export class GoveeVideoProfileEditor extends LitElement {
             aria-label="White balance"
             ?disabled=${this.disabled}
             @input=${(event: Event) =>
-              this.updateContent((content) => {
-                content.white_balance_position = clampInteger(
-                  Number((event.target as HTMLInputElement).value),
-                  1,
-                  20,
-                );
-              })}
+              this.updateContent(
+                (content) => {
+                  content.white_balance_position = clampInteger(
+                    Number((event.target as HTMLInputElement).value),
+                    1,
+                    20,
+                  );
+                },
+                "changing",
+              )}
           />
           <div class="endpoint-labels" aria-hidden="true">
             <span>Cool</span>
@@ -384,28 +390,55 @@ export class GoveeVideoProfileEditor extends LitElement {
     edge: RelativeBrightnessEdge,
     value: number,
   ): void {
-    this.updateContent((content) => {
-      content.relative_brightness[edge] = clampInteger(value, 1, 100);
-    });
+    this.updateContent(
+      (content) => {
+        content.relative_brightness[edge] = clampInteger(value, 1, 100);
+      },
+      "changing",
+    );
   }
 
-  private updateContent(changed: (content: VideoProfileContent) => void): void {
+  private updateContent(
+    changed: (content: VideoProfileContent) => void,
+    interaction: LivePreviewInteraction = this.interaction,
+  ): void {
     if (!this.content) {
       return;
     }
     const next = cloneVideoProfileContent(this.content);
     changed(next);
-    this.emitContent(next);
+    this.emitContent(next, interaction);
   }
 
-  private emitContent(content: VideoProfileContent): void {
+  private emitContent(
+    content: VideoProfileContent,
+    interaction: LivePreviewInteraction = "committed",
+  ): void {
     this.dispatchEvent(
-      new CustomEvent<{ content: VideoProfileContent }>("content-changed", {
-        detail: { content: cloneVideoProfileContent(content) },
+      new CustomEvent<{
+        content: VideoProfileContent;
+        interaction: LivePreviewInteraction;
+      }>("content-changed", {
+        detail: {
+          content: cloneVideoProfileContent(content),
+          interaction,
+        },
         bubbles: true,
         composed: true,
       }),
     );
+  }
+
+  private runInteraction(
+    interaction: LivePreviewInteraction,
+    changed: () => void,
+  ): void {
+    this.interaction = interaction;
+    try {
+      changed();
+    } finally {
+      this.interaction = "committed";
+    }
   }
 
   static styles = [

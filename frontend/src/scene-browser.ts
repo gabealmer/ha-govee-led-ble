@@ -60,6 +60,18 @@ export interface LibraryItemDeleteRequest {
   returnFocus: HTMLElement;
 }
 
+export type ScenePreviewRequest =
+  | {
+      kind: "scene";
+      scene: SceneSummary;
+      speedIndex: number | null;
+    }
+  | {
+      kind: "snapshot";
+      name: string;
+      content: SceneContent;
+    };
+
 export class GoveeSceneBrowser extends LitElement {
   @property({ attribute: false })
   public api?: EffectStudioApi;
@@ -110,9 +122,6 @@ export class GoveeSceneBrowser extends LitElement {
   private saving = false;
 
   @state()
-  private applying = false;
-
-  @state()
   private editingCopy = false;
 
   @state()
@@ -123,6 +132,10 @@ export class GoveeSceneBrowser extends LitElement {
 
   private requestGeneration = 0;
   private activeSelectionIdentity?: string;
+
+  public currentPreviewRequest(): ScenePreviewRequest | undefined {
+    return this.buildPreviewRequest();
+  }
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (changed.has("device") || changed.has("api")) {
@@ -228,12 +241,12 @@ export class GoveeSceneBrowser extends LitElement {
             ? this.sceneButton(
                 `custom:${entry.item.id}`,
                 entry.label,
-                () => this.selectCustom(entry.item),
+                () => this.selectCustom(entry.item, true),
               )
             : this.sceneButton(
                 sceneKey(entry.scene),
                 entry.label,
-                () => this.selectBuiltin(entry.scene),
+                () => this.selectBuiltin(entry.scene, true),
               ),
         )}
       </aside>
@@ -380,14 +393,6 @@ export class GoveeSceneBrowser extends LitElement {
     const savingCopy = this.selectedItem === undefined && this.editingCopy;
     const saveDisabled =
       !this.name.trim() || (this.selectedItem !== undefined && !this.sceneDirty);
-    const snapshotApply =
-      !nativeSelection &&
-      this.content?.kind !== "scene_builtin" &&
-      (this.selectedItem === undefined || this.sceneDirty);
-    const applyEnabled = Boolean(
-      (nativeSelection ? this.catalogue?.enabled : true) &&
-        (!snapshotApply || this.name.trim()),
-    );
     return html`
       <header class="editor-heading">
         <div>
@@ -412,7 +417,6 @@ export class GoveeSceneBrowser extends LitElement {
             type="button"
             ?disabled=${!this.isAdmin ||
             this.saving ||
-            this.applying ||
             !this.hasCurrentSceneContent() ||
             (!layered && custom && saveDisabled)}
             @click=${layered || nativeSelection ? this.edit : this.save}
@@ -427,24 +431,12 @@ export class GoveeSceneBrowser extends LitElement {
                     ? "Save as Custom"
                     : "Save"}
           </button>
-          <button
-            class="primary"
-            type="button"
-            ?disabled=${!this.isAdmin ||
-            !applyEnabled ||
-            !this.hasCurrentSceneContent() ||
-            this.saving ||
-            this.applying}
-            @click=${this.apply}
-          >
-            ${this.applying ? "Applying..." : "Apply"}
-          </button>
           ${this.selectedItem
             ? html`
                 <button
                   class="danger"
                   type="button"
-                  ?disabled=${!this.isAdmin || this.saving || this.applying}
+                  ?disabled=${!this.isAdmin || this.saving}
                   @click=${this.requestDelete}
                 >
                   Delete
@@ -492,6 +484,7 @@ export class GoveeSceneBrowser extends LitElement {
                     event: CustomEvent<SegmentedControlChange<number>>,
                   ) => {
                     this.speedIndex = event.detail.value;
+                    this.dispatchPreview();
                   }}
                 ></govee-segmented-control>
               `
@@ -608,7 +601,10 @@ export class GoveeSceneBrowser extends LitElement {
     this.notice = undefined;
   }
 
-  private async selectBuiltin(scene: SceneSummary): Promise<void> {
+  private async selectBuiltin(
+    scene: SceneSummary,
+    preview = false,
+  ): Promise<void> {
     if (!this.api || !this.device) {
       return;
     }
@@ -637,6 +633,9 @@ export class GoveeSceneBrowser extends LitElement {
       this.content = detail.content;
       this.name = detail.scene.display_name;
       this.speedIndex = detail.content.speed_index;
+      if (preview) {
+        this.dispatchPreview();
+      }
     } catch (error) {
       if (this.requestIsCurrent(request)) {
         this.notice = errorMessage(error);
@@ -644,7 +643,10 @@ export class GoveeSceneBrowser extends LitElement {
     }
   }
 
-  private async selectCustom(summary: LibrarySummary): Promise<void> {
+  private async selectCustom(
+    summary: LibrarySummary,
+    preview = false,
+  ): Promise<void> {
     if (!this.api || !this.device || !this.catalogue) {
       return;
     }
@@ -694,6 +696,9 @@ export class GoveeSceneBrowser extends LitElement {
         return;
       }
       this.commitCustomSelection(item, scene, content);
+      if (preview) {
+        this.dispatchPreview();
+      }
     } catch (error) {
       if (this.requestIsCurrent(request)) {
         this.notice = errorMessage(error);
@@ -753,8 +758,7 @@ export class GoveeSceneBrowser extends LitElement {
       (this.content.kind !== "scene_builtin" &&
         this.content.kind !== "scene_palette") ||
       !this.isAdmin ||
-      this.saving ||
-      this.applying
+      this.saving
     ) {
       return;
     }
@@ -880,71 +884,62 @@ export class GoveeSceneBrowser extends LitElement {
     );
   }
 
-  private async apply(): Promise<void> {
+  private dispatchPreview(): void {
+    const detail = this.buildPreviewRequest();
+    if (!detail) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent<ScenePreviewRequest>("scene-preview-requested", {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private buildPreviewRequest(): ScenePreviewRequest | undefined {
     if (
-      !this.api ||
       !this.device ||
       !this.selectedScene ||
+      !this.content ||
       !this.hasCurrentSceneContent() ||
       !this.isAdmin ||
       (!this.catalogue?.enabled &&
         this.selectedItem === undefined &&
-        !this.editingCopy) ||
-      this.saving ||
-      this.applying
+        !this.editingCopy)
     ) {
-      return;
+      return undefined;
     }
-    const request = this.captureRequest();
-    const scene = this.selectedScene;
     const speedIndex = this.speedIndex;
     const nativeSelection =
       this.selectedItem === undefined && !this.editingCopy;
     const content =
-      this.content!.kind === "scene_palette"
+      this.content.kind === "scene_palette"
         ? clonePaletteSceneContent({
-            ...this.content!,
+            ...this.content,
             speed_index: speedIndex,
           })
-        : this.content!.kind === "scene_layered"
+        : this.content.kind === "scene_layered"
           ? cloneLayeredSceneContent({
-              ...this.content!,
+              ...this.content,
               speed_index: speedIndex,
             })
           : {
-              ...this.content!,
+              ...this.content,
               speed_index: speedIndex,
             };
-    const snapshotApply =
-      !nativeSelection &&
-      content.kind !== "scene_builtin" &&
-      (this.selectedItem === undefined || this.sceneDirty);
-    const name = this.name.trim();
-    if (snapshotApply && !name) {
-      this.notice = "Give this custom scene a name before applying it.";
-      return;
-    }
-    this.applying = true;
-    this.notice = undefined;
-    try {
-      if (nativeSelection || content.kind === "scene_builtin") {
-        await request.api.applyScene(request.deviceId, scene, speedIndex);
-      } else if (snapshotApply) {
-        await request.api.applySnapshot(
-          request.deviceId,
-          name,
-          content,
-        );
-      } else {
-        await request.api.applySaved(request.deviceId, this.selectedItem!);
-      }
-    } catch (error) {
-      if (this.requestIsCurrent(request)) {
-        this.notice = `Apply failed: ${errorMessage(error)}`;
-      }
-    } finally {
-      this.applying = false;
-    }
+    return nativeSelection || content.kind === "scene_builtin"
+        ? {
+            kind: "scene",
+            scene: this.selectedScene,
+            speedIndex,
+          }
+        : {
+            kind: "snapshot",
+            name: this.name.trim() || this.selectedScene.display_name,
+            content,
+          };
   }
 
   private beginRequest(

@@ -8,7 +8,7 @@ from copy import deepcopy
 from hashlib import sha256
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock, Mock, call
 from uuid import uuid4
 
 import pytest
@@ -31,6 +31,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
+    EffectValidationError,
     LibraryItem,
     MusicProfile,
     OpaqueContent,
@@ -46,8 +47,17 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 from custom_components.ha_govee_led_ble.effect_limits import (
     MAX_EFFECT_DOCUMENT_BYTES,
     MAX_EFFECT_NAME_LENGTH,
+    MAX_PREVIEW_SEQUENCE,
 )
-from custom_components.ha_govee_led_ble.effect_scenes import scene_detail_payload
+from custom_components.ha_govee_led_ble.effect_preview import (
+    PreviewError,
+    PreviewOwnershipError,
+    PreviewRateLimitError,
+    PreviewSequenceError,
+    PreviewSessionNotFoundError,
+    PreviewShutdownError,
+)
+from custom_components.ha_govee_led_ble.effect_scenes import resolve_scene, scene_detail_payload
 from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_APPLY,
     WS_APPLY_SNAPSHOT,
@@ -66,6 +76,12 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_LIBRARY_LIST,
     WS_LIBRARY_SUBSCRIBE,
     WS_LIBRARY_UPDATE,
+    WS_PREVIEW_APPLY_SCENE,
+    WS_PREVIEW_APPLY_SNAPSHOT,
+    WS_PREVIEW_CANCEL,
+    WS_PREVIEW_CLOSE,
+    WS_PREVIEW_OPEN,
+    WS_PREVIEW_SUBSCRIBE,
     WS_SCENE_APPLY,
     WS_SCENE_CATALOGUE_GET,
     WS_SCENE_CATALOGUE_LIST,
@@ -149,7 +165,7 @@ async def test_authenticated_users_can_read_library(
     catalogue = await client.receive_json()
 
     assert info["success"] is True
-    assert info["result"]["api_version"] == 2
+    assert info["result"]["api_version"] == 3
     assert listing["success"] is True
     assert listing["result"] == {"library_revision": 0, "items": []}
     assert catalogue["success"] is True
@@ -212,6 +228,363 @@ async def test_non_admin_mutation_is_rejected(
 
     assert snapshot_response["success"] is False
     assert snapshot_response["error"]["code"] == "unauthorized"
+
+    await client.send_json_auto_id({"type": WS_PREVIEW_OPEN})
+    preview_response = await client.receive_json()
+
+    assert preview_response["success"] is False
+    assert preview_response["error"]["code"] == "unauthorized"
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_APPLY_SNAPSHOT,
+            "session_id": str(uuid4()),
+            "sequence": 1,
+            "config_entry_id": "entry-a",
+            "updated_at": "2026-08-17T00:00:00Z",
+            "name": "Preview",
+            "content": effect_content_to_dict(SingleEffect(0, 0, 50, ((255, 0, 0),))),
+        }
+    )
+    preview_apply_response = await client.receive_json()
+
+    assert preview_apply_response["success"] is False
+    assert preview_apply_response["error"]["code"] == "unauthorized"
+
+
+async def test_preview_websocket_session_queue_status_cancel_and_connection_ownership(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+    other_client = await hass_ws_client(hass)
+    coordinator = SimpleNamespace(
+        model="H617A",
+        profile=SimpleNamespace(state_readable=False),
+        effect_families={EFFECT_FAMILY_SCENES},
+        _control_lock=asyncio.Lock(),
+        is_on=True,
+        effect=None,
+        diy_code=None,
+        music_mode="off",
+        video_mode="off",
+        async_preview_preflight=AsyncMock(),
+        async_preview_write=AsyncMock(),
+    )
+
+    async def apply_scene(_scene_name, *, speed_index, writer, verify, force):
+        assert speed_index is not None
+        assert verify is False
+        assert force is True
+        async with coordinator._control_lock:
+            await writer(b"scene")
+
+    coordinator.async_apply_native_scene = AsyncMock(side_effect=apply_scene)
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain="ha_govee_led_ble",
+        state=ConfigEntryState.LOADED,
+        runtime_data=coordinator,
+    )
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == "entry-a" else None,
+    )
+
+    await client.send_json_auto_id({"type": WS_PREVIEW_OPEN})
+    opened = await client.receive_json()
+    session_id = opened["result"]["session_id"]
+    assert opened["success"] is True
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_SUBSCRIBE,
+            "session_id": session_id,
+        }
+    )
+    subscribed = await client.receive_json()
+    assert subscribed["success"] is True
+
+    content = effect_content_to_dict(SingleEffect(0, 0, 50, ((255, 0, 0),)))
+    await other_client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_APPLY_SNAPSHOT,
+            "session_id": session_id,
+            "sequence": 1,
+            "config_entry_id": "entry-a",
+            "updated_at": "2026-08-17T00:00:00Z",
+            "name": "Other connection",
+            "content": content,
+        }
+    )
+    ownership = await other_client.receive_json()
+    assert ownership["error"]["code"] == "unauthorized"
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_APPLY_SNAPSHOT,
+            "session_id": session_id,
+            "sequence": 1,
+            "config_entry_id": "entry-a",
+            "updated_at": "2026-08-17T00:00:00Z",
+            "name": "Preview",
+            "content": content,
+        }
+    )
+    accepted = None
+    statuses = []
+    while accepted is None or not any(status["phase"] == "written" for status in statuses):
+        message = await client.receive_json()
+        if message.get("type") == "event":
+            statuses.append(message["event"])
+        elif message.get("success") is True and "accepted" in message.get("result", {}):
+            accepted = message
+
+    assert accepted["result"] == {
+        "accepted": True,
+        "session_id": session_id,
+        "config_entry_id": "entry-a",
+        "sequence": 1,
+        "reason": None,
+    }
+    assert set(statuses[-1]) == {
+        "session_id",
+        "config_entry_id",
+        "sequence",
+        "phase",
+        "content_kind",
+        "confidence",
+        "error_code",
+    }
+    assert statuses[-1]["confidence"] == "write_completed"
+    assert statuses[-1]["error_code"] is None
+    assert all("content" not in status and "packets" not in status for status in statuses)
+
+    scene = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.speed is not None)
+    assert scene.speed is not None
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_APPLY_SCENE,
+            "session_id": session_id,
+            "sequence": 2,
+            "config_entry_id": "entry-a",
+            "updated_at": "2026-08-17T00:00:01Z",
+            "scene_id": scene.scene_id,
+            "effect_id": scene.effect_id,
+            "speed_index": scene.speed.default_index,
+            "force": True,
+        }
+    )
+    scene_accepted = None
+    scene_written = None
+    while scene_accepted is None or scene_written is None:
+        message = await client.receive_json()
+        if message.get("type") == "event" and message["event"]["sequence"] == 2:
+            if message["event"]["phase"] == "written":
+                scene_written = message["event"]
+        elif message.get("success") is True and "accepted" in message.get("result", {}):
+            scene_accepted = message
+    assert scene_accepted["result"]["accepted"] is True
+    assert scene_written["content_kind"] == "scene_builtin"
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_CANCEL,
+            "session_id": session_id,
+            "config_entry_id": "entry-a",
+        }
+    )
+    cancelled = await client.receive_json()
+    assert cancelled["result"] == {"cancelled": True}
+    await backend.preview.async_wait_idle("entry-a")
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_CLOSE,
+            "session_id": session_id,
+        }
+    )
+    closed = await client.receive_json()
+    assert closed["result"] == {"closed": True}
+    assert session_id not in backend.preview._sessions
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_CLOSE,
+            "session_id": session_id,
+        }
+    )
+    missing = await client.receive_json()
+    assert missing["error"]["code"] == "not_found"
+
+
+async def test_preview_websocket_bounds_and_close_cleanup(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+    preflight_started = asyncio.Event()
+    release_preflight = asyncio.Event()
+
+    async def preflight(*, timeout):
+        assert timeout == 8
+        preflight_started.set()
+        await release_preflight.wait()
+
+    coordinator = SimpleNamespace(
+        model="H617A",
+        profile=SimpleNamespace(state_readable=False),
+        effect_families={EFFECT_FAMILY_SCENES},
+        _control_lock=asyncio.Lock(),
+        is_on=True,
+        effect=None,
+        diy_code=None,
+        music_mode="off",
+        video_mode="off",
+        async_preview_preflight=AsyncMock(side_effect=preflight),
+        async_preview_write=AsyncMock(),
+    )
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain="ha_govee_led_ble",
+        state=ConfigEntryState.LOADED,
+        runtime_data=coordinator,
+    )
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == "entry-a" else None,
+    )
+    await client.send_json_auto_id({"type": WS_PREVIEW_OPEN})
+    opened = await client.receive_json()
+    session_id = opened["result"]["session_id"]
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_APPLY_SNAPSHOT,
+            "session_id": session_id,
+            "sequence": MAX_PREVIEW_SEQUENCE + 1,
+            "config_entry_id": "entry-a",
+            "updated_at": "2026-08-17T00:00:00Z",
+            "name": "Out of range",
+            "content": effect_content_to_dict(SingleEffect(0, 0, 50, ((255, 0, 0),))),
+        }
+    )
+    bounded = await client.receive_json()
+    assert bounded["error"]["code"] == "invalid_format"
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_APPLY_SNAPSHOT,
+            "session_id": session_id,
+            "sequence": 1,
+            "config_entry_id": "entry-a",
+            "updated_at": "2026-08-17T00:00:00Z",
+            "name": "Close pending",
+            "content": effect_content_to_dict(SingleEffect(0, 0, 50, ((255, 0, 0),))),
+        }
+    )
+    accepted = None
+    while accepted is None:
+        message = await client.receive_json()
+        if message.get("success") is True and "accepted" in message.get("result", {}):
+            accepted = message
+    await preflight_started.wait()
+    await client.close()
+    release_preflight.set()
+    await hass.async_block_till_done()
+    assert session_id not in backend.preview._sessions
+    coordinator.async_preview_write.assert_not_awaited()
+
+
+async def test_preview_open_reports_shutdown(
+    hass: HomeAssistant,
+    hass_ws_client,
+) -> None:
+    backend = await _setup_backend(hass)
+    backend.preview._stopping = True
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id({"type": WS_PREVIEW_OPEN})
+    response = await client.receive_json()
+
+    assert response["error"]["code"] == "shutdown"
+
+
+async def test_preview_commands_reject_another_websocket_owner(
+    hass: HomeAssistant,
+    hass_ws_client,
+) -> None:
+    await _setup_backend(hass)
+    owner = await hass_ws_client(hass)
+    other = await hass_ws_client(hass)
+    await owner.send_json_auto_id({"type": WS_PREVIEW_OPEN})
+    opened = await owner.receive_json()
+    session_id = opened["result"]["session_id"]
+    scene = SCENE_ENTRIES["H617A"][0]
+    commands = [
+        {
+            "type": WS_PREVIEW_CLOSE,
+            "session_id": session_id,
+        },
+        {
+            "type": WS_PREVIEW_CANCEL,
+            "session_id": session_id,
+        },
+        {
+            "type": WS_PREVIEW_SUBSCRIBE,
+            "session_id": session_id,
+        },
+        {
+            "type": WS_PREVIEW_APPLY_SNAPSHOT,
+            "session_id": session_id,
+            "sequence": 1,
+            "config_entry_id": "entry-a",
+            "updated_at": "2026-08-17T00:00:00Z",
+            "name": "Foreign",
+            "content": effect_content_to_dict(SingleEffect(0, 0, 50, ((255, 0, 0),))),
+        },
+        {
+            "type": WS_PREVIEW_APPLY_SCENE,
+            "session_id": session_id,
+            "sequence": 1,
+            "config_entry_id": "entry-a",
+            "updated_at": "2026-08-17T00:00:00Z",
+            "scene_id": scene.scene_id,
+            "effect_id": scene.effect_id,
+        },
+    ]
+
+    for command in commands:
+        await other.send_json_auto_id(command)
+        response = await other.receive_json()
+        assert response["error"]["code"] == "unauthorized"
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (PreviewOwnershipError("owner"), "unauthorized"),
+        (PreviewSessionNotFoundError("session"), "not_found"),
+        (PreviewSequenceError("sequence"), "invalid_sequence"),
+        (PreviewRateLimitError("rate"), "rate_limited"),
+        (PreviewShutdownError("shutdown"), "shutdown"),
+        (EffectValidationError("content"), "invalid_format"),
+        (PreviewError("target config entry is not loaded"), "not_found"),
+        (PreviewError("unsupported"), "invalid_format"),
+        (RuntimeError("unexpected"), "preview_failed"),
+    ],
+)
+def test_preview_error_codes(error: Exception, code: str) -> None:
+    from custom_components.ha_govee_led_ble import effect_websocket
+
+    connection = SimpleNamespace(send_error=Mock())
+    effect_websocket._send_preview_error(connection, 7, error)
+
+    connection.send_error.assert_called_once_with(7, code, str(error))
 
 
 async def test_non_admin_cannot_read_opaque_library_content(
@@ -1153,7 +1526,7 @@ async def test_scene_catalogue_and_native_apply(
         model="H617A",
         profile=SimpleNamespace(segment_count=15),
         effect_families={EFFECT_FAMILY_SCENES},
-        async_set_scene_speed=AsyncMock(),
+        async_apply_native_scene=AsyncMock(),
     )
     entry = SimpleNamespace(
         entry_id="entry-a",
@@ -1162,37 +1535,12 @@ async def test_scene_catalogue_and_native_apply(
         runtime_data=coordinator,
         title="Cupboard",
     )
-    registry_entry = SimpleNamespace(
-        entity_id="light.cupboard",
-        platform="ha_govee_led_ble",
-        disabled_by=None,
-    )
-    service_calls = []
-
-    async def service_call(
-        registry,
-        domain,
-        service,
-        service_data,
-        *,
-        blocking,
-        context,
-        return_response=False,
-    ) -> None:
-        service_calls.append((domain, service, service_data, blocking, context, return_response))
-
     with monkeypatch.context() as context:
         context.setattr(
             hass.config_entries,
             "async_get_entry",
             lambda entry_id: entry if entry_id == "entry-a" else None,
         )
-        context.setattr(
-            "custom_components.ha_govee_led_ble.effect_scenes.er.async_entries_for_config_entry",
-            lambda registry, config_entry_id: [registry_entry],
-        )
-        context.setattr(type(hass.services), "async_call", service_call)
-
         await client.send_json_auto_id(
             {
                 "type": WS_SCENE_CATALOGUE_LIST,
@@ -1257,10 +1605,10 @@ async def test_scene_catalogue_and_native_apply(
     assert applied["success"] is True
     assert applied["result"]["readback"] == "scene_identity_only"
     assert disabled["error"]["code"] == "scene_unavailable"
-    assert len(service_calls) == 1
-    assert service_calls[0][0:2] == ("light", "turn_on")
-    assert service_calls[0][2]["entity_id"] == "light.cupboard"
-    coordinator.async_set_scene_speed.assert_awaited_once_with(scene.speed.default_index)
+    coordinator.async_apply_native_scene.assert_awaited_once_with(
+        resolve_scene("H617A", scene.scene_id, scene.effect_id).key,
+        speed_index=scene.speed.default_index,
+    )
 
 
 async def test_scene_apply_runtime_failure_returns_apply_failed(

@@ -10,6 +10,7 @@ import type {
   HomeAssistant,
   LibraryItem,
   LibrarySnapshot,
+  PreviewStatus,
   SceneCatalogue,
   SceneDetail,
   SceneSummary,
@@ -24,6 +25,7 @@ import {
   decodeEditorApiInfo,
   decodeLibraryItem,
   decodeLibrarySnapshot,
+  decodePreviewStatus,
   decodeSceneCatalogue,
   decodeSceneDetail,
   decodeSceneSummary,
@@ -194,6 +196,70 @@ export class EffectStudioApi {
     return decodeDeployment(resultField(result, "deployment"));
   }
 
+  public async openPreviewSession(): Promise<string> {
+    const result = await this.call("preview/session/open");
+    const sessionId = resultField(result, "session_id");
+    if (typeof sessionId !== "string" || sessionId.length < 1 || sessionId.length > 255) {
+      throw new Error("Malformed Effect Studio server payload: preview session ID is invalid.");
+    }
+    return sessionId;
+  }
+
+  public async closePreviewSession(sessionId: string): Promise<void> {
+    await this.call("preview/session/close", {
+      session_id: sessionId,
+    });
+  }
+
+  public async previewSnapshot(
+    sessionId: string,
+    sequence: number,
+    configEntryId: string,
+    name: string,
+    content: EffectContent,
+    force = false,
+  ): Promise<void> {
+    await this.call("preview/apply_snapshot", {
+      session_id: sessionId,
+      sequence,
+      config_entry_id: configEntryId,
+      name,
+      content: effectContentToWire(content),
+      updated_at: new Date().toISOString(),
+      force,
+    });
+  }
+
+  public async previewScene(
+    sessionId: string,
+    sequence: number,
+    configEntryId: string,
+    scene: SceneSummary,
+    speedIndex: number | null,
+    force = false,
+  ): Promise<void> {
+    await this.call("preview/apply_scene", {
+      session_id: sessionId,
+      sequence,
+      config_entry_id: configEntryId,
+      scene_id: scene.scene_id,
+      effect_id: scene.effect_id,
+      ...(speedIndex === null ? {} : { speed_index: speedIndex }),
+      updated_at: new Date().toISOString(),
+      force,
+    });
+  }
+
+  public async cancelPreview(
+    sessionId: string,
+    configEntryId?: string,
+  ): Promise<void> {
+    await this.call("preview/cancel", {
+      session_id: sessionId,
+      ...(configEntryId ? { config_entry_id: configEntryId } : {}),
+    });
+  }
+
   public async sceneCatalogue(
     configEntryId: string,
   ): Promise<SceneCatalogue> {
@@ -287,6 +353,26 @@ export class EffectStudioApi {
       },
       {
         type: `${PREFIX}/deployment/subscribe`,
+      },
+    );
+  }
+
+  public subscribePreview(
+    sessionId: string,
+    callback: (status: PreviewStatus) => void,
+    onError?: (error: Error) => void,
+  ): Promise<() => void> {
+    return this.hass.connection.subscribeMessage(
+      (status) => {
+        try {
+          callback(decodePreviewStatus(status));
+        } catch (error) {
+          onError?.(asError(error));
+        }
+      },
+      {
+        type: `${PREFIX}/preview/subscribe`,
+        session_id: sessionId,
       },
     );
   }

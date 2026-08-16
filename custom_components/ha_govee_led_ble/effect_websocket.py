@@ -44,6 +44,15 @@ from .effect_limits import (
     validate_json_document,
     validate_timestamp,
 )
+from .effect_preview import (
+    PreviewError,
+    PreviewOwnershipError,
+    PreviewRateLimitError,
+    PreviewSequenceError,
+    PreviewSessionNotFoundError,
+    PreviewShutdownError,
+    PreviewStatus,
+)
 from .effect_scenes import (
     SceneUnavailableError,
     async_apply_scene,
@@ -81,12 +90,24 @@ WS_APPLY_SNAPSHOT = f"{DOMAIN}/editor/apply_snapshot"
 WS_SCENE_CATALOGUE_LIST = f"{DOMAIN}/editor/scene/catalogue/list"
 WS_SCENE_CATALOGUE_GET = f"{DOMAIN}/editor/scene/catalogue/get"
 WS_SCENE_APPLY = f"{DOMAIN}/editor/scene/apply"
+WS_PREVIEW_OPEN = f"{DOMAIN}/editor/preview/session/open"
+WS_PREVIEW_CLOSE = f"{DOMAIN}/editor/preview/session/close"
+WS_PREVIEW_APPLY_SNAPSHOT = f"{DOMAIN}/editor/preview/apply_snapshot"
+WS_PREVIEW_APPLY_SCENE = f"{DOMAIN}/editor/preview/apply_scene"
+WS_PREVIEW_CANCEL = f"{DOMAIN}/editor/preview/cancel"
+WS_PREVIEW_SUBSCRIBE = f"{DOMAIN}/editor/preview/subscribe"
 BACKEND_DATA_KEY = "effect_backend"
 
 
 def _strict_int(value: object) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise vol.Invalid("value must be an integer")
+    return value
+
+
+def _strict_bool(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise vol.Invalid("value must be a boolean")
     return value
 
 
@@ -138,6 +159,7 @@ SCENE_ID = vol.All(_strict_int, vol.Range(min=0, max=0xFFFF))
 SPEED_INDEX = vol.All(_strict_int, vol.Range(min=0, max=0xFF))
 EFFECT_CONTENT = vol.All(dict, _bounded_effect_content)
 PREFERENCES = vol.All(dict, _bounded_preferences)
+STRICT_BOOL = vol.All(_strict_bool)
 
 
 @websocket_command({vol.Required("type"): WS_INFO})
@@ -309,6 +331,204 @@ async def ws_scene_apply(
             "readback": "scene_identity_only",
         },
     )
+
+
+@websocket_command({vol.Required("type"): WS_PREVIEW_OPEN})
+@require_admin
+@callback
+def ws_preview_open(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    backend = _backend(hass)
+
+    try:
+        session_id = backend.preview.open_session(
+            user_id=connection.user.id,
+            owner=connection,
+        )
+    except PreviewShutdownError as exc:
+        connection.send_error(msg["id"], "shutdown", str(exc))
+        return
+
+    @callback
+    def close_session() -> None:
+        hass.async_create_task(
+            _async_close_preview_session(backend, session_id, connection),
+            name=f"{DOMAIN} close preview session",
+        )
+
+    connection.subscriptions[msg["id"]] = close_session
+    connection.send_result(msg["id"], {"session_id": session_id})
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_PREVIEW_CLOSE,
+        vol.Required("session_id"): UUID_TEXT,
+    }
+)
+@require_admin
+@async_response
+async def ws_preview_close(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    try:
+        await _backend(hass).preview.async_close_session(
+            msg["session_id"],
+            connection,
+        )
+    except PreviewOwnershipError as exc:
+        connection.send_error(msg["id"], "unauthorized", str(exc))
+        return
+    except PreviewSessionNotFoundError as exc:
+        connection.send_error(msg["id"], "not_found", str(exc))
+        return
+    connection.send_result(msg["id"], {"closed": True})
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_PREVIEW_APPLY_SNAPSHOT,
+        vol.Required("session_id"): UUID_TEXT,
+        vol.Required("sequence"): POSITIVE_REVISION,
+        vol.Required("config_entry_id"): IDENTIFIER,
+        vol.Required("updated_at"): TIMESTAMP,
+        vol.Required("name"): EFFECT_NAME,
+        vol.Required("content"): EFFECT_CONTENT,
+        vol.Optional("force", default=False): STRICT_BOOL,
+    }
+)
+@require_admin
+@async_response
+async def ws_preview_apply_snapshot(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    backend = _backend(hass)
+    try:
+        backend.preview.require_owner(msg["session_id"], connection)
+        item = backend.application.new_authored_item(
+            name=msg["name"],
+            content=msg["content"],
+        )
+        acceptance = await backend.preview.async_queue_snapshot(
+            session_id=msg["session_id"],
+            owner=connection,
+            config_entry_id=msg["config_entry_id"],
+            sequence=msg["sequence"],
+            updated_at=msg["updated_at"],
+            item=item,
+            reassert=msg["force"],
+        )
+    except Exception as exc:
+        _send_preview_error(connection, msg["id"], exc)
+        return
+    connection.send_result(msg["id"], acceptance.to_dict())
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_PREVIEW_APPLY_SCENE,
+        vol.Required("session_id"): UUID_TEXT,
+        vol.Required("sequence"): POSITIVE_REVISION,
+        vol.Required("config_entry_id"): IDENTIFIER,
+        vol.Required("updated_at"): TIMESTAMP,
+        vol.Required("scene_id"): SCENE_ID,
+        vol.Required("effect_id"): SCENE_ID,
+        vol.Optional("speed_index"): SPEED_INDEX,
+        vol.Optional("force", default=False): STRICT_BOOL,
+    }
+)
+@require_admin
+@async_response
+async def ws_preview_apply_scene(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    backend = _backend(hass)
+    try:
+        backend.preview.require_owner(msg["session_id"], connection)
+        acceptance = await backend.preview.async_queue_scene(
+            session_id=msg["session_id"],
+            owner=connection,
+            config_entry_id=msg["config_entry_id"],
+            sequence=msg["sequence"],
+            updated_at=msg["updated_at"],
+            scene_id=msg["scene_id"],
+            effect_id=msg["effect_id"],
+            speed_index=msg.get("speed_index"),
+        )
+    except Exception as exc:
+        _send_preview_error(connection, msg["id"], exc)
+        return
+    connection.send_result(msg["id"], acceptance.to_dict())
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_PREVIEW_CANCEL,
+        vol.Required("session_id"): UUID_TEXT,
+        vol.Optional("config_entry_id"): IDENTIFIER,
+    }
+)
+@require_admin
+@async_response
+async def ws_preview_cancel(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    try:
+        await _backend(hass).preview.async_cancel(
+            session_id=msg["session_id"],
+            owner=connection,
+            config_entry_id=msg.get("config_entry_id"),
+        )
+    except PreviewOwnershipError as exc:
+        connection.send_error(msg["id"], "unauthorized", str(exc))
+        return
+    except PreviewSessionNotFoundError as exc:
+        connection.send_error(msg["id"], "not_found", str(exc))
+        return
+    connection.send_result(msg["id"], {"cancelled": True})
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_PREVIEW_SUBSCRIBE,
+        vol.Required("session_id"): UUID_TEXT,
+    }
+)
+@require_admin
+@callback
+def ws_preview_subscribe(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    backend = _backend(hass)
+
+    @callback
+    def forward(status: PreviewStatus) -> None:
+        connection.send_event(msg["id"], status.to_dict())
+
+    try:
+        connection.subscriptions[msg["id"]] = backend.preview.subscribe(
+            session_id=msg["session_id"],
+            owner=connection,
+            subscription_id=msg["id"],
+            listener=forward,
+        )
+    except Exception as exc:
+        _send_preview_error(connection, msg["id"], exc)
+        return
+    connection.send_result(msg["id"])
 
 
 @websocket_command({vol.Required("type"): WS_LIBRARY_LIST})
@@ -861,6 +1081,12 @@ def async_register_effect_websocket(
     websocket_api.async_register_command(hass, ws_scene_catalogue_list)
     websocket_api.async_register_command(hass, ws_scene_catalogue_get)
     websocket_api.async_register_command(hass, ws_scene_apply)
+    websocket_api.async_register_command(hass, ws_preview_open)
+    websocket_api.async_register_command(hass, ws_preview_close)
+    websocket_api.async_register_command(hass, ws_preview_apply_snapshot)
+    websocket_api.async_register_command(hass, ws_preview_apply_scene)
+    websocket_api.async_register_command(hass, ws_preview_cancel)
+    websocket_api.async_register_command(hass, ws_preview_subscribe)
     websocket_api.async_register_command(hass, ws_library_list)
     websocket_api.async_register_command(hass, ws_library_get)
     websocket_api.async_register_command(hass, ws_library_create)
@@ -882,6 +1108,41 @@ def async_register_effect_websocket(
 
 def _backend(hass: HomeAssistant) -> EffectBackend:
     return cast(EffectBackend, hass.data[DOMAIN][BACKEND_DATA_KEY])
+
+
+def _send_preview_error(
+    connection: ActiveConnection,
+    message_id: int,
+    error: Exception,
+) -> None:
+    if isinstance(error, PreviewOwnershipError):
+        code = "unauthorized"
+    elif isinstance(error, PreviewSessionNotFoundError):
+        code = "not_found"
+    elif isinstance(error, PreviewSequenceError):
+        code = "invalid_sequence"
+    elif isinstance(error, PreviewRateLimitError):
+        code = "rate_limited"
+    elif isinstance(error, PreviewShutdownError):
+        code = "shutdown"
+    elif isinstance(error, EffectValidationError):
+        code = "invalid_format"
+    elif isinstance(error, PreviewError):
+        code = "not_found" if "not loaded" in str(error) or "unloading" in str(error) else "invalid_format"
+    else:
+        code = "preview_failed"
+    connection.send_error(message_id, code, str(error))
+
+
+async def _async_close_preview_session(
+    backend: EffectBackend,
+    session_id: str,
+    connection: ActiveConnection,
+) -> None:
+    try:
+        await backend.preview.async_close_session(session_id, connection)
+    except PreviewSessionNotFoundError:
+        return
 
 
 def _item_summary(item: LibraryItem) -> dict[str, Any]:

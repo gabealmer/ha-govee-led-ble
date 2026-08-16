@@ -4,6 +4,7 @@ import { property, state } from "lit/decorators.js";
 import type { GoveeColourPicker } from "./colour-picker";
 import { recentColour } from "./colour-picker";
 import "./colour-picker";
+import type { LivePreviewInteraction } from "./live-preview-controller";
 import "./reorderable-strip";
 import type {
   GoveeReorderableStrip,
@@ -164,7 +165,7 @@ export class GoveePaletteEditor extends LitElement {
         .colour=${colour}
         .disabled=${this.disabled}
         @colour-changing=${(event: CustomEvent<{ colour: RGB }>) =>
-          this.updateColour(index, event.detail.colour)}
+          this.updateColour(index, event.detail.colour, "changing")}
         @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
           this.commitColour(index, event.detail.colour)}
       ></govee-colour-picker>
@@ -172,7 +173,7 @@ export class GoveePaletteEditor extends LitElement {
   }
 
   private commitColour(index: number, colour: RGB): void {
-    this.updateColour(index, colour);
+    this.updateColour(index, colour, "committed");
     if (this.persistentPicker) {
       return;
     }
@@ -180,10 +181,14 @@ export class GoveePaletteEditor extends LitElement {
     this.focusSwatchAfterUpdate(index);
   }
 
-  private updateColour(index: number, colour: RGB): void {
+  private updateColour(
+    index: number,
+    colour: RGB,
+    interaction: LivePreviewInteraction,
+  ): void {
     const palette = clonePalette(this.palette);
     palette[index] = [...colour];
-    this.emitPalette(palette);
+    this.emitPalette(palette, interaction);
   }
 
   private addColour(): void {
@@ -201,7 +206,7 @@ export class GoveePaletteEditor extends LitElement {
       this.editingIndex = index;
       this.focusPickerAfterUpdate();
     }
-    this.emitPalette(palette);
+    this.emitPalette(palette, "committed");
   }
 
   private removeColour(index: number): void {
@@ -213,7 +218,7 @@ export class GoveePaletteEditor extends LitElement {
       .map((colour) => [...colour] as RGB);
     const focusIndex = Math.min(index, palette.length - 1);
     this.editingIndex = undefined;
-    this.emitPalette(palette);
+    this.emitPalette(palette, "committed");
     this.focusSwatchAfterUpdate(focusIndex);
   }
 
@@ -234,7 +239,7 @@ export class GoveePaletteEditor extends LitElement {
         this.selectColour(selectedIndex, palette[selectedIndex]);
       }
     }
-    this.emitPalette(palette);
+    this.emitPalette(palette, "committed");
   }
 
   private focusSwatchAfterUpdate(index: number): void {
@@ -310,11 +315,17 @@ export class GoveePaletteEditor extends LitElement {
     );
   }
 
-  private emitPalette(palette: RGB[]): void {
+  private emitPalette(
+    palette: RGB[],
+    interaction: LivePreviewInteraction,
+  ): void {
     this.palette = palette;
     this.dispatchEvent(
-      new CustomEvent<{ palette: RGB[] }>("palette-changed", {
-        detail: { palette },
+      new CustomEvent<{
+        palette: RGB[];
+        interaction: LivePreviewInteraction;
+      }>("palette-changed", {
+        detail: { palette, interaction },
         bubbles: true,
         composed: true,
       }),

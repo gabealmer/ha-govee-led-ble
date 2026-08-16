@@ -44,6 +44,11 @@ import type {
   EditableEffectContent,
   NewEffectKind,
 } from "./effect-editor-model";
+import {
+  LivePreviewController,
+  type LivePreviewInteraction,
+  type LivePreviewRequest,
+} from "./live-preview-controller";
 import "./music-profile-editor";
 import "./palette-editor";
 import "./painted-segment-editor";
@@ -52,7 +57,11 @@ import {
   cloneMusicProfileContent,
   cloneVideoProfileContent,
 } from "./profile-model";
-import type { LibraryItemDeleteRequest } from "./scene-browser";
+import type {
+  GoveeSceneBrowser,
+  LibraryItemDeleteRequest,
+  ScenePreviewRequest,
+} from "./scene-browser";
 import "./scene-browser";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
@@ -61,7 +70,6 @@ import type {
   AdvancedContent,
   CustomEffectCatalogue,
   CustomEffectContent,
-  DeploymentRecord,
   DeviceCapabilities,
   DiyEffectFamily,
   EffectContent,
@@ -77,12 +85,12 @@ import type {
   PaletteDiyEffectContent,
   PaintedContent,
   PanelConfig,
+  PreviewStatus,
   RGB,
   SpecialDiyContent,
   VideoProfileContent,
   WorkshopContent,
 } from "./types";
-import { IN_FLIGHT_DEPLOYMENT_PHASES } from "./types";
 import {
   compareLabels,
   errorCode,
@@ -92,6 +100,20 @@ import { isCompatibleEditorInfo } from "./validation";
 
 type StudioSection = "video" | "scenes" | "custom";
 type DeleteCandidate = Pick<LibrarySummary, "id" | "revision" | "name">;
+type PanelPreviewRequest = LivePreviewRequest &
+  (
+    | {
+        kind: "snapshot";
+        configEntryId: string;
+        name: string;
+        content: EffectContent;
+      }
+    | {
+        kind: "scene";
+        configEntryId: string;
+        scene: ScenePreviewRequest & { kind: "scene" };
+      }
+  );
 type CustomEffectListEntry =
   | {
       kind: "paint";
@@ -231,33 +253,39 @@ export class GoveeLedEffectStudio extends LitElement {
   private saveNameError?: string;
 
   @state()
-  private applying = false;
-
-  @state()
   private deleteCandidate?: DeleteCandidate;
 
   @state()
   private deletingItemId?: string;
 
   @state()
-  private deployments: DeploymentRecord[] = [];
+  private liveApplyEnabled = true;
 
   @state()
-  private activeOperationId?: string;
+  private previewStatus?: PreviewStatus;
 
   private api?: EffectStudioApi;
+  private previewSessionId?: string;
+  private previewSequence = 0;
   private savedBaseline?: string;
   private editorTransitionEpoch = 0;
   private unsubscribeLibrary?: () => void;
-  private unsubscribeDeployments?: () => void;
+  private unsubscribePreview?: () => void;
   private loadEpoch = 0;
-  private deploymentRevision = -1;
   private deleteReturnFocus?: HTMLElement;
   private saveNameReturnFocus?: HTMLElement;
   private modalScrollLock?: {
     bodyOverflow: string;
     documentOverflow: string;
   };
+  private readonly livePreview = new LivePreviewController<PanelPreviewRequest>({
+    submit: (request) => {
+      void this.submitPreview(request);
+    },
+    cancel: () => {
+      void this.cancelPreview();
+    },
+  });
 
   private get isAdmin(): boolean {
     return this.hass?.user?.is_admin === true;
@@ -309,7 +337,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return this.savedBaseline !== serialiseEditable(this.name, this.content);
   }
 
-  private get applyCapability() {
+  private get previewCapability() {
     if (!isDeployableEffectContent(this.content)) {
       return undefined;
     }
@@ -340,15 +368,14 @@ export class GoveeLedEffectStudio extends LitElement {
     }
   }
 
-  private get canApply(): boolean {
+  private get canPreview(): boolean {
     return (
       isDeployableEffectContent(this.content) &&
       this.isAdmin &&
-      !this.applying &&
-      !this.saving &&
       !this.deletingCurrentItem &&
-      this.name.trim().length > 0 &&
-      this.applyCapability === "supported"
+      this.previewCapability === "supported" &&
+      this.selectedDevice !== undefined &&
+      this.previewSessionId !== undefined
     );
   }
 
@@ -357,16 +384,6 @@ export class GoveeLedEffectStudio extends LitElement {
       this.deletingItemId !== undefined &&
       this.currentItem?.id === this.deletingItemId
     );
-  }
-
-  private get activeDeployment(): DeploymentRecord | undefined {
-    const selected = this.deployments.find(
-      (deployment) => deployment.operation_id === this.activeOperationId,
-    );
-    if (selected || !this.applying) {
-      return selected;
-    }
-    return this.latestDeployment(IN_FLIGHT_DEPLOYMENT_PHASES);
   }
 
   public connectedCallback(): void {
@@ -382,6 +399,7 @@ export class GoveeLedEffectStudio extends LitElement {
     this.loadEpoch += 1;
     this.beginEditorTransition();
     this.stopSubscriptions();
+    this.livePreview.dispose();
     this.api = undefined;
   }
 
@@ -403,6 +421,8 @@ export class GoveeLedEffectStudio extends LitElement {
 
     return html`
       <h1 class="visually-hidden">Effect Studio</h1>
+
+      ${this.renderLiveApplyControl()}
 
       ${this.notice
         ? html`<div class="notice" role="status">${this.notice}</div>`
@@ -433,6 +453,7 @@ export class GoveeLedEffectStudio extends LitElement {
           @library-item-saved=${this.sceneLibraryItemSaved}
           @library-item-delete-requested=${this.sceneLibraryItemDeleteRequested}
           @scene-edit-selected=${this.sceneTemplateSelected}
+          @scene-preview-requested=${this.scenePreviewRequested}
         ></govee-scene-browser>
         ${this.section === "video" ? this.renderVideo() : nothing}
         ${this.section === "custom" ? this.renderCustomEffects() : nothing}
@@ -465,6 +486,59 @@ export class GoveeLedEffectStudio extends LitElement {
               `
             : nothing}
         </select>
+      </div>
+    `;
+  }
+
+  private renderLiveApplyControl() {
+    if (!this.isAdmin) {
+      return nothing;
+    }
+    const phase = this.previewStatus?.phase;
+    const pending = phase === "queued" || phase === "writing";
+    const warning = phase === "failed";
+    const current =
+      phase === "written" ||
+      phase === "confirmed" ||
+      phase === "unconfirmed";
+    const status = pending
+      ? "Applying changes"
+      : warning
+        ? "The latest change could not reach the light"
+        : current
+          ? phase === "unconfirmed"
+            ? "Changes sent; readback is unavailable"
+            : "Changes applied"
+          : this.liveApplyEnabled
+            ? "Live apply is ready"
+            : "Live apply is off";
+    return html`
+      <div class="live-apply-toolbar">
+        <button
+          class="live-apply-toggle"
+          type="button"
+          role="switch"
+          aria-checked=${this.liveApplyEnabled}
+          @click=${this.toggleLiveApply}
+        >
+          <span class="live-apply-track" aria-hidden="true">
+            <span class="live-apply-thumb"></span>
+          </span>
+          <span>Live apply</span>
+        </button>
+        <span
+          class="live-apply-status ${pending
+            ? "pending"
+            : warning
+              ? "warning"
+              : current
+                ? "current"
+                : "idle"}"
+          role="status"
+          aria-label=${status}
+          title=${status}
+        ></span>
+        <span class="visually-hidden" aria-live="polite">${status}</span>
       </div>
     `;
   }
@@ -640,14 +714,17 @@ export class GoveeLedEffectStudio extends LitElement {
         .disabled=${this.editorReadOnly}
         .showModeSelector=${!this.templateSourceLabel}
         @content-changed=${(
-          event: CustomEvent<{ content: VideoProfileContent }>,
+          event: CustomEvent<{
+            content: VideoProfileContent;
+            interaction?: LivePreviewInteraction;
+          }>,
         ) => {
-          this.content = cloneVideoProfileContent(event.detail.content);
+          this.installEditedContent(
+            cloneVideoProfileContent(event.detail.content),
+            event.detail.interaction,
+          );
         }}
       ></govee-video-profile-editor>
-      ${this.activeDeployment
-        ? this.renderDeployment(this.activeDeployment)
-        : nothing}
     `;
   }
 
@@ -663,28 +740,22 @@ export class GoveeLedEffectStudio extends LitElement {
         .disabled=${this.editorReadOnly}
         .showModeSelector=${!this.templateSourceLabel}
         @content-changed=${(
-          event: CustomEvent<{ content: MusicProfileContent }>,
+          event: CustomEvent<{
+            content: MusicProfileContent;
+            interaction?: LivePreviewInteraction;
+          }>,
         ) => {
-          this.content = cloneMusicProfileContent(event.detail.content);
+          this.installEditedContent(
+            cloneMusicProfileContent(event.detail.content),
+            event.detail.interaction,
+          );
         }}
       ></govee-music-profile-editor>
-      ${this.activeDeployment
-        ? this.renderDeployment(this.activeDeployment)
-        : nothing}
     `;
   }
 
   private renderProfileHeading() {
-    return this.renderEditorHeading(html`
-      <button
-        class="primary"
-        type="button"
-        ?disabled=${!this.canApply}
-        @click=${this.apply}
-      >
-        ${this.applying ? "Applying..." : "Apply"}
-      </button>
-    `);
+    return this.renderEditorHeading();
   }
 
   private get customEffectEntries(): CustomEffectListEntry[] {
@@ -1217,7 +1288,6 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     const layeredScene = this.content.kind === "scene_layered";
-    const deployment = this.activeDeployment;
     return html`
       ${layeredScene
         ? html`
@@ -1230,18 +1300,7 @@ export class GoveeLedEffectStudio extends LitElement {
             </button>
           `
         : nothing}
-      ${this.renderEditorHeading(
-        html`
-          <button
-            class="primary"
-            type="button"
-            ?disabled=${!this.canApply}
-            @click=${this.apply}
-          >
-            ${this.applying ? "Applying..." : "Apply"}
-          </button>
-        `,
-      )}
+      ${this.renderEditorHeading()}
 
       ${!this.isAdmin
         ? html`
@@ -1257,7 +1316,10 @@ export class GoveeLedEffectStudio extends LitElement {
         .disabled=${!this.isAdmin}
         .segmentCount=${this.selectedDevice?.segment_count ?? 15}
         @content-changed=${(
-          event: CustomEvent<{ content: AdvancedContent }>,
+          event: CustomEvent<{
+            content: AdvancedContent;
+            interaction?: LivePreviewInteraction;
+          }>,
         ) => {
           if (
             !isAdvancedEditableContent(this.content) ||
@@ -1265,25 +1327,27 @@ export class GoveeLedEffectStudio extends LitElement {
           ) {
             return;
           }
-          this.content = updateAdvancedEditorContent(
-            this.content,
-            event.detail.content,
+          this.installEditedContent(
+            updateAdvancedEditorContent(
+              this.content,
+              event.detail.content,
+            ),
+            event.detail.interaction,
           );
         }}
       ></govee-advanced-effect-editor>
-      ${deployment ? this.renderDeployment(deployment) : nothing}
     `;
   }
 
   private renderOpaqueEditor(content: OpaqueContent) {
     return html`
-      ${this.renderEditorHeading(
-        html`<button class="primary" type="button" disabled>Apply</button>`,
-        { save: false, title: html`<h2>${this.name}</h2>` },
-      )}
+      ${this.renderEditorHeading({
+        save: false,
+        title: html`<h2>${this.name}</h2>`,
+      })}
       <div class="feedback read-only" role="note">
         This effect definition can be inspected, but this editor cannot change,
-        save or apply it.
+        save or preview it.
       </div>
       <section class="card opaque-content">
         <h3 class="section-title">Source kind</h3>
@@ -1302,24 +1366,14 @@ export class GoveeLedEffectStudio extends LitElement {
     if (this.content.kind !== "h617a_painted") {
       return nothing;
     }
-    const deployment = this.activeDeployment;
     return html`
-      ${this.renderEditorHeading(html`
-        <button
-          class="primary"
-          type="button"
-          ?disabled=${!this.canApply}
-          @click=${this.apply}
-        >
-          ${this.applying ? "Applying..." : "Apply"}
-        </button>
-      `)}
+      ${this.renderEditorHeading()}
 
       ${!this.isAdmin
         ? html`
             <div class="feedback read-only" role="note">
               You can inspect shared effects. An administrator is required to
-              edit or apply them.
+              edit them.
             </div>
           `
         : nothing}
@@ -1330,8 +1384,15 @@ export class GoveeLedEffectStudio extends LitElement {
         .colours=${coloursForSegments(this.content)}
         .disabled=${this.editorReadOnly}
         @segment-selected=${(
-          event: CustomEvent<{ index: number }>,
-        ) => this.setSegmentColour(event.detail.index)}
+          event: CustomEvent<{
+            index: number;
+            interaction: LivePreviewInteraction;
+          }>,
+        ) =>
+          this.setSegmentColour(
+            event.detail.index,
+            event.detail.interaction,
+          )}
       ></govee-painted-segment-editor>
 
       <div class="controls">
@@ -1403,8 +1464,6 @@ export class GoveeLedEffectStudio extends LitElement {
           </div>
         </section>
       </div>
-
-      ${deployment ? this.renderDeployment(deployment) : nothing}
     `;
   }
 
@@ -1418,18 +1477,8 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     const content = this.content;
-    const deployment = this.activeDeployment;
     return html`
-      ${this.renderEditorHeading(html`
-        <button
-          class="primary"
-          type="button"
-          ?disabled=${!this.canApply}
-          @click=${this.apply}
-        >
-          ${this.applying ? "Applying..." : "Apply"}
-        </button>
-      `)}
+      ${this.renderEditorHeading()}
 
       ${!this.isAdmin
         ? html`
@@ -1452,18 +1501,18 @@ export class GoveeLedEffectStudio extends LitElement {
               | CustomEffectContent
               | PaletteDiyEffectContent
               | SpecialDiyContent;
+            interaction?: LivePreviewInteraction;
           }>,
         ) => {
-          this.content =
+          const content =
             event.detail.content.kind === "palette_diy"
               ? clonePaletteDiy(event.detail.content)
               : event.detail.content.kind === "special_diy"
                 ? cloneSpecialDiy(event.detail.content)
               : cloneCustomEffect(event.detail.content);
+          this.installEditedContent(content, event.detail.interaction);
         }}
       ></govee-custom-effect-editor>
-
-      ${deployment ? this.renderDeployment(deployment) : nothing}
     `;
   }
 
@@ -1609,7 +1658,6 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderEditorHeading(
-    applyAction: unknown,
     options: { save?: boolean; title?: unknown } = {},
   ) {
     return html`
@@ -1617,7 +1665,6 @@ export class GoveeLedEffectStudio extends LitElement {
         <div>${options.title ?? this.renderEffectName()}</div>
         <div class="actions">
           ${options.save === false ? nothing : this.renderSaveAction()}
-          ${applyAction}
           ${this.renderEditorDeleteButton()}
         </div>
       </div>
@@ -1632,7 +1679,6 @@ export class GoveeLedEffectStudio extends LitElement {
           type="button"
           ?disabled=${!this.isAdmin ||
           this.saving ||
-          this.applying ||
           this.deletingCurrentItem}
           @click=${this.editTemplate}
         >
@@ -1651,7 +1697,6 @@ export class GoveeLedEffectStudio extends LitElement {
         ?disabled=${!this.isAdmin ||
         !this.dirty ||
         this.saving ||
-        this.applying ||
         this.deletingCurrentItem}
         @click=${this.requestSave}
       >
@@ -1721,64 +1766,6 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
-  private renderDeployment(deployment: DeploymentRecord) {
-    if (deployment.phase === "confirmed" || deployment.phase === "applied") {
-      return nothing;
-    }
-    const deviceName =
-      this.devices.find(
-        (device) => device.config_entry_id === deployment.config_entry_id,
-      )?.display_name ?? "device";
-    let message: string;
-    switch (deployment.phase) {
-      case "compiling":
-      case "pending":
-        message = `Preparing to apply to ${deviceName}.`;
-        break;
-      case "uploading":
-        message = `Applying to ${deviceName}: ${deployment.progress_current} of ${deployment.progress_total}.`;
-        break;
-      case "activating":
-        message = `Activating the selected effect on ${deviceName}.`;
-        break;
-      case "verifying":
-        message = `Checking the selected effect on ${deviceName}.`;
-        break;
-      case "uncertain":
-        message =
-          deployment.error_code === "effect_content_readback_unproven"
-            ? `${deviceName} reported the selected H6199 user-effect slot, but the uploaded effect content cannot be read back. The result remains uncertain.`
-            : deployment.error_code === "activation_readback_unproven"
-              ? `The H6199 effect upload was sent to ${deviceName}, but activation and readback remain unproven. The result is uncertain.`
-              : `The final state of ${deviceName} is uncertain. The requested settings could not be confirmed.`;
-        break;
-      case "recovering":
-        message = `Restoring the previous state on ${deviceName} after the apply failed.`;
-        break;
-      case "unknown":
-        message = `Applied to ${deviceName}, but the requested settings could not be confirmed.`;
-        break;
-      case "interrupted":
-        message = `Apply to ${deviceName} was interrupted by a Home Assistant restart.`;
-        break;
-      case "failed":
-        message = `Apply to ${deviceName} failed.`;
-        break;
-    }
-    return html`
-      <div
-        class="feedback deployment ${deployment.phase}"
-        role=${["failed", "uncertain", "interrupted", "unknown"].includes(
-          deployment.phase,
-        )
-          ? "alert"
-          : "status"}
-      >
-        ${message}
-      </div>
-    `;
-  }
-
   private async selectSection(section: StudioSection): Promise<void> {
     const transitionEpoch = this.beginEditorTransition();
     if (section === this.section) {
@@ -1838,7 +1825,7 @@ export class GoveeLedEffectStudio extends LitElement {
     this.loadEpoch = loadEpoch;
     this.loading = true;
     this.error = undefined;
-    this.deploymentRevision = -1;
+    this.previewStatus = undefined;
     const api = new EffectStudioApi(this.hass!);
     this.api = api;
     try {
@@ -1882,26 +1869,31 @@ export class GoveeLedEffectStudio extends LitElement {
       }
       this.unsubscribeLibrary = unsubscribeLibrary;
       if (this.isAdmin) {
-        const unsubscribeDeployments = await api.subscribeDeployments(
-          (snapshot) => {
-            if (snapshot.revision < this.deploymentRevision) {
+        const sessionId = await api.openPreviewSession();
+        if (!this.loadIsCurrent(loadEpoch, api) || this.error) {
+          return;
+        }
+        this.previewSessionId = sessionId;
+        const unsubscribePreview = await api.subscribePreview(
+          sessionId,
+          (status) => {
+            if (
+              status.session_id !== this.previewSessionId ||
+              status.config_entry_id !== this.selectedDeviceId ||
+              (this.previewStatus &&
+                status.sequence < this.previewStatus.sequence)
+            ) {
               return;
             }
-            this.deploymentRevision = snapshot.revision;
-            this.deployments = snapshot.deployments;
-            if (!this.activeOperationId) {
-              this.activeOperationId = this.latestDeployment(
-                IN_FLIGHT_DEPLOYMENT_PHASES,
-              )?.operation_id;
-            }
+            this.previewStatus = status;
           },
           (error) => this.subscriptionFailed(error, loadEpoch, api),
         );
         if (!this.loadIsCurrent(loadEpoch, api) || this.error) {
-          unsubscribeDeployments();
+          unsubscribePreview();
           return;
         }
-        this.unsubscribeDeployments = unsubscribeDeployments;
+        this.unsubscribePreview = unsubscribePreview;
       }
 
       const firstCustom = this.preferredLibraryEffect(library.items);
@@ -2044,10 +2036,22 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private stopSubscriptions(): void {
+    this.livePreview.reset();
+    this.previewStatus = undefined;
+    const api = this.api;
+    const sessionId = this.previewSessionId;
     this.unsubscribeLibrary?.();
-    this.unsubscribeDeployments?.();
+    this.unsubscribePreview?.();
     this.unsubscribeLibrary = undefined;
-    this.unsubscribeDeployments = undefined;
+    this.unsubscribePreview = undefined;
+    this.previewSessionId = undefined;
+    if (api && sessionId) {
+      void api.closePreviewSession(sessionId).catch((error) => {
+        if (errorCode(error) !== "not_found") {
+          console.warn("Could not close Effect Studio preview session", error);
+        }
+      });
+    }
   }
 
   private deviceIdFromPath(): string | undefined {
@@ -2157,6 +2161,8 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private beginEditorTransition(): number {
     this.editorTransitionEpoch += 1;
+    this.livePreview.reset();
+    this.previewStatus = undefined;
     this.saveNameDialogOpen = false;
     this.saveNameError = undefined;
     this.saveNameReturnFocus = undefined;
@@ -2170,10 +2176,6 @@ export class GoveeLedEffectStudio extends LitElement {
   private deviceChanged(event: Event): void {
     const transitionEpoch = this.beginEditorTransition();
     this.selectedDeviceId = (event.target as HTMLSelectElement).value;
-    this.activeOperationId = undefined;
-    this.activeOperationId = this.latestDeployment(
-      IN_FLIGHT_DEPLOYMENT_PHASES,
-    )?.operation_id;
     this.notice = undefined;
     if (this.section === "video" && !this.videoAvailable) {
       this.section = "scenes";
@@ -2221,7 +2223,10 @@ export class GoveeLedEffectStudio extends LitElement {
     }
   }
 
-  private switchCustomMode(kind: CustomEffectContent["kind"]): void {
+  private switchCustomMode(
+    kind: CustomEffectContent["kind"],
+    schedulePreview = true,
+  ): void {
     if (
       !this.isAdmin ||
       !this.customCatalogue ||
@@ -2308,7 +2313,11 @@ export class GoveeLedEffectStudio extends LitElement {
     } else {
       return;
     }
-    this.content = next;
+    if (schedulePreview) {
+      this.installEditedContent(next);
+    } else {
+      this.content = next;
+    }
     if (/^New (Paint|Painted|Single|Multi) effect$/.test(this.name)) {
       this.name = `New ${customKindLabel(kind)} effect`;
     }
@@ -2371,8 +2380,7 @@ export class GoveeLedEffectStudio extends LitElement {
         class="danger"
         type="button"
         ?disabled=${this.deletingItemId !== undefined ||
-        this.saving ||
-        this.applying}
+        this.saving}
         @click=${(event: Event) =>
           this.requestDelete(
             {
@@ -2396,8 +2404,7 @@ export class GoveeLedEffectStudio extends LitElement {
       !this.api ||
       !this.isAdmin ||
       this.deletingItemId !== undefined ||
-      this.saving ||
-      this.applying
+      this.saving
     ) {
       return;
     }
@@ -2562,7 +2569,6 @@ export class GoveeLedEffectStudio extends LitElement {
       !this.isAdmin ||
       !this.dirty ||
       this.saving ||
-      this.applying ||
       this.deletingCurrentItem
     ) {
       return;
@@ -2703,7 +2709,6 @@ export class GoveeLedEffectStudio extends LitElement {
     if (
       !this.isAdmin ||
       this.saving ||
-      this.applying ||
       this.deletingCurrentItem
     ) {
       return false;
@@ -2751,7 +2756,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private backgroundChanged(event: CustomEvent<{ colour: RGB }>): void {
     this.updateContent({
       background: [...event.detail.colour],
-    });
+    }, event.type === "colour-changing" ? "changing" : "committed");
   }
 
   private singleEffectChanged(event: Event): void {
@@ -2787,7 +2792,7 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     if (this.content.kind === "h617a_painted") {
-      this.switchCustomMode("h617a_single");
+      this.switchCustomMode("h617a_single", false);
     }
     if (
       this.content.kind !== "h617a_single" &&
@@ -2795,11 +2800,11 @@ export class GoveeLedEffectStudio extends LitElement {
     ) {
       return;
     }
-    this.content = {
+    this.installEditedContent({
       ...this.content,
       family: family.family,
       variant: variation.variant,
-    };
+    });
     if (selectingTemplate) {
       this.customTemplateSelection = `template:single:${family.family}:${variation.variant}`;
     }
@@ -2813,7 +2818,7 @@ export class GoveeLedEffectStudio extends LitElement {
     this.updateContent({
       effect: (event.target as HTMLSelectElement)
         .value as PaintedContent["effect"],
-    });
+    }, "committed");
   }
 
   private updateGeneratedEffectName(label: string): void {
@@ -2827,7 +2832,10 @@ export class GoveeLedEffectStudio extends LitElement {
     }
   }
 
-  private setSegmentColour(index: number): void {
+  private setSegmentColour(
+    index: number,
+    interaction: LivePreviewInteraction,
+  ): void {
     if (this.content.kind !== "h617a_painted") {
       return;
     }
@@ -2835,10 +2843,10 @@ export class GoveeLedEffectStudio extends LitElement {
     colours[index] = this.brushUsesBackground
       ? [...this.content.background]
       : this.activePaintBrush;
-    this.content = {
+    this.installEditedContent({
       ...this.content,
       groups: groupsFromColours(colours, this.content.background),
-    };
+    }, interaction);
   }
 
   private paintAll(): void {
@@ -2848,7 +2856,7 @@ export class GoveeLedEffectStudio extends LitElement {
     const colour = this.brushUsesBackground
       ? this.content.background
       : this.activePaintBrush;
-    this.content = {
+    this.installEditedContent({
       ...this.content,
       groups: groupsFromColours(
         Array.from(
@@ -2857,27 +2865,30 @@ export class GoveeLedEffectStudio extends LitElement {
         ),
         this.content.background,
       ),
-    };
+    });
   }
 
   private resetPaint(): void {
     if (this.content.kind !== "h617a_painted") {
       return;
     }
-    this.content = {
+    this.installEditedContent({
       ...this.content,
       groups: [],
-    };
+    });
   }
 
-  private updateContent(update: Partial<PaintedContent>): void {
+  private updateContent(
+    update: Partial<PaintedContent>,
+    interaction: LivePreviewInteraction = "changing",
+  ): void {
     if (this.content.kind !== "h617a_painted") {
       return;
     }
-    this.content = {
+    this.installEditedContent({
       ...this.content,
       ...update,
-    };
+    }, interaction);
   }
 
   private async save(): Promise<void> {
@@ -2886,7 +2897,6 @@ export class GoveeLedEffectStudio extends LitElement {
       !this.isAdmin ||
       !this.dirty ||
       this.saving ||
-      this.applying ||
       this.deletingCurrentItem ||
       !isEditableEffectContent(this.content)
     ) {
@@ -2898,7 +2908,7 @@ export class GoveeLedEffectStudio extends LitElement {
       this.notice = "Give this effect a name before saving.";
       return;
     }
-    const transitionEpoch = this.beginEditorTransition();
+    const transitionEpoch = this.editorTransitionEpoch;
     const originatingItem = this.currentItem;
     const content = cloneEditableEffect(this.content);
     const originatingLibraryRevision = this.library.library_revision;
@@ -2983,72 +2993,194 @@ export class GoveeLedEffectStudio extends LitElement {
     }
   }
 
-  private async apply(): Promise<void> {
+  private installEditedContent(
+    content: EffectContent,
+    interaction: LivePreviewInteraction = "committed",
+  ): void {
+    this.content = content;
+    const request = this.currentPreviewRequest();
+    if (request) {
+      this.livePreview.schedule(request, interaction);
+    }
+  }
+
+  private scenePreviewRequested(
+    event: CustomEvent<ScenePreviewRequest>,
+  ): void {
+    if (!this.liveApplyEnabled || !this.selectedDeviceId) {
+      return;
+    }
+    const request = this.previewRequestForScene(
+      event.detail,
+      this.selectedDeviceId,
+      true,
+    );
+    this.livePreview.schedule(request, "committed");
+  }
+
+  private toggleLiveApply = (): void => {
+    if (this.liveApplyEnabled) {
+      this.liveApplyEnabled = false;
+      this.previewStatus = undefined;
+      this.livePreview.disable();
+      return;
+    }
+    this.liveApplyEnabled = true;
+    const request = this.currentPreviewRequest(true);
+    this.livePreview.enable(request);
+  };
+
+  private currentPreviewRequest(force = false): PanelPreviewRequest | undefined {
+    if (!this.liveApplyEnabled || !this.selectedDeviceId) {
+      return undefined;
+    }
+    if (this.section === "scenes") {
+      const browser =
+        this.shadowRoot?.querySelector<GoveeSceneBrowser>(
+          "govee-scene-browser",
+        );
+      const request = browser?.currentPreviewRequest();
+      return request
+        ? this.previewRequestForScene(
+            request,
+            this.selectedDeviceId,
+            force,
+          )
+        : undefined;
+    }
+    if (!this.canPreview || !isDeployableEffectContent(this.content)) {
+      return undefined;
+    }
+    const name = this.name.trim() || "Live preview";
+    return {
+      kind: "snapshot",
+      configEntryId: this.selectedDeviceId,
+      name,
+      content: this.content,
+      fingerprint: JSON.stringify({
+        configEntryId: this.selectedDeviceId,
+        name,
+        content: this.content,
+      }),
+      force,
+    };
+  }
+
+  private previewRequestForScene(
+    request: ScenePreviewRequest,
+    configEntryId: string,
+    force: boolean,
+  ): PanelPreviewRequest {
+    if (request.kind === "scene") {
+      return {
+        kind: "scene",
+        configEntryId,
+        scene: request,
+        fingerprint: JSON.stringify({
+          configEntryId,
+          sceneId: request.scene.scene_id,
+          effectId: request.scene.effect_id,
+          speedIndex: request.speedIndex,
+        }),
+        force,
+      };
+    }
+    return {
+      kind: "snapshot",
+      configEntryId,
+      name: request.name,
+      content: request.content,
+      fingerprint: JSON.stringify({
+        configEntryId,
+        name: request.name,
+        content: request.content,
+      }),
+      force,
+    };
+  }
+
+  private async submitPreview(request: PanelPreviewRequest): Promise<void> {
+    const api = this.api;
+    const sessionId = this.previewSessionId;
     if (
-      !this.api ||
-      !this.canApply ||
-      !isDeployableEffectContent(this.content) ||
-      !this.selectedDeviceId
+      !api ||
+      !sessionId ||
+      !this.liveApplyEnabled ||
+      request.configEntryId !== this.selectedDeviceId
     ) {
       return;
     }
-    const name = this.name.trim();
-    const selectedDeviceId = this.selectedDeviceId;
+    const sequence = ++this.previewSequence;
     const transitionEpoch = this.editorTransitionEpoch;
-    this.activeOperationId = undefined;
-    this.applying = true;
-    this.notice = undefined;
+    this.previewStatus = {
+      session_id: sessionId,
+      sequence,
+      config_entry_id: request.configEntryId,
+      phase: "queued",
+      content_kind:
+        request.kind === "scene" ? "scene_builtin" : request.content.kind,
+      confidence: "unknown",
+      error_code: null,
+    };
     try {
-      const deployment =
-        !this.dirty && this.currentItem
-          ? await this.api.applySaved(selectedDeviceId, this.currentItem)
-          : await this.api.applySnapshot(
-              selectedDeviceId,
-              name,
-              this.content,
-            );
-      if (
-        transitionEpoch !== this.editorTransitionEpoch ||
-        selectedDeviceId !== this.selectedDeviceId
-      ) {
-        return;
+      if (request.kind === "scene") {
+        await api.previewScene(
+          sessionId,
+          sequence,
+          request.configEntryId,
+          request.scene.scene,
+          request.scene.speedIndex,
+          request.force,
+        );
+      } else {
+        await api.previewSnapshot(
+          sessionId,
+          sequence,
+          request.configEntryId,
+          request.name,
+          request.content,
+          request.force,
+        );
       }
-      this.activeOperationId = deployment.operation_id;
-      this.deployments = [
-        deployment,
-        ...this.deployments.filter(
-          (item) => item.operation_id !== deployment.operation_id,
-        ),
-      ];
     } catch (error) {
       if (
         transitionEpoch === this.editorTransitionEpoch &&
-        selectedDeviceId === this.selectedDeviceId
+        request.configEntryId === this.selectedDeviceId
       ) {
-        this.notice = `Apply failed: ${errorMessage(error)}`;
+        this.previewStatus = {
+          session_id: sessionId,
+          sequence,
+          config_entry_id: request.configEntryId,
+          phase: "failed",
+          content_kind:
+            request.kind === "scene" ? "scene_builtin" : request.content.kind,
+          confidence: "unknown",
+          error_code: errorCode(error) ?? "preview_failed",
+        };
       }
-    } finally {
-      this.applying = false;
+    }
+  }
+
+  private async cancelPreview(): Promise<void> {
+    const api = this.api;
+    const sessionId = this.previewSessionId;
+    if (!api || !sessionId) {
+      return;
+    }
+    try {
+      await api.cancelPreview(sessionId, this.selectedDeviceId);
+    } catch (error) {
+      if (errorCode(error) !== "not_found") {
+        this.notice = `Could not cancel Live apply: ${errorMessage(error)}`;
+      }
     }
   }
 
   private applyAvailabilityNotice(): string | undefined {
     if (this.selectedDeviceId && !this.selectedDevice) {
-      return "This device is temporarily unavailable in Home Assistant. Apply is disabled until it is loaded.";
+      return "This device is temporarily unavailable in Home Assistant. Live apply will resume after it is loaded and edited.";
     }
     return undefined;
-  }
-
-  private latestDeployment(
-    phases: readonly DeploymentRecord["phase"][],
-  ): DeploymentRecord | undefined {
-    return [...this.deployments]
-      .filter(
-        (deployment) =>
-          deployment.config_entry_id === this.selectedDeviceId &&
-          phases.includes(deployment.phase),
-      )
-      .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0];
   }
 
   static styles = effectStudioPanelStyles;

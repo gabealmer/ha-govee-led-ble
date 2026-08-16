@@ -18,6 +18,7 @@ import {
   parseHexByte,
   withAppliedAreaSegments,
 } from "./advanced-effect-model";
+import type { LivePreviewInteraction } from "./live-preview-controller";
 export {
   blankAdvancedContent,
   cloneAdvancedContent,
@@ -123,6 +124,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   private appliedAreaActiveControl?: AppliedAreaControl;
 
   private appliedAreaDrag?: AppliedAreaDrag;
+  private previewInteraction: LivePreviewInteraction = "committed";
 
   private readonly windowPointerDown = (event: PointerEvent): void => {
     if (!this.layerActionsOpen) {
@@ -137,10 +139,14 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   public connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("pointerdown", this.windowPointerDown);
+    this.addEventListener("value-changed", this.capturePreviewInteraction, true);
+    this.addEventListener("palette-changed", this.capturePreviewInteraction, true);
   }
 
   public disconnectedCallback(): void {
     window.removeEventListener("pointerdown", this.windowPointerDown);
+    this.removeEventListener("value-changed", this.capturePreviewInteraction, true);
+    this.removeEventListener("palette-changed", this.capturePreviewInteraction, true);
     this.appliedAreaDrag = undefined;
     this.appliedAreaActiveControl = undefined;
     super.disconnectedCallback();
@@ -570,6 +576,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             ((event.clientX - bounds.left) / bounds.width) *
               this.appliedAreaSegmentCount,
           );
+    this.previewInteraction = "changing";
     this.applyAppliedAreaControl(
       drag.control,
       drag.start,
@@ -1625,10 +1632,37 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     this.updateLayer({ excess: value });
   }
 
-  private emitContent(content: AdvancedContent): void {
+  private readonly capturePreviewInteraction = (event: Event): void => {
+    const source = event.composedPath()[0];
+    if (
+      event.type === "value-changed" &&
+      source instanceof HTMLElement &&
+      source.tagName === "GOVEE-SLIDER-CONTROL"
+    ) {
+      this.previewInteraction = "changing";
+      return;
+    }
+    if (event.type === "palette-changed") {
+      const interaction = (
+        event as CustomEvent<{ interaction?: LivePreviewInteraction }>
+      ).detail.interaction;
+      if (interaction) {
+        this.previewInteraction = interaction;
+      }
+    }
+  };
+
+  private emitContent(
+    content: AdvancedContent,
+    interaction: LivePreviewInteraction = this.previewInteraction,
+  ): void {
+    this.previewInteraction = "committed";
     this.dispatchEvent(
-      new CustomEvent<{ content: AdvancedContent }>("content-changed", {
-        detail: { content },
+      new CustomEvent<{
+        content: AdvancedContent;
+        interaction: LivePreviewInteraction;
+      }>("content-changed", {
+        detail: { content, interaction },
         bubbles: true,
         composed: true,
       }),

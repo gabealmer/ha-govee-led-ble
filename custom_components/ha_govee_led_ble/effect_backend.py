@@ -12,6 +12,7 @@ from .effect_deployment_diagnostics import EffectDeploymentDiagnosticBridge
 from .effect_deployments import EffectDeploymentRepository, EffectDeviceCache, ObservedDeviceState
 from .effect_diagnostics import EffectDiagnosticHistory
 from .effect_drafts import EffectDraftRepository
+from .effect_preview import EffectPreviewManager
 from .effect_runtime import EffectDeploymentEngine
 from .effect_storage import EffectLibraryRepository
 from .effect_user_state import EffectUserStateRepository
@@ -26,6 +27,7 @@ class EffectBackend:
     user_state: EffectUserStateRepository
     application: EffectStudioApplication
     engine: EffectDeploymentEngine
+    preview: EffectPreviewManager
     diagnostics: EffectDiagnosticHistory
     _diagnostic_bridge: EffectDeploymentDiagnosticBridge
 
@@ -55,6 +57,7 @@ class EffectBackend:
         await drafts.async_load()
         await user_state.async_load()
         diagnostics = EffectDiagnosticHistory()
+        engine = EffectDeploymentEngine(deployments, device_cache)
         return cls(
             library=library,
             deployments=deployments,
@@ -62,7 +65,13 @@ class EffectBackend:
             drafts=drafts,
             user_state=user_state,
             application=EffectStudioApplication(library, drafts, user_state),
-            engine=EffectDeploymentEngine(deployments, device_cache),
+            engine=engine,
+            preview=EffectPreviewManager(
+                hass,
+                deployments,
+                device_cache,
+                diagnostics,
+            ),
             diagnostics=diagnostics,
             _diagnostic_bridge=EffectDeploymentDiagnosticBridge(
                 deployments,

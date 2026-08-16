@@ -1236,6 +1236,75 @@ async def test_scene_speed_rejects_a_scene_without_documented_metadata(coord):
         await coord.async_set_scene_speed(0)
 
 
+async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
+    class CountingLock:
+        def __init__(self) -> None:
+            self.acquisitions = 0
+            self._locked = False
+
+        async def __aenter__(self):
+            assert not self._locked
+            self._locked = True
+            self.acquisitions += 1
+
+        async def __aexit__(self, *_args):
+            self._locked = False
+
+        def locked(self) -> bool:
+            return self._locked
+
+    lock = CountingLock()
+    coord._control_lock = lock
+    coord.is_on = False
+    packets = []
+
+    async def writer(packet: bytes) -> None:
+        assert lock.locked()
+        packets.append(packet)
+
+    await coord.async_apply_native_scene(
+        "glacier",
+        speed_index=0,
+        writer=writer,
+        verify=False,
+    )
+
+    assert lock.acquisitions == 1
+    assert packets[0] == proto.build_power(True, "H617A")
+    assert packets[1:] == proto.build_scene_multi(
+        SCENES["glacier"].param,
+        SCENES["glacier"].code,
+        SCENES["glacier"].scene_type,
+        SCENES["glacier"].speed,
+        speed_index=0,
+    )
+
+
+async def test_preview_observation_is_one_read_without_disconnect_or_command_retry(coord):
+    coord._client = MagicMock(is_connected=True)
+    with (
+        patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)) as query,
+        patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+    ):
+        result = await coord.async_preview_observe(
+            {"effect": "glacier"},
+            timeout=0.001,
+        )
+
+    assert result is None
+    query.assert_awaited_once_with(
+        query_power=False,
+        query_brightness=False,
+        query_color_mode=True,
+        query_white_balance=False,
+        query_blank_screen=False,
+        query_relative_brightness=False,
+    )
+    disconnect.assert_not_awaited()
+    send.assert_not_awaited()
+
+
 def test_notify_callback_unknown_domain_ignored(h6199):
     revision = h6199._domain_revisions.get(0x99, 0)
     h6199._notify_callback(None, bytearray([0xAA, 0x99, 0x01, 0x00]))

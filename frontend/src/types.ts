@@ -479,6 +479,28 @@ export interface DeploymentSnapshot {
   deployments: DeploymentRecord[];
 }
 
+export const PREVIEW_PHASES = [
+  "queued",
+  "writing",
+  "written",
+  "confirmed",
+  "unconfirmed",
+  "failed",
+  "cancelled",
+] as const;
+
+export type PreviewPhase = (typeof PREVIEW_PHASES)[number];
+
+export interface PreviewStatus {
+  session_id: string;
+  sequence: number;
+  config_entry_id: string;
+  phase: PreviewPhase;
+  content_kind: string;
+  confidence: DeploymentRecord["verification_confidence"];
+  error_code: string | null;
+}
+
 export interface SceneCategory {
   id: number;
   name: string;

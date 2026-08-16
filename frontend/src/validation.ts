@@ -26,6 +26,7 @@ import type {
   PaletteDiyEffectContent,
   PaintedContent,
   PaintedEffectTemplate,
+  PreviewStatus,
   RelativeBrightness,
   ReleaseWorkflowCapability,
   ReleaseWorkflowId,
@@ -63,7 +64,7 @@ import {
   requireUnique,
   stringValue,
 } from "./payload-validation";
-import { DEPLOYMENT_PHASES } from "./types";
+import { DEPLOYMENT_PHASES, PREVIEW_PHASES } from "./types";
 
 const CUSTOM_CATALOGUE_SCHEMA_VERSION = 5;
 const MAX_EFFECT_NAME_LENGTH = 128;
@@ -915,6 +916,47 @@ export function decodeDeploymentSnapshot(value: unknown): DeploymentSnapshot {
     "deployment operation IDs",
   );
   return decoded;
+}
+
+export function decodePreviewStatus(value: unknown): PreviewStatus {
+  const status = objectValue(value, "preview status");
+  return {
+    session_id: boundedString(
+      status.session_id,
+      "preview session ID",
+      MAX_IDENTIFIER_LENGTH,
+    ),
+    sequence: integerValue(
+      status.sequence,
+      "preview sequence",
+      0,
+      MAX_SAFE_REVISION,
+    ),
+    config_entry_id: boundedString(
+      status.config_entry_id,
+      "preview config entry ID",
+      MAX_IDENTIFIER_LENGTH,
+    ),
+    phase: enumString(status.phase, PREVIEW_PHASES, "preview phase"),
+    content_kind: boundedString(
+      status.content_kind,
+      "preview content kind",
+      MAX_IDENTIFIER_LENGTH,
+    ),
+    confidence: enumString(
+      status.confidence,
+      VERIFICATION_CONFIDENCE,
+      "preview confidence",
+    ),
+    error_code:
+      status.error_code === null
+        ? null
+        : boundedString(
+            status.error_code,
+            "preview error code",
+            MAX_IDENTIFIER_LENGTH,
+          ),
+  };
 }
 
 export function decodeSceneCatalogue(value: unknown): SceneCatalogue {

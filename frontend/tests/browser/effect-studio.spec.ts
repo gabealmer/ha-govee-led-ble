@@ -1,7 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   DEPLOYMENT_PHASES,
-  type DeploymentPhase,
 } from "../../src/types";
 
 const studioSelector = "ha-govee-led-ble-editor";
@@ -63,14 +62,21 @@ async function expectApplyCallCount(page: Page, count: number): Promise<void> {
             .calls.filter((call) => {
               const type = String(call.type);
               return (
-                type.endsWith("/scene/apply") ||
-                type.endsWith("/apply") ||
-                type.endsWith("/apply_snapshot")
+                type.endsWith("/preview/apply_scene") ||
+                type.endsWith("/preview/apply_snapshot")
               );
             }).length,
       ),
     )
     .toBe(count);
+}
+
+async function reapplyCurrent(studio: Locator): Promise<void> {
+  const toggle = studio.getByRole("switch", { name: "Live apply" });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
 }
 
 async function openScene(
@@ -744,7 +750,7 @@ test("modal dialogs contain focus and lock background scrolling", async ({
   await expect(deleteButton).toBeFocused();
 });
 
-test("Workshop and Special DIY templates use shared editors and apply safely", async ({
+test("Workshop and Special DIY templates use shared editors and preview safely", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -761,7 +767,10 @@ test("Workshop and Special DIY templates use shared editors and apply safely", a
       .locator("govee-advanced-effect-editor")
       .getByRole("button", { name: "Add layer" }),
   ).toBeEnabled();
-  await studio.locator(".editor").getByRole("button", { name: "Apply" }).click();
+  await studio
+    .locator("govee-advanced-effect-editor")
+    .getByRole("button", { name: "Add layer" })
+    .click();
   await expectApplyCallCount(page, 1);
   await studio
     .getByRole("combobox", { name: "Development device" })
@@ -786,13 +795,6 @@ test("Workshop and Special DIY templates use shared editors and apply safely", a
     specialEditor.getByRole("slider", { name: "Speed" }),
   ).toBeDisabled();
   await expect(studio.getByText("raw_payload", { exact: false })).toHaveCount(0);
-  await studio.locator(".editor").getByRole("button", { name: "Apply" }).click();
-  await expect(
-    studio.getByRole("alert").filter({
-      hasText:
-        "The H6199 effect upload was sent to H6199 DreamView T1, but activation and readback remain unproven. The result is uncertain.",
-    }),
-  ).toBeVisible();
   await studio
     .locator(".editor")
     .getByRole("button", { name: "Edit", exact: true })
@@ -800,6 +802,8 @@ test("Workshop and Special DIY templates use shared editors and apply safely", a
   await expect(
     specialEditor.getByRole("slider", { name: "Speed" }),
   ).toBeEnabled();
+  await specialEditor.getByRole("slider", { name: "Speed" }).press("ArrowRight");
+  await expectApplyCallCount(page, 2);
 });
 
 test("Single and Multi variation selects track same-sized family changes", async ({
@@ -1246,7 +1250,7 @@ test("saved effects can be deleted from the editor", async ({
   });
 });
 
-test("capability gates Apply while retaining supported H617A custom Apply", async ({
+test("capability gates editors while retaining supported H617A live preview", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -1318,8 +1322,8 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
     0,
   );
   await expect(
-    studio.locator(".editor").getByRole("button", { name: "Apply" }),
-  ).toBeEnabled();
+    studio.getByRole("switch", { name: "Live apply" }),
+  ).toHaveAttribute("aria-checked", "true");
   await expect(
     studio.getByRole("button", { name: /^Segment 1,/ }),
   ).toBeDisabled();
@@ -1350,17 +1354,9 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
       .getByRole("heading", { name: "Layered", exact: true }),
   ).toBeVisible();
   await expect(studio.locator(".editor-heading .eyebrow")).toHaveCount(0);
-  const apply = studio
-    .locator(".editor")
-    .getByRole("button", { name: "Apply" });
-  await expect(apply).toBeEnabled();
-  await apply.click();
-  await expectApplyCallCount(page, 1);
   await expect(
-    studio.getByText("Applied to H617A LED Strip.", { exact: true }),
+    studio.locator(".editor").getByRole("button", { name: "Apply" }),
   ).toHaveCount(0);
-  await expect(apply).not.toHaveAttribute("aria-describedby");
-  await expect(studio.locator("#advanced-apply-reason")).toHaveCount(0);
   await expect(
     studio.getByRole("tablist", { name: "Effect layers" }),
   ).toBeVisible();
@@ -1376,7 +1372,16 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   await expect(
     distribution.getByRole("button", { name: "Gradient" }),
   ).toBeEnabled();
+  const previewCount = await page.evaluate(
+    () =>
+      window.testHarness
+        .snapshot()
+        .calls.filter((call) =>
+          String(call.type).includes("/preview/apply_"),
+        ).length,
+  );
   await distribution.getByRole("button", { name: "Gradient" }).click();
+  await expectApplyCallCount(page, previewCount + 1);
   await expect(
     distribution.getByRole("button", { name: "Gradient" }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -1386,7 +1391,67 @@ test("capability gates Apply while retaining supported H617A custom Apply", asyn
   ).toBeEnabled();
 });
 
-test("H617A Music applies saved and edited profile snapshots", async ({
+test("Live apply waits for edits and honours the session toggle", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await selectSavedPainted(studio);
+  await expectApplyCallCount(page, 0);
+
+  const speed = studio.getByRole("slider", { name: "Speed" });
+  await speed.press("ArrowRight");
+  await expectApplyCallCount(page, 1);
+
+  const toggle = studio.getByRole("switch", { name: "Live apply" });
+  await toggle.click();
+  await speed.press("ArrowRight");
+  await page.waitForTimeout(250);
+  await expectApplyCallCount(page, 1);
+
+  await toggle.click();
+  await expectApplyCallCount(page, 2);
+  await expect(
+    studio.locator(".live-apply-status.current"),
+  ).toHaveAttribute("aria-label", "Changes applied");
+});
+
+test("Live apply does not transfer an open effect when the device changes", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await selectSavedPainted(studio);
+  await studio
+    .getByRole("combobox", { name: "Development device" })
+    .selectOption("h6199-main");
+  await page.waitForTimeout(300);
+  await expectApplyCallCount(page, 0);
+});
+
+test("Live apply warns on transport failure and clears after the next edit", async ({
+  page,
+}) => {
+  const studio = await openStudio(page);
+  await selectSavedPainted(studio);
+  await page.evaluate(() =>
+    window.testHarness.backend.failNext("preview/apply_snapshot"),
+  );
+
+  const speed = studio.getByRole("slider", { name: "Speed" });
+  await speed.press("ArrowRight");
+  await expect(
+    studio.locator(".live-apply-status.warning"),
+  ).toHaveAttribute(
+    "aria-label",
+    "The latest change could not reach the light",
+  );
+
+  await speed.press("ArrowRight");
+  await expect(
+    studio.locator(".live-apply-status.current"),
+  ).toHaveAttribute("aria-label", "Changes applied");
+});
+
+test("H617A Music live-previews saved and edited profile snapshots", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -1406,35 +1471,33 @@ test("H617A Music applies saved and edited profile snapshots", async ({
     studio.locator(".editor").getByRole("button", { name: "Delete", exact: true }),
   ).toBeEnabled();
 
-  const apply = studio
-    .locator(".editor")
-    .getByRole("button", { name: "Apply" });
-  await expect(apply).toBeEnabled();
-  await apply.click();
+  await reapplyCurrent(studio);
   await expectApplyCallCount(page, 1);
 
   const point = studio
     .locator("govee-music-profile-editor")
     .getByRole("slider", { name: "Point" });
   await point.press("ArrowRight");
-  await apply.click();
   await expectApplyCallCount(page, 2);
 
   const calls = await page.evaluate(() =>
     window.testHarness
       .snapshot()
       .calls.filter((call) =>
-        String(call.type).endsWith("/apply") ||
-        String(call.type).endsWith("/apply_snapshot"),
+        String(call.type).endsWith("/preview/apply_snapshot"),
       ),
   );
   expect(calls).toHaveLength(2);
   expect(calls[0]).toMatchObject({
-    type: "ha_govee_led_ble/editor/apply",
-    item_id: "music-h617a",
+    type: "ha_govee_led_ble/editor/preview/apply_snapshot",
+    content: {
+      kind: "music_profile",
+      model: "H617A",
+      mode: "separation",
+    },
   });
   expect(calls[1]).toMatchObject({
-    type: "ha_govee_led_ble/editor/apply_snapshot",
+    type: "ha_govee_led_ble/editor/preview/apply_snapshot",
     content: {
       kind: "music_profile",
       model: "H617A",
@@ -1447,7 +1510,7 @@ test("H617A Music applies saved and edited profile snapshots", async ({
   });
 });
 
-test("H6199 Music and Video expose gated Apply with saved and snapshot routes", async ({
+test("H6199 Music and Video live-preview saved and edited profiles", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -1467,16 +1530,12 @@ test("H6199 Music and Video expose gated Apply with saved and snapshot routes", 
     studio.locator(".editor").getByRole("button", { name: "Delete", exact: true }),
   ).toBeEnabled();
 
-  const videoApply = studio
-    .locator(".editor")
-    .getByRole("button", { name: "Apply" });
-  await expect(videoApply).toBeEnabled();
-  await videoApply.click();
+  await reapplyCurrent(studio);
   await studio
     .locator("govee-video-profile-editor")
     .getByRole("slider", { name: "Saturation" })
     .press("ArrowRight");
-  await videoApply.click();
+  await expectApplyCallCount(page, 2);
 
   await studio.getByRole("button", { name: "Effects", exact: true }).click();
   await studio
@@ -1487,27 +1546,25 @@ test("H6199 Music and Video expose gated Apply with saved and snapshot routes", 
     .getByRole("complementary", { name: "Effects" })
     .getByRole("button", { name: "Saved rolling profile", exact: true })
     .click();
-  const musicApply = studio
-    .locator(".editor")
-    .getByRole("button", { name: "Apply" });
-  await expect(musicApply).toBeEnabled();
-  await musicApply.click();
+  await reapplyCurrent(studio);
 
   const calls = await page.evaluate(() =>
     window.testHarness
       .snapshot()
       .calls.filter((call) =>
-        String(call.type).endsWith("/apply") ||
-        String(call.type).endsWith("/apply_snapshot"),
+        String(call.type).endsWith("/preview/apply_snapshot"),
       ),
   );
   expect(calls).toHaveLength(3);
   expect(calls[0]).toMatchObject({
-    type: "ha_govee_led_ble/editor/apply",
-    item_id: "video-h6199",
+    type: "ha_govee_led_ble/editor/preview/apply_snapshot",
+    content: {
+      kind: "video_profile",
+      model: "H6199",
+    },
   });
   expect(calls[1]).toMatchObject({
-    type: "ha_govee_led_ble/editor/apply_snapshot",
+    type: "ha_govee_led_ble/editor/preview/apply_snapshot",
     content: {
       kind: "video_profile",
       model: "H6199",
@@ -1515,8 +1572,11 @@ test("H6199 Music and Video expose gated Apply with saved and snapshot routes", 
     },
   });
   expect(calls[2]).toMatchObject({
-    type: "ha_govee_led_ble/editor/apply",
-    item_id: "music-h6199",
+    type: "ha_govee_led_ble/editor/preview/apply_snapshot",
+    content: {
+      kind: "music_profile",
+      model: "H6199",
+    },
   });
 });
 
@@ -1634,7 +1694,7 @@ test("device catalogues expose complete model-specific effect families", async (
   ).toHaveCount(0);
 });
 
-test("H6199 palette DIY Apply covers every visible family and variation", async ({
+test("H6199 palette DIY live preview covers every visible family and variation", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -1659,9 +1719,6 @@ test("H6199 palette DIY Apply covers every visible family and variation", async 
     name: "Variation",
     exact: true,
   });
-  const apply = studio
-    .locator(".editor")
-    .getByRole("button", { name: "Apply", exact: true });
   const options = [
     ["fade", "default", 0, 0],
     ["jumping", "default", 1, 0],
@@ -1674,36 +1731,34 @@ test("H6199 palette DIY Apply covers every visible family and variation", async 
     ["crossing", "default", 10, 0],
   ] as const;
 
-  for (const [familyId, variationId] of options) {
+  const observed: number[][] = [];
+  for (const [familyId, variationId, family, variant] of options) {
     await effect.selectOption(familyId);
     if (familyId === "chasing") {
       await variation.selectOption(variationId === "clockwise" ? "9" : "10");
     }
-    await expect(apply).toBeEnabled();
-    await apply.click();
-    await expect(
-      studio.getByRole("alert").filter({
-        hasText: "activation and readback remain unproven",
-      }),
-    ).toBeVisible();
+    if (familyId === "fade") {
+      await reapplyCurrent(studio);
+    }
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const call = [...window.testHarness.snapshot().calls]
+            .reverse()
+            .find((candidate) =>
+              String(candidate.type).endsWith("/preview/apply_snapshot"),
+            );
+          const content = call?.content as
+            | { family?: number; variant?: number }
+            | undefined;
+          return [content?.family, content?.variant];
+        }),
+      )
+      .toEqual([family, variant]);
+    observed.push([family, variant]);
   }
 
-  const calls = await page.evaluate(() =>
-    window.testHarness
-      .snapshot()
-      .calls.filter(
-        (call) =>
-          call.type === "ha_govee_led_ble/editor/apply_snapshot",
-      )
-      .map((call) => call.content),
-  );
-  expect(calls).toHaveLength(options.length);
-  expect(
-    calls.map((content) => {
-      const value = content as { family: number; variant: number };
-      return [value.family, value.variant];
-    }),
-  ).toEqual([
+  expect(observed).toEqual([
     ...options.map(([, , family, variant]) => [family, variant]),
   ]);
 });
@@ -2242,37 +2297,24 @@ test("schema-only layout 1 exposes decoded parameters", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("palette scenes apply native identity and authored saved or unsaved definitions", async ({
+test("palette scenes preview native identity and authored definitions", async ({
   page,
 }) => {
   await openStudio(page);
   const sceneBrowser = await openPaletteScene(page, "Festival", /^Halloween/);
-  const nativeApply = sceneBrowser.getByRole("button", { name: "Apply" });
   const edit = sceneBrowser.getByRole("button", { name: "Edit" });
   const heading = sceneBrowser.locator(".editor-heading");
 
   await expect(heading).toBeVisible();
   await expect(heading.locator(":scope > .actions")).toHaveCount(1);
-  await expect(nativeApply).toBeEnabled();
-  await expect(nativeApply).toHaveClass("primary");
   await expect(edit).toHaveClass("secondary");
   await expect(edit).toHaveCSS("min-height", "44px");
-  await expect(nativeApply).toHaveCSS("min-height", "44px");
-  const [editBox, applyBox] = await Promise.all([
-    edit.boundingBox(),
-    nativeApply.boundingBox(),
-  ]);
-  expect(editBox?.y).toBe(applyBox?.y);
-  await nativeApply.click();
   await expectApplyCallCount(page, 1);
-  await expect(
-    sceneBrowser.getByText("Applied to H617A LED Strip.", { exact: true }),
-  ).toHaveCount(0);
   await edit.click();
   await expect(sceneBrowser.getByLabel("Scene name")).toHaveValue(
     /Halloween.* copy/,
   );
-  await sceneBrowser.getByRole("button", { name: "Apply" }).click();
+  await reapplyCurrent(page.locator(studioSelector));
   await expectApplyCallCount(page, 2);
   await sceneBrowser
     .getByRole("button", { name: "Save as Custom", exact: true })
@@ -2284,13 +2326,10 @@ test("palette scenes apply native identity and authored saved or unsaved definit
     sceneBrowser.getByRole("button", { name: "Custom", exact: true }),
   ).toBeVisible();
 
-  const customApply = sceneBrowser.getByRole("button", { name: "Apply" });
-  await expect(customApply).toBeEnabled();
-  await customApply.click();
+  await reapplyCurrent(page.locator(studioSelector));
   await expectApplyCallCount(page, 3);
   await sceneBrowser.getByLabel("Scene name").fill("Halloween preserved");
-  await customApply.click();
-  await expectApplyCallCount(page, 4);
+  await expectApplyCallCount(page, 3);
   await sceneBrowser.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
     sceneBrowser.getByRole("status").filter({ hasText: "Custom scene saved." }),
@@ -2305,7 +2344,7 @@ test("palette scenes apply native identity and authored saved or unsaved definit
       content: item?.content,
       commands: snapshot.calls
         .map((call) => String(call.type))
-        .filter((type) => type.endsWith("/scene/apply") || type.endsWith("/apply") || type.endsWith("/apply_snapshot")),
+        .filter((type) => type.includes("/preview/apply_")),
     };
   });
   expect(beforeReload.content).toEqual({
@@ -2335,10 +2374,9 @@ test("palette scenes apply native identity and authored saved or unsaved definit
     speed_index: null,
   });
   expect(beforeReload.commands).toEqual([
-    "ha_govee_led_ble/editor/scene/apply",
-    "ha_govee_led_ble/editor/apply_snapshot",
-    "ha_govee_led_ble/editor/apply",
-    "ha_govee_led_ble/editor/apply_snapshot",
+    "ha_govee_led_ble/editor/preview/apply_scene",
+    "ha_govee_led_ble/editor/preview/apply_snapshot",
+    "ha_govee_led_ble/editor/preview/apply_snapshot",
   ]);
 
   await page.reload();
@@ -2355,7 +2393,7 @@ test("palette scenes apply native identity and authored saved or unsaved definit
   await expect(reloadedBrowser.getByText("Raw value 6")).toBeVisible();
   await expect(
     reloadedBrowser.getByRole("button", { name: "Apply" }),
-  ).toBeEnabled();
+  ).toHaveCount(0);
   await expect(
     reloadedBrowser.getByRole("button", { name: "Delete" }),
   ).toBeEnabled();
@@ -2407,14 +2445,14 @@ test("non-admin users receive a read-only editor", async ({ page }) => {
     studio.locator(".editor").getByRole("button", { name: "Save", exact: true }),
   ).toBeDisabled();
   await expect(
-    studio.locator(".editor").getByRole("button", { name: "Apply" }),
-  ).toBeDisabled();
+    studio.getByRole("switch", { name: "Live apply" }),
+  ).toHaveCount(0);
   await expect(
     studio.getByRole("button", { name: "Segment 1, #2f6fed" }),
   ).toBeDisabled();
   await expect(
     studio.getByRole("note").filter({
-      hasText: "An administrator is required to edit or apply them",
+      hasText: "An administrator is required to edit them",
     }),
   ).toBeVisible();
   await expect(
@@ -2448,6 +2486,12 @@ test("non-admin users receive a read-only editor", async ({ page }) => {
       active: 1,
     },
     deployment: {
+      installs: 0,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 0,
+    },
+    preview: {
       installs: 0,
       unsubscribes: 0,
       deliveries: 0,
@@ -2561,7 +2605,7 @@ test("malformed initial payloads fail closed before subscriptions", async ({
   expect(subscriptions.deployment.active).toBe(0);
 });
 
-test("deployment phases decode and render without contract drift", async ({
+test("deployment contracts remain decodable while live preview owns editor status", async ({
   page,
 }) => {
   const studio = await openStudio(page);
@@ -2613,41 +2657,11 @@ test("deployment phases decode and render without contract drift", async ({
   });
   expect(invalidRejected).toBe(true);
 
-  const messages: Partial<Record<DeploymentPhase, string>> = {
-    compiling: "Preparing to apply to H617A LED Strip.",
-    pending: "Preparing to apply to H617A LED Strip.",
-    uploading: "Applying to H617A LED Strip: 1 of 2.",
-    activating: "Activating the selected effect on H617A LED Strip.",
-    verifying: "Checking the selected effect on H617A LED Strip.",
-    uncertain: "The final state of H617A LED Strip is uncertain.",
-    recovering: "Restoring the previous state on H617A LED Strip",
-    failed: "Apply to H617A LED Strip failed.",
-    interrupted: "Apply to H617A LED Strip was interrupted",
-    unknown: "Applied to H617A LED Strip, but the requested settings could not be confirmed.",
-  };
-  const alertPhases = new Set<DeploymentPhase>([
-    "failed",
-    "uncertain",
-    "interrupted",
-    "unknown",
-  ]);
-  for (const phase of DEPLOYMENT_PHASES) {
-    await page.evaluate(
-      (visiblePhase) =>
-        window.testHarness.backend.emitDeploymentPhase(visiblePhase),
-      phase,
-    );
-    const message = messages[phase];
-    if (message === undefined) {
-      await expect(studio.locator(".feedback.deployment")).toHaveCount(0);
-      continue;
-    }
-    await expect(
-      studio
-        .getByRole(alertPhases.has(phase) ? "alert" : "status")
-        .filter({ hasText: message }),
-    ).toBeVisible();
-  }
+  await reapplyCurrent(studio);
+  await expect(
+    studio.locator(".live-apply-status.current"),
+  ).toHaveAttribute("aria-label", "Changes applied");
+  await expect(studio.locator(".feedback.deployment")).toHaveCount(0);
 });
 
 test("partial subscription setup is rolled back on permission failure", async ({
@@ -2674,6 +2688,12 @@ test("partial subscription setup is rolled back on permission failure", async ({
         active: 0,
       },
       deployment: {
+        installs: 0,
+        unsubscribes: 0,
+        deliveries: 0,
+        active: 0,
+      },
+      preview: {
         installs: 0,
         unsubscribes: 0,
         deliveries: 0,
@@ -2710,6 +2730,12 @@ test("malformed subscription events close every active subscription", async ({
         active: 0,
       },
       deployment: {
+        installs: 0,
+        unsubscribes: 0,
+        deliveries: 0,
+        active: 0,
+      },
+      preview: {
         installs: 1,
         unsubscribes: 1,
         deliveries: 0,
@@ -2718,15 +2744,12 @@ test("malformed subscription events close every active subscription", async ({
     });
 });
 
-test("stale subscription snapshots cannot roll back visible state", async ({
+test("durable deployment snapshots do not replace live preview status", async ({
   page,
 }) => {
   const studio = await openStudio(page);
   await selectSavedPainted(studio);
-  await studio
-    .locator(".editor")
-    .getByRole("button", { name: "Apply" })
-    .click();
+  await reapplyCurrent(studio);
   await expectApplyCallCount(page, 1);
   await expect(studio.locator(".feedback.deployment")).toHaveCount(0);
 
@@ -2762,6 +2785,12 @@ test("disconnect during initial load cannot install stale subscriptions", async 
       deliveries: 0,
       active: 0,
     },
+    preview: {
+      installs: 0,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 0,
+    },
   });
 
   await page.evaluate(() => window.testHarness.reconnectEditor());
@@ -2782,6 +2811,12 @@ test("disconnect during initial load cannot install stale subscriptions", async 
         active: 1,
       },
       deployment: {
+        installs: 0,
+        unsubscribes: 0,
+        deliveries: 0,
+        active: 0,
+      },
+      preview: {
         installs: 1,
         unsubscribes: 0,
         deliveries: 0,
@@ -2804,6 +2839,12 @@ test("subscriptions cleanly uninstall and reload after reconnect", async ({
       active: 1,
     },
     deployment: {
+      installs: 0,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 0,
+    },
+    preview: {
       installs: 1,
       unsubscribes: 0,
       deliveries: 0,
@@ -2827,6 +2868,12 @@ test("subscriptions cleanly uninstall and reload after reconnect", async ({
       active: 0,
     },
     deployment: {
+      installs: 0,
+      unsubscribes: 0,
+      deliveries: 0,
+      active: 0,
+    },
+    preview: {
       installs: 1,
       unsubscribes: 1,
       deliveries: 0,
@@ -2862,9 +2909,15 @@ test("subscriptions cleanly uninstall and reload after reconnect", async ({
         active: 1,
       },
       deployment: {
+        installs: 0,
+        unsubscribes: 0,
+        deliveries: 0,
+        active: 0,
+      },
+      preview: {
         installs: 2,
         unsubscribes: 1,
-        deliveries: 1,
+        deliveries: 0,
         active: 1,
       },
     });
@@ -3706,7 +3759,7 @@ test("opaque backend content is inspectable but cannot be edited or applied", as
   await expect(
     studio.getByRole("note").filter({
       hasText:
-        "This effect definition can be inspected, but this editor cannot change, save or apply it.",
+        "This effect definition can be inspected, but this editor cannot change, save or preview it.",
     }),
   ).toBeVisible();
   await expect(studio.getByLabel("Effect name")).toHaveCount(0);
@@ -3715,7 +3768,7 @@ test("opaque backend content is inspectable but cannot be edited or applied", as
   ).toHaveCount(0);
   await expect(
     studio.locator(".editor").getByRole("button", { name: "Apply" }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     studio.locator("govee-advanced-effect-editor"),
   ).toHaveCount(0);
@@ -3820,11 +3873,7 @@ test("empty layered scene imports remain inspectable and unchanged", async ({
   await expect(
     advanced.getByRole("tablist", { name: "Effect layers" }),
   ).toHaveCount(0);
-  const apply = studio
-    .locator(".editor")
-    .getByRole("button", { name: "Apply" });
-  await expect(apply).toBeEnabled();
-  await apply.click();
+  await reapplyCurrent(studio);
 
   await saveNewEffect(studio);
   const savedContent = await page.evaluate(() => {
@@ -3845,7 +3894,7 @@ test("empty layered scene imports remain inspectable and unchanged", async ({
   });
   const applyCall = await page.evaluate(() =>
     [...window.testHarness.snapshot().calls].reverse().find(
-      (call) => String(call.type).endsWith("/apply_snapshot"),
+      (call) => String(call.type).endsWith("/preview/apply_snapshot"),
     ),
   );
   expect(applyCall).toMatchObject({
@@ -3909,11 +3958,7 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
   await speed.getByRole("button", { name: "1 step higher" }).click();
   await sceneBrowser.getByRole("button", { name: "Edit", exact: true }).click();
 
-  const advancedApply = studio
-    .locator(".editor")
-    .getByRole("button", { name: "Apply" });
-  await expect(advancedApply).toBeEnabled();
-  await advancedApply.click();
+  await reapplyCurrent(studio);
 
   await saveNewEffect(studio, "Aurora authored");
   await expect(
@@ -3947,7 +3992,7 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
   });
   const layeredApply = await page.evaluate(() =>
     [...window.testHarness.snapshot().calls].reverse().find(
-      (call) => String(call.type).endsWith("/apply_snapshot"),
+      (call) => String(call.type).endsWith("/preview/apply_snapshot"),
     ),
   );
   expect(layeredApply).toMatchObject({
@@ -4014,15 +4059,18 @@ test("scene type-2 handoff round-trips and Back preserves scene state", async ({
   await expect(
     speed.getByRole("button", { name: "Default" }),
   ).toHaveAttribute("aria-pressed", "true");
-  await sceneBrowser.getByRole("button", { name: "Apply" }).click();
+  await reapplyCurrent(studio);
   const revisedApply = await page.evaluate(() =>
     [...window.testHarness.snapshot().calls].reverse().find(
-      (call) => String(call.type).endsWith("/apply"),
+      (call) => String(call.type).endsWith("/preview/apply_snapshot"),
     ),
   );
   expect(revisedApply).toMatchObject({
-    item_id: revised[0]?.id,
-    revision: 3,
+    name: "Aurora revised",
+    content: {
+      kind: "scene_layered",
+      speed_index: 1,
+    },
   });
 
   await sceneBrowser.getByRole("button", { name: "Delete", exact: true }).click();

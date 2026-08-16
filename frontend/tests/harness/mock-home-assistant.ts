@@ -23,6 +23,7 @@ import type {
   LibrarySnapshot,
   LibrarySummary,
   PaletteSceneContent,
+  PreviewStatus,
   SceneCatalogue,
   SceneDetail,
   SceneSummary,
@@ -33,7 +34,7 @@ const PREFIX = "ha_govee_led_ble/editor/";
 const STORAGE_KEY = "effect-studio-playwright-backend";
 const CHANNEL_NAME = "effect-studio-playwright-subscriptions";
 
-type SubscriptionKind = "library" | "deployment";
+type SubscriptionKind = "library" | "deployment" | "preview";
 
 type WireOpaqueContent = {
   kind: string;
@@ -91,6 +92,7 @@ interface SubscriptionStats {
 interface BackendStats {
   library: SubscriptionStats & { active: number };
   deployment: SubscriptionStats & { active: number };
+  preview: SubscriptionStats & { active: number };
 }
 
 interface ChannelMessage {
@@ -114,6 +116,9 @@ export class MockHomeAssistantBackend {
   private readonly deploymentCallbacks = new Set<
     (snapshot: WireDeploymentSnapshot) => void
   >();
+  private readonly previewCallbacks = new Set<
+    (status: PreviewStatus) => void
+  >();
   private readonly conflicts = new Map<string, number>();
   private readonly failures = new Map<string, number>();
   private readonly delays = new Map<string, number>();
@@ -122,6 +127,7 @@ export class MockHomeAssistantBackend {
   private readonly stats: Record<SubscriptionKind, SubscriptionStats> = {
     library: { installs: 0, unsubscribes: 0, deliveries: 0 },
     deployment: { installs: 0, unsubscribes: 0, deliveries: 0 },
+    preview: { installs: 0, unsubscribes: 0, deliveries: 0 },
   };
 
   public constructor(
@@ -170,6 +176,10 @@ export class MockHomeAssistantBackend {
         deployment: {
           ...this.stats.deployment,
           active: this.deploymentCallbacks.size,
+        },
+        preview: {
+          ...this.stats.preview,
+          active: this.previewCallbacks.size,
         },
       },
     };
@@ -347,6 +357,16 @@ export class MockHomeAssistantBackend {
       case "apply":
       case "apply_snapshot":
         return this.apply<T>(message);
+      case "preview/session/open":
+        return this.result<T>({ session_id: "preview-session-1" });
+      case "preview/session/close":
+        return this.result<T>({ closed: true });
+      case "preview/apply_scene":
+      case "preview/apply_snapshot":
+        this.emitPreviewStatus(message, "written");
+        return this.result<T>({ accepted: true });
+      case "preview/cancel":
+        return this.result<T>({ cancelled: true });
       default:
         throw new Error(`Unhandled WebSocket command: ${command}`);
     }
@@ -362,17 +382,19 @@ export class MockHomeAssistantBackend {
         ? "library"
         : type === `${PREFIX}deployment/subscribe`
           ? "deployment"
+          : type === `${PREFIX}preview/subscribe`
+            ? "preview"
           : (() => {
               throw new Error(`Unexpected subscription: ${type}`);
             })();
     if (
-      kind === "deployment" &&
+      kind === "preview" &&
       this.rejectDeploymentSubscription &&
-      this.stats.deployment.installs === 0
+      this.stats.preview.installs === 0
     ) {
       throw new MockUnauthorizedError();
     }
-    if (kind === "deployment" && !this.isAdmin) {
+    if ((kind === "deployment" || kind === "preview") && !this.isAdmin) {
       throw new MockUnauthorizedError();
     }
 
@@ -381,9 +403,13 @@ export class MockHomeAssistantBackend {
       this.libraryCallbacks.add(
         callback as (snapshot: LibrarySnapshot) => void,
       );
-    } else {
+    } else if (kind === "deployment") {
       this.deploymentCallbacks.add(
         callback as (snapshot: WireDeploymentSnapshot) => void,
+      );
+    } else {
+      this.previewCallbacks.add(
+        callback as (status: PreviewStatus) => void,
       );
     }
 
@@ -398,12 +424,42 @@ export class MockHomeAssistantBackend {
         this.libraryCallbacks.delete(
           callback as (snapshot: LibrarySnapshot) => void,
         );
-      } else {
+      } else if (kind === "deployment") {
         this.deploymentCallbacks.delete(
           callback as (snapshot: WireDeploymentSnapshot) => void,
         );
+      } else {
+        this.previewCallbacks.delete(
+          callback as (status: PreviewStatus) => void,
+        );
       }
     };
+  }
+
+  private emitPreviewStatus(
+    message: Record<string, unknown>,
+    phase: PreviewStatus["phase"],
+  ): void {
+    const status: PreviewStatus = {
+      session_id: String(message.session_id),
+      sequence: Number(message.sequence),
+      config_entry_id: String(message.config_entry_id),
+      phase,
+      content_kind:
+        typeof message.content === "object" &&
+        message.content !== null &&
+        "kind" in message.content
+          ? String((message.content as { kind: unknown }).kind)
+          : "scene_builtin",
+      confidence: "write_completed",
+      error_code: null,
+    };
+    queueMicrotask(() => {
+      this.stats.preview.deliveries += this.previewCallbacks.size;
+      for (const callback of this.previewCallbacks) {
+        callback(structuredClone(status));
+      }
+    });
   }
 
   public emitMalformedLibrary(): void {

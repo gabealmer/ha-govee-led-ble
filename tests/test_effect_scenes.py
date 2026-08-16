@@ -12,8 +12,6 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import EFFECT_FAMILY_SCENES
 from custom_components.ha_govee_led_ble.effect_scenes import (
-    SceneUnavailableError,
-    _light_entity_id,
     async_apply_scene,
     resolve_scene,
     scene_catalogue_payload,
@@ -93,7 +91,7 @@ def test_type_0_scene_detail_remains_builtin() -> None:
     assert content["kind"] == "scene_builtin"
 
 
-async def test_scene_speed_request_is_validated_before_service_call(
+async def test_scene_speed_request_is_validated_before_write(
     hass: HomeAssistant,
 ) -> None:
     no_speed = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.speed is None)
@@ -126,41 +124,16 @@ async def test_scene_speed_request_is_validated_before_service_call(
         )
 
 
-async def test_scene_without_speed_uses_native_light_only(
+async def test_scene_without_speed_uses_coordinator_primitive(
     hass: HomeAssistant,
-    monkeypatch,
 ) -> None:
     scene = next(item for item in SCENE_ENTRIES["H617A"] if item.speed is None)
     coordinator = SimpleNamespace(
         model="H617A",
         effect_families={EFFECT_FAMILY_SCENES},
-        async_set_scene_speed=AsyncMock(),
+        async_apply_native_scene=AsyncMock(),
     )
     entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
-    registry_entry = SimpleNamespace(
-        entity_id="light.cupboard",
-        platform="ha_govee_led_ble",
-        disabled_by=None,
-    )
-    service_calls = []
-
-    async def service_call(
-        registry,
-        domain,
-        service,
-        service_data,
-        *,
-        blocking,
-        context,
-        return_response=False,
-    ) -> None:
-        service_calls.append((domain, service, service_data, blocking, context, return_response))
-
-    monkeypatch.setattr(
-        "custom_components.ha_govee_led_ble.effect_scenes.er.async_entries_for_config_entry",
-        lambda registry, config_entry_id: [registry_entry],
-    )
-    monkeypatch.setattr(type(hass.services), "async_call", service_call)
 
     resolved, speed_index = await async_apply_scene(
         hass,
@@ -173,15 +146,7 @@ async def test_scene_without_speed_uses_native_light_only(
 
     assert resolved.entry == scene
     assert speed_index is None
-    assert len(service_calls) == 1
-    coordinator.async_set_scene_speed.assert_not_awaited()
-
-
-def test_light_entity_must_be_unique(hass: HomeAssistant, monkeypatch) -> None:
-    monkeypatch.setattr(
-        "custom_components.ha_govee_led_ble.effect_scenes.er.async_entries_for_config_entry",
-        lambda registry, config_entry_id: [],
+    coordinator.async_apply_native_scene.assert_awaited_once_with(
+        resolved.key,
+        speed_index=None,
     )
-
-    with pytest.raises(SceneUnavailableError, match="one enabled Govee light"):
-        _light_entity_id(hass, "entry-a")

@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import type { LivePreviewInteraction } from "./live-preview-controller";
 import "./palette-editor";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
@@ -148,7 +149,7 @@ export class GoveeCustomEffectEditor extends LitElement {
               this.emitContent({
                 ...this.content!,
                 speed: event.detail.value,
-              })}
+              }, "changing")}
           ></govee-slider-control>
         </div>
       </section>
@@ -379,11 +380,16 @@ export class GoveeCustomEffectEditor extends LitElement {
         .minColours=${this.catalogue!.limits.palette_min}
         .maxColours=${this.catalogue!.limits.palette_max}
         .disabled=${this.disabled}
-        @palette-changed=${(event: CustomEvent<{ palette: RGB[] }>) => {
+        @palette-changed=${(
+          event: CustomEvent<{
+            palette: RGB[];
+            interaction: LivePreviewInteraction;
+          }>,
+        ) => {
           this.emitContent({
             ...this.content!,
             palette: clonePalette(event.detail.palette),
-          });
+          }, event.detail.interaction);
         }}
       ></govee-palette-editor>
     `;
@@ -516,10 +522,16 @@ export class GoveeCustomEffectEditor extends LitElement {
     );
   }
 
-  private emitContent(content: PaletteContent): void {
+  private emitContent(
+    content: PaletteContent,
+    interaction: LivePreviewInteraction = "committed",
+  ): void {
     this.dispatchEvent(
-      new CustomEvent<{ content: PaletteContent }>("content-changed", {
-        detail: { content },
+      new CustomEvent<{
+        content: PaletteContent;
+        interaction: LivePreviewInteraction;
+      }>("content-changed", {
+        detail: { content, interaction },
         bubbles: true,
         composed: true,
       }),
