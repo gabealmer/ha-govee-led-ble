@@ -21,7 +21,7 @@ from .const import (
 )
 from .coordinator import GoveeBLECoordinator
 from .editor import async_register_editor_panel, editor_url
-from .effect_setup import async_setup_effects, get_effect_setup
+from .effect_setup import async_setup_effects, get_effect_backend
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
@@ -197,9 +197,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
-    if effect_setup := get_effect_setup(hass):
-        await effect_setup.backend.preview.async_load_device(entry.entry_id)
-        await effect_setup.backend.async_reconcile_coordinator(
+    if effect_backend := get_effect_backend(hass):
+        await effect_backend.preview.async_load_device(entry.entry_id)
+        await effect_backend.engine.async_reconcile(
             coordinator,
             config_entry_id=entry.entry_id,
             observed_at=dt_util.utcnow().isoformat(),
@@ -213,13 +213,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
-    effect_setup = get_effect_setup(hass)
-    if effect_setup is not None:
-        await effect_setup.backend.preview.async_unload_device(entry.entry_id)
+    effect_backend = get_effect_backend(hass)
+    if effect_backend is not None:
+        await effect_backend.preview.async_unload_device(entry.entry_id)
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.disconnect()
-    elif effect_setup is not None:
-        await effect_setup.backend.preview.async_load_device(entry.entry_id)
+    elif effect_backend is not None:
+        await effect_backend.preview.async_load_device(entry.entry_id)
     return unload_ok
 
 

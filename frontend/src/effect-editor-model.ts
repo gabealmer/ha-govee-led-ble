@@ -26,11 +26,11 @@ import type {
 } from "./types";
 import { clonePalette, cloneRgb, sameRgb } from "./ui-utils";
 
-export type AdvancedEditableContent =
+type AdvancedEditableContent =
   | AdvancedContent
   | LayeredSceneContent
   | WorkshopContent;
-export type ProfileContent =
+type ProfileContent =
   | PaletteDiyEffectContent
   | MusicProfileContent
   | VideoProfileContent
@@ -39,7 +39,6 @@ export type EditableEffectContent =
   | CustomEffectContent
   | ProfileContent
   | AdvancedEditableContent;
-export type DeployableEffectContent = EditableEffectContent;
 export type NewEffectKind =
   | CustomEffectContent["kind"]
   | PaletteDiyEffectContent["kind"]
@@ -396,12 +395,6 @@ export function isCustomEffectContent(
     "kind" in content &&
     isCustomEffectKind(content.kind)
   );
-}
-
-export function isDeployableEffectContent(
-  content: unknown,
-): content is DeployableEffectContent {
-  return isEditableEffectContent(content);
 }
 
 export function isEditableEffectContent(

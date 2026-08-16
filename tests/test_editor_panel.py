@@ -35,7 +35,7 @@ from custom_components.ha_govee_led_ble.effect_contracts import (
     EFFECT_COMPILER_VERSION,
 )
 from custom_components.ha_govee_led_ble.effect_domain import EFFECT_SCHEMA_VERSION
-from custom_components.ha_govee_led_ble.effect_setup import get_effect_setup
+from custom_components.ha_govee_led_ble.effect_setup import get_effect_backend
 from custom_components.ha_govee_led_ble.effect_storage import EffectStorageError
 from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_DEVICES,
@@ -68,7 +68,7 @@ async def test_process_setup_registers_advanced_stable_route(
     assert custom["embed_iframe"] is False
     assert custom["trust_external"] is False
     assert custom["module_url"] == _editor_module_url()
-    assert get_effect_setup(hass) is not None
+    assert get_effect_backend(hass) is not None
 
 
 async def test_backend_storage_failure_keeps_stable_fallback_panel(
@@ -89,7 +89,7 @@ async def test_backend_storage_failure_keeps_stable_fallback_panel(
     panel = hass.data[frontend.DATA_PANELS][EDITOR_PANEL_PATH]
     assert panel.config is not None
     assert panel.config["_panel_custom"]["module_url"] == EDITOR_FALLBACK_MODULE_URL
-    assert get_effect_setup(hass) is None
+    assert get_effect_backend(hass) is None
 
 
 async def test_newer_optional_store_keeps_stable_fallback_panel(
@@ -159,8 +159,8 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
     panel = hass.data[frontend.DATA_PANELS][EDITOR_PANEL_PATH]
     assert panel.config is not None
     assert panel.config["_panel_custom"]["module_url"] == EDITOR_LOADER_MODULE_URL
-    setup = get_effect_setup(hass)
-    assert setup is not None
+    backend = get_effect_backend(hass)
+    assert backend is not None
 
     coordinator = GoveeBLECoordinator(
         hass,

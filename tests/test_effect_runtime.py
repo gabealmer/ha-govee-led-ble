@@ -1229,13 +1229,9 @@ async def test_video_profile_failure_restores_complete_prior_state(
     assert coordinator.async_restore_effect_control_state.await_args.kwargs == {"overwritten_diy_code": None}
 
 
-def test_painted_effect_uses_evidenced_code(hass: HomeAssistant) -> None:
-    repository = EffectDeploymentRepository(hass)
-
-    assert resolve_diy_code(repository, _item(), "entry-a") == 800
+def test_painted_effect_uses_evidenced_code() -> None:
+    assert resolve_diy_code(_item()) == 800
 
 
-def test_type04_effect_uses_evidenced_code(hass: HomeAssistant) -> None:
-    repository = EffectDeploymentRepository(hass)
-
-    assert resolve_diy_code(repository, _type04_item(), "entry-a") == 24
+def test_type04_effect_uses_evidenced_code() -> None:
+    assert resolve_diy_code(_type04_item()) == 24

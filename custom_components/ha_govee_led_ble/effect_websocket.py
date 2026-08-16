@@ -344,10 +344,7 @@ def ws_preview_open(
     backend = _backend(hass)
 
     try:
-        session_id = backend.preview.open_session(
-            user_id=connection.user.id,
-            owner=connection,
-        )
+        session_id = backend.preview.open_session(owner=connection)
     except PreviewShutdownError as exc:
         connection.send_error(msg["id"], "shutdown", str(exc))
         return

@@ -22,7 +22,6 @@ from custom_components.ha_govee_led_ble.coordinator import (
     RX_STALE_TIMEOUT,
     GoveeBLECoordinator,
     _expectations_from_packet,
-    _expected_color_mode_from_packet,
 )
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
@@ -1638,12 +1637,6 @@ def test_video_readback_is_gated_on_the_model(coord, h6199):
     assert h6199.color_mode is proto.ParsedMode.VIDEO
     assert h6199.video_mode == "game"
     assert h6199.video_saturation == 42
-
-
-def test_expected_color_mode_from_packet_rejects_non_colour_packets():
-    assert _expected_color_mode_from_packet(proto.build_power(True)) is None
-    assert _expected_color_mode_from_packet(b"\x33\x05") is None
-    assert _expected_color_mode_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) is None
 
 
 def test_white_balance_fills_the_untouched_axis_with_the_apps_own_neutral(coord):

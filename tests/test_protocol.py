@@ -82,32 +82,32 @@ def test_xor_checksum():
     assert proto.xor_checksum(bytearray([0xAA, 0x01] + [0x00] * 17)) == 0xAB
 
 
-def test_split_status_frame_valid_20_byte():
+def test_decode_status_frame_valid_20_byte():
     frame = bytearray([0xAA, 0x05] + [0x01] * 17)
     frame.append(proto.xor_checksum(frame))
     assert len(frame) == 20
-    result = proto.split_status_frame(bytes(frame))
-    assert result == (0x05, bytes(frame[2:19]))
-    _domain, payload = result
-    assert len(payload) == 17  # checksum byte dropped
+    result = proto.decode_status_frame(bytes(frame))
+    assert result is not None
+    assert result.domain == 0x05
+    assert result.payload == bytes(frame[2:19])
 
 
-def test_split_status_frame_rejects_short_notification():
+def test_decode_status_frame_rejects_short_notification():
     frame = bytes([0xAA, 0x04, 0x4B, 0x00, 0x00, 0x00, 0x00, 0x00])
-    assert proto.split_status_frame(frame) is None
+    assert proto.decode_status_frame(frame) is None
 
 
-def test_split_status_frame_rejects_bad_checksum():
+def test_decode_status_frame_rejects_bad_checksum():
     body = bytes([0xAA, 0x05] + [0x01] * 17)
     frame = body + bytes([proto.xor_checksum(body) ^ 0x01])
     assert len(frame) == 20
-    assert proto.split_status_frame(frame) is None
+    assert proto.decode_status_frame(frame) is None
 
 
-def test_split_status_frame_rejects_non_status_and_short():
-    assert proto.split_status_frame(bytes([0x33, 0x05, 0x01])) is None
-    assert proto.split_status_frame(bytes([0xAA, 0x05])) is None
-    assert proto.split_status_frame(b"") is None
+def test_decode_status_frame_rejects_non_status_and_short():
+    assert proto.decode_status_frame(bytes([0x33, 0x05, 0x01])) is None
+    assert proto.decode_status_frame(bytes([0xAA, 0x05])) is None
+    assert proto.decode_status_frame(b"") is None
 
 
 def test_packet_basics():

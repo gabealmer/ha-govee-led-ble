@@ -179,12 +179,7 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        resolved_diy_code = _resolve_application_diy_code(
-            self._deployments,
-            item,
-            config_entry_id,
-            diy_code,
-        )
+        resolved_diy_code = resolve_diy_code(item, diy_code)
         compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
         record = self._new_record(
             compiled,
@@ -207,12 +202,7 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        resolved_diy_code = _resolve_application_diy_code(
-            self._deployments,
-            item,
-            config_entry_id,
-            diy_code,
-        )
+        resolved_diy_code = resolve_diy_code(item, diy_code)
         compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
         record = self._new_record(
             compiled,
@@ -897,48 +887,26 @@ def _profile_verification_confidence(
     return ObservationConfidence.SETTINGS_MATCH
 
 
-def _resolve_application_diy_code(
-    deployments: EffectDeploymentRepository,
+def resolve_diy_code(
     item: LibraryItem,
-    config_entry_id: str,
-    requested: int | None,
+    requested: int | None = None,
 ) -> int | None:
-    if isinstance(item.content, MusicProfile | VideoProfile):
+    content = item.content
+    if isinstance(content, MusicProfile | VideoProfile):
         if requested is not None:
             raise ValueError("profiles do not use a DIY code")
         return None
-    return _resolve_compiler_diy_code(deployments, item, config_entry_id, requested)
-
-
-def resolve_diy_code(
-    deployments: EffectDeploymentRepository,
-    item: LibraryItem,
-    config_entry_id: str,
-) -> int | None:
-    if isinstance(item.content, PaintedEffect):
-        return 800
-    if isinstance(item.content, SingleEffect | MultiEffect):
-        return H617A_TYPE04_APPLY_CODE
-    if isinstance(item.content, PaletteDiyEffect | SpecialDiyEffect):
-        return H6199_PALETTE_DIY_APPLY_CODE
-    if isinstance(item.content, WorkshopEffect):
-        return None
-    raise ValueError("this content kind has no custom-effect selector allocation")
-
-
-def _resolve_compiler_diy_code(
-    deployments: EffectDeploymentRepository,
-    item: LibraryItem,
-    config_entry_id: str,
-    diy_code: int | None,
-) -> int | None:
-    if isinstance(item.content, WorkshopEffect):
-        if diy_code is not None:
+    if isinstance(content, WorkshopEffect):
+        if requested is not None:
             raise ValueError("this upload has no evidenced activation packet")
         return None
-    if not isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect | SpecialDiyEffect):
-        return None
-    return resolve_diy_code(deployments, item, config_entry_id) if diy_code is None else diy_code
+    if isinstance(content, PaintedEffect):
+        return 800 if requested is None else requested
+    if isinstance(content, SingleEffect | MultiEffect):
+        return H617A_TYPE04_APPLY_CODE if requested is None else requested
+    if isinstance(content, PaletteDiyEffect | SpecialDiyEffect):
+        return H6199_PALETTE_DIY_APPLY_CODE if requested is None else requested
+    return None
 
 
 def _activation_matches(

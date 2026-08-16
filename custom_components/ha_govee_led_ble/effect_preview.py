@@ -29,18 +29,9 @@ from .effect_compiler import (
     compatibility,
     compile_application,
 )
-from .effect_deployments import EffectDeploymentRepository, EffectDeviceCache, ObservationConfidence
+from .effect_deployments import EffectDeviceCache, ObservationConfidence
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
-from .effect_domain import (
-    LibraryItem,
-    MultiEffect,
-    PaintedEffect,
-    PaletteDiyEffect,
-    SingleEffect,
-    SpecialDiyEffect,
-    WorkshopEffect,
-    effect_content_to_dict,
-)
+from .effect_domain import LibraryItem, effect_content_to_dict
 from .effect_limits import MAX_PREVIEW_REQUESTS_PER_SECOND, MAX_PREVIEW_SEQUENCE
 from .effect_runtime import async_apply_compiled_profile, async_write_packets, resolve_diy_code
 from .effect_scenes import ResolvedScene, resolve_scene
@@ -135,8 +126,6 @@ class PreviewAcceptance:
 
 @dataclass(slots=True)
 class _PreviewSession:
-    session_id: str
-    user_id: str
     owner: object
     listeners: dict[object, Callable[[PreviewStatus], None]] = field(default_factory=dict)
     last_sequence: int = 0
@@ -203,7 +192,6 @@ class EffectPreviewManager:
     def __init__(
         self,
         hass: HomeAssistant,
-        deployments: EffectDeploymentRepository,
         device_cache: EffectDeviceCache,
         diagnostics: EffectDiagnosticHistory,
         *,
@@ -214,7 +202,6 @@ class EffectPreviewManager:
         failure_cooldown: float = PREVIEW_FAILURE_COOLDOWN,
     ) -> None:
         self._hass = hass
-        self._deployments = deployments
         self._device_cache = device_cache
         self._diagnostics = diagnostics
         self._write_cadence = write_cadence
@@ -233,13 +220,12 @@ class EffectPreviewManager:
     def open_session(
         self,
         *,
-        user_id: str,
         owner: object,
     ) -> str:
         if self._stopping or self._hass.is_stopping:
             raise PreviewShutdownError("Home Assistant is stopping")
         session_id = str(uuid4())
-        self._sessions[session_id] = _PreviewSession(session_id, user_id, owner)
+        self._sessions[session_id] = _PreviewSession(owner)
         return session_id
 
     def subscribe(
@@ -284,14 +270,7 @@ class EffectPreviewManager:
         result = compatibility(item, coordinator.model)
         if result.state is not CompatibilityState.COMPATIBLE:
             raise PreviewError("; ".join(result.reasons))
-        diy_code = (
-            resolve_diy_code(self._deployments, item, config_entry_id)
-            if isinstance(
-                item.content,
-                PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect | SpecialDiyEffect | WorkshopEffect,
-            )
-            else None
-        )
+        diy_code = resolve_diy_code(item)
         fingerprint = _snapshot_fingerprint(coordinator.model, item)
         request = _PreviewRequest(
             session_id=session_id,

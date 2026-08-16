@@ -111,7 +111,8 @@ def test_static_readback_reports_the_multi_effect_register(model):
     sim.handle_write(proto.build_packet(proto.COMMAND_HEADER, 0xA3, [0x01]))
     assert sim.multi_effect_flag == 1
     (reply,) = sim.handle_write(proto.build_packet(proto.STATUS_HEADER, 0xA3, []))
-    assert proto.split_status_frame(reply)[1][0] == 1
+    decoded = proto.decode_status_frame(reply)
+    assert decoded is not None and decoded.payload[0] == 1
     if sim.profile.static_readback_echoes_color:
         return
     parsed = parse_color_reply(sim)

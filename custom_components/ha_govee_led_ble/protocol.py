@@ -146,16 +146,6 @@ def decode_status_frame(
     )
 
 
-def split_status_frame(
-    frame: bytes,
-    model: str = "H617A",
-) -> tuple[int, bytes] | None:
-    decoded = decode_status_frame(frame, model)
-    if decoded is None:
-        return None
-    return decoded.domain, decoded.payload
-
-
 def decode_command_frame(frame: bytes, model: str = "H617A") -> Any | None:
     return _parse_generated_command(frame, model)
 

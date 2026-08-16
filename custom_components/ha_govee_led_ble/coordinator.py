@@ -219,22 +219,6 @@ def _expectations_from_packet(
     return expectations
 
 
-def _expected_color_mode_from_packet(
-    packet: bytes,
-    model: str = "H617A",
-    *,
-    static_echoes_color: bool = False,
-) -> tuple[ParsedMode, int | None] | None:
-    generated = decode_command_frame(packet, model)
-    if generated is None:
-        return None
-    return _expected_color_mode_from_generated(
-        generated,
-        model,
-        static_echoes_color=static_echoes_color,
-    )
-
-
 class GoveeBLECoordinator(_ActiveModeMixin):
     """Manages BLE connection lifecycle for a Govee device."""
 

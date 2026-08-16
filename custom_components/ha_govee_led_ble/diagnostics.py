@@ -129,9 +129,9 @@ def _effect_deployment_diagnostics(hass: HomeAssistant, config_entry_id: str) ->
     data = getattr(hass, "data", None)
     if not isinstance(data, Mapping):
         return empty_effect_diagnostic_snapshot()
-    from .effect_setup import get_effect_setup
+    from .effect_setup import get_effect_backend
 
-    setup = get_effect_setup(hass)
-    if setup is None:
+    backend = get_effect_backend(hass)
+    if backend is None:
         return empty_effect_diagnostic_snapshot()
-    return setup.backend.diagnostics.snapshot(config_entry_id=config_entry_id)
+    return backend.diagnostics.snapshot(config_entry_id=config_entry_id)

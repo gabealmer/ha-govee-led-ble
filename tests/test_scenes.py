@@ -25,15 +25,13 @@ from custom_components.ha_govee_led_ble.scenes import (
     SceneEntry,
     ScenePage,
     SceneSpeed,
-    get_model_scene_names,
-    get_scene_names,
 )
 
 
 def test_catalogue_valid():
     assert len(SCENES) == 83
     assert all(isinstance(e, SceneEntry) and k == k.lower() for k, e in SCENES.items())
-    names = get_scene_names()
+    names = sorted(SCENES)
     assert names == sorted(names) and len(names) == len(SCENES)
     codes = [e.code for e in SCENES.values() if e.is_simple]
     assert len(codes) == len(set(codes))
@@ -67,7 +65,6 @@ def test_per_model_snapshots_preserve_vendor_identity():
     assert MODEL_SCENES["H6199"]["dracarys"].category == "House of the Dragon"
     assert MODEL_SCENES["H6199"]["green reign"].code == 16183
     assert MODEL_SCENES["H6199"]["fire & blood"].code == 16184
-    assert get_model_scene_names("H6199") == sorted(MODEL_SCENES["H6199"])
     assert {"flash [emotion]", "flash [zootopia 2]"} <= MODEL_SCENES["H6199"].keys()
 
 

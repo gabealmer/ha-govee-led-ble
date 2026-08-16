@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Final, cast
 
 from homeassistant.core import HomeAssistant
@@ -17,15 +16,10 @@ from .effect_websocket import async_register_effect_websocket
 
 _LOGGER = logging.getLogger(__name__)
 
-EFFECT_SETUP_DATA_KEY: Final = "effect_setup"
+EFFECT_BACKEND_DATA_KEY: Final = "effect_backend"
 
 
-@dataclass(slots=True)
-class EffectSetup:
-    backend: EffectBackend
-
-
-async def async_setup_effects(hass: HomeAssistant) -> EffectSetup | None:
+async def async_setup_effects(hass: HomeAssistant) -> EffectBackend | None:
     try:
         backend = await EffectBackend.async_create(hass)
     except EffectStorageError, UnsupportedStorageVersionError:
@@ -33,11 +27,10 @@ async def async_setup_effects(hass: HomeAssistant) -> EffectSetup | None:
         return None
     async_register_effect_websocket(hass, backend)
     async_register_effect_services(hass, backend)
-    setup = EffectSetup(backend)
-    hass.data.setdefault(DOMAIN, {})[EFFECT_SETUP_DATA_KEY] = setup
-    return setup
+    hass.data.setdefault(DOMAIN, {})[EFFECT_BACKEND_DATA_KEY] = backend
+    return backend
 
 
-def get_effect_setup(hass: HomeAssistant) -> EffectSetup | None:
-    value = hass.data.get(DOMAIN, {}).get(EFFECT_SETUP_DATA_KEY)
-    return value if value is None else cast(EffectSetup, value)
+def get_effect_backend(hass: HomeAssistant) -> EffectBackend | None:
+    value = hass.data.get(DOMAIN, {}).get(EFFECT_BACKEND_DATA_KEY)
+    return cast(EffectBackend | None, value)

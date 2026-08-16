@@ -46,12 +46,7 @@ const BRIGHTNESS_EDGE_OPTIONS = [
 
 type RelativeBrightnessEdge = keyof RelativeBrightness;
 
-export {
-  cloneRelativeBrightness,
-  cloneVideoProfileContent,
-} from "./profile-model";
-
-export function uniformRelativeBrightnessValue(
+function uniformRelativeBrightnessValue(
   relativeBrightness: RelativeBrightness,
 ): number | undefined {
   const values = [
@@ -63,7 +58,7 @@ export function uniformRelativeBrightnessValue(
   return values.every((value) => value === values[0]) ? values[0] : undefined;
 }
 
-export function uniformBrightnessControlValue(
+function uniformBrightnessControlValue(
   relativeBrightness: RelativeBrightness,
 ): number {
   const uniform = uniformRelativeBrightnessValue(relativeBrightness);
@@ -81,7 +76,7 @@ export function uniformBrightnessControlValue(
   );
 }
 
-export function applyUniformRelativeBrightness(
+function applyUniformRelativeBrightness(
   value: number,
 ): RelativeBrightness {
   const next = clampInteger(value, 1, 100);

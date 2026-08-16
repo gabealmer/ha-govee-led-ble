@@ -17,7 +17,6 @@ from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENE
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_TEMPLATES
 from custom_components.ha_govee_led_ble.effect_deployments import (
-    EffectDeploymentRepository,
     EffectDeviceCache,
     ObservationConfidence,
     ObservedDeviceState,
@@ -79,13 +78,10 @@ async def _manager(
     coordinator: Any,
     **timing: float,
 ) -> tuple[EffectPreviewManager, EffectDeviceCache]:
-    deployments = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     cache = EffectDeviceCache(InMemoryVersionedDocumentStore())
-    await deployments.async_load()
     await cache.async_load()
     manager = EffectPreviewManager(
         hass,
-        deployments,
         cache,
         EffectDiagnosticHistory(),
         write_cadence=timing.get("write_cadence", 0),
@@ -109,10 +105,7 @@ async def _manager(
 
 
 def _open(manager: EffectPreviewManager, owner: object, events: list[PreviewStatus]) -> str:
-    session_id = manager.open_session(
-        user_id="admin",
-        owner=owner,
-    )
+    session_id = manager.open_session(owner=owner)
     manager.subscribe(
         session_id=session_id,
         owner=owner,
@@ -335,7 +328,7 @@ async def test_device_write_starts_respect_backend_cadence(
         if event.phase is PreviewPhase.WRITING:
             writing_times.append(asyncio.get_running_loop().time())
 
-    session_id = manager.open_session(user_id="admin", owner=owner)
+    session_id = manager.open_session(owner=owner)
     manager.subscribe(
         session_id=session_id,
         owner=owner,
@@ -874,7 +867,7 @@ async def test_shutdown_marks_active_sequence_incomplete_and_rejects_new_session
 
     assert any(event.phase is PreviewPhase.FAILED and event.error_code == "shutdown_incomplete" for event in events)
     with pytest.raises(PreviewShutdownError):
-        manager.open_session(user_id="admin", owner=object())
+        manager.open_session(owner=object())
 
 
 async def test_session_and_device_lifecycle_edge_cases(
@@ -884,7 +877,7 @@ async def test_session_and_device_lifecycle_edge_cases(
     manager, _cache = await _manager(hass, monkeypatch, _coordinator())
     owner = object()
     listener = AsyncMock()
-    session_id = manager.open_session(user_id="admin", owner=owner)
+    session_id = manager.open_session(owner=owner)
     unsubscribe = manager.subscribe(
         session_id=session_id,
         owner=owner,
@@ -906,7 +899,7 @@ async def test_session_and_device_lifecycle_edge_cases(
     await manager.async_shutdown()
 
     with pytest.raises(PreviewShutdownError):
-        manager.open_session(user_id="admin", owner=owner)
+        manager.open_session(owner=owner)
 
 
 async def test_scene_preview_validation_errors(
@@ -1341,7 +1334,6 @@ def test_preview_publish_handles_missing_sessions_and_listener_errors(
 
     manager = EffectPreviewManager(
         hass,
-        EffectDeploymentRepository(InMemoryVersionedDocumentStore()),
         EffectDeviceCache(InMemoryVersionedDocumentStore()),
         EffectDiagnosticHistory(),
     )
@@ -1360,7 +1352,7 @@ def test_preview_publish_handles_missing_sessions_and_listener_errors(
     manager._publish(request, PreviewPhase.WRITTEN)
 
     owner = object()
-    session_id = manager.open_session(user_id="admin", owner=owner)
+    session_id = manager.open_session(owner=owner)
 
     def broken_listener(_status: PreviewStatus) -> None:
         raise RuntimeError("listener failed")

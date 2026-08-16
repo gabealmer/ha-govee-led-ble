@@ -14,7 +14,7 @@ from custom_components.ha_govee_led_ble.effect_diagnostics import (
     DiagnosticStage,
     EffectDiagnosticHistory,
 )
-from custom_components.ha_govee_led_ble.effect_setup import EFFECT_SETUP_DATA_KEY
+from custom_components.ha_govee_led_ble.effect_setup import EFFECT_BACKEND_DATA_KEY
 
 REDACTED = "**REDACTED**"
 
@@ -241,8 +241,8 @@ async def test_surfaces_only_bounded_deployment_diagnostics_for_this_entry(
     hass = SimpleNamespace(
         data={
             DOMAIN: {
-                EFFECT_SETUP_DATA_KEY: SimpleNamespace(
-                    backend=SimpleNamespace(diagnostics=history),
+                EFFECT_BACKEND_DATA_KEY: SimpleNamespace(
+                    diagnostics=history,
                 )
             }
         }

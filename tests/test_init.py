@@ -57,12 +57,12 @@ async def test_setup_entry(hass: HomeAssistant):
 async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):
     entry = _entry()
     backend = MagicMock(
-        async_reconcile_coordinator=AsyncMock(),
+        engine=MagicMock(async_reconcile=AsyncMock()),
         preview=MagicMock(async_load_device=AsyncMock()),
     )
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
-        patch("custom_components.ha_govee_led_ble.get_effect_setup", return_value=MagicMock(backend=backend)),
+        patch("custom_components.ha_govee_led_ble.get_effect_backend", return_value=backend),
         patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
     ):
@@ -71,10 +71,10 @@ async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass:
 
         assert await async_setup_entry(hass, entry) is True
 
-    backend.async_reconcile_coordinator.assert_awaited_once()
+    backend.engine.async_reconcile.assert_awaited_once()
     backend.preview.async_load_device.assert_awaited_once_with(entry.entry_id)
-    assert backend.async_reconcile_coordinator.await_args.args == (cls.return_value,)
-    assert backend.async_reconcile_coordinator.await_args.kwargs["config_entry_id"] == entry.entry_id
+    assert backend.engine.async_reconcile.await_args.args == (cls.return_value,)
+    assert backend.engine.async_reconcile.await_args.kwargs["config_entry_id"] == entry.entry_id
 
 
 @pytest.mark.parametrize("data", [{}, {CONF_MODEL: "H9999"}])
@@ -110,8 +110,8 @@ async def test_unload_entry_stops_preview_before_platforms_and_disconnect(hass: 
 
     with (
         patch(
-            "custom_components.ha_govee_led_ble.get_effect_setup",
-            return_value=MagicMock(backend=MagicMock(preview=preview)),
+            "custom_components.ha_govee_led_ble.get_effect_backend",
+            return_value=MagicMock(preview=preview),
         ),
         patch.object(hass.config_entries, "async_unload_platforms", side_effect=unload_platforms),
     ):

@@ -6,10 +6,9 @@ from dataclasses import dataclass
 
 from homeassistant.core import HomeAssistant
 
-from .coordinator import GoveeBLECoordinator
 from .effect_application import EffectStudioApplication
 from .effect_deployment_diagnostics import EffectDeploymentDiagnosticBridge
-from .effect_deployments import EffectDeploymentRepository, EffectDeviceCache, ObservedDeviceState
+from .effect_deployments import EffectDeploymentRepository, EffectDeviceCache
 from .effect_diagnostics import EffectDiagnosticHistory
 from .effect_drafts import EffectDraftRepository
 from .effect_preview import EffectPreviewManager
@@ -30,19 +29,6 @@ class EffectBackend:
     preview: EffectPreviewManager
     diagnostics: EffectDiagnosticHistory
     _diagnostic_bridge: EffectDeploymentDiagnosticBridge
-
-    async def async_reconcile_coordinator(
-        self,
-        coordinator: GoveeBLECoordinator,
-        *,
-        config_entry_id: str,
-        observed_at: str,
-    ) -> ObservedDeviceState:
-        return await self.engine.async_reconcile(
-            coordinator,
-            config_entry_id=config_entry_id,
-            observed_at=observed_at,
-        )
 
     @classmethod
     async def async_create(cls, hass: HomeAssistant) -> EffectBackend:
@@ -68,7 +54,6 @@ class EffectBackend:
             engine=engine,
             preview=EffectPreviewManager(
                 hass,
-                deployments,
                 device_cache,
                 diagnostics,
             ),

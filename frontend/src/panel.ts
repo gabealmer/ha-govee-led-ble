@@ -27,7 +27,6 @@ import {
   groupsFromColours,
   isAdvancedEditableContent,
   isCustomEffectContent,
-  isDeployableEffectContent,
   isEditableEffectContent,
   isMyEffectKind,
   libraryKindPriority,
@@ -338,7 +337,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private get previewCapability() {
-    if (!isDeployableEffectContent(this.content)) {
+    if (!isEditableEffectContent(this.content)) {
       return undefined;
     }
     const device = this.selectedDevice;
@@ -370,7 +369,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private get canPreview(): boolean {
     return (
-      isDeployableEffectContent(this.content) &&
+      isEditableEffectContent(this.content) &&
       this.isAdmin &&
       !this.deletingCurrentItem &&
       this.previewCapability === "supported" &&
@@ -3048,7 +3047,7 @@ export class GoveeLedEffectStudio extends LitElement {
           )
         : undefined;
     }
-    if (!this.canPreview || !isDeployableEffectContent(this.content)) {
+    if (!this.canPreview || !isEditableEffectContent(this.content)) {
       return undefined;
     }
     const name = this.name.trim() || "Live preview";
