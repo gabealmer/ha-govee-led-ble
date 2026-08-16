@@ -951,7 +951,7 @@ export class GoveeLedEffectStudio extends LitElement {
         ?disabled=${!this.isAdmin}
         @click=${() => this.newEffect(kind)}
       >
-        <span>New</span>
+        <span><span class="new-effect-icon" aria-hidden="true"></span>New</span>
       </button>
     `;
   }

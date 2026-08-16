@@ -1,13 +1,21 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  adjustAppliedAreaLeftEdge,
+  adjustAppliedAreaRightEdge,
+  appliedAreaSegments,
+  appliedAreaWireBounds,
   blankAdvancedContent,
+  blankLayer,
   bytePercent,
   cloneAdvancedContent,
+  cloneLayer,
   cloneLayeredSceneContent,
   hexByte,
+  layerAppliedAreaSegments,
+  moveAppliedArea,
   parseHexByte,
-  segmentOverlapsArea,
+  withAppliedAreaSegments,
 } from "../../src/advanced-effect-model";
 
 test("blank advanced content contains an editable default layer", () => {
@@ -60,8 +68,84 @@ test("wire byte helpers preserve accepted values and reject malformed text", () 
   expect(parseHexByte("gg")).toBeUndefined();
 });
 
-test("segment overlap uses fractional segment boundaries", () => {
-  expect(segmentOverlapsArea(0, 15, 0, 1)).toBe(true);
-  expect(segmentOverlapsArea(1, 15, 0, 0.5)).toBe(false);
-  expect(segmentOverlapsArea(14, 15, 9.5, 10)).toBe(true);
+test("applied area left edge resizes without moving the right edge", () => {
+  expect(adjustAppliedAreaLeftEdge(8, 1)).toEqual({
+    start: 1,
+    end: 8,
+  });
+  expect(adjustAppliedAreaLeftEdge(8, 3)).toEqual({
+    start: 3,
+    end: 8,
+  });
+  expect(adjustAppliedAreaLeftEdge(8, 9)).toEqual({
+    start: 7,
+    end: 8,
+  });
+  expect(adjustAppliedAreaLeftEdge(12, 4, 15)).toEqual({
+    start: 4,
+    end: 12,
+  });
+});
+
+test("applied area right edge resizes without moving the left edge", () => {
+  expect(adjustAppliedAreaRightEdge(3, 8)).toEqual({
+    start: 3,
+    end: 8,
+  });
+  expect(adjustAppliedAreaRightEdge(3, 2)).toEqual({
+    start: 3,
+    end: 4,
+  });
+  expect(adjustAppliedAreaRightEdge(3, 12)).toEqual({
+    start: 3,
+    end: 10,
+  });
+});
+
+test("applied area movement preserves width and stops at strip edges", () => {
+  expect(moveAppliedArea(2, 8, 1)).toEqual({ start: 1, end: 7 });
+  expect(moveAppliedArea(2, 8, 9)).toEqual({ start: 4, end: 10 });
+  expect(moveAppliedArea(2, 8, -4)).toEqual({ start: 0, end: 6 });
+});
+
+test("applied area segments preserve visual length while moving", () => {
+  expect(appliedAreaSegments(0, 2, 15)).toEqual({
+    start: 0,
+    end: 3,
+    length: 3,
+  });
+  expect(appliedAreaSegments(1, 2, 15)).toEqual({
+    start: 1,
+    end: 4,
+    length: 3,
+  });
+  expect(appliedAreaSegments(8, 2, 15)).toEqual({
+    start: 12,
+    end: 15,
+    length: 3,
+  });
+});
+
+test("exact segment bounds survive clones while serialising nearest wire values", () => {
+  const layer = withAppliedAreaSegments(blankLayer(), 2, 5, 15);
+
+  expect(appliedAreaWireBounds(2, 5, 15)).toEqual({
+    start: 1,
+    end: 3,
+  });
+  expect(layer.area).toEqual({
+    start_tenths: 1,
+    width_tenths: 2,
+  });
+  expect(layerAppliedAreaSegments(layer, 15)).toEqual({
+    start: 2,
+    end: 5,
+    length: 3,
+  });
+  expect(layerAppliedAreaSegments(cloneLayer(layer), 15)).toEqual({
+    start: 2,
+    end: 5,
+    length: 3,
+  });
+  expect(JSON.parse(JSON.stringify(layer)).area).toEqual(layer.area);
 });

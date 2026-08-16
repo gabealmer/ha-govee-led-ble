@@ -120,19 +120,40 @@ export const effectStudioPanelStyles = [
       position: sticky;
       z-index: 1;
       top: 0;
-      color: var(--studio-blue);
+      margin-bottom: 6px;
+      border: 1px solid
+        color-mix(in srgb, var(--studio-blue) 24%, var(--studio-border));
+      color: var(--primary-text-color);
       background: color-mix(
         in srgb,
-        var(--studio-blue) 13%,
+        var(--studio-blue) 5%,
         var(--primary-background-color, #fff)
       );
-      font-weight: 650;
+      box-shadow: 0 5px 0 var(--primary-background-color, #fff);
+      font-weight: 600;
+    }
+
+    .library .new-effect-icon {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-inline-end: 8px;
+      background:
+        linear-gradient(var(--studio-blue), var(--studio-blue)) center / 12px
+          1.5px no-repeat,
+        linear-gradient(var(--studio-blue), var(--studio-blue)) center / 1.5px
+          12px no-repeat;
     }
 
     .library .new-effect-action:hover {
+      border-color: color-mix(
+        in srgb,
+        var(--studio-blue) 34%,
+        var(--studio-border)
+      );
       background: color-mix(
         in srgb,
-        var(--studio-blue) 20%,
+        var(--studio-blue) 9%,
         var(--primary-background-color, #fff)
       );
     }

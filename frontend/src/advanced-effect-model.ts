@@ -11,6 +11,15 @@ import { clampInteger, clonePalette } from "./ui-utils";
 
 export const KNOWN_SELECTION_TYPES: readonly SelectionType[] = [1, 2, 0, 3];
 export const KNOWN_BRIGHTNESS_ORDERS: readonly BrightnessOrder[] = [0, 1, 2, 3];
+const APPLIED_AREA_SEGMENTS = Symbol("applied-area-segments");
+
+interface EffectLayerWithAppliedAreaSegments extends EffectLayer {
+  [APPLIED_AREA_SEGMENTS]?: {
+    segmentCount: number;
+    start: number;
+    end: number;
+  };
+}
 
 export function blankAdvancedContent(): AdvancedContent {
   return {
@@ -97,7 +106,7 @@ function blankMovement(): Movement {
 }
 
 export function cloneLayer(layer: EffectLayer): EffectLayer {
-  return {
+  const clone: EffectLayerWithAppliedAreaSegments = {
     ...layer,
     area: { ...layer.area },
     selection: { ...layer.selection },
@@ -109,6 +118,16 @@ export function cloneLayer(layer: EffectLayer): EffectLayer {
     selected_movement: { ...layer.selected_movement },
     overall_movement: { ...layer.overall_movement },
   };
+  const appliedAreaSegments = (
+    layer as EffectLayerWithAppliedAreaSegments
+  )[APPLIED_AREA_SEGMENTS];
+  if (appliedAreaSegments) {
+    Object.defineProperty(clone, APPLIED_AREA_SEGMENTS, {
+      value: { ...appliedAreaSegments },
+      configurable: true,
+    });
+  }
+  return clone;
 }
 
 export function isKnownSelectionType(value: number): value is SelectionType {
@@ -137,13 +156,207 @@ export function parseHexByte(value: string): number | undefined {
   return Number.parseInt(normalised, 16);
 }
 
-export function segmentOverlapsArea(
-  index: number,
-  segmentCount: number,
+export interface AppliedAreaBounds {
+  start: number;
+  end: number;
+}
+
+export interface AppliedAreaSegments extends AppliedAreaBounds {
+  length: number;
+}
+
+export function adjustAppliedAreaLeftEdge(
+  end: number,
+  nextStart: number,
+  maximum = 10,
+): AppliedAreaBounds {
+  const boundedEnd = clampInteger(
+    end,
+    1,
+    Math.max(1, Math.round(maximum)),
+  );
+  return {
+    start: clampInteger(nextStart, 0, boundedEnd - 1),
+    end: boundedEnd,
+  };
+}
+
+export function adjustAppliedAreaRightEdge(
+  start: number,
+  nextEnd: number,
+  maximum = 10,
+): AppliedAreaBounds {
+  const boundedMaximum = Math.max(1, Math.round(maximum));
+  const boundedStart = clampInteger(start, 0, boundedMaximum - 1);
+  return {
+    start: boundedStart,
+    end: clampInteger(nextEnd, boundedStart + 1, boundedMaximum),
+  };
+}
+
+export function moveAppliedArea(
   start: number,
   end: number,
-): boolean {
-  const segmentStart = (index * 10) / segmentCount;
-  const segmentEnd = ((index + 1) * 10) / segmentCount;
-  return segmentEnd > start && segmentStart < end;
+  nextStart: number,
+  maximum = 10,
+): AppliedAreaBounds {
+  const boundedMaximum = Math.max(1, Math.round(maximum));
+  const currentStart = clampInteger(start, 0, boundedMaximum - 1);
+  const currentEnd = clampInteger(
+    end,
+    currentStart + 1,
+    boundedMaximum,
+  );
+  const width = currentEnd - currentStart;
+  const boundedStart = clampInteger(
+    nextStart,
+    0,
+    boundedMaximum - width,
+  );
+  return {
+    start: boundedStart,
+    end: boundedStart + width,
+  };
+}
+
+export function appliedAreaSegments(
+  start: number,
+  width: number,
+  segmentCount: number,
+): AppliedAreaSegments {
+  const boundedSegmentCount = Math.max(1, Math.round(segmentCount));
+  const startSegment = Math.min(
+    boundedSegmentCount - 1,
+    Math.floor(
+      (clampInteger(start, 0, 9) * boundedSegmentCount) / 10,
+    ),
+  );
+  const length = Math.max(
+    1,
+    Math.round(
+      (clampInteger(width, 1, 10 - clampInteger(start, 0, 9)) *
+        boundedSegmentCount) /
+        10,
+    ),
+  );
+  const endSegment = Math.min(boundedSegmentCount, startSegment + length);
+  return {
+    start: startSegment,
+    end: endSegment,
+    length: endSegment - startSegment,
+  };
+}
+
+export function appliedAreaWireBounds(
+  start: number,
+  end: number,
+  segmentCount: number,
+): AppliedAreaBounds {
+  const boundedSegmentCount = Math.max(1, Math.round(segmentCount));
+  const boundedStart = clampInteger(
+    start,
+    0,
+    boundedSegmentCount - 1,
+  );
+  const boundedEnd = clampInteger(
+    end,
+    boundedStart + 1,
+    boundedSegmentCount,
+  );
+  const wireStart = clampInteger(
+    (boundedStart * 10) / boundedSegmentCount,
+    0,
+    9,
+  );
+  return {
+    start: wireStart,
+    end: clampInteger(
+      (boundedEnd * 10) / boundedSegmentCount,
+      wireStart + 1,
+      10,
+    ),
+  };
+}
+
+export function layerAppliedAreaSegments(
+  layer: EffectLayer,
+  segmentCount: number,
+): AppliedAreaSegments {
+  const appliedAreaSegments = (
+    layer as EffectLayerWithAppliedAreaSegments
+  )[APPLIED_AREA_SEGMENTS];
+  if (
+    appliedAreaSegments?.segmentCount === segmentCount &&
+    appliedAreaSegments.start >= 0 &&
+    appliedAreaSegments.end <= segmentCount &&
+    appliedAreaSegments.end > appliedAreaSegments.start
+  ) {
+    const wire = appliedAreaWireBounds(
+      appliedAreaSegments.start,
+      appliedAreaSegments.end,
+      segmentCount,
+    );
+    if (
+      layer.area.start_tenths === wire.start &&
+      layer.area.width_tenths === wire.end - wire.start
+    ) {
+      return {
+        start: appliedAreaSegments.start,
+        end: appliedAreaSegments.end,
+        length: appliedAreaSegments.end - appliedAreaSegments.start,
+      };
+    }
+  }
+  return appliedAreaSegmentsFromWire(layer, segmentCount);
+}
+
+export function withAppliedAreaSegments(
+  layer: EffectLayer,
+  start: number,
+  end: number,
+  segmentCount: number,
+): EffectLayer {
+  const boundedSegmentCount = Math.max(1, Math.round(segmentCount));
+  const boundedStart = clampInteger(
+    start,
+    0,
+    boundedSegmentCount - 1,
+  );
+  const boundedEnd = clampInteger(
+    end,
+    boundedStart + 1,
+    boundedSegmentCount,
+  );
+  const wire = appliedAreaWireBounds(
+    boundedStart,
+    boundedEnd,
+    boundedSegmentCount,
+  );
+  const clone = cloneLayer({
+    ...layer,
+    area: {
+      start_tenths: wire.start,
+      width_tenths: wire.end - wire.start,
+    },
+  }) as EffectLayerWithAppliedAreaSegments;
+  Object.defineProperty(clone, APPLIED_AREA_SEGMENTS, {
+    value: {
+      segmentCount: boundedSegmentCount,
+      start: boundedStart,
+      end: boundedEnd,
+    },
+    configurable: true,
+  });
+  return clone;
+}
+
+function appliedAreaSegmentsFromWire(
+  layer: EffectLayer,
+  segmentCount: number,
+): AppliedAreaSegments {
+  return appliedAreaSegments(
+    layer.area.start_tenths,
+    layer.area.width_tenths,
+    segmentCount,
+  );
 }

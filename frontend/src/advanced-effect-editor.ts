@@ -2,6 +2,8 @@ import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import {
+  adjustAppliedAreaLeftEdge,
+  adjustAppliedAreaRightEdge,
   blankBrightnessPattern,
   blankLayer,
   bytePercent,
@@ -11,8 +13,10 @@ import {
   isKnownSelectionType,
   KNOWN_BRIGHTNESS_ORDERS,
   KNOWN_SELECTION_TYPES,
+  layerAppliedAreaSegments,
+  moveAppliedArea,
   parseHexByte,
-  segmentOverlapsArea,
+  withAppliedAreaSegments,
 } from "./advanced-effect-model";
 export {
   blankAdvancedContent,
@@ -56,6 +60,17 @@ import { clampInteger, relocatedIndex, rgbToHex } from "./ui-utils";
 const AUTHORING_LAYER_LIMIT = 5;
 const AUTHORING_PALETTE_LIMIT = 8;
 const DEFAULT_SEGMENT_COUNT = 15;
+type AppliedAreaControl = "left" | "move" | "right";
+
+interface AppliedAreaDrag {
+  control: AppliedAreaControl;
+  pointerId: number;
+  pointerStart: number;
+  start: number;
+  end: number;
+  track: HTMLElement;
+}
+
 const PRIORITY_OPTIONS = [1, 2, 3, 4, 5].map((value) => ({
   value,
   label: String(value),
@@ -104,6 +119,11 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   @state()
   private layerActionsOpen = false;
 
+  @state()
+  private appliedAreaActiveControl?: AppliedAreaControl;
+
+  private appliedAreaDrag?: AppliedAreaDrag;
+
   private readonly windowPointerDown = (event: PointerEvent): void => {
     if (!this.layerActionsOpen) {
       return;
@@ -121,6 +141,8 @@ export class GoveeAdvancedEffectEditor extends LitElement {
 
   public disconnectedCallback(): void {
     window.removeEventListener("pointerdown", this.windowPointerDown);
+    this.appliedAreaDrag = undefined;
+    this.appliedAreaActiveControl = undefined;
     super.disconnectedCallback();
   }
 
@@ -308,85 +330,84 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       layer.area.start_tenths <= 9 &&
       layer.area.width_tenths >= 1 &&
       layer.area.width_tenths <= 10 - layer.area.start_tenths;
-    const start = clampInteger(layer.area.start_tenths, 0, 9);
-    const end = start + layer.area.width_tenths;
     const segmentCount =
       Number.isInteger(this.segmentCount) && this.segmentCount > 0
         ? this.segmentCount
         : DEFAULT_SEGMENT_COUNT;
     const segmentColour = rgbToHex(layer.palette[0] ?? [47, 111, 237]);
+    const visibleSegments = layerAppliedAreaSegments(
+      layer,
+      segmentCount,
+    );
+    const visualStart = (visibleSegments.start / segmentCount) * 100;
+    const visualEnd = (visibleSegments.end / segmentCount) * 100;
     return html`
       <section class="card wide-card">
         <h3 class="section-title">Applied area</h3>
         <div class="area-control">
           <div
-            class="area-segments"
+            class="area-range"
             style="--area-segment-count: ${segmentCount}; --area-colour: ${segmentColour};"
-            aria-label="Applied area, ${segmentCount} segments"
+            aria-label="Applied area"
           >
-            ${Array.from(
-              { length: segmentCount },
-              (_, index) => html`
-                <span
-                  class=${areaIsEditable &&
-                  segmentOverlapsArea(index, segmentCount, start, end)
-                    ? "covered"
-                    : ""}
-                  aria-hidden="true"
-                ></span>
-              `,
-            )}
+            <div class="area-segments" aria-hidden="true">
+              ${Array.from(
+                { length: segmentCount },
+                (_, index) => html`
+                  <span
+                    class=${areaIsEditable &&
+                    index >= visibleSegments.start &&
+                    index < visibleSegments.end
+                      ? "covered"
+                      : ""}
+                  ></span>
+                `,
+              )}
+            </div>
+            ${areaIsEditable
+              ? html`
+                  <div
+                    class="area-window"
+                    style="left: ${visualStart}%; width: ${visualEnd -
+                    visualStart}%;"
+                  >
+                    ${this.renderAppliedAreaSlider(
+                      "move",
+                      "Move applied area",
+                      visibleSegments.start,
+                      0,
+                      segmentCount - visibleSegments.length,
+                      `Segments ${visibleSegments.start + 1} to ${visibleSegments.end}`,
+                      visibleSegments.start + 1,
+                    )}
+                    ${this.renderAppliedAreaSlider(
+                      "left",
+                      "Applied area left edge",
+                      visibleSegments.start,
+                      0,
+                      visibleSegments.end - 1,
+                      `Segment ${visibleSegments.start + 1}`,
+                      visibleSegments.start + 1,
+                    )}
+                    ${this.renderAppliedAreaSlider(
+                      "right",
+                      "Applied area right edge",
+                      visibleSegments.end,
+                      visibleSegments.start + 1,
+                      segmentCount,
+                      `Segment ${visibleSegments.end}`,
+                      visibleSegments.end,
+                    )}
+                  </div>
+                `
+              : nothing}
           </div>
           ${areaIsEditable
             ? html`
-                <div class="area-boundaries">
-                  <label class="area-boundary">
-                    <span>
-                      <span>Left edge</span>
-                      <output aria-label="Applied area left edge value"
-                        >${start * 10}%</output
-                      >
-                    </span>
-                    <input
-                      type="range"
-                      min="0"
-                      max=${end - 1}
-                      step="1"
-                      .value=${String(start)}
-                      aria-label="Applied area left edge"
-                      aria-valuetext="${start * 10}%"
-                      ?disabled=${this.disabled}
-                      @input=${(event: Event) =>
-                        this.setAppliedArea(
-                          Number((event.target as HTMLInputElement).value),
-                          end,
-                        )}
-                    />
-                  </label>
-                  <label class="area-boundary">
-                    <span>
-                      <span>Right edge</span>
-                      <output aria-label="Applied area right edge value"
-                        >${end * 10}%</output
-                      >
-                    </span>
-                    <input
-                      type="range"
-                      min=${start + 1}
-                      max="10"
-                      step="1"
-                      .value=${String(end)}
-                      aria-label="Applied area right edge"
-                      aria-valuetext="${end * 10}%"
-                      ?disabled=${this.disabled}
-                      @input=${(event: Event) =>
-                        this.setAppliedArea(
-                          start,
-                          Number((event.target as HTMLInputElement).value),
-                        )}
-                    />
-                  </label>
-                </div>
+                <p class="area-help">
+                  Drag either edge to resize. Drag the highlighted middle to
+                  move the area.
+                </p>
               `
             : nothing}
         </div>
@@ -415,13 +436,227 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     `;
   }
 
-  private setAppliedArea(start: number, end: number): void {
-    this.updateLayer({
-      area: {
-        start_tenths: start,
-        width_tenths: end - start,
-      },
-    });
+  private renderAppliedAreaSlider(
+    control: AppliedAreaControl,
+    label: string,
+    value: number,
+    minimum: number,
+    maximum: number,
+    valueText: string,
+    displayValue: number,
+  ) {
+    return html`
+      <div
+        class=${control === "move"
+          ? "area-move"
+          : `area-handle area-handle-${control}`}
+        role="slider"
+        tabindex=${this.disabled ? -1 : 0}
+        aria-label=${label}
+        aria-orientation="horizontal"
+        aria-valuemin=${minimum}
+        aria-valuemax=${maximum}
+        aria-valuenow=${value}
+        aria-valuetext=${valueText}
+        aria-disabled=${this.disabled ? "true" : "false"}
+        @keydown=${(event: KeyboardEvent) =>
+          this.appliedAreaKeyPressed(event, control)}
+        @pointerdown=${(event: PointerEvent) =>
+          this.startAppliedAreaDrag(event, control)}
+        @pointermove=${this.appliedAreaPointerMoved}
+        @pointerup=${this.finishAppliedAreaDrag}
+        @pointercancel=${this.finishAppliedAreaDrag}
+      >
+        ${control !== "move" && this.appliedAreaActiveControl === control
+          ? html`<span class="area-drag-value" aria-hidden="true"
+              >${displayValue}</span
+            >`
+          : nothing}
+      </div>
+    `;
+  }
+
+  private setAppliedArea(
+    start: number,
+    end: number,
+    segmentCount: number,
+  ): void {
+    if (!this.content || this.disabled) {
+      return;
+    }
+    const layers = this.content.layers.map((layer, index) =>
+      index === this.activeLayerIndex
+        ? withAppliedAreaSegments(layer, start, end, segmentCount)
+        : cloneLayer(layer),
+    );
+    this.emitContent({ kind: "advanced", layers });
+  }
+
+  private appliedAreaKeyPressed(
+    event: KeyboardEvent,
+    control: AppliedAreaControl,
+  ): void {
+    const { start, end } = this.renderedAppliedAreaSegments(
+      event.currentTarget as HTMLElement,
+    );
+    const direction =
+      event.key === "ArrowLeft" || event.key === "ArrowDown"
+        ? -1
+        : event.key === "ArrowRight" || event.key === "ArrowUp"
+          ? 1
+          : undefined;
+    let next: number;
+    if (event.key === "Home") {
+      next = control === "right" ? start + 1 : 0;
+    } else if (event.key === "End") {
+      next =
+        control === "left"
+          ? end - 1
+          : control === "right"
+            ? this.appliedAreaSegmentCount
+            : this.appliedAreaSegmentCount - (end - start);
+    } else if (direction !== undefined) {
+      next = (control === "right" ? end : start) + direction;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    this.applyAppliedAreaControl(control, start, end, next);
+  }
+
+  private startAppliedAreaDrag(
+    event: PointerEvent,
+    control: AppliedAreaControl,
+  ): void {
+    if (this.disabled || (event.button !== 0 && event.pointerType !== "touch")) {
+      return;
+    }
+    const target = event.currentTarget as HTMLElement;
+    const track = target.closest<HTMLElement>(".area-range");
+    if (!track) {
+      return;
+    }
+    const { start, end } = this.renderedAppliedAreaSegments(target);
+    target.focus();
+    event.preventDefault();
+    event.stopPropagation();
+    target.setPointerCapture(event.pointerId);
+    this.appliedAreaActiveControl = control;
+    this.appliedAreaDrag = {
+      control,
+      pointerId: event.pointerId,
+      pointerStart: event.clientX,
+      start,
+      end,
+      track,
+    };
+  }
+
+  private readonly appliedAreaPointerMoved = (event: PointerEvent): void => {
+    const drag = this.appliedAreaDrag;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    const bounds = drag.track.getBoundingClientRect();
+    const next =
+      drag.control === "move"
+        ? drag.start +
+          Math.round(
+            ((event.clientX - drag.pointerStart) / bounds.width) *
+              this.appliedAreaSegmentCount,
+          )
+        : Math.round(
+            ((event.clientX - bounds.left) / bounds.width) *
+              this.appliedAreaSegmentCount,
+          );
+    this.applyAppliedAreaControl(
+      drag.control,
+      drag.start,
+      drag.end,
+      next,
+    );
+  };
+
+  private readonly finishAppliedAreaDrag = (event: PointerEvent): void => {
+    if (this.appliedAreaDrag?.pointerId !== event.pointerId) {
+      return;
+    }
+    const target = event.currentTarget as HTMLElement;
+    if (target.hasPointerCapture(event.pointerId)) {
+      target.releasePointerCapture(event.pointerId);
+    }
+    this.appliedAreaDrag = undefined;
+    this.appliedAreaActiveControl = undefined;
+  };
+
+  private applyAppliedAreaControl(
+    control: AppliedAreaControl,
+    start: number,
+    end: number,
+    next: number,
+  ): void {
+    const area =
+      control === "left"
+        ? adjustAppliedAreaLeftEdge(
+            end,
+            next,
+            this.appliedAreaSegmentCount,
+          )
+        : control === "right"
+          ? adjustAppliedAreaRightEdge(
+              start,
+              next,
+              this.appliedAreaSegmentCount,
+            )
+          : moveAppliedArea(
+              start,
+              end,
+              next,
+              this.appliedAreaSegmentCount,
+            );
+    this.setAppliedArea(
+      area.start,
+      area.end,
+      this.appliedAreaSegmentCount,
+    );
+  }
+
+  private get appliedAreaSegmentCount(): number {
+    return Number.isInteger(this.segmentCount) && this.segmentCount > 0
+      ? this.segmentCount
+      : DEFAULT_SEGMENT_COUNT;
+  }
+
+  private renderedAppliedAreaSegments(origin: HTMLElement): {
+    start: number;
+    end: number;
+  } {
+    const areaWindow = origin.closest(".area-window");
+    const left = Number(
+      areaWindow
+        ?.querySelector<HTMLElement>(".area-handle-left")
+        ?.getAttribute("aria-valuenow"),
+    );
+    const right = Number(
+      areaWindow
+        ?.querySelector<HTMLElement>(".area-handle-right")
+        ?.getAttribute("aria-valuenow"),
+    );
+    if (
+      Number.isInteger(left) &&
+      Number.isInteger(right) &&
+      left >= 0 &&
+      right > left &&
+      right <= this.appliedAreaSegmentCount
+    ) {
+      return { start: left, end: right };
+    }
+    const segments = layerAppliedAreaSegments(
+      this.activeLayer,
+      this.appliedAreaSegmentCount,
+    );
+    return { start: segments.start, end: segments.end };
   }
 
   private renderSelectionControls(layer: EffectLayer) {
@@ -1557,7 +1792,13 @@ export class GoveeAdvancedEffectEditor extends LitElement {
 
     .area-control {
       margin-bottom: 16px;
-      padding: 4px 0;
+      padding: 4px 22px 0;
+    }
+
+    .area-range {
+      position: relative;
+      min-height: 64px;
+      touch-action: pan-y;
     }
 
     .area-segments {
@@ -1567,11 +1808,13 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         minmax(0, 1fr)
       );
       gap: 4px;
+      min-height: 64px;
+      pointer-events: none;
     }
 
     .area-segments span {
       min-width: 0;
-      min-height: 48px;
+      min-height: 64px;
       border: 1px solid
         color-mix(in srgb, var(--area-colour) 35%, var(--studio-border));
       border-radius: 6px;
@@ -1591,44 +1834,135 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       background: var(--area-colour);
     }
 
-    .area-boundaries {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 18px;
-      margin-top: 18px;
+    .area-window {
+      position: absolute;
+      z-index: 2;
+      top: 0;
+      bottom: 0;
+      min-width: 1px;
+      border-block: 3px solid
+        color-mix(in srgb, var(--area-colour) 78%, #000);
+      background: color-mix(in srgb, var(--area-colour) 12%, transparent);
     }
 
-    .area-boundary {
-      display: grid;
-      gap: 8px;
+    .area-move {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      min-width: 44px;
+      cursor: grab;
     }
 
-    .area-boundary > span {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      color: var(--studio-muted);
-      font-size: var(--studio-parameter-label-size);
-      font-weight: var(--studio-parameter-label-weight);
+    .area-move::after {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 16px;
+      height: 10px;
+      border-radius: 5px;
+      background-image: radial-gradient(
+        circle,
+        color-mix(in srgb, var(--area-colour) 52%, #000) 1.5px,
+        transparent 1.8px
+      );
+      background-position: 0 0;
+      background-size: 6px 6px;
+      content: "";
+      opacity: 0.72;
+      transform: translate(-50%, -50%);
     }
 
-    .area-boundary output {
+    .area-move:active {
+      cursor: grabbing;
+    }
+
+    .area-handle {
+      position: absolute;
+      z-index: 3;
+      top: 50%;
+      width: 44px;
+      min-height: 56px;
+      border: 0;
+      background: transparent;
+      cursor: ew-resize;
+      transform: translateY(-50%);
+    }
+
+    .area-handle::before {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 24px;
+      border-inline: 2px solid
+        color-mix(in srgb, var(--area-colour) 72%, #000);
+      content: "";
+      transform: translate(-50%, -50%);
+    }
+
+    .area-handle::after {
+      position: absolute;
+      z-index: -1;
+      top: 50%;
+      left: 50%;
+      width: 22px;
+      height: 44px;
+      border: 2px solid
+        color-mix(in srgb, var(--area-colour) 78%, #000);
+      border-radius: 10px;
+      background: var(--studio-card);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+      content: "";
+      transform: translate(-50%, -50%);
+    }
+
+    .area-handle-left {
+      left: 0;
+      transform: translate(-50%, -50%);
+    }
+
+    .area-handle-right {
+      right: 0;
+      transform: translate(50%, -50%);
+    }
+
+    .area-move:focus-visible,
+    .area-handle:focus-visible {
+      outline: var(--studio-focus-width) solid var(--studio-blue);
+      outline-offset: var(--studio-focus-offset);
+    }
+
+    .area-move[aria-disabled="true"],
+    .area-handle[aria-disabled="true"] {
+      cursor: default;
+      opacity: var(--studio-disabled-opacity);
+    }
+
+    .area-drag-value {
+      position: absolute;
+      z-index: 5;
+      bottom: calc(100% + 7px);
+      left: 50%;
+      min-width: 28px;
+      padding: 4px 7px;
+      border: 1px solid var(--studio-border);
+      border-radius: 8px;
       color: var(--primary-text-color);
+      background: var(--studio-card);
+      box-shadow: var(--studio-popover-shadow);
+      font-size: 12px;
+      font-weight: 650;
       font-variant-numeric: tabular-nums;
+      line-height: 1;
+      text-align: center;
+      transform: translateX(-50%);
     }
 
-    .area-boundary input {
-      width: 100%;
-      min-width: 0;
-      min-height: 44px;
-      margin: 0;
-      accent-color: var(--studio-blue);
-    }
-
-    .area-boundary input:focus-visible {
-      outline: 3px solid var(--studio-blue);
-      outline-offset: 2px;
+    .area-help {
+      margin: 12px 0 0;
+      color: var(--studio-muted);
+      font-size: 13px;
+      text-align: center;
     }
 
     .selection-controls {
@@ -1705,7 +2039,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
 
     @media (max-width: 760px) {
       .control-grid,
-      .area-boundaries,
       .brightness-fields,
       .raw-grid {
         grid-template-columns: 1fr;
@@ -1718,6 +2051,10 @@ export class GoveeAdvancedEffectEditor extends LitElement {
 
       .add-button {
         width: 100%;
+      }
+
+      .area-control {
+        padding-inline: 18px;
       }
 
     }

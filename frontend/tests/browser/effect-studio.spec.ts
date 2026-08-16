@@ -2435,6 +2435,9 @@ test("non-admin users receive a read-only editor", async ({ page }) => {
   await expect(
     advanced.getByRole("slider", { name: "Applied area right edge" }),
   ).toBeDisabled();
+  await expect(
+    advanced.getByRole("slider", { name: "Move applied area" }),
+  ).toBeDisabled();
   expect(
     await page.evaluate(() => window.testHarness.snapshot().subscriptions),
   ).toEqual({
@@ -2943,81 +2946,131 @@ test("save conflict keeps feedback when the library refresh fails", async ({
   expect(pageErrors).toEqual([]);
 });
 
-test("applied area boundaries enforce valid mouse and keyboard ranges", async ({
+test("applied area control supports edge resizing and whole-area movement", async ({
   page,
 }) => {
   const { advanced } = await openLayeredLibraryEffect(page);
-  const appliedArea = advanced.getByLabel("Applied area, 15 segments");
-  await expect(appliedArea.locator("span")).toHaveCount(15);
+  const appliedArea = advanced.getByLabel("Applied area", { exact: true });
+  await expect(appliedArea.locator(".area-segments > span")).toHaveCount(15);
+  await expect(appliedArea.locator('input[type="range"]')).toHaveCount(0);
+  await expect(advanced.locator(".area-readout")).toHaveCount(0);
+  await expect(advanced.locator(".area-drag-value")).toHaveCount(0);
   const leftEdge = advanced.getByRole("slider", {
     name: "Applied area left edge",
   });
   const rightEdge = advanced.getByRole("slider", {
     name: "Applied area right edge",
   });
-  await expect(leftEdge).toHaveValue("0");
-  await expect(leftEdge).toHaveAttribute("max", "9");
-  await expect(rightEdge).toHaveValue("10");
-  await expect(rightEdge).toHaveAttribute("min", "1");
-  await expect(
-    advanced.getByRole("button", { name: /^Move applied area/ }),
-  ).toHaveCount(0);
+  const areaMove = advanced.getByRole("slider", {
+    name: "Move applied area",
+  });
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "0");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "15");
+  await expect(areaMove).toHaveAttribute("aria-valuenow", "0");
+  await expect(areaMove).toHaveAttribute("aria-valuemax", "0");
+
+  const layerTabs = advanced.getByRole("tab", { name: /Layer \d/ });
+  await layerTabs.nth(1).click();
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "3");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "12");
+  await expect(areaMove).toHaveAttribute("aria-valuemax", "6");
+
+  const moveBox = await areaMove.boundingBox();
+  const trackBox = await appliedArea.boundingBox();
+  if (!moveBox || !trackBox) {
+    throw new Error("Applied area movement control is not visible.");
+  }
+  await page.mouse.move(
+    moveBox.x + moveBox.width / 2,
+    moveBox.y + moveBox.height / 2,
+  );
+  await page.mouse.down();
+  await expect(advanced.locator(".area-drag-value")).toHaveCount(0);
+  await page.mouse.move(
+    moveBox.x + moveBox.width / 2 - trackBox.width / 15,
+    moveBox.y + moveBox.height / 2,
+    { steps: 6 },
+  );
+  await expect(advanced.locator(".area-drag-value")).toHaveCount(0);
+  await page.mouse.up();
+  await expect(advanced.locator(".area-drag-value")).toHaveCount(0);
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "2");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "11");
+  await areaMove.press("ArrowRight");
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "3");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "12");
 
   const leftBox = await leftEdge.boundingBox();
   if (!leftBox) {
     throw new Error("Applied area left edge is not visible.");
   }
-  await leftEdge.click({
-    position: {
-      x: Math.round(leftBox.width * 0.35),
-      y: Math.round(leftBox.height / 2),
-    },
-  });
-  await expect(leftEdge).toHaveValue("3");
-  await expect(rightEdge).toHaveAttribute("min", "4");
+  await page.mouse.move(
+    leftBox.x + leftBox.width / 2,
+    leftBox.y + leftBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    leftBox.x + leftBox.width / 2 + trackBox.width / 15,
+    leftBox.y + leftBox.height / 2,
+    { steps: 6 },
+  );
+  await expect(advanced.locator(".area-drag-value")).toHaveText("5");
+  await page.mouse.up();
+  await expect(advanced.locator(".area-drag-value")).toHaveCount(0);
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "4");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "12");
 
-  await rightEdge.press("Home");
-  await expect(rightEdge).toHaveValue("4");
-  await expect(leftEdge).toHaveAttribute("max", "3");
-  await leftEdge.press("ArrowRight");
-  await expect(leftEdge).toHaveValue("3");
-  await expect(appliedArea.locator("span.covered")).toHaveCount(2);
+  await leftEdge.press("ArrowLeft");
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "3");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "12");
 
-  await rightEdge.press("End");
-  await expect(rightEdge).toHaveValue("10");
-  await leftEdge.press("End");
-  await expect(leftEdge).toHaveValue("9");
-  await expect(rightEdge).toHaveAttribute("min", "10");
   await rightEdge.press("ArrowLeft");
-  await expect(rightEdge).toHaveValue("10");
-  await expect(appliedArea.locator("span.covered")).toHaveCount(2);
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "3");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "11");
+
+  await areaMove.press("ArrowLeft");
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "2");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "10");
+
+  await areaMove.press("End");
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "7");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "15");
+
+  await leftEdge.press("End");
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "14");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "15");
 
   await leftEdge.press("Home");
-  await expect(leftEdge).toHaveValue("0");
-  await expect(
-    advanced.getByLabel("Applied area left edge value"),
-  ).toHaveText("0%");
-  await expect(
-    advanced.getByLabel("Applied area right edge value"),
-  ).toHaveText("100%");
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "0");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "15");
 
-  const layerTabs = advanced.getByRole("tab", { name: /Layer \d/ });
-  await leftEdge.press("ArrowRight");
-  await leftEdge.press("ArrowRight");
-  await expect(leftEdge).toHaveValue("2");
-  await layerTabs.nth(1).click();
-  await expect(leftEdge).toHaveValue("2");
-  await expect(rightEdge).toHaveValue("8");
-  await rightEdge.press("ArrowLeft");
-  await expect(rightEdge).toHaveValue("7");
-  await layerTabs.nth(0).click();
-  await expect(leftEdge).toHaveValue("2");
-  await expect(rightEdge).toHaveValue("10");
-  await layerTabs.nth(1).click();
-  await expect(rightEdge).toHaveValue("7");
+  await rightEdge.press("Home");
+  await rightEdge.press("ArrowRight");
+  await rightEdge.press("ArrowRight");
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "0");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "3");
+  await expect(areaMove).toHaveAttribute(
+    "aria-valuetext",
+    "Segments 1 to 3",
+  );
+
+  await areaMove.press("ArrowRight");
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "1");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "4");
+  await expect(areaMove).toHaveAttribute(
+    "aria-valuetext",
+    "Segments 2 to 4",
+  );
+  await areaMove.press("ArrowRight");
+  await expect(leftEdge).toHaveAttribute("aria-valuenow", "2");
+  await expect(rightEdge).toHaveAttribute("aria-valuenow", "5");
+  await expect(areaMove).toHaveAttribute(
+    "aria-valuetext",
+    "Segments 3 to 5",
+  );
 });
 
-test("applied area boundaries support touch on a narrow screen", async ({
+test("applied area control supports touch dragging on a narrow screen", async ({
   browser,
 }) => {
   const baseURL = test.info().project.use.baseURL;
@@ -3039,31 +3092,56 @@ test("applied area boundaries support touch on a narrow screen", async ({
     const rightEdge = advanced.getByRole("slider", {
       name: "Applied area right edge",
     });
+    const areaMove = advanced.getByRole("slider", {
+      name: "Move applied area",
+    });
+    const layerTabs = advanced.getByRole("tab", { name: /Layer \d/ });
+    await layerTabs.nth(1).click();
+    await leftEdge.scrollIntoViewIfNeeded();
     const leftBox = await leftEdge.boundingBox();
     const rightBox = await rightEdge.boundingBox();
-    if (!leftBox || !rightBox) {
+    const trackBox = await advanced
+      .getByLabel("Applied area", { exact: true })
+      .boundingBox();
+    if (!leftBox || !rightBox || !trackBox) {
       throw new Error("Applied area touch controls are not visible.");
     }
+    expect(leftBox.width).toBeGreaterThanOrEqual(44);
     expect(leftBox.height).toBeGreaterThanOrEqual(44);
+    expect(rightBox.width).toBeGreaterThanOrEqual(44);
     expect(rightBox.height).toBeGreaterThanOrEqual(44);
 
-    await leftEdge.tap({
-      position: {
-        x: Math.round(leftBox.width * 0.45),
-        y: Math.round(leftBox.height / 2),
+    await touchDrag(
+      page,
+      {
+        x: leftBox.x + leftBox.width / 2,
+        y: leftBox.y + leftBox.height / 2,
       },
-    });
-    await expect.poll(async () => Number(await leftEdge.inputValue())).toBeGreaterThan(0);
-    const leftValue = Number(await leftEdge.inputValue());
+      {
+        x: leftBox.x + leftBox.width / 2 + trackBox.width / 15,
+        y: leftBox.y + leftBox.height / 2,
+      },
+    );
+    await expect(leftEdge).toHaveAttribute("aria-valuenow", "4");
+    await expect(rightEdge).toHaveAttribute("aria-valuenow", "12");
 
-    await rightEdge.tap({
-      position: {
-        x: Math.round(rightBox.width * 0.7),
-        y: Math.round(rightBox.height / 2),
+    const movedBox = await areaMove.boundingBox();
+    if (!movedBox) {
+      throw new Error("Applied area movement control is not visible.");
+    }
+    await touchDrag(
+      page,
+      {
+        x: movedBox.x + movedBox.width / 2,
+        y: movedBox.y + movedBox.height / 2,
       },
-    });
-    await expect.poll(async () => Number(await rightEdge.inputValue())).toBeLessThan(10);
-    expect(Number(await rightEdge.inputValue())).toBeGreaterThan(leftValue);
+      {
+        x: movedBox.x + movedBox.width / 2 - trackBox.width / 15,
+        y: movedBox.y + movedBox.height / 2,
+      },
+    );
+    await expect(leftEdge).toHaveAttribute("aria-valuenow", "3");
+    await expect(rightEdge).toHaveAttribute("aria-valuenow", "11");
 
     expect(
       await page.evaluate(
@@ -3115,7 +3193,7 @@ test("mobile touch dragging reorders layers and preserves vertical scrolling", a
     await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
     await expect(
       advanced.getByRole("slider", { name: "Applied area left edge" }),
-    ).toHaveValue("0");
+    ).toHaveAttribute("aria-valuenow", "0");
 
     await page.evaluate(() => scrollTo(0, 0));
     const selectedBox = await tabs.nth(1).boundingBox();
@@ -3388,7 +3466,7 @@ test("advanced layer and palette keyboard focus follows edits", async ({
   await expect(
     advanced.getByRole("slider", { name: "Changing speed" }),
   ).toBeVisible();
-  await expect(advanced.locator("output")).toHaveCount(2);
+  await expect(advanced.locator("output")).toHaveCount(0);
 
   const selectedMovement = advanced.getByRole("switch", {
     name: "Move selected pattern enabled",
@@ -3399,7 +3477,7 @@ test("advanced layer and palette keyboard focus follows edits", async ({
   await expect(
     advanced.getByRole("slider", { name: "Speed" }).first(),
   ).toBeVisible();
-  await expect(advanced.locator("output")).toHaveCount(2);
+  await expect(advanced.locator("output")).toHaveCount(0);
   const prioritySwitch = advanced.getByRole("switch", {
     name: "Layer priority enabled",
   });
