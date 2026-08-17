@@ -6,6 +6,6 @@
 "pipx:pymobiledevice3" = "10.7.4"
 # Re-signs iOS bundles with our own Apple Development identity, which is how the phone rig
 # gets a WebDriverAgent it is allowed to run. Not in the mise registry, so named by repo.
-"github:zhlynn/zsign" = "latest"
+"github:zhlynn/zsign" = "1.1.1"
 # Official compiler used only to generate and verify committed Python protocol modules.
 "github:kaitai-io/kaitai_struct_compiler" = "0.11"
