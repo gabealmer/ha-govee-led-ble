@@ -11,9 +11,7 @@ rules:
   docs-high-level-description: todo
   docs-installation-instructions: todo
   docs-removal-instructions: todo
-  entity-event-setup:
-    status: exempt
-    comment: Entities use CoordinatorEntity lifecycle handling; BLE subscriptions belong to the config-entry coordinator.
+  entity-event-setup: done
   entity-unique-id: done
   has-entity-name: done
   runtime-data: done
@@ -33,7 +31,9 @@ rules:
   reauthentication-flow:
     status: exempt
     comment: The local BLE protocol does not use authentication.
-  test-coverage: done
+  test-coverage:
+    status: todo
+    comment: The canonical branch-coverage run remains below the Home Assistant requirement of more than 95% across all integration modules.
 
   # Gold
   devices: done

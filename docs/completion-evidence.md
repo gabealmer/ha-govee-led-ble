@@ -24,7 +24,7 @@ This matrix reconciles the UX completion programme against the final remediation
 | [#129: Fountain body from a larger device](https://github.com/teh-hippo/ha-govee-led-ble/issues/129) | Cross-hardware evidence request. | No |
 | [#148: H7025 music cross-validation](https://github.com/teh-hippo/ha-govee-led-ble/issues/148) | Cross-SKU evidence and potential model contribution. | No |
 | [#115: H6102](https://github.com/teh-hippo/ha-govee-led-ble/issues/115), [#117: H6125](https://github.com/teh-hippo/ha-govee-led-ble/issues/117) | Additional-model future programme. | No |
-| [#96: quality-scale tracking](https://github.com/teh-hippo/ha-govee-led-ble/issues/96) | `7.0.0` quality tracking; all applicable in-repository rules are complete. | No |
+| [#96: quality-scale tracking](https://github.com/teh-hippo/ha-govee-led-ble/issues/96) | The full inventory and every applicable rule except repository-wide 95% test coverage are complete.  The final canonical branch-coverage run is 86.25%, recorded honestly as `todo`. | No |
 | [#210: Home Assistant Wi-Fi provisioning](https://github.com/teh-hippo/ha-govee-led-ble/issues/210) | Future administrator-only integration.  The existing expert CLI workflow remains supported. | No |
 
 ## Closed completion-audit issues

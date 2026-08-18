@@ -101,7 +101,8 @@ CORE_HOSTED_TODO_RULES = frozenset(
         "docs-use-cases",
     }
 )
-REQUIRED_TODO_RULES = CORE_HOSTED_TODO_RULES
+REQUIRED_TODO_RULES = CORE_HOSTED_TODO_RULES | {"test-coverage"}
+REQUIRED_TODO_EVIDENCE_RULES = frozenset({"test-coverage"})
 REQUIRED_DONE_EVIDENCE_RULES = frozenset(
     {
         "entity-device-class",
@@ -137,6 +138,8 @@ def _status(rule: str, value: Any, errors: list[str]) -> str | None:
             errors.append(f"{rule}: done status requires a non-empty evidence comment")
     elif status == "exempt" and (not isinstance(comment, str) or not comment.strip()):
         errors.append(f"{rule}: exempt rules require a non-empty comment")
+    elif rule in REQUIRED_TODO_EVIDENCE_RULES and (not isinstance(comment, str) or not comment.strip()):
+        errors.append(f"{rule}: todo status requires a non-empty prerequisite comment")
     return status
 
 

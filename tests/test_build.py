@@ -229,6 +229,17 @@ def test_quality_scale_inventory_matches_pinned_home_assistant_rules() -> None:
             "strict-typing: todo is not permitted",
         ),
         (
+            "  test-coverage:\n    status: todo\n",
+            "  test-coverage:\n    status: done\n",
+            "test-coverage: must remain todo",
+        ),
+        (
+            "    comment: The canonical branch-coverage run remains below the Home Assistant requirement "
+            "of more than 95% across all integration modules.\n",
+            '    comment: ""',
+            "test-coverage: todo status requires a non-empty prerequisite comment",
+        ),
+        (
             "  log-when-unavailable: done\n",
             "  log-when-unavailable: todo\n",
             "log-when-unavailable: todo is not permitted",

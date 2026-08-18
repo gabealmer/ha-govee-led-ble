@@ -252,6 +252,16 @@ async def test_options_flow_model_defaults(hass: HomeAssistant, model: str, expe
     assert set(schema({})[CONF_EFFECT_FAMILIES]) == expected
 
 
+async def test_options_flow_aborts_for_unsupported_model(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H9999"}, unique_id="AA:BB:CC:DD:EE:FF")
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "not_supported"
+
+
 async def test_options_flow_saves_selected_families(hass: HomeAssistant):
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6199"}, unique_id="AA:BB:CC:DD:EE:FF")
     entry.add_to_hass(hass)
