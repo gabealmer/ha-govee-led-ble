@@ -1,0 +1,106 @@
+"""WebSocket command names and input validators for Effect Studio."""
+
+from typing import Any
+
+import voluptuous as vol
+
+from .const import DOMAIN
+from .effect_limits import (
+    MAX_EFFECT_DOCUMENT_BYTES,
+    MAX_EFFECT_NAME_LENGTH,
+    MAX_IDENTIFIER_LENGTH,
+    MAX_PREFERENCES_BYTES,
+    MAX_REVISION,
+    MAX_TIMESTAMP_LENGTH,
+    validate_json_document,
+    validate_timestamp,
+)
+
+WS_INFO = f"{DOMAIN}/editor/info"
+WS_DEVICES = f"{DOMAIN}/editor/devices"
+WS_CUSTOM_CATALOGUE = f"{DOMAIN}/editor/custom/catalogue"
+WS_LIBRARY_LIST = f"{DOMAIN}/editor/library/list"
+WS_LIBRARY_GET = f"{DOMAIN}/editor/library/get"
+WS_LIBRARY_CREATE = f"{DOMAIN}/editor/library/create"
+WS_LIBRARY_UPDATE = f"{DOMAIN}/editor/library/update"
+WS_LIBRARY_DELETE = f"{DOMAIN}/editor/library/delete"
+WS_LIBRARY_SUBSCRIBE = f"{DOMAIN}/editor/library/subscribe"
+WS_DEPLOYMENT_SUBSCRIBE = f"{DOMAIN}/editor/deployment/subscribe"
+WS_USER_STATE_GET = f"{DOMAIN}/editor/user_state/get"
+WS_USER_STATE_UPDATE = f"{DOMAIN}/editor/user_state/update"
+WS_USER_STATE_RECORD_COLOUR = f"{DOMAIN}/editor/user_state/record_colour"
+WS_APPLY = f"{DOMAIN}/editor/apply"
+WS_APPLY_SNAPSHOT = f"{DOMAIN}/editor/apply_snapshot"
+WS_SCENE_CATALOGUE_LIST = f"{DOMAIN}/editor/scene/catalogue/list"
+WS_SCENE_CATALOGUE_GET = f"{DOMAIN}/editor/scene/catalogue/get"
+WS_SCENE_APPLY = f"{DOMAIN}/editor/scene/apply"
+WS_SCENE_RESET = f"{DOMAIN}/editor/scene/reset"
+WS_PREVIEW_OPEN = f"{DOMAIN}/editor/preview/session/open"
+WS_PREVIEW_CLOSE = f"{DOMAIN}/editor/preview/session/close"
+WS_PREVIEW_APPLY_SNAPSHOT = f"{DOMAIN}/editor/preview/apply_snapshot"
+WS_PREVIEW_APPLY_SCENE = f"{DOMAIN}/editor/preview/apply_scene"
+WS_PREVIEW_CANCEL = f"{DOMAIN}/editor/preview/cancel"
+WS_PREVIEW_SUBSCRIBE = f"{DOMAIN}/editor/preview/subscribe"
+
+
+def strict_int(value: object) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise vol.Invalid("value must be an integer")
+    return value
+
+
+def _strict_bool(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise vol.Invalid("value must be a boolean")
+    return value
+
+
+def _bounded_effect_content(value: dict[str, Any]) -> dict[str, Any]:
+    try:
+        validate_json_document(
+            value,
+            "effect content",
+            maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
+            error_type=ValueError,
+        )
+    except ValueError as exc:
+        raise vol.Invalid(str(exc)) from exc
+    return value
+
+
+def _bounded_navigation(value: dict[str, Any]) -> dict[str, Any]:
+    try:
+        validate_json_document(
+            value,
+            "navigation",
+            maximum_bytes=MAX_PREFERENCES_BYTES,
+            error_type=ValueError,
+        )
+    except ValueError as exc:
+        raise vol.Invalid(str(exc)) from exc
+    return value
+
+
+def _timestamp(value: str) -> str:
+    try:
+        validate_timestamp(
+            value,
+            "timestamp",
+            error_type=ValueError,
+        )
+    except ValueError as exc:
+        raise vol.Invalid(str(exc)) from exc
+    return value
+
+
+EFFECT_NAME = vol.All(str, vol.Length(max=MAX_EFFECT_NAME_LENGTH))
+IDENTIFIER = vol.All(str, vol.Length(min=1, max=MAX_IDENTIFIER_LENGTH))
+UUID_TEXT = vol.All(str, vol.Length(min=36, max=36))
+TIMESTAMP = vol.All(str, vol.Length(min=1, max=MAX_TIMESTAMP_LENGTH), _timestamp)
+NON_NEGATIVE_REVISION = vol.All(strict_int, vol.Range(min=0, max=MAX_REVISION))
+POSITIVE_REVISION = vol.All(strict_int, vol.Range(min=1, max=MAX_REVISION))
+SCENE_ID = vol.All(strict_int, vol.Range(min=0, max=0xFFFF))
+SPEED_INDEX = vol.All(strict_int, vol.Range(min=0, max=0xFF))
+EFFECT_CONTENT = vol.All(dict, _bounded_effect_content)
+NAVIGATION = vol.All(dict, _bounded_navigation)
+STRICT_BOOL = vol.All(_strict_bool)
