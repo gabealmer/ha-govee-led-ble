@@ -11,6 +11,22 @@ bash tools/harness/down.sh
 Run `tools/harness/preflight.sh app` or `tools/harness/preflight.sh direct` before taking a
 device link when setting up a host.
 
+## Tool ownership
+
+Every retained harness and BLE utility belongs to one of these supported workflows:
+
+- **Phone capture and attributed decoding**: `up.sh`, `down.sh`, `phone.sh`, `phone_windows.sh`, `windows_phone.ps1`, `windows_ddi.ps1`, `govee-capture.sh`, `decode_govee.py`, `analyse_capture.py`, `generated_protocol_view.py`, `act.sh`, `wda.py`, `wda_daemon.py`, and `ax.py`.
+- **Direct BLE investigation and restoration**: `up.sh direct`, `down.sh`, `preflight.sh`, and `govee_send.py`.
+- **Isolated Home Assistant and live frontend development**: `container.sh`, `container_ha.py`, `ha.sh`, and `ha_entry.py`.
+- **Local release-package qualification**: `local-package.sh` and `local_package.py`.
+- **Household Effect Studio regression qualification**: `effect-studio-home-assistant.sh`, `effect_studio_home_assistant.py`, and the `effect_studio_ha` package.
+- **Capture-fixture regeneration**: `make_container_fixtures.py`.
+- **Committed scene-catalogue refresh**: `refresh_scene_catalogues.py`.
+- **Expert Wi-Fi provisioning**: `provision_wifi.sh` and `wifi_provision.py`.
+- **Annual WebDriverAgent certificate renewal**: `wda_sign.py`.
+
+One-off protocol probes are not retained after their findings are incorporated into Kaitai and issue evidence.
+
 ## Household Home Assistant Effect Studio validation
 
 `effect-studio-home-assistant.sh` selects the `cupboard` entry through the untracked device identity, authenticates through the platform helper, restarts Home Assistant once, applies every H617A Effect Studio route, verifies diagnostics, and restores the saved library and light state.
