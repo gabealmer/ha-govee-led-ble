@@ -14,7 +14,7 @@ body no device ever sent. It refuses such a capture until --source narrows it, a
 the decoder it offers no way to mix on purpose, because there is no reading for which that
 is the right answer.
 
-A3 REASSEMBLY. The app uses ``build_a3_multi``'s non-terminator form: the LAST data
+A3 REASSEMBLY. The app uses the non-terminator form: the LAST data
 chunk carries index 0xff, so its 17-byte payload is real data, not an empty terminator.
 Dropping it truncates the body and silently corrupts trailing fields (it made a 21-byte
 DIY palette look like a length mismatch on 2026-07-26). Every frame payload is kept.

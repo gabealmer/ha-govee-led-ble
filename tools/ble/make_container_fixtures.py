@@ -13,10 +13,10 @@ run by hand when the producer changes rather than by the gate:
 
     uv run --with pymobiledevice3 python tools/ble/make_container_fixtures.py
 
-CONTENT. The frames wrap Govee packets that are ALREADY committed under
-``tools/ble/kaitai/src``, around a synthetic connection to a documentation BLE address.
-No real capture is used: a capture holds the addresses of every other Bluetooth peer that
-happened to be near the phone, and none of that is ours to publish.
+CONTENT. The frames wrap representative Govee packets defined below, around a synthetic
+connection to a documentation BLE address. No real capture is used: a capture holds the
+addresses of every other Bluetooth peer that happened to be near the phone, and none of
+that is ours to publish.
 
 TIME. ``idevicebtlogger`` stored the BTPacketLogger record's device-local wall clock as
 though it were UTC; ``write_pcapng_stream`` subtracts the device's UTC offset so the pcapng
@@ -39,7 +39,6 @@ from pymobiledevice3.services.bt_packet_logger import (  # noqa: E402
 )
 
 FIXTURES = REPO / "tests" / "fixtures"
-SRC = REPO / "tools" / "ble" / "kaitai" / "src"
 
 # The phone's UTC offset at the moment of capture. Baked in rather than read from the host
 # so the fixture is identical wherever it is regenerated.
@@ -62,10 +61,16 @@ PEER_ADDRESS = bytes.fromhex("D03534AABBCC")[::-1]
 WRITE_HANDLE = 0x0014
 NOTIFY_HANDLE = 0x0010
 
-# One of each Govee opcode in each direction, which is the whole of what parse_capture
-# discriminates on: 0x33 command and 0xA3 fragment go out, 0xAA status comes back.
-TX_FRAMES = ["command_write_power_on", "command_write_brightness", "command_write_color_rgb"]
-RX_FRAMES = ["status_reply_brightness", "status_reply_cm_diy"]
+# The decoder distinguishes the 0x33 command and 0xAA status families.
+TX_FRAMES = (
+    bytes.fromhex("3301010000000000000000000000000000000033"),
+    bytes.fromhex("3304330000000000000000000000000000000004"),
+    bytes.fromhex("33051501ff00000000000000ff7f00000000005d"),
+)
+RX_FRAMES = (
+    bytes.fromhex("aa040500000000000000000000000000000000ab"),
+    bytes.fromhex("aa050a980000000000000000000000000000003d"),
+)
 
 
 def phdr(direction_in: int, h4_type: int, payload: bytes) -> bytes:
@@ -101,10 +106,10 @@ def att_frame(direction_in: int, opcode: int, attribute_handle: int, value: byte
 
 def build_frames() -> list[tuple[datetime, bytes]]:
     frames = [le_connection_complete()]
-    for name in TX_FRAMES:
-        frames.append(att_frame(0, 0x52, WRITE_HANDLE, (SRC / f"{name}.bin").read_bytes()))
-    for name in RX_FRAMES:
-        frames.append(att_frame(1, 0x1B, NOTIFY_HANDLE, (SRC / f"{name}.bin").read_bytes()))
+    for value in TX_FRAMES:
+        frames.append(att_frame(0, 0x52, WRITE_HANDLE, value))
+    for value in RX_FRAMES:
+        frames.append(att_frame(1, 0x1B, NOTIFY_HANDLE, value))
     frames.append(disconnection_complete())
     # 250 ms apart, which keeps every frame inside one second boundary group and still gives
     # the sub-second field a value that a divisor bug would visibly mangle.

@@ -1,4 +1,5 @@
 [tools]
+node = "24.19.0"
 # The WSL app-capture path owns the iPhone through USB/IP, so the phone tooling has to be
 # native rather than Windows-side. Pinned because the harness resolves this exact version
 # through `mise where`, and kept at 10.2.3 or later for the iOS 27 mounter fix that skips
