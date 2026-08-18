@@ -82,7 +82,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 address = _normalize_manual_address(user_input[CONF_ADDRESS])
             except ValueError:
                 return self._show_user_form(errors={CONF_ADDRESS: "invalid_address"})
-            await self.async_set_unique_id(address)
+            await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
             selected_model = user_input[CONF_MODEL]
             service_info = bluetooth.async_last_service_info(self.hass, address, connectable=True)
@@ -96,6 +96,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             except Exception:  # noqa: BLE001 - config flows must surface unexpected validation failures.
                 _LOGGER.exception("Unexpected error validating a Govee BLE device")
                 return self._show_user_form(errors={"base": "unknown"})
+            self._abort_if_unique_id_configured()
             return self.async_create_entry(title=f"Govee {selected_model}", data={CONF_MODEL: selected_model})
         return self._show_user_form()
 

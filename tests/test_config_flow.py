@@ -76,6 +76,56 @@ async def test_bluetooth_discovery_abort_duplicate_with_user_entry(hass: HomeAss
     assert r["type"] == FlowResultType.ABORT and r["reason"] == "already_configured"
 
 
+async def test_user_step_outranks_matching_discovery_in_progress(hass: HomeAssistant):
+    discovery = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC)
+    assert discovery["type"] == FlowResultType.FORM
+
+    with patch(f"{M}.bluetooth.async_last_service_info", return_value=SVC):
+        manual = await _init(
+            hass,
+            config_entries.SOURCE_USER,
+            {CONF_ADDRESS: SVC.address, CONF_MODEL: "H617A"},
+        )
+
+    assert manual["type"] == FlowResultType.CREATE_ENTRY
+    assert manual["data"] == {CONF_MODEL: "H617A"}
+    assert not hass.config_entries.flow.async_progress()
+    entries = hass.config_entries.async_entries(DOMAIN)
+    assert len(entries) == 1
+    assert entries[0].unique_id == SVC.address
+
+
+async def test_user_step_aborts_when_address_is_already_configured(hass: HomeAssistant, mock_manual_validation):
+    MockConfigEntry(domain=DOMAIN, unique_id=SVC.address).add_to_hass(hass)
+
+    result = await _init(
+        hass,
+        config_entries.SOURCE_USER,
+        {CONF_ADDRESS: SVC.address, CONF_MODEL: "H617A"},
+    )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    mock_manual_validation.assert_not_awaited()
+
+
+async def test_user_step_rechecks_duplicate_after_connection_validation(hass: HomeAssistant, mock_manual_validation):
+    async def add_entry_during_validation(_hass: HomeAssistant, _address: str) -> None:
+        MockConfigEntry(domain=DOMAIN, unique_id=SVC.address).add_to_hass(hass)
+
+    mock_manual_validation.side_effect = add_entry_during_validation
+    result = await _init(
+        hass,
+        config_entries.SOURCE_USER,
+        {CONF_ADDRESS: SVC.address, CONF_MODEL: "H617A"},
+    )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+
+
 async def test_bluetooth_discovery_exposes_no_pii(hass: HomeAssistant):
     r = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC)
     context = hass.config_entries.flow.async_progress()[0]["context"]
