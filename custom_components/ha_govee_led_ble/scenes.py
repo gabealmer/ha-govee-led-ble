@@ -157,13 +157,5 @@ _MODEL_CATALOGUES = {sku: _model_scene_catalogue(sku) for sku in SCENE_ENTRIES}
 MODEL_SCENES: dict[str, dict[str, SceneEntry]] = {sku: catalogue[0] for sku, catalogue in _MODEL_CATALOGUES.items()}
 MODEL_SCENE_LABELS: dict[str, dict[str, str]] = {sku: catalogue[1] for sku, catalogue in _MODEL_CATALOGUES.items()}
 
-# Compatibility surface until the effect-options rewrite switches callers to model catalogues.
+# H617A protocol and service lookups use the legacy unhyphenated variant names.
 SCENES: dict[str, SceneEntry] = {_legacy_h617a_key(entry): entry for entry in SCENE_ENTRIES["H617A"]}
-
-
-def get_scene_names() -> list[str]:
-    return sorted(SCENES)
-
-
-def get_model_scene_names(sku: str) -> list[str]:
-    return sorted(MODEL_SCENES[sku])

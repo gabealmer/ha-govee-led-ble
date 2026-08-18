@@ -117,6 +117,7 @@ types:
         valid: 0
         repeat: eos
   segments_body:
+    doc: Five query-backed groups of three segment brightness and colour records.
     seq:
       - id: group
         type: u1

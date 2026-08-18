@@ -111,7 +111,13 @@ def _child(child_type: Any, parent: Any) -> Any:
     return child_type(None, parent, parent._root)
 
 
-def _build_query(model: str, domain: str, *, display_setting: str | None = None) -> bytes:
+def _build_query(
+    model: str,
+    domain: str,
+    *,
+    display_setting: str | None = None,
+    segment_group: int | None = None,
+) -> bytes:
     if model == "H6199":
         root_type = _generated_class("h6199_status_query", "H6199StatusQuery")
     elif model == "H617A":
@@ -124,6 +130,10 @@ def _build_query(model: str, domain: str, *, display_setting: str | None = None)
     if display_setting is not None:
         body = _child(root_type.DisplaySettingQueryBody, root)
         body.setting = getattr(root_type.DisplaySetting, display_setting)
+        body.zeros = [0] * 16
+    elif segment_group is not None:
+        body = _child(root_type.SegmentQueryBody, root)
+        body.group = segment_group
         body.zeros = [0] * 16
     elif domain == "hardware":
         body = _child(root_type.HardwareQueryBody, root)
@@ -151,11 +161,18 @@ def query_frames(model: str) -> tuple[tuple[str, bytes], ...]:
     if model == "H6199":
         queries.extend(
             (
+                ("subordinate_20", _build_query(model, "subordinate_20")),
+                ("subordinate_21", _build_query(model, "subordinate_21")),
                 ("white_balance", _build_query(model, "display_setting", display_setting="white_balance")),
                 ("blank_screen", _build_query(model, "display_setting", display_setting="blank_screen")),
                 ("relative_brightness", _build_query(model, "relative_brightness")),
             )
         )
+    group_count = 4 if model == "H6199" else 5
+    queries.extend(
+        (f"segments_{group}", _build_query(model, "segments", segment_group=group))
+        for group in range(1, group_count + 1)
+    )
     return tuple(queries)
 
 
@@ -391,6 +408,8 @@ def _describe_for_model(frame: bytes, direction: str, model: str) -> str | None:
         domain = _enum_name(parsed.domain)
         if domain == "display_setting":
             return f"query {domain}.{_enum_name(parsed.body.setting)}"
+        if domain == "segments":
+            return f"query segments group={int(parsed.body.group)}"
         return f"query {domain}" if domain is not None else None
     module, class_name, formatter = (
         ("h6199_status_reply", "H6199StatusReply", _format_h6199_status)

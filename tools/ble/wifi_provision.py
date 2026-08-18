@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""Build an H6199 Wi-Fi provisioning sequence (BLE ``a1 11``).
 
-WHY THIS IS NOT IN protocol.py. That module is the integration's encoder and ships inside a
+WHY THIS IS NOT IN THE INTEGRATION. The runtime encoders ship inside a
 Home Assistant custom component. Nothing in the integration provisions Wi-Fi, and a
 credential-writing encoder is not something to ship into every install of it for the sake of
 tidiness. It lives here with the other research tools instead, and the wire structure it
