@@ -30,8 +30,8 @@ DEVICE_DEFAULT=tv
 
 resolve_device() {{ DEVICE_NAME="${{1:-tv}}"; DEVICE_ENTRY=entry-$DEVICE_NAME; DEVICE_SKU=H6199; }}
 pmd3() {{ echo "pmd3 $*" >> "$CALLS"; }}
-wda_down() {{ echo "wda_down" >> "$CALLS"; }}
-hid_down() {{ echo "hid_down" >> "$CALLS"; }}
+wda_down() {{ echo "wda_down" >> "$CALLS"; return {cleanup_exit}; }}
+hid_down() {{ echo "hid_down" >> "$CALLS"; return {cleanup_exit}; }}
 tunnel_down() {{ echo "tunnel_down" >> "$CALLS"; }}
 phone_usbipd_release() {{ echo "phone_usbipd_release" >> "$CALLS"; }}
 capture() {{
@@ -52,12 +52,22 @@ _ENTRY_STUCK = '{{"state": "setup_retry", "disabled_by": null, "reason": "unreac
 
 
 def _run_down(
-    tmp_path: Path, *, capture_exit: int, entry_status: str = _ENTRY_LOADED
+    tmp_path: Path,
+    *,
+    capture_exit: int,
+    entry_status: str = _ENTRY_LOADED,
+    cleanup_exit: int = 0,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     rig = tmp_path / "harness"
     rig.mkdir()
     (rig / "down.sh").write_text(_DOWN_SH.read_text())
-    (rig / "phone.sh").write_text(_STUB_PHONE_SH.format(capture_exit=capture_exit, entry_status=entry_status))
+    (rig / "phone.sh").write_text(
+        _STUB_PHONE_SH.format(
+            capture_exit=capture_exit,
+            cleanup_exit=cleanup_exit,
+            entry_status=entry_status,
+        )
+    )
     calls = tmp_path / "calls.log"
     state = tmp_path / "state"
     state.write_text("app tv entry-tv\n")
@@ -118,6 +128,16 @@ def test_other_capture_failures_stay_tolerated(tmp_path: Path, capture_exit: int
 
     assert result.returncode == 0, result.stderr
     assert "ha_entry entry-tv enable" in calls
+
+
+def test_phone_cleanup_failure_restores_home_assistant_before_failing(tmp_path: Path):
+    result, calls = _run_down(tmp_path, capture_exit=0, cleanup_exit=1)
+
+    assert result.returncode == 1
+    assert "wda_down" in calls and "hid_down" in calls
+    assert calls.index("wda_down") < calls.index("ha_entry entry-tv enable")
+    assert calls.index("hid_down") < calls.index("ha_entry entry-tv enable")
+    assert "entry loaded, disabled_by null" in result.stdout
 
 
 def test_an_entry_that_has_not_loaded_yet_completes_teardown_and_reports_failure(tmp_path: Path):
