@@ -15,7 +15,7 @@ This matrix reconciles the UX completion programme against the final remediation
 | Test reduction | Corrected with range waiver | The final suite contains 1,052 Python cases and 19,570 lines.  Coverage-context analysis found only the redundant groups listed below; the remaining excess protects distinct critical branches. |
 | Source reduction figures | Corrected | [`scripts/report_source_size.py`](../scripts/report_source_size.py) provides one fixed category definition for arbitrary Git refs. |
 | Public contract parity | Complete | [`scripts/report_public_contracts.py`](../scripts/report_public_contracts.py) reports static public contracts.  The signed cleanup baseline and validated remediation implementation match for platforms, services, WebSocket commands, storage, diagnostics, translations, legacy entity suffixes, and scene catalogues. |
-| Release qualification | Pending release step only | The remediation implementation passes the authoritative gate, deterministic local package comparison, isolated production-package UX checks, and physical state restoration.  Exact-SHA `v6.5.0-rc.16` publication, HACS qualification, and household upgrade remain. |
+| Release qualification | Complete | `v6.5.0-rc.16` was published from exact SHA `bd514109c9a1668046feaf3f3eebe71e3ff891c5`.  Its public ZIP SHA-256 is `286b3440e61a933de2a50a7333eff0d4d4cda2c83930d87bc1744bf1d6a08da7`; retained HACS and household upgrades passed. |
 
 ## Open issue matrix
 
@@ -158,13 +158,11 @@ Bash ownership and restoration branches are covered through subprocess-based stu
 | H6199 production-package UX | Video Movie/Game profiles, saturation, white balance, relative brightness, blank screen, sound effects, Special DIY, Advanced, and read-only presentation passed. |
 | Household restoration | Cupboard off.  Dream TV off with captured Video settings intact.  Zac's current state was not changed. |
 
-## Remaining release work
+## `7.0.0` quality addendum
 
-The remaining work is release-only:
-
-1. Run final conformance and functional-parity review findings to closure.
-2. Set source version `6.5.0rc16` as the last source change.
-3. Validate the exact final SHA without publication and compare local, CI, and exact-SHA ZIPs.
-4. Publish `v6.5.0-rc.16`.
-5. Qualify the public asset through disposable HACS.
-6. Upgrade household Home Assistant and verify all three entries plus captured light states.
+- The Home Assistant 2026.3.0 quality inventory contains all 52 rules and is enforced by the canonical local gate.
+- The final inventory records 31 `done`, 6 evidenced exemptions, and 15 `todo` rules.  Fourteen todo rules require core-hosted Brands or home-assistant.io work; repository-wide coverage remains honestly pending at 86.25% against the greater-than-95% rule.
+- Config-flow and options-flow branch coverage is 100%.  Manual setup physically passed successful validation, unreachable-device failure and retry, runtime control, reload/reconnect, removal cleanup, and restoration on H617A and H6199.
+- Strict production typing, PEP 561 packaging, translated action failures, setup-time entity-action registration, and deduplicated availability logging are complete.
+- #131 is closed with APK capability evidence and six paired physical comparisons.  H617A stores the gradual-colour-change boolean but explicitly does not support gradual behaviour; false and true produced no visible difference.
+- The final pre-release source passes 1,093 Python cases, 85 frontend cases, Kaitai validation, deterministic package checks, and two independent code reviews.
