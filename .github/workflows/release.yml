@@ -46,7 +46,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - uses: jdx/mise-action@3c2e0cf82a5b2e5249e92b4886f43607fa02 # v4
+      - uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
