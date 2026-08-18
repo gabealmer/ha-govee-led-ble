@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { PanelController } from "../../src/panel-controller";
 import { PanelEditorController } from "../../src/panel-editor-controller";
@@ -7,6 +7,7 @@ import { PanelModel } from "../../src/panel-model";
 import { PanelPreviewController } from "../../src/panel-preview-controller";
 import type {
   DeviceCapabilities,
+  HomeAssistant,
   LibraryItem,
   PaintedContent,
 } from "../../src/types";
@@ -91,6 +92,20 @@ test("derives selected-device and preview decisions from panel state", () => {
   expect(model.selectedDevice).toBeUndefined();
   expect(model.showDeviceSelector).toBe(true);
   expect(model.availabilityNotice()).toContain("temporarily unavailable");
+});
+
+test("administrator state follows late Home Assistant user updates", () => {
+  const changed = vi.fn();
+  const model = new PanelModel(changed);
+
+  model.syncAdmin({ user: undefined } as unknown as HomeAssistant);
+  expect(model.isAdmin).toBe(false);
+
+  model.syncAdmin({
+    user: { is_admin: true },
+  } as unknown as HomeAssistant);
+  expect(model.isAdmin).toBe(true);
+  expect(changed).toHaveBeenCalledOnce();
 });
 
 test("installs saved content as an isolated editable baseline", () => {

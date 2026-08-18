@@ -5,7 +5,7 @@ import type { SceneInitialSelection } from "./scene-browser";
 import type { StudioSection } from "./studio-navigation";
 import type {
   CustomEffectCatalogue, DeviceCapabilities, DiyEffectFamily, EffectContent, EffectUserState, LibraryItem, LibrarySnapshot,
-  LibrarySummary, ModelEffectCatalogue, ModelSku, PreviewStatus, RGB,
+  LibrarySummary, HomeAssistant, ModelEffectCatalogue, ModelSku, PreviewStatus, RGB,
 } from "./types";
 
 export type DeleteCandidate = Pick<LibrarySummary, "id" | "version" | "updated_at" | "name"> & {
@@ -57,6 +57,14 @@ export class PanelModel {
   public patch(change: Partial<PanelModel>): void {
     Object.assign(this, change);
     this.changed();
+  }
+
+  public syncAdmin(hass?: HomeAssistant): void {
+    const isAdmin = hass?.user?.is_admin === true;
+    if (this.isAdmin !== isAdmin) {
+      this.isAdmin = isAdmin;
+      this.changed();
+    }
   }
 
   public get selectedDevice(): DeviceCapabilities | undefined {

@@ -106,13 +106,14 @@ export class GoveeLedEffectStudio extends LitElement {
   private get templateSourceLabel() { return this.model.templateSourceLabel; }
   private get currentItem() { return this.model.currentItem; }
   private get content() { return this.model.content; }
-  private get isAdmin() { return this.model.isAdmin; }
+  private get isAdmin() { return this.hass?.user?.is_admin === true; }
   private get editorReadOnly() { return this.model.editorReadOnly; }
 
   public connectedCallback(): void {
     super.connectedCallback();
+    this.model.syncAdmin(this.hass);
     if (this.hass && !this.controller.api) {
-      void this.controller.load(this.hass, this.hass.user?.is_admin === true);
+      void this.controller.load(this.hass, this.isAdmin);
     }
   }
 
@@ -124,8 +125,11 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   protected updated(changed: Map<PropertyKey, unknown>): void {
+    if (changed.has("hass")) {
+      this.model.syncAdmin(this.hass);
+    }
     if (changed.has("hass") && this.hass && !this.controller.api) {
-      void this.controller.load(this.hass, this.hass.user?.is_admin === true);
+      void this.controller.load(this.hass, this.isAdmin);
     }
     this.modal.syncScrollLock();
     this.syncSingleEffectSelects();
