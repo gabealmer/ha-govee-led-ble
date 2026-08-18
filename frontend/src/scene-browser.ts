@@ -1,31 +1,24 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import { cloneLayeredSceneContent } from "./advanced-effect-model";
 import type { EffectStudioApi } from "./api";
-import {
-  AsyncRequestController,
-  type AsyncRequestToken,
-} from "./async-request-controller";
-import {
-  effectOriginDescription,
-  libraryItemSyncResult,
-} from "./effect-editor-model";
-import type {
-  SegmentedControlChange,
-} from "./segmented-control";
+import { effectOriginDescription } from "./effect-editor-model";
+import type { SegmentedControlChange } from "./segmented-control";
 import "./segmented-control";
 import {
-  clonePaletteSceneContent,
-  cloneSceneContent,
-  type CategorySelection,
-  normaliseSceneName,
   previewMayChangeSceneDefault,
-  type SceneContent,
+  sceneBrowserCategories,
+  sceneBrowserEntries,
   sceneKey,
-  type SceneListEntry,
+  sceneSelectionKey,
   sceneSpeedOptions,
+  type CategorySelection,
+  type SceneBrowserViewState,
+  type SceneContent,
+  type SceneInitialSelection,
+  type ScenePreviewRequest,
 } from "./scene-browser-model";
+import { SceneBrowserWorkflow, type SceneEditSelection } from "./scene-browser-workflow";
 import {
   studioActionStyles,
   studioBaseStyles,
@@ -39,29 +32,15 @@ import {
 } from "./studio-styles";
 import type {
   DeviceCapabilities,
-  LayeredSceneContent,
   LibraryItem,
   LibrarySnapshot,
-  LibrarySummary,
   PaletteSceneContent,
   PreviewStatus,
-  SceneCatalogue,
   SceneSummary,
 } from "./types";
-import {
-  compareLabels,
-  errorCode,
-  errorMessage,
-  rgbToHex,
-} from "./ui-utils";
+import { rgbToHex } from "./ui-utils";
 
-type SceneRequestState = {
-  api: EffectStudioApi;
-  deviceId: string;
-  category: CategorySelection;
-  selectionIdentity?: string;
-};
-type SceneRequestContext = AsyncRequestToken<SceneRequestState>;
+export type { SceneInitialSelection, ScenePreviewRequest } from "./scene-browser-model";
 
 export interface LibraryItemDeleteRequest {
   id: string;
@@ -72,22 +51,6 @@ export interface LibraryItemDeleteRequest {
   returnFocus: HTMLElement;
 }
 
-export type ScenePreviewRequest =
-  | {
-      kind: "scene";
-      scene: SceneSummary;
-      speedIndex: number | null;
-    }
-  | {
-      kind: "snapshot";
-      name: string;
-      content: SceneContent;
-    };
-
-export type SceneInitialSelection =
-  | { kind: "saved"; itemId: string }
-  | { kind: "native"; effect: string };
-
 export class GoveeSceneBrowser extends LitElement {
   @property({ attribute: false })
   public api?: EffectStudioApi;
@@ -96,9 +59,7 @@ export class GoveeSceneBrowser extends LitElement {
   public device?: DeviceCapabilities;
 
   @property({ attribute: false })
-  public library: LibrarySnapshot = {
-    items: [],
-  };
+  public library: LibrarySnapshot = { items: [] };
 
   @property({ type: Boolean })
   public isAdmin = false;
@@ -119,141 +80,66 @@ export class GoveeSceneBrowser extends LitElement {
   public previewStatus?: PreviewStatus;
 
   @state()
-  private catalogue?: SceneCatalogue;
-
-  @state()
-  private category: CategorySelection = "all";
+  private viewState: SceneBrowserViewState;
 
   @state()
   private search = "";
 
-  @state()
-  private selectedScene?: SceneSummary;
+  private readonly workflow: SceneBrowserWorkflow;
 
-  @state()
-  private selectedItem?: LibraryItem;
-
-  @state()
-  private content?: SceneContent;
-
-  @state()
-  private name = "";
-
-  @state()
-  private speedIndex: number | null = null;
-
-  @state()
-  private hasDefault = false;
-
-  @state()
-  private loading = false;
-
-  @state()
-  private saving = false;
-
-  @state()
-  private editingCopy = false;
-
-  @state()
-  private notice?: string;
-
-  @state()
-  private error?: string;
-
-  private activeSelectionIdentity?: string;
-  private openedInitialSelection?: string;
-  private readonly requests = new AsyncRequestController<SceneRequestState>(
-    (left, right) =>
-      left.api === right.api &&
-      left.deviceId === right.deviceId &&
-      left.category === right.category &&
-      left.selectionIdentity === right.selectionIdentity,
-  );
+  public constructor() {
+    super();
+    this.workflow = new SceneBrowserWorkflow({
+      changed: (viewState) => {
+        this.viewState = viewState;
+      },
+      initialSelectionFinished: (opened) => {
+        this.emit(opened ? "scene-initial-selection-opened" : "scene-initial-selection-failed");
+      },
+      libraryItemSaved: (item) => {
+        this.emit("library-item-saved", { item });
+      },
+    });
+    this.viewState = this.workflow.state;
+  }
 
   public currentPreviewRequest(): ScenePreviewRequest | undefined {
-    return this.buildPreviewRequest();
+    return this.workflow.previewRequest(this.isAdmin);
   }
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (changed.has("device") || changed.has("api")) {
-      this.invalidateRequests();
-      this.catalogue = undefined;
-      this.category = "all";
+      this.workflow.configure(this.api, this.device);
       this.search = "";
-      this.selectedScene = undefined;
-      this.selectedItem = undefined;
-      this.content = undefined;
-      this.hasDefault = false;
-      this.editingCopy = false;
-      this.notice = undefined;
-      this.error = undefined;
-      this.loading = Boolean(this.api && this.device);
-      this.openedInitialSelection = undefined;
     }
     if (changed.has("initialSelection")) {
-      this.openedInitialSelection = undefined;
+      this.workflow.setInitialSelection(this.initialSelection);
     }
     if (changed.has("savedSceneSelection") && this.savedSceneSelection) {
-      this.synchroniseSavedSelection(this.savedSceneSelection);
+      this.workflow.synchroniseSavedSelection(this.savedSceneSelection);
     }
-    if (changed.has("library") && this.selectedItem) {
-      const sync = libraryItemSyncResult(
-        this.selectedItem,
-        this.library.items,
-        this.sceneDirty,
-      );
-      if (sync.action === "removed") {
-        this.invalidateRequests();
-        this.selectedScene = undefined;
-        this.selectedItem = undefined;
-        this.content = undefined;
-        this.hasDefault = false;
-        this.editingCopy = false;
-        this.notice = "The selected custom scene was deleted.";
-      }
+    if (changed.has("library")) {
+      this.workflow.setLibrary(this.library);
     }
   }
 
   protected updated(changed: Map<PropertyKey, unknown>): void {
-    if (
-      (changed.has("device") || changed.has("api")) &&
-      this.api &&
-      this.device
-    ) {
-      void this.loadCatalogue();
+    if ((changed.has("device") || changed.has("api")) && this.api && this.device) {
+      void this.workflow.loadCatalogue();
     }
-    if (changed.has("library") && this.selectedItem) {
-      const sync = libraryItemSyncResult(
-        this.selectedItem,
-        this.library.items,
-        this.sceneDirty,
-      );
-      if (sync.action === "conflict") {
-        this.notice =
-          "This custom scene changed elsewhere. Reload it before saving.";
-      } else if (sync.action === "reload") {
-        void this.selectCustom(sync.summary);
-      }
-    }
-    if (
-      changed.has("initialSelection") &&
-      this.catalogue &&
-      this.initialSelection
-    ) {
-      void this.openInitialSelection();
+    if (changed.has("initialSelection") && this.viewState.catalogue && this.initialSelection) {
+      void this.workflow.openInitialSelection();
     }
     if (
       changed.has("previewStatus") &&
-      previewMayChangeSceneDefault(
-        this.previewStatus,
-        this.device?.config_entry_id,
-      )
+      previewMayChangeSceneDefault(this.previewStatus, this.device?.config_entry_id)
     ) {
-      void this.refreshSelectedDefault();
+      void this.workflow.refreshSelectedDefault();
     }
   }
 
   protected render() {
+    const state = this.viewState;
     if (!this.device) {
       return html`
         <section class="empty">
@@ -262,26 +148,20 @@ export class GoveeSceneBrowser extends LitElement {
         </section>
       `;
     }
-    if (this.loading) {
+    if (state.loading) {
       return html`<div class="status" role="status">Loading scenes...</div>`;
     }
-    if (this.error || !this.catalogue) {
+    if (state.error || !state.catalogue) {
       return html`
         <section class="empty">
           <h2>Scenes are unavailable</h2>
-          <p role="alert">${this.error ?? "The scene catalogue could not be loaded."}</p>
+          <p role="alert">${state.error ?? "The scene catalogue could not be loaded."}</p>
         </section>
       `;
     }
-
     return html`
-      <aside
-        class="sidebar category-sidebar categories"
-        aria-label="Scene categories"
-      >
-        ${this.sortedCategories.map((category) =>
-          this.categoryButton(category.id, category.label),
-        )}
+      <aside class="sidebar category-sidebar categories" aria-label="Scene categories">
+        ${this.sortedCategories.map((category) => this.categoryButton(category.id, category.label))}
       </aside>
 
       <aside class="sidebar item-sidebar scenes" aria-label="Scenes">
@@ -299,16 +179,8 @@ export class GoveeSceneBrowser extends LitElement {
         </label>
         ${this.filteredSceneEntries.map((entry) =>
           entry.kind === "custom"
-            ? this.sceneButton(
-                `custom:${entry.item.id}`,
-                entry.label,
-                () => this.selectCustom(entry.item, true),
-              )
-            : this.sceneButton(
-                sceneKey(entry.scene),
-                entry.label,
-                () => this.selectBuiltin(entry.scene, true),
-              ),
+            ? this.sceneButton(`custom:${entry.item.id}`, entry.label, () => this.selectCustom(entry.item, true))
+            : this.sceneButton(sceneKey(entry.scene), entry.label, () => this.selectBuiltin(entry.scene, true)),
         )}
       </aside>
 
@@ -316,110 +188,24 @@ export class GoveeSceneBrowser extends LitElement {
         ? nothing
         : html`
             <section class="editor-surface detail">
-              ${this.panelNotice
-                ? html`<div class="feedback" role="status">${this.panelNotice}</div>`
-                : nothing}
-              ${this.notice
-                ? html`<div class="feedback notice" role="status">${this.notice}</div>`
-                : nothing}
-              ${this.selectedScene && this.content
-                ? this.renderDetail()
-                : nothing}
+              ${this.panelNotice ? html`<div class="feedback" role="status">${this.panelNotice}</div>` : nothing}
+              ${state.notice ? html`<div class="feedback notice" role="status">${state.notice}</div>` : nothing}
+              ${state.selectedScene && state.content ? this.renderDetail() : nothing}
             </section>
           `}
     `;
   }
 
-  private get sortedCategories(): {
-    id: CategorySelection;
-    label: string;
-  }[] {
-    const categories: { id: CategorySelection; label: string }[] = [];
-    if (this.catalogue?.scenes.length) {
-      categories.push({ id: "all", label: "All scenes" });
-    }
-    if (this.compatibleCustomScenes.length) {
-      categories.push({ id: "custom", label: "Custom" });
-    }
-    categories.push(
-      ...(this.catalogue?.categories
-        .filter((category) =>
-          this.catalogue?.scenes.some(
-            (scene) => scene.category_id === category.id,
-          ),
-        )
-        .map((category) => ({
-          id: category.id,
-          label: category.name,
-        })) ?? []),
-    );
-    return categories.sort((left, right) =>
-      compareLabels(left.label, right.label),
-    );
+  private get sortedCategories(): { id: CategorySelection; label: string }[] {
+    return sceneBrowserCategories(this.viewState.catalogue, this.workflow.compatibleCustomScenes);
   }
 
-  private get compatibleCustomScenes(): LibrarySummary[] {
-    return this.library.items.filter(
-      (item) =>
-        (item.kind === "scene_builtin" ||
-          item.kind === "scene_palette" ||
-          item.kind === "scene_layered") &&
-        item.template?.sku === this.catalogue?.sku,
-    );
-  }
-
-  private get filteredCustomScenes(): LibrarySummary[] {
-    return this.category === "all" || this.category === "custom"
-      ? this.compatibleCustomScenes
-      : [];
-  }
-
-  private get filteredBuiltinScenes(): SceneSummary[] {
-    if (!this.catalogue || this.category === "custom") {
-      return [];
-    }
-    if (this.category === "all") {
-      return this.catalogue.scenes;
-    }
-    return this.catalogue.scenes.filter(
-      (scene) => scene.category_id === this.category,
-    );
-  }
-
-  private get filteredSceneEntries(): SceneListEntry[] {
-    const query = this.search.trim().toLocaleLowerCase();
-    return [
-      ...this.filteredCustomScenes.map(
-        (item): SceneListEntry => ({
-          kind: "custom",
-          item,
-          label: item.name,
-        }),
-      ),
-      ...this.filteredBuiltinScenes.map(
-        (scene): SceneListEntry => ({
-          kind: "builtin",
-          scene,
-          label: scene.display_name,
-        }),
-      ),
-    ]
-      .filter(
-        (entry) =>
-          !query || entry.label.toLocaleLowerCase().includes(query),
-      )
-      .sort((left, right) => compareLabels(left.label, right.label));
-  }
-
-  private get selectionKey(): string | undefined {
-    if (this.selectedItem) {
-      return `custom:${this.selectedItem.id}`;
-    }
-    return this.selectedScene ? sceneKey(this.selectedScene) : undefined;
+  private get filteredSceneEntries() {
+    return sceneBrowserEntries(this.viewState, this.workflow.compatibleCustomScenes, this.search);
   }
 
   private categoryButton(category: CategorySelection, label: string) {
-    const selected = this.category === category;
+    const selected = this.viewState.category === category;
     return html`
       <button
         class="selector ${selected ? "selected" : ""}"
@@ -427,7 +213,7 @@ export class GoveeSceneBrowser extends LitElement {
         aria-current=${selected ? "page" : nothing}
         @click=${() => {
           this.dismissExternalEdit();
-          this.selectCategory(category);
+          this.workflow.setCategory(category);
         }}
       >
         ${label}
@@ -435,12 +221,8 @@ export class GoveeSceneBrowser extends LitElement {
     `;
   }
 
-  private sceneButton(
-    key: string,
-    label: string,
-    select: () => void,
-  ) {
-    const selected = this.selectionKey === key;
+  private sceneButton(key: string, label: string, select: () => void) {
+    const selected = sceneSelectionKey(this.viewState) === key;
     return html`
       <button
         class="selector scene ${selected ? "selected" : ""}"
@@ -457,16 +239,15 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   private renderDetail() {
-    const scene = this.selectedScene!;
+    const state = this.viewState;
+    const scene = state.selectedScene!;
     const speed = scene.speed;
-    const speedIndex = this.speedIndex ?? speed?.default_index ?? 0;
-    const custom = this.selectedItem !== undefined || this.editingCopy;
-    const layered = this.content?.kind === "scene_layered";
-    const nativeSelection =
-      this.selectedItem === undefined && !this.editingCopy;
-    const savingCopy = this.selectedItem === undefined && this.editingCopy;
-    const saveDisabled =
-      !this.name.trim() || (this.selectedItem !== undefined && !this.sceneDirty);
+    const speedIndex = state.speedIndex ?? speed?.default_index ?? 0;
+    const custom = state.selectedItem !== undefined || state.editingCopy;
+    const layered = state.content?.kind === "scene_layered";
+    const nativeSelection = state.selectedItem === undefined && !state.editingCopy;
+    const savingCopy = state.selectedItem === undefined && state.editingCopy;
+    const saveDisabled = !state.name.trim() || (state.selectedItem !== undefined && !this.workflow.sceneDirty);
     return html`
       <header class="editor-heading">
         <div class="editor-title">
@@ -477,27 +258,22 @@ export class GoveeSceneBrowser extends LitElement {
                     class="editor-name"
                     aria-label="Scene name"
                     maxlength="128"
-                    .value=${this.name}
+                    .value=${state.name}
                     ?disabled=${!this.isAdmin}
                     @input=${(event: Event) => {
-                      this.name = (event.target as HTMLInputElement).value;
+                      this.workflow.setName((event.target as HTMLInputElement).value);
                     }}
                   />
-                  ${this.sceneDirty
+                  ${this.workflow.sceneDirty
                     ? html`<span class="dirty-marker" aria-label="Unsaved changes">*</span>`
                     : nothing}
                 </div>
               `
             : html`<h2>${scene.display_name}</h2>`}
-          ${this.selectedItem
-            ? html`
-                <small class="origin-name">
-                  ${effectOriginDescription(
-                    this.selectedItem.origin,
-                    scene.display_name,
-                  )}
-                </small>
-              `
+          ${state.selectedItem
+            ? html`<small class="origin-name">
+                ${effectOriginDescription(state.selectedItem.origin, scene.display_name)}
+              </small>`
             : nothing}
         </div>
         <div class="actions">
@@ -505,12 +281,12 @@ export class GoveeSceneBrowser extends LitElement {
             class=${layered || nativeSelection ? "secondary" : "primary"}
             type="button"
             ?disabled=${!this.isAdmin ||
-            this.saving ||
-            !this.hasCurrentSceneContent() ||
+            state.saving ||
+            !this.workflow.hasCurrentSceneContent() ||
             (!layered && custom && saveDisabled)}
             @click=${layered || nativeSelection ? this.edit : this.save}
           >
-            ${this.saving
+            ${state.saving
               ? "Saving..."
               : layered
                 ? "Edit"
@@ -520,24 +296,24 @@ export class GoveeSceneBrowser extends LitElement {
                     ? "Save as Custom"
                     : "Save"}
           </button>
-          ${this.selectedItem
+          ${state.selectedItem
             ? html`
                 <button
                   class="danger"
                   type="button"
-                  ?disabled=${!this.isAdmin || this.saving}
+                  ?disabled=${!this.isAdmin || state.saving}
                   @click=${this.requestDelete}
                 >
                   Delete
                 </button>
               `
             : nothing}
-          ${nativeSelection && this.hasDefault
+          ${nativeSelection && state.hasDefault
             ? html`
                 <button
                   class="secondary"
                   type="button"
-                  ?disabled=${!this.isAdmin || this.saving || !this.catalogue?.enabled}
+                  ?disabled=${!this.isAdmin || state.saving || !state.catalogue?.enabled}
                   @click=${this.resetToCatalogue}
                 >
                   Reset to catalogue
@@ -547,27 +323,20 @@ export class GoveeSceneBrowser extends LitElement {
         </div>
       </header>
 
-      ${!this.catalogue?.enabled
+      ${!state.catalogue?.enabled
         ? html`
             <div class="feedback callout" role="note">
-              Native scenes are disabled for this device in the integration
-              options. Browsing and saving copies remain available.
+              Native scenes are disabled for this device in the integration options. Browsing and saving copies remain available.
             </div>
           `
         : nothing}
 
-      ${speed || this.content?.kind === "scene_palette"
-        ? this.renderParameters(speed, speedIndex)
-        : nothing}
+      ${speed || state.content?.kind === "scene_palette" ? this.renderParameters(speed, speedIndex) : nothing}
     `;
   }
 
-  private renderParameters(
-    speed: SceneSummary["speed"],
-    speedIndex: number,
-  ) {
-    const palette =
-      this.content?.kind === "scene_palette" ? this.content : undefined;
+  private renderParameters(speed: SceneSummary["speed"], speedIndex: number) {
+    const palette = this.viewState.content?.kind === "scene_palette" ? this.viewState.content : undefined;
     return html`
       <div class="card scene-parameters">
         <div class="parameter-list">
@@ -576,23 +345,16 @@ export class GoveeSceneBrowser extends LitElement {
                 <govee-segmented-control
                   .label=${"Speed"}
                   .value=${speedIndex}
-                  .options=${sceneSpeedOptions(
-                    speed.option_count,
-                    speed.default_index,
-                  )}
+                  .options=${sceneSpeedOptions(speed.option_count, speed.default_index)}
                   .disabled=${!this.isAdmin}
-                  @value-changed=${(
-                    event: CustomEvent<SegmentedControlChange<number>>,
-                  ) => {
-                    this.speedIndex = event.detail.value;
+                  @value-changed=${(event: CustomEvent<SegmentedControlChange<number>>) => {
+                    this.workflow.setSpeedIndex(event.detail.value);
                     this.dispatchPreview();
                   }}
                 ></govee-segmented-control>
               `
             : nothing}
-          ${palette
-            ? this.renderPaletteParameters(palette)
-            : nothing}
+          ${palette ? this.renderPaletteParameters(palette) : nothing}
         </div>
       </div>
     `;
@@ -601,18 +363,9 @@ export class GoveeSceneBrowser extends LitElement {
   private renderPaletteParameters(content: PaletteSceneContent) {
     return html`
       <dl class="parameter-summary">
-        <div>
-          <dt>Layout</dt>
-          <dd>${content.layout}</dd>
-        </div>
-        <div>
-          <dt>Brightness flag</dt>
-          <dd>${content.brightness_flag ? "Set" : "Clear"}</dd>
-        </div>
-        <div>
-          <dt>Steps</dt>
-          <dd>${content.steps.length}</dd>
-        </div>
+        <div><dt>Layout</dt><dd>${content.layout}</dd></div>
+        <div><dt>Brightness flag</dt><dd>${content.brightness_flag ? "Set" : "Clear"}</dd></div>
+        <div><dt>Steps</dt><dd>${content.steps.length}</dd></div>
       </dl>
       ${content.palette.length > 0
         ? html`
@@ -621,12 +374,12 @@ export class GoveeSceneBrowser extends LitElement {
               <div class="scene-palette" role="list" aria-label="Scene palette">
                 ${content.palette.map(
                   (colour, index) => html`
-                  <span
-                    role="listitem"
-                    style="--scene-colour: ${rgbToHex(colour)}"
-                    aria-label="Colour ${index + 1}, ${rgbToHex(colour)}"
-                  ></span>
-                `,
+                    <span
+                      role="listitem"
+                      style="--scene-colour: ${rgbToHex(colour)}"
+                      aria-label="Colour ${index + 1}, ${rgbToHex(colour)}"
+                    ></span>
+                  `,
                 )}
               </div>
             </section>
@@ -637,641 +390,93 @@ export class GoveeSceneBrowser extends LitElement {
         <ol class="scene-steps" aria-label="Ordered scene steps">
           ${content.steps.map(
             (step, index) => html`
-            <li>
-              <span class="step-order">${index + 1}</span>
-              <span
-                class="step-colour"
-                style="--scene-colour: ${rgbToHex(step.colour)}"
-                aria-label="Step colour ${rgbToHex(step.colour)}"
-              ></span>
-              <span>
-                <strong>Raw value ${step.value}</strong>
-                <small>Step colour ${rgbToHex(step.colour)}</small>
-                ${step.inline_colour
-                  ? html`
-                      <small>
-                        Inline colour ${rgbToHex(step.inline_colour)}
-                      </small>
-                    `
-                  : nothing}
-              </span>
-            </li>
-          `,
+              <li>
+                <span class="step-order">${index + 1}</span>
+                <span
+                  class="step-colour"
+                  style="--scene-colour: ${rgbToHex(step.colour)}"
+                  aria-label="Step colour ${rgbToHex(step.colour)}"
+                ></span>
+                <span>
+                  <strong>Raw value ${step.value}</strong>
+                  <small>Step colour ${rgbToHex(step.colour)}</small>
+                  ${step.inline_colour
+                    ? html`<small>Inline colour ${rgbToHex(step.inline_colour)}</small>`
+                    : nothing}
+                </span>
+              </li>
+            `,
           )}
         </ol>
       </section>
     `;
   }
 
-  private async loadCatalogue(): Promise<void> {
-    if (!this.api || !this.device) {
-      return;
-    }
-    const request = this.beginRequest();
-    this.loading = true;
-    this.error = undefined;
-    this.notice = undefined;
-    this.selectedScene = undefined;
-    this.selectedItem = undefined;
-    this.content = undefined;
-    this.hasDefault = false;
-    try {
-      const catalogue = await request.api.sceneCatalogue(request.deviceId);
-      if (!this.requestIsCurrent(request)) {
-        return;
-      }
-      this.catalogue = catalogue;
-      this.category = "all";
-      this.loading = false;
-      await this.openInitialSelection();
-    } catch (error) {
-      if (this.requestIsCurrent(request)) {
-        this.error = errorMessage(error);
-      }
-    } finally {
-      if (this.requestIsCurrent(request)) {
-        this.loading = false;
-      }
+  private async selectBuiltin(scene: SceneSummary, preview = false): Promise<void> {
+    if ((await this.workflow.selectBuiltin(scene)) && preview) {
+      this.dispatchPreview();
     }
   }
 
-  private selectCategory(category: CategorySelection): void {
-    this.invalidateRequests();
-    this.category = category;
-    this.selectedScene = undefined;
-    this.selectedItem = undefined;
-    this.content = undefined;
-    this.hasDefault = false;
-    this.editingCopy = false;
-    this.notice = undefined;
-  }
-
-  private async selectBuiltin(
-    scene: SceneSummary,
-    preview = false,
-  ): Promise<boolean> {
-    if (!this.api || !this.device) {
-      return false;
-    }
-    const identity = sceneKey(scene);
-    const request = this.beginRequest(identity);
-    this.notice = undefined;
-    this.selectedScene = scene;
-    this.selectedItem = undefined;
-    this.editingCopy = false;
-    this.content = undefined;
-    this.name = scene.display_name;
-    this.speedIndex = scene.speed?.default_index ?? null;
-    try {
-      const detail = await request.api.sceneDetail(
-        request.deviceId,
-        scene.scene_id,
-        scene.effect_id,
-      );
-      if (
-        !this.requestIsCurrent(request) ||
-        sceneKey(detail.scene) !== identity
-      ) {
-        return false;
-      }
-      this.selectedScene = detail.scene;
-      this.content = detail.content;
-      this.hasDefault = detail.has_default;
-      this.name = detail.scene.display_name;
-      this.speedIndex = detail.content.speed_index;
-      if (preview) {
-        this.dispatchPreview();
-      }
-      return true;
-    } catch (error) {
-      if (this.requestIsCurrent(request)) {
-        this.notice = errorMessage(error);
-      }
-      return false;
-    }
-  }
-
-  private async selectCustom(
-    summary: LibrarySummary,
-    preview = false,
-  ): Promise<boolean> {
-    if (!this.api || !this.device || !this.catalogue) {
-      return false;
-    }
-    const catalogue = this.catalogue;
-    const request = this.beginRequest(`custom:${summary.id}`);
-    this.notice = undefined;
-    this.selectedScene = undefined;
-    this.selectedItem = undefined;
-    this.editingCopy = false;
-    this.content = undefined;
-    this.hasDefault = false;
-    this.name = summary.name;
-    try {
-      const item = await request.api.item(summary.id);
-      if (!this.requestIsCurrent(request)) {
-        return false;
-      }
-      if (
-        item.content.kind !== "scene_builtin" &&
-        item.content.kind !== "scene_palette" &&
-        item.content.kind !== "scene_layered"
-      ) {
-        throw new Error("This custom scene uses an unsupported definition.");
-      }
-      const content = item.content;
-      if (content.template.sku !== catalogue.sku) {
-        throw new Error(
-          `This custom scene targets ${content.template.sku}, not ${catalogue.sku}.`,
-        );
-      }
-      const scene = catalogue.scenes.find(
-        (candidate) =>
-          candidate.scene_id === content.template.scene_id &&
-          candidate.effect_id === content.template.effect_id,
-      );
-      if (!scene) {
-        throw new Error("The source scene is not in this device catalogue.");
-      }
-      const detail = await request.api.sceneDetail(
-        request.deviceId,
-        content.template.scene_id,
-        content.template.effect_id,
-      );
-      if (
-        !this.requestIsCurrent(request) ||
-        sceneKey(detail.scene) !== sceneKey(scene)
-      ) {
-        return false;
-      }
-      this.commitCustomSelection(item, scene, content);
-      if (preview) {
-        this.dispatchPreview();
-      }
-      return true;
-    } catch (error) {
-      if (this.requestIsCurrent(request)) {
-        this.notice = errorMessage(error);
-      }
-      return false;
-    }
-  }
-
-  private async openInitialSelection(): Promise<void> {
-    const selection = this.initialSelection;
-    if (!selection || !this.catalogue) {
-      return;
-    }
-    const key =
-      selection.kind === "saved"
-        ? `saved:${selection.itemId}`
-        : `native:${normaliseSceneName(selection.effect)}`;
-    if (this.openedInitialSelection === key) {
-      return;
-    }
-    this.openedInitialSelection = key;
-    const opened =
-      selection.kind === "saved"
-        ? await this.openInitialSavedScene(selection.itemId)
-        : await this.openInitialNativeScene(selection.effect);
-    if (this.initialSelection !== selection) {
-      return;
-    }
-    this.dispatchEvent(
-      new CustomEvent(
-        opened
-          ? "scene-initial-selection-opened"
-          : "scene-initial-selection-failed",
-        {
-          bubbles: true,
-          composed: true,
-        },
-      ),
-    );
-  }
-
-  private async openInitialSavedScene(itemId: string): Promise<boolean> {
-    const summary = this.compatibleCustomScenes.find(
-      (item) => item.id === itemId,
-    );
-    return summary ? this.selectCustom(summary) : false;
-  }
-
-  private async openInitialNativeScene(effect: string): Promise<boolean> {
-    const key = normaliseSceneName(effect);
-    const scene = this.catalogue?.scenes.find(
-      (candidate) =>
-        normaliseSceneName(candidate.display_name) === key ||
-        normaliseSceneName(candidate.name) === key,
-    );
-    return scene ? this.selectBuiltin(scene) : false;
-  }
-
-  private synchroniseSavedSelection(item: LibraryItem): void {
-    const content = item.content;
-    if (
-      this.selectedItem?.id !== item.id ||
-      !this.catalogue ||
-      (content.kind !== "scene_builtin" &&
-        content.kind !== "scene_palette" &&
-        content.kind !== "scene_layered") ||
-      content.template.sku !== this.catalogue.sku
-    ) {
-      return;
-    }
-    const scene = this.catalogue.scenes.find(
-      (candidate) =>
-        candidate.scene_id === content.template.scene_id &&
-        candidate.effect_id === content.template.effect_id,
-    );
-    if (!scene) {
-      return;
-    }
-    this.requests.invalidate();
-    this.activeSelectionIdentity = `custom:${item.id}`;
-    this.commitCustomSelection(item, scene, content);
-    this.notice = undefined;
-  }
-
-  private commitCustomSelection(
-    item: LibraryItem,
-    scene: SceneSummary,
-    content: SceneContent,
-  ): void {
-    const selectedContent = cloneSceneContent(content);
-    this.selectedScene = scene;
-    this.selectedItem = item;
-    this.editingCopy = false;
-    this.content = selectedContent;
-    this.hasDefault = false;
-    this.name = item.name;
-    this.speedIndex =
-      selectedContent.speed_index ?? scene.speed?.default_index ?? null;
-  }
-
-  private async save(): Promise<void> {
-    if (
-      !this.api ||
-      !this.device ||
-      !this.catalogue ||
-      !this.selectedScene ||
-      !this.content ||
-      !this.hasCurrentSceneContent() ||
-      (this.content.kind !== "scene_builtin" &&
-        this.content.kind !== "scene_palette") ||
-      !this.isAdmin ||
-      this.saving
-    ) {
-      return;
-    }
-
-    const name = this.name.trim();
-    if (!name) {
-      this.notice = "Give this custom scene a name before saving.";
-      return;
-    }
-    const content =
-      this.content.kind === "scene_palette"
-        ? clonePaletteSceneContent({
-            ...this.content,
-            speed_index: this.speedIndex,
-          })
-        : {
-            ...this.content,
-            speed_index: this.speedIndex,
-          };
-    const request = this.captureRequest();
-    this.saving = true;
-    this.notice = undefined;
-    try {
-      const result = this.selectedItem
-        ? await this.api.updateItem(
-            this.selectedItem,
-            name,
-            content,
-          )
-        : await this.api.createItem(
-            name,
-            content,
-          );
-      if (
-        result.content.kind !== "scene_builtin" &&
-        result.content.kind !== "scene_palette"
-      ) {
-        throw new Error("The saved scene returned an unsupported definition.");
-      }
-      this.dispatchEvent(
-        new CustomEvent("library-item-saved", {
-          detail: {
-            item: result,
-          },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-      if (!this.requestIsCurrent(request)) {
-        return;
-      }
-      this.activeSelectionIdentity = `custom:${result.id}`;
-      this.requests.invalidate();
-      this.selectedItem = result;
-      this.editingCopy = false;
-      this.content = result.content;
-      this.name = result.name;
-      this.category = "custom";
-      this.notice = "Custom scene saved.";
-    } catch (error) {
-      if (this.requestIsCurrent(request)) {
-        this.notice =
-          errorCode(error) === "conflict"
-            ? "The library changed elsewhere. Reload the scene before saving."
-            : `Save failed: ${errorMessage(error)}`;
-      }
-    } finally {
-      this.saving = false;
-    }
-  }
-
-  private async resetToCatalogue(): Promise<void> {
-    if (
-      !this.api ||
-      !this.device ||
-      !this.selectedScene ||
-      !this.hasDefault ||
-      !this.isAdmin ||
-      this.saving
-    ) {
-      return;
-    }
-
-    const request = this.captureRequest();
-    this.saving = true;
-    this.notice = undefined;
-    try {
-      const detail = await this.api.resetScene(
-        this.device.config_entry_id,
-        this.selectedScene,
-      );
-      if (
-        !this.requestIsCurrent(request) ||
-        sceneKey(detail.scene) !== sceneKey(this.selectedScene)
-      ) {
-        return;
-      }
-      this.selectedScene = detail.scene;
-      this.content = detail.content;
-      this.speedIndex = detail.content.speed_index;
-      this.hasDefault = detail.has_default;
-      this.notice = "Catalogue settings restored.";
-    } catch (error) {
-      if (this.requestIsCurrent(request)) {
-        this.notice = `Reset failed: ${errorMessage(error)}`;
-      }
-    } finally {
-      this.saving = false;
-    }
-  }
-
-  private async refreshSelectedDefault(): Promise<void> {
-    if (!this.api || !this.device || !this.selectedScene) {
-      return;
-    }
-    const selected = this.selectedScene;
-    const request = this.captureRequest();
-    try {
-      const detail = await this.api.sceneDetail(
-        this.device.config_entry_id,
-        selected.scene_id,
-        selected.effect_id,
-      );
-      if (
-        this.requestIsCurrent(request) &&
-        this.selectedScene &&
-        sceneKey(this.selectedScene) === sceneKey(selected) &&
-        sceneKey(detail.scene) === sceneKey(selected)
-      ) {
-        this.hasDefault = detail.has_default;
-      }
-    } catch (error) {
-      if (this.requestIsCurrent(request)) {
-        this.notice = `Could not refresh the scene default: ${errorMessage(error)}`;
-      }
+  private async selectCustom(summary: Parameters<SceneBrowserWorkflow["selectCustom"]>[0], preview = false): Promise<void> {
+    if ((await this.workflow.selectCustom(summary)) && preview) {
+      this.dispatchPreview();
     }
   }
 
   private edit(): void {
-    if (
-      !this.isAdmin ||
-      !this.selectedScene ||
-      !this.hasCurrentSceneContent()
-    ) {
-      return;
+    const detail = this.workflow.edit(this.isAdmin);
+    if (detail) {
+      this.emit<SceneEditSelection>("scene-edit-selected", detail);
     }
-    if (
-      this.selectedScene.scene_type === 2 &&
-      this.content?.kind === "scene_layered"
-    ) {
-      this.dispatchSceneEdit();
-      return;
-    }
-    this.editingCopy = true;
-    this.name = `${this.selectedScene.display_name} copy`;
-    this.notice = undefined;
   }
 
-  private dispatchSceneEdit(): void {
-    if (
-      !this.selectedScene ||
-      this.content?.kind !== "scene_layered"
-    ) {
-      return;
-    }
-    this.dispatchEvent(
-      new CustomEvent<{
-        content: LayeredSceneContent;
-        config_entry_id: string;
-        item?: LibraryItem;
-        name: string;
-      }>("scene-edit-selected", {
-        detail: {
-          content: cloneLayeredSceneContent({
-            ...this.content,
-            speed_index: this.speedIndex,
-          }),
-          config_entry_id: this.device!.config_entry_id,
-          ...(this.selectedItem ? { item: this.selectedItem } : {}),
-          name:
-            this.selectedItem?.name ??
-            `${this.selectedScene.display_name} copy`,
-        },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+  private save(): void {
+    void this.workflow.save(this.isAdmin);
+  }
+
+  private resetToCatalogue(): void {
+    void this.workflow.resetToCatalogue(this.isAdmin);
   }
 
   private dispatchPreview(): void {
-    const detail = this.buildPreviewRequest();
-    if (!detail) {
-      return;
+    const detail = this.currentPreviewRequest();
+    if (detail) {
+      this.emit<ScenePreviewRequest>("scene-preview-requested", detail);
     }
-    this.dispatchEvent(
-      new CustomEvent<ScenePreviewRequest>("scene-preview-requested", {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private buildPreviewRequest(): ScenePreviewRequest | undefined {
-    if (
-      !this.device ||
-      !this.selectedScene ||
-      !this.content ||
-      !this.hasCurrentSceneContent() ||
-      !this.isAdmin ||
-      (!this.catalogue?.enabled &&
-        this.selectedItem === undefined &&
-        !this.editingCopy)
-    ) {
-      return undefined;
-    }
-    const speedIndex = this.speedIndex;
-    const nativeSelection =
-      this.selectedItem === undefined && !this.editingCopy;
-    const content =
-      this.content.kind === "scene_palette"
-        ? clonePaletteSceneContent({
-            ...this.content,
-            speed_index: speedIndex,
-          })
-        : this.content.kind === "scene_layered"
-          ? cloneLayeredSceneContent({
-              ...this.content,
-              speed_index: speedIndex,
-            })
-          : {
-              ...this.content,
-              speed_index: speedIndex,
-            };
-    return nativeSelection || content.kind === "scene_builtin"
-        ? {
-            kind: "scene",
-            scene: this.selectedScene,
-            speedIndex,
-          }
-        : {
-            kind: "snapshot",
-            name: this.name.trim() || this.selectedScene.display_name,
-            content,
-          };
-  }
-
-  private beginRequest(
-    selectionIdentity?: string,
-  ): SceneRequestContext {
-    this.activeSelectionIdentity = selectionIdentity;
-    return this.requests.begin(this.requestState());
-  }
-
-  private captureRequest(): SceneRequestContext {
-    return this.requests.capture(this.requestState());
-  }
-
-  private invalidateRequests(): void {
-    this.requests.invalidate();
-    this.activeSelectionIdentity = undefined;
   }
 
   private dismissExternalEdit(): void {
-    if (!this.externalEditActive) {
-      return;
+    if (this.externalEditActive) {
+      this.emit("scene-external-edit-cancelled");
     }
-    this.dispatchEvent(
-      new CustomEvent("scene-external-edit-cancelled", {
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private requestIsCurrent(request: SceneRequestContext): boolean {
-    return Boolean(
-      this.api &&
-        this.device &&
-        this.requests.isCurrent(request, this.requestState()),
-    );
-  }
-
-  private requestState(): SceneRequestState {
-    return {
-      api: this.api!,
-      deviceId: this.device!.config_entry_id,
-      category: this.category,
-      selectionIdentity: this.activeSelectionIdentity,
-    };
-  }
-
-  private hasCurrentSceneContent(): boolean {
-    if (
-      !this.catalogue ||
-      !this.selectedScene ||
-      !this.content ||
-      this.content.template.sku !== this.catalogue.sku ||
-      this.content.template.scene_id !== this.selectedScene.scene_id ||
-      this.content.template.effect_id !== this.selectedScene.effect_id
-    ) {
-      return false;
-    }
-    return this.activeSelectionIdentity === this.selectionKey;
-  }
-
-  private get sceneDirty(): boolean {
-    if (!this.selectedItem || !this.content) {
-      return true;
-    }
-    const current =
-      this.content.kind === "scene_palette"
-        ? clonePaletteSceneContent({
-            ...this.content,
-            speed_index: this.speedIndex,
-          })
-        : this.content.kind === "scene_layered"
-          ? cloneLayeredSceneContent({
-              ...this.content,
-              speed_index: this.speedIndex,
-            })
-          : {
-              ...this.content,
-              speed_index: this.speedIndex,
-            };
-    return (
-      this.name.trim() !== this.selectedItem.name ||
-      JSON.stringify(current) !== JSON.stringify(this.selectedItem.content)
-    );
   }
 
   private requestDelete(event: Event): void {
-    if (!this.selectedItem || !this.isAdmin) {
+    const item = this.viewState.selectedItem;
+    if (!item || !this.isAdmin) {
       return;
     }
     const returnFocus = event.currentTarget as HTMLElement;
+    this.emit<LibraryItemDeleteRequest>("library-item-delete-requested", {
+      id: item.id,
+      version: item.version,
+      updated_at: item.updated_at,
+      name: item.name,
+      discardsOpenEdits: this.workflow.sceneDirty,
+      returnFocus,
+    });
+    returnFocus.blur();
+  }
+
+  private emit<T>(name: string, detail?: T): void {
     this.dispatchEvent(
-      new CustomEvent<LibraryItemDeleteRequest>("library-item-delete-requested", {
-        detail: {
-          id: this.selectedItem.id,
-          version: this.selectedItem.version,
-          updated_at: this.selectedItem.updated_at,
-          name: this.selectedItem.name,
-          discardsOpenEdits: this.sceneDirty,
-          returnFocus,
-        },
+      new CustomEvent<T>(name, {
+        ...(detail === undefined ? {} : { detail }),
         bubbles: true,
         composed: true,
       }),
     );
-    returnFocus.blur();
   }
 
   static styles = [
@@ -1285,177 +490,75 @@ export class GoveeSceneBrowser extends LitElement {
     studioVisuallyHiddenStyles,
     studioWorkspaceStyles,
     css`
-    :host {
-      display: contents;
-    }
-
-    :host([hidden]) {
-      display: none !important;
-    }
-
-    h2,
-    p {
-      margin-top: 0;
-    }
-
-    h2 {
-      margin-bottom: 0;
-      font-size: 20px;
-    }
-
-    .scene-search {
-      display: block;
-      margin-bottom: 12px;
-    }
-
-    .scene-search input {
-      width: 100%;
-      min-height: var(--studio-control-height);
-      padding: 8px 11px;
-      border: 1px solid var(--studio-border);
-      border-radius: var(--studio-control-radius);
-      color: var(--primary-text-color);
-      background: var(--studio-card);
-    }
-
-    .empty {
-      max-width: 680px;
-      padding: 28px;
-      border: 1px solid var(--studio-border);
-      border-radius: 10px;
-      background: var(--studio-card);
-      line-height: 1.55;
-    }
-
-    .scene-parameters {
-      margin-top: 18px;
-    }
-
-    .parameter-summary {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin: 0;
-    }
-
-    .parameter-summary div {
-      padding: 10px;
-      border: 1px solid var(--studio-border);
-      border-radius: 8px;
-    }
-
-    .parameter-summary dt,
-    .parameter-summary dd {
-      margin: 0;
-    }
-
-    .parameter-summary dt {
-      color: var(--studio-muted);
-      font-size: 12px;
-    }
-
-    .parameter-summary dd {
-      margin-top: 4px;
-      font-weight: 700;
-    }
-
-    .parameter-list {
-      display: grid;
-      gap: 12px;
-    }
-
-    .parameter-entry {
-      padding: 14px;
-      border: 1px solid var(--studio-border);
-      border-radius: 8px;
-      background: color-mix(
-        in srgb,
-        var(--primary-background-color) 58%,
-        var(--studio-card)
-      );
-    }
-
-    .visual-parameter {
-      display: grid;
-      gap: 12px;
-    }
-
-    .scene-palette {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .scene-palette span,
-    .step-colour {
-      display: block;
-      width: 32px;
-      height: 32px;
-      border: 1px solid
-        color-mix(in srgb, var(--scene-colour) 70%, #000);
-      border-radius: 6px;
-      background: var(--scene-colour);
-    }
-
-    .scene-steps {
-      display: grid;
-      gap: 8px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .scene-steps li {
-      display: grid;
-      grid-template-columns: auto auto minmax(0, 1fr);
-      align-items: center;
-      gap: 10px;
-    }
-
-    .step-order {
-      width: 24px;
-      color: var(--studio-muted);
-      text-align: end;
-    }
-
-    .scene-steps small {
-      display: block;
-      color: var(--studio-muted);
-    }
-
-    .notice {
-      border-color: color-mix(
-        in srgb,
-        var(--studio-blue) 35%,
-        var(--studio-border)
-      );
-      background: var(--studio-blue-soft);
-    }
-
-    .empty p {
-      margin-bottom: 0;
-      color: var(--studio-muted);
-      line-height: 1.5;
-    }
-
-    .status {
-      grid-column: 2 / -1;
-      padding: 48px 28px;
-    }
-
-    @media (max-width: 900px) {
-      :host {
-        display: block;
+      :host { display: contents; }
+      :host([hidden]) { display: none !important; }
+      h2, p { margin-top: 0; }
+      h2 { margin-bottom: 0; font-size: 20px; }
+      .scene-search { display: block; margin-bottom: 12px; }
+      .scene-search input {
+        width: 100%;
+        min-height: var(--studio-control-height);
+        padding: 8px 11px;
+        border: 1px solid var(--studio-border);
+        border-radius: var(--studio-control-radius);
+        color: var(--primary-text-color);
+        background: var(--studio-card);
       }
-
-    }
-
-    @media (max-width: 600px) {
+      .empty {
+        max-width: 680px;
+        padding: 28px;
+        border: 1px solid var(--studio-border);
+        border-radius: 10px;
+        background: var(--studio-card);
+        line-height: 1.55;
+      }
+      .scene-parameters { margin-top: 18px; }
       .parameter-summary {
-        grid-template-columns: 1fr;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin: 0;
       }
-    }
-  `];
+      .parameter-summary div { padding: 10px; border: 1px solid var(--studio-border); border-radius: 8px; }
+      .parameter-summary dt, .parameter-summary dd { margin: 0; }
+      .parameter-summary dt { color: var(--studio-muted); font-size: 12px; }
+      .parameter-summary dd { margin-top: 4px; font-weight: 700; }
+      .parameter-list { display: grid; gap: 12px; }
+      .parameter-entry {
+        padding: 14px;
+        border: 1px solid var(--studio-border);
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--primary-background-color) 58%, var(--studio-card));
+      }
+      .visual-parameter { display: grid; gap: 12px; }
+      .scene-palette { display: flex; flex-wrap: wrap; gap: 8px; }
+      .scene-palette span, .step-colour {
+        display: block;
+        width: 32px;
+        height: 32px;
+        border: 1px solid color-mix(in srgb, var(--scene-colour) 70%, #000);
+        border-radius: 6px;
+        background: var(--scene-colour);
+      }
+      .scene-steps { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+      .scene-steps li {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+      }
+      .step-order { width: 24px; color: var(--studio-muted); text-align: end; }
+      .scene-steps small { display: block; color: var(--studio-muted); }
+      .notice {
+        border-color: color-mix(in srgb, var(--studio-blue) 35%, var(--studio-border));
+        background: var(--studio-blue-soft);
+      }
+      .empty p { margin-bottom: 0; color: var(--studio-muted); line-height: 1.5; }
+      .status { grid-column: 2 / -1; padding: 48px 28px; }
+      @media (max-width: 900px) { :host { display: block; } }
+      @media (max-width: 600px) { .parameter-summary { grid-template-columns: 1fr; } }
+    `,
+  ];
 }
 
 declare global {

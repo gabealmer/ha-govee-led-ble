@@ -1,13 +1,22 @@
 import { expect, test } from "vitest";
 
 import {
+  buildScenePreviewRequest,
   cloneSceneContent,
+  initialSceneBrowserState,
   normaliseSceneName,
   previewMayChangeSceneDefault,
+  sceneBrowserCategories,
+  sceneBrowserEntries,
   sceneKey,
   sceneSpeedOptions,
 } from "../../src/scene-browser-model";
-import type { PaletteSceneContent, SceneSummary } from "../../src/types";
+import type {
+  LibrarySummary,
+  PaletteSceneContent,
+  SceneCatalogue,
+  SceneSummary,
+} from "../../src/types";
 
 const scene: SceneSummary = {
   scene_id: 1,
@@ -88,4 +97,78 @@ test("scene content clones do not share editable colour arrays", () => {
 
   expect(content.steps[0].colour).toEqual([1, 2, 3]);
   expect(content.palette[0]).toEqual([4, 5, 6]);
+});
+
+test("scene categories and entries are derived without DOM state", () => {
+  const catalogue: SceneCatalogue = {
+    schema_version: 1,
+    sku: "H617A",
+    enabled: true,
+    categories: [{ id: 3, name: "Natural" }],
+    scenes: [scene],
+  };
+  const custom: LibrarySummary = {
+    id: "custom-a",
+    version: 1,
+    updated_at: "2026-08-18T00:00:00Z",
+    name: "Aurora custom",
+    kind: "scene_palette",
+    content_hash: "a".repeat(64),
+    origin: { kind: "authored", source_id: null },
+    template: {
+      sku: "H617A",
+      scene_id: 1,
+      effect_id: 2,
+      catalogue_schema_version: 1,
+    },
+  };
+  const state = { ...initialSceneBrowserState(), catalogue };
+
+  expect(sceneBrowserCategories(catalogue, [custom]).map((category) => category.label)).toEqual([
+    "All scenes",
+    "Custom",
+    "Natural",
+  ]);
+  expect(sceneBrowserEntries(state, [custom], "uro").map((entry) => entry.label)).toEqual([
+    "Aurora custom",
+  ]);
+});
+
+test("preview requests use the current selection identity and editable speed", () => {
+  const content: PaletteSceneContent = {
+    kind: "scene_palette",
+    template: {
+      sku: "H617A",
+      scene_id: 1,
+      effect_id: 2,
+      catalogue_schema_version: 1,
+    },
+    layout: 0,
+    brightness_flag: false,
+    steps: [],
+    palette: [],
+    speed_index: null,
+  };
+  const state = {
+    ...initialSceneBrowserState(),
+    catalogue: {
+      schema_version: 1,
+      sku: "H617A",
+      enabled: true,
+      categories: [],
+      scenes: [scene],
+    },
+    selectedScene: scene,
+    content,
+    name: "Editable",
+    speedIndex: 1,
+    editingCopy: true,
+  };
+
+  expect(buildScenePreviewRequest(state, sceneKey(scene), true, true)).toEqual({
+    kind: "snapshot",
+    name: "Editable",
+    content: { ...content, speed_index: 1 },
+  });
+  expect(buildScenePreviewRequest(state, "builtin:other", true, true)).toBeUndefined();
 });
