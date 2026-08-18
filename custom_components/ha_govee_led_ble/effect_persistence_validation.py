@@ -61,6 +61,13 @@ def required_persisted_integer(raw: Mapping[str, Any], key: str) -> int:
     return value
 
 
+def required_persisted_boolean(raw: Mapping[str, Any], key: str) -> bool:
+    value = raw.get(key)
+    if not isinstance(value, bool):
+        raise EffectStorageError(f"{key} must be a boolean")
+    return value
+
+
 @overload
 def optional_persisted_integer(raw: Mapping[str, Any], key: str, *, default: int) -> int: ...
 
@@ -86,3 +93,56 @@ def optional_persisted_integer(
     if not isinstance(value, int) or isinstance(value, bool):
         raise EffectStorageError(f"{key} must be an integer or null")
     return value
+
+
+@overload
+def optional_persisted_boolean(raw: Mapping[str, Any], key: str, *, default: bool) -> bool: ...
+
+
+@overload
+def optional_persisted_boolean(
+    raw: Mapping[str, Any],
+    key: str,
+    *,
+    default: None = None,
+) -> bool | None: ...
+
+
+def optional_persisted_boolean(
+    raw: Mapping[str, Any],
+    key: str,
+    *,
+    default: bool | None = None,
+) -> bool | None:
+    value = raw.get(key)
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise EffectStorageError(f"{key} must be a boolean or null")
+    return value
+
+
+def validate_persisted_rgb(value: tuple[int, int, int], name: str) -> None:
+    if (
+        not isinstance(value, tuple)
+        or len(value) != 3
+        or any(
+            not isinstance(channel, int) or isinstance(channel, bool) or not 0 <= channel <= 0xFF
+            for channel in value
+        )
+    ):
+        raise EffectStorageError(f"{name} must contain three channels from 0 to 255")
+
+
+def required_persisted_rgb(raw: Mapping[str, Any], key: str) -> tuple[int, int, int]:
+    value = raw.get(key)
+    if not isinstance(value, list | tuple) or len(value) != 3:
+        raise EffectStorageError(f"{key} must be an RGB colour")
+    resolved = cast(tuple[int, int, int], tuple(value))
+    validate_persisted_rgb(resolved, key)
+    return resolved
+
+
+def optional_persisted_rgb(raw: Mapping[str, Any], key: str) -> tuple[int, int, int] | None:
+    value = raw.get(key)
+    return None if value is None else required_persisted_rgb({key: value}, key)

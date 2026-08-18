@@ -8,7 +8,7 @@ import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any, Final, cast, overload
+from typing import Any, Final, cast
 from uuid import UUID
 
 from homeassistant.core import HomeAssistant
@@ -33,11 +33,16 @@ from .effect_persistence_validation import (
     EffectVersionConflictError,
 )
 from .effect_persistence_validation import as_persisted_mapping as _as_mapping
+from .effect_persistence_validation import optional_persisted_boolean as _optional_bool
 from .effect_persistence_validation import optional_persisted_integer as _optional_int
+from .effect_persistence_validation import optional_persisted_rgb as _optional_rgb
 from .effect_persistence_validation import optional_persisted_string as _optional_str
+from .effect_persistence_validation import required_persisted_boolean as _required_bool
 from .effect_persistence_validation import required_persisted_integer as _required_int
 from .effect_persistence_validation import required_persisted_mapping as _required_mapping
+from .effect_persistence_validation import required_persisted_rgb as _required_rgb
 from .effect_persistence_validation import required_persisted_string as _required_str
+from .effect_persistence_validation import validate_persisted_rgb as _validate_rgb
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 DEPLOYMENT_STORE_VERSION: Final = 2
@@ -942,52 +947,3 @@ def _required_non_negative_int(raw: Mapping[str, Any], key: str) -> int:
     if not 0 <= value <= MAX_REVISION:
         raise EffectStorageError(f"{key} must not be negative")
     return value
-
-
-def _required_bool(raw: Mapping[str, Any], key: str) -> bool:
-    value = raw.get(key)
-    if not isinstance(value, bool):
-        raise EffectStorageError(f"{key} must be a boolean")
-    return value
-
-
-@overload
-def _optional_bool(raw: Mapping[str, Any], key: str, *, default: bool) -> bool: ...
-
-
-@overload
-def _optional_bool(raw: Mapping[str, Any], key: str, *, default: None = None) -> bool | None: ...
-
-
-def _optional_bool(raw: Mapping[str, Any], key: str, *, default: bool | None = None) -> bool | None:
-    value = raw.get(key)
-    if value is None:
-        return default
-    if not isinstance(value, bool):
-        raise EffectStorageError(f"{key} must be a boolean or null")
-    return value
-
-
-def _validate_rgb(value: tuple[int, int, int], name: str) -> None:
-    if (
-        not isinstance(value, tuple)
-        or len(value) != 3
-        or any(
-            not isinstance(channel, int) or isinstance(channel, bool) or not 0 <= channel <= 0xFF for channel in value
-        )
-    ):
-        raise EffectStorageError(f"{name} must contain three channels from 0 to 255")
-
-
-def _required_rgb(raw: Mapping[str, Any], key: str) -> tuple[int, int, int]:
-    value = raw.get(key)
-    if not isinstance(value, list | tuple) or len(value) != 3:
-        raise EffectStorageError(f"{key} must be an RGB colour")
-    resolved = cast(tuple[int, int, int], tuple(value))
-    _validate_rgb(resolved, key)
-    return resolved
-
-
-def _optional_rgb(raw: Mapping[str, Any], key: str) -> tuple[int, int, int] | None:
-    value = raw.get(key)
-    return None if value is None else _required_rgb({key: value}, key)

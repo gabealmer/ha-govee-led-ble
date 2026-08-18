@@ -97,9 +97,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_scenes=True,
         supports_video_mode=True,
         supports_video_sound_effects=True,
-        # The three registers the app reaches from the same video sheet, each modelled from an
-        # H6199 capture and reproduced byte-exact by its builder: white balance and blank screen
-        # behind the 33 a9 selector, relative brightness on 33 ae of its own.
+        # These independently captured video registers have byte-exact builders.
         supports_white_balance=True,
         supports_relative_brightness=True,
         supports_blank_screen=True,
@@ -107,28 +105,11 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_min=1,
         music_sensitivity_max=100,
         supports_music_color=True,
-        # The attributable H6199 static reply carries mode 0x15 followed only by zeros
-        # (h6199_status_reply::colour_mode_body). It identifies static mode but echoes neither
-        # colour nor Kelvin. Query-backed segment groups expose the rendered RGB and brightness,
-        # but exact Kelvin remains last-known state because the wire carries only its RGB companion.
-        # The verified white-brightness service therefore cannot be offered.
-        # The H6199 segment count is fifteen. A whole-strip write from the app addresses fifteen
-        # bits (0x7fff), and the app draws
-        # fifteen tiles for this model, captured 2026-08-03; colouring one segment, then a second,
-        # then both gave 0x0001, 0x0004 and their OR, which is what makes it a mask rather than an
-        # index (h6199_command_write::static_colour_body::segment_mask).
-        #
-        # It is still NOT 38. The device answers 38 to aa 40, but that reply was positively excluded
-        # as an app segment count (an external H7015 reads 30 against 15 segments proven by an
-        # exhaustive per-bit sweep), so copying it in would re-assert the reading we disproved.
+        # Static readback identifies the mode but exposes rendered colour only through segment
+        # queries. Kelvin remains last-known while its RGB companion matches.
+        # Fifteen segment bits are independently writable. The aa 40 value 38 is not a segment count.
         segment_count=15,
-        # build_segment_color reproduces three captured H6199 app writes byte for byte, whole-strip
-        # and per-segment alike, so painting segments is the app's own behaviour on this model
-        # rather than an H617A habit carried across. Segment brightness was then driven through HA
-        # on 2026-08-05 for one segment, a disjoint pair and all fifteen; attributed aa a5 replies
-        # independently reported 17, 37 and 73 at exactly the addressed positions. The app queries
-        # groups 1..4 explicitly; attributed write captures contain only the normal command ACK
-        # until those queries are sent, so segment state is query-backed rather than passive push.
+        # Colour and brightness writes are observed through four explicit aa a5 query groups.
         supports_segment_writes=True,
     ),
 }

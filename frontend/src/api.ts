@@ -1,6 +1,5 @@
 import type {
   CustomEffectCatalogue,
-  DeploymentRecord,
   DeploymentSnapshot,
   DeviceCapabilities,
   EditorApiInfo,
@@ -16,7 +15,6 @@ import type {
 } from "./types";
 import {
   decodeCustomCatalogue,
-  decodeDeployment,
   decodeDeploymentSnapshot,
   decodeDevices,
   decodeEditorApiInfo,
@@ -26,7 +24,6 @@ import {
   decodePreviewStatus,
   decodeSceneCatalogue,
   decodeSceneDetail,
-  decodeSceneSummary,
   effectContentToWire,
 } from "./validation";
 
@@ -110,35 +107,6 @@ export class EffectStudioApi {
       expected_version: item.version,
       expected_updated_at: item.updated_at,
     });
-  }
-
-  public async applySaved(
-    configEntryId: string,
-    item: LibraryItem,
-  ): Promise<DeploymentRecord> {
-    const result = await this.call("apply", {
-      config_entry_id: configEntryId,
-      item_id: item.id,
-      updated_at: new Date().toISOString(),
-    });
-    return decodeDeployment(resultField(result, "deployment"));
-  }
-
-  public async applySnapshot(
-    configEntryId: string,
-    name: string,
-    content: EffectContent,
-  ): Promise<DeploymentRecord> {
-    const result = await this.call(
-      "apply_snapshot",
-      {
-        config_entry_id: configEntryId,
-        name,
-        content: effectContentToWire(content),
-        updated_at: new Date().toISOString(),
-      },
-    );
-    return decodeDeployment(resultField(result, "deployment"));
   }
 
   public async openPreviewSession(): Promise<string> {
@@ -231,43 +199,6 @@ export class EffectStudioApi {
       scene_id: sceneId,
       effect_id: effectId,
     }).then(decodeSceneDetail);
-  }
-
-  public async applyScene(
-    configEntryId: string,
-    scene: SceneSummary,
-    speedIndex: number | null,
-  ): Promise<{
-    scene: SceneSummary;
-    speed_index: number | null;
-    readback: "scene_identity_only";
-  }> {
-    const result = await this.call("scene/apply", {
-      config_entry_id: configEntryId,
-      scene_id: scene.scene_id,
-      effect_id: scene.effect_id,
-      ...(speedIndex === null ? {} : { speed_index: speedIndex }),
-    });
-    const returnedScene = decodeSceneSummary(resultField(result, "scene"));
-    const readback = resultField(result, "readback");
-    if (readback !== "scene_identity_only") {
-      throw new Error("Malformed Effect Studio server payload: scene Apply readback is invalid.");
-    }
-    const returnedSpeed = resultField(result, "speed_index");
-    if (
-      returnedSpeed !== null &&
-      (typeof returnedSpeed !== "number" ||
-        !Number.isSafeInteger(returnedSpeed) ||
-        returnedSpeed < 0 ||
-        returnedSpeed > 255)
-    ) {
-      throw new Error("Malformed Effect Studio server payload: scene Apply speed is invalid.");
-    }
-    return {
-      scene: returnedScene,
-      speed_index: returnedSpeed,
-      readback,
-    };
   }
 
   public resetScene(

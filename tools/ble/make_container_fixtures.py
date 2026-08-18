@@ -49,13 +49,7 @@ CONNECTION_HANDLE = 0x0040
 # D0:35:34 is Govee's OUI, kept real so the fixture still looks like the traffic it stands
 # in for, followed by an obviously invented tail. Same convention as
 # tools/harness/devices.local.env.example, so there is one recognisable-but-fake shape.
-#
-# The literal is the address as a human reads it and the reverse puts it in HCI's
-# little-endian wire order, which is what decode_govee._format_address undoes. It used to
-# be written the other way round, so the value that reached the file was the reverse of the
-# one the literal appeared to say and no test noticed, because nothing asserts the address.
-# The old literal also carried the rig's own H617A tail under a comment claiming it was a
-# documentation address.
+# HCI stores the human-readable address in little-endian wire order.
 PEER_ADDRESS = bytes.fromhex("D03534AABBCC")[::-1]
 
 WRITE_HANDLE = 0x0014

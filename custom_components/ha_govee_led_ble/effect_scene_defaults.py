@@ -20,7 +20,14 @@ from .effect_limits import (
     validate_json_document,
     validate_timestamp,
 )
-from .effect_persistence_validation import EffectLimitError, EffectStorageError, as_persisted_mapping
+from .effect_persistence_validation import (
+    EffectLimitError,
+    EffectStorageError,
+    as_persisted_mapping,
+    optional_persisted_integer,
+    required_persisted_integer,
+    required_persisted_string,
+)
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES
 
@@ -72,18 +79,18 @@ class NativeSceneDefault:
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> NativeSceneDefault:
         try:
-            body = bytes.fromhex(_required_str(raw, "canonical_body"))
+            body = bytes.fromhex(required_persisted_string(raw, "canonical_body"))
         except ValueError as exc:
             raise EffectStorageError("scene-default body must be hexadecimal") from exc
         value = cls(
-            config_entry_id=_required_str(raw, "config_entry_id"),
-            scene_id=_required_int(raw, "scene_id"),
-            effect_id=_required_int(raw, "effect_id"),
-            updated_at=_required_str(raw, "updated_at"),
+            config_entry_id=required_persisted_string(raw, "config_entry_id"),
+            scene_id=required_persisted_integer(raw, "scene_id"),
+            effect_id=required_persisted_integer(raw, "effect_id"),
+            updated_at=required_persisted_string(raw, "updated_at"),
             canonical_body=body,
-            speed_index=_optional_int(raw, "speed_index"),
+            speed_index=optional_persisted_integer(raw, "speed_index"),
         )
-        if _required_str(raw, "content_hash") != value.content_hash:
+        if required_persisted_string(raw, "content_hash") != value.content_hash:
             raise EffectStorageError("scene-default content hash does not match body")
         return value
 
@@ -192,26 +199,3 @@ def _validate_store(data: object) -> tuple[NativeSceneDefault, ...]:
 
 def _scene_key(scene_id: int, effect_id: int) -> str:
     return f"{scene_id}:{effect_id}"
-
-
-def _required_str(raw: Mapping[str, Any], key: str) -> str:
-    value = raw.get(key)
-    if not isinstance(value, str):
-        raise EffectStorageError(f"{key} must be a string")
-    return value
-
-
-def _required_int(raw: Mapping[str, Any], key: str) -> int:
-    value = raw.get(key)
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise EffectStorageError(f"{key} must be an integer")
-    return value
-
-
-def _optional_int(raw: Mapping[str, Any], key: str) -> int | None:
-    value = raw.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise EffectStorageError(f"{key} must be an integer or null")
-    return value
