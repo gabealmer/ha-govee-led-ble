@@ -1,4 +1,4 @@
-"""Apply helpers and retained segment-service methods for the Govee BLE light."""
+"""Control helpers for the Govee BLE light."""
 
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
@@ -10,43 +10,11 @@ from homeassistant.exceptions import ServiceValidationError
 from .const import DOMAIN
 from .coordinator import GoveeBLECoordinator
 from .coordinator_modes import MUSIC_STYLE_SLUGS
-from .protocol import (
-    SegmentColorGroup,
-    build_power,
-    build_segment_brightness,
-    build_video_mode,
-)
+from .generated_protocol_adapter import build_h6199_video, build_power
+from .light_commands import SegmentColorGroup
+from .native_profile_controls import apply_active_video_mode
 
-
-# fmt: off
-async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: bool) -> None:
-    sound_effects = coord.video_sound_effects and coord.profile.supports_video_sound_effects
-    await coord.send_command(build_video_mode(full_screen=coord.video_full_screen, game_mode=game_mode,
-        saturation=coord.video_saturation, sound_effects=sound_effects,
-        sound_effects_softness=coord.video_sound_effects_softness))
-    if not coord.profile.supports_video_sound_effects:
-        coord.video_sound_effects = False
-# fmt: on
-
-
-async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
-    if coord.video_mode not in ("movie", "game"):
-        return False
-    for _ in range(2):
-        if not coord.is_on:
-            await coord.send_command(build_power(True, coord.model))
-            coord.is_on = True
-        await apply_video_mode_from_state(coord, game_mode=coord.video_mode == "game")
-        if await coord.refresh_state(
-            expected_on=True,
-            expected_video_mode=coord.video_mode,
-            expected_video_full_screen=coord.video_full_screen,
-            expected_video_saturation=coord.video_saturation,
-            expected_video_sound_effects=coord.video_sound_effects,
-            expected_video_sound_effects_softness=coord.video_sound_effects_softness,
-        ):
-            return True
-    raise RuntimeError("Video-mode write was not confirmed by the device")
+__all__ = ("apply_active_video_mode",)
 
 
 class _GoveeLightOwner:
@@ -108,8 +76,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
             )
             # fmt: off
-            packet = build_video_mode(full_screen=resolved_fs, game_mode=mode == "game", saturation=saturation,
-                sound_effects=resolved_sound, sound_effects_softness=resolved_softness)
+            packet = build_h6199_video(resolved_fs, mode == "game", saturation, resolved_sound, resolved_softness)
             # fmt: on
             async def apply() -> None:
                 await self.coordinator.send_command(
@@ -206,17 +173,16 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
         async with self.coordinator._control_lock:
             self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
-            try:
-                packet = build_segment_brightness(
-                    segments,
-                    brightness,
-                    self.coordinator.model,
+            if not segments:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="invalid_segments",
                 )
+            try:
+                await self.coordinator.async_set_segment_brightness(segments, brightness)
             except (TypeError, ValueError) as err:
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,
                     translation_key="invalid_segments",
                 ) from err
-            await self.coordinator.send_command(packet)
-            self.coordinator._enter_static_mode()
             self._notify_state_changed()
