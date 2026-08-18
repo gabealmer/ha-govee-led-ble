@@ -14,6 +14,25 @@ All models support on/off, brightness, RGB color, color temperature, and state r
 - **H617A**: LED Strip · 83 scenes · 11 music modes
 - **H6199**: DreamView T1 · 240 scenes · video and music modes · advanced controls
 
+## Scope, non-goals, and expert tools
+
+The supported product scope is local BLE control of H617A and H6199 through Home Assistant.  The purpose of the persistent H617A [`0xa3` gradual-change register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) remains a known protocol unknown.  H617A does not advertise gradual-change support, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
+
+Wi-Fi provisioning is an expert recovery and investigation tool, not a Home Assistant integration surface.  The guarded workflow is documented under [Writing Wi-Fi credentials to a device](tools/harness/README.md#writing-wi-fi-credentials-to-a-device).  [Home Assistant-integrated provisioning](https://github.com/teh-hippo/ha-govee-led-ble/issues/210) is tracked separately as future work.
+
+The following are intentional non-goals for this integration:
+
+- on-device timers;
+- manufacturer-style animated scene previews;
+- phone-microphone music-stream injection;
+- firmware or OTA updates.
+
+The retained music-stream schema is decode-only evidence support.  It does not provide injection or playback control.
+
+Native H6199 camera calibration is unavailable from the current local interfaces.  The completed [camera-calibration investigation](https://github.com/teh-hippo/ha-govee-led-ble/issues/136) found that the required geometry exchange remains behind the manufacturer's trusted network service.
+
+Cross-SKU evidence, additional device models, Home Assistant quality-scale work, and restart-free integration updates are separate future programmes.  They do not define H617A/H6199 completion.
+
 ## Advanced Effect Studio prerelease
 
 The prerelease Effect Studio stores the current saved-effect library and durable deployment status in the local Home Assistant instance.  Administrators can browse native scenes, author effects and manage the shared library.  Other authenticated users have read-only access to scenes and understood saved effects; unknown opaque definitions remain administrator-only.

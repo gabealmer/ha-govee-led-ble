@@ -37,6 +37,12 @@ enums:
     0x15: static
 types:
   multi_effect_cmd:
+    doc: >
+      Boolean gradual-change register. The app writes false as the prologue to
+      per-segment paint batches. True is accepted, read back and retained across power,
+      but produced no visible change in static repaint and flicker tests. H617A is marked
+      as not supporting gradual change, so the purpose of true remains a known unknown
+      rather than a shipped capability.
     seq:
       - id: flag
         type: u1

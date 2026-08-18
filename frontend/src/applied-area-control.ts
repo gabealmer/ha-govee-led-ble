@@ -4,6 +4,7 @@ import { property, state } from "lit/decorators.js";
 import {
   adjustAppliedAreaLeftEdge,
   adjustAppliedAreaRightEdge,
+  appliedAreaEffectiveWidth,
   layerAppliedAreaSegments,
   moveAppliedArea,
   withAppliedAreaSegments,
@@ -56,11 +57,14 @@ export class GoveeAppliedAreaControl extends LitElement {
     if (!layer) {
       return nothing;
     }
+    const effectiveWidth = appliedAreaEffectiveWidth(
+      layer.area.width_tenths,
+    );
     const areaIsEditable =
       layer.area.start_tenths >= 0 &&
       layer.area.start_tenths <= 9 &&
-      layer.area.width_tenths >= 1 &&
-      layer.area.width_tenths <= 10 - layer.area.start_tenths;
+      effectiveWidth >= 1 &&
+      effectiveWidth <= 10 - layer.area.start_tenths;
     const segmentCount = this.validSegmentCount;
     const segmentColour = rgbToHex(layer.palette[0] ?? [47, 111, 237]);
     const visibleSegments = layerAppliedAreaSegments(layer, segmentCount);

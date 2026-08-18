@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import {
   adjustAppliedAreaLeftEdge,
   adjustAppliedAreaRightEdge,
+  appliedAreaEffectiveWidth,
   appliedAreaSegments,
   appliedAreaWireBounds,
   blankAdvancedContent,
@@ -124,6 +125,19 @@ test("applied area segments preserve visual length while moving", () => {
     end: 15,
     length: 3,
   });
+});
+
+test("raw zero width remains encoded while displaying the full strip", () => {
+  const layer = blankLayer();
+  layer.area.width_tenths = 0;
+
+  expect(appliedAreaEffectiveWidth(layer.area.width_tenths)).toBe(10);
+  expect(layerAppliedAreaSegments(layer, 15)).toEqual({
+    start: 0,
+    end: 15,
+    length: 15,
+  });
+  expect(cloneLayer(layer).area.width_tenths).toBe(0);
 });
 
 test("exact segment bounds survive clones while serialising nearest wire values", () => {

@@ -225,6 +225,7 @@ export function appliedAreaSegments(
   segmentCount: number,
 ): AppliedAreaSegments {
   const boundedSegmentCount = Math.max(1, Math.round(segmentCount));
+  const effectiveWidth = appliedAreaEffectiveWidth(width);
   const startSegment = Math.min(
     boundedSegmentCount - 1,
     Math.floor(
@@ -234,7 +235,11 @@ export function appliedAreaSegments(
   const length = Math.max(
     1,
     Math.round(
-      (clampInteger(width, 1, 10 - clampInteger(start, 0, 9)) *
+      (clampInteger(
+        effectiveWidth,
+        1,
+        10 - clampInteger(start, 0, 9),
+      ) *
         boundedSegmentCount) /
         10,
     ),
@@ -245,6 +250,10 @@ export function appliedAreaSegments(
     end: endSegment,
     length: endSegment - startSegment,
   };
+}
+
+export function appliedAreaEffectiveWidth(width: number): number {
+  return width === 0 ? 10 : width;
 }
 
 export function appliedAreaWireBounds(

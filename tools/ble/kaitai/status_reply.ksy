@@ -43,6 +43,10 @@ enums:
     0x13: music
 types:
   multi_effect_body:
+    doc: >
+      Readback of the gradual-change boolean written by command_write opcode 0xa3. The
+      value is persistent device state even though H617A exposes no supported behaviour
+      for true.
     seq:
       - id: flag
         type: u1
