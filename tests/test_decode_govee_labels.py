@@ -8,13 +8,24 @@ looks exactly like a 15-bit map skipping bit 7 and using bit 15, and it was one 
 from being written into the spec as a structural finding.
 
 The defence is a round trip rather than a fixture: build a frame with the shipped
-``protocol.py`` encoder, whose values are known by construction, then assert the label
+semantic encoder, whose values are known by construction, then assert the label
 reports those same values back. Any endianness or offset drift between the two breaks it.
 """
 
 import pytest
 
-from custom_components.ha_govee_led_ble import protocol as proto
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_h617a_scene,
+    build_h6199_blank_screen,
+    build_h6199_relative_brightness,
+    build_h6199_white_balance,
+)
+from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_POSITIONS
+from custom_components.ha_govee_led_ble.light_commands import (
+    build_color_temp,
+    build_segment_brightness,
+    build_segment_color,
+)
 from tools.ble import decode_govee as dg
 
 
@@ -32,21 +43,21 @@ from tools.ble import decode_govee as dg
     ],
 )
 def test_segment_colour_label_reports_the_segments_that_were_encoded(segments, expected):
-    label = dg.label(proto.build_segment_color(segments, 10, 20, 30), "TX")
+    label = dg.label(build_segment_color(segments, 10, 20, 30), "TX")
     assert f"mask={expected}" in label
     assert "rgb=(10,20,30)" in label
 
 
 def test_segment_brightness_label_uses_the_same_mask_rendering():
-    label = dg.label(proto.build_segment_brightness([8], 50), "TX")
+    label = dg.label(build_segment_brightness([8], 50), "TX")
     assert "mask=0x0080(seg 8)" in label
     assert "brightness 50%" in label
 
 
 def test_segment_mask_rendering_is_not_byte_order():
     """Segment 1 and segment 9 must not be confusable, which byte order makes them."""
-    one = dg.label(proto.build_segment_color([1], 0, 0, 0), "TX")
-    nine = dg.label(proto.build_segment_color([9], 0, 0, 0), "TX")
+    one = dg.label(build_segment_color([1], 0, 0, 0), "TX")
+    nine = dg.label(build_segment_color([9], 0, 0, 0), "TX")
     assert one != nine
     assert "seg 1)" in one and "seg 9)" in nine
 
@@ -98,19 +109,19 @@ def test_whole_strip_segment_brightness_label_names_the_segments_that_differ():
 @pytest.mark.parametrize("kelvin", [2700, 3600, 8500])
 def test_colour_temperature_label_reports_the_kelvin_that_was_encoded(kelvin):
     """kelvin is u2be, the one big-endian field in this family; guard it stays that way."""
-    assert f"{kelvin}K" in dg.label(proto.build_color_temp(kelvin), "TX")
+    assert f"{kelvin}K" in dg.label(build_color_temp(kelvin), "TX")
 
 
 @pytest.mark.parametrize("scene_id", [402, 1173, 10315])
 def test_scene_label_reports_the_scene_id_that_was_encoded(scene_id):
     """scene_id is u2le; rendering byte 3 alone showed scene 1173 as 'sub=0x95'."""
-    assert f"scene id={scene_id}" in dg.label(proto.build_scene(scene_id), "TX")
+    assert f"scene id={scene_id}" in dg.label(build_h617a_scene(scene_id), "TX")
 
 
 @pytest.mark.parametrize("position", [0, 9, 16, 19])
 def test_white_balance_label_reports_the_gains_that_were_encoded(position):
-    red, blue = proto.WHITE_BALANCE_POSITIONS[position]
-    label = dg.label(proto.build_video_white_balance(red, blue), "TX")
+    red, blue = WHITE_BALANCE_POSITIONS[position]
+    label = dg.label(build_h6199_white_balance(red, blue), "TX")
     assert f"gains=({red},{blue})" in label
 
 
@@ -120,18 +131,18 @@ def test_the_two_display_settings_are_told_apart_by_their_selector():
     The bug is the reason this test exists: 33 a9 is a selector, a length and a payload, so a
     decoder that reads every frame on it as white balance reports a setting nobody touched.
     """
-    blank_on = dg.label(proto.build_blank_screen(True), "TX")
-    blank_off = dg.label(proto.build_blank_screen(False), "TX")
+    blank_on = dg.label(build_h6199_blank_screen(True), "TX")
+    blank_off = dg.label(build_h6199_blank_screen(False), "TX")
     assert blank_on.startswith("blank screen on")
     assert blank_off.startswith("blank screen off")
     assert "detection=same_tone low=10s same=120s" in blank_on
     assert "white balance" not in blank_on
-    assert "blank screen" not in dg.label(proto.build_video_white_balance(21, 5), "TX")
+    assert "blank screen" not in dg.label(build_h6199_white_balance(21, 5), "TX")
 
 
 @pytest.mark.parametrize("percent", [12, 36, 100])
 def test_relative_brightness_label_reports_every_named_edge(percent):
-    label = dg.label(proto.build_relative_brightness(percent), "TX", model="H6199")
+    label = dg.label(build_h6199_relative_brightness(percent, percent, percent, percent), "TX", model="H6199")
     assert label == f"relative brightness left={percent},top={percent},right={percent},bottom={percent}"
 
 

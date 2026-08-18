@@ -34,7 +34,7 @@ _HYPHENATED = re.compile(r"\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}\b")
 # Anchored on the 0000 that opens the board identifier in this UDID format, and on that
 # identifier not itself being zero. Without the first anchor the rule is just "twenty-four
 # hex characters", which matches pinned action SHAs, image digests and the packet literals
-# in protocol.py, and a check that cries wolf is a check somebody switches off. Without the
+# in runtime command code, and a check that cries wolf is a check somebody switches off. Without the
 # second it also matches the zero padding inside a captured BLE frame, which is how a
 # Kaitai colour fixture with the tail 0000000000ff7f0000000000 came to be reported as a
 # handset. Apple board identifiers are values like 8030 and 8140; none is 0000, so
@@ -81,10 +81,9 @@ def _tracked_files() -> list[Path]:
 def _readable_text(path: Path) -> str:
     """Bytes as latin-1, which cannot raise and leaves ASCII untouched.
 
-    The 20-byte capture fixtures under tools/ble/kaitai/src are binary and a UTF-8 decode of
-    them throws, which would turn this check into a crash on a file it has nothing to say
-    about. A UDID cannot fit in a 20-byte BLE packet, but the fixtures are read anyway
-    because deciding what to skip by directory is how the next binary corpus gets missed.
+    Binary fixtures can fail UTF-8 decoding, which would turn this check into a crash on a
+    file it has nothing to say about. Files are still read because deciding what to skip by
+    directory is how the next binary corpus gets missed.
     """
     return path.read_bytes().decode("latin-1")
 

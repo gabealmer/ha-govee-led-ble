@@ -96,6 +96,7 @@ def test_usbipd_resolves_the_reenumerated_busid_before_attach(tmp_path: Path):
     assert result.returncode == 0, result.stderr
     assert not (tmp_path / "iphone-usbipd.state").exists()
     sequence = calls.read_text().splitlines()
+    assert [call for call in sequence if call.startswith("elevated ")] == ["elevated bind 05ac:12a8"]
     assert sequence.index("elevated bind 05ac:12a8") < sequence.index("usbipd attach --wsl --busid 3-1")
     # The BUSID listed BEFORE the force bind, which force binding invalidated.
     assert "usbipd attach --wsl --busid 2-1" not in sequence
@@ -215,12 +216,6 @@ def test_usbipd_acquire_adopts_an_attached_phone_without_touching_ownership(tmp_
     assert "mux-serving" in sequence
 
 
-def test_usbipd_force_bind_is_the_only_elevated_acquire_step():
-    body = _PHONE_SH.read_text()
-    assert '@("bind", "--force", "--hardware-id", $env:IPHONE_USB_HARDWARE_ID)' in body
-    assert "-Verb RunAs -Wait -PassThru" in body
-
-
 def _app_phone_stub() -> str:
     return """#!/usr/bin/env bash
 set -eu
@@ -228,7 +223,7 @@ mkdir -p "$HARNESS_RUN_DIR"
 # phone.sh derives this from the phone backend and host kind (devices.env,
 # harness_derive_backend_env), so a stub standing in for phone.sh has to supply it too.
 # The real rule is pinned against the real tree by
-# test_wsl_native_phone_selects_the_idevicebtlogger_capture_backend; this line only keeps
+# test_a_later_shell_adopts_the_running_sessions_ownership; this line only keeps
 # the stub a faithful stand-in, and up.sh deliberately no longer sets it.
 GOVEE_CAPTURE_BACKEND="${GOVEE_CAPTURE_BACKEND:-idevicebtlogger}"
 printf 'source phone=%s rsd=%s capture=%s\\n' \

@@ -171,6 +171,13 @@ require_bluetooth_transport() {
 }
 
 govee_send() {
+  while IFS= read -r filename; do
+    case "$filename" in ""|\#*) continue ;; esac
+    if [ ! -f "$REPO_DIR/custom_components/ha_govee_led_ble/generated_protocol/$filename" ]; then
+      make -C "$REPO_DIR" protocol
+      break
+    fi
+  done <"$REPO_DIR/scripts/kaitai-runtime-outputs.txt"
   mkdir -p "$WSL_WINDOWS_TOOL_DIR/generated_protocol"
   find "$WSL_WINDOWS_TOOL_DIR/generated_protocol" -maxdepth 1 -type f -name '*.py' -delete
   cp "$REPO_DIR/custom_components/ha_govee_led_ble/generated_protocol/"*.py \
