@@ -33,6 +33,8 @@ Native H6199 camera calibration is unavailable from the current local interfaces
 
 Cross-SKU evidence, additional device models, Home Assistant quality-scale work, and restart-free integration updates are separate future programmes.  They do not define H617A/H6199 completion.
 
+The final [UX completion evidence matrix](docs/completion-evidence.md) records issue dispositions, cleanup metrics, retained tests and tooling, public-contract parity, and release qualification.
+
 ## Advanced Effect Studio prerelease
 
 The prerelease Effect Studio stores the current saved-effect library and durable deployment status in the local Home Assistant instance.  Administrators can browse native scenes, author effects and manage the shared library.  Other authenticated users have read-only access to scenes and understood saved effects; unknown opaque definitions remain administrator-only.
