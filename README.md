@@ -16,7 +16,7 @@ All models support on/off, brightness, RGB color, color temperature, and state r
 
 ## Scope, non-goals, and expert tools
 
-The supported product scope is local BLE control of H617A and H6199 through Home Assistant.  The purpose of the persistent H617A [`0xa3` gradual-change register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) remains a known protocol unknown.  H617A does not advertise gradual-change support, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
+The supported product scope is local BLE control of H617A and H6199 through Home Assistant.  The persistent H617A [`0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) stores the app's gradual-colour-change switch, but the app explicitly classifies H617A as unsupported.  Paired physical comparisons found no visible effect, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
 
 Wi-Fi provisioning is an expert recovery and investigation tool, not a Home Assistant integration surface.  The guarded workflow is documented under [Writing Wi-Fi credentials to a device](tools/harness/README.md#writing-wi-fi-credentials-to-a-device).  [Home Assistant-integrated provisioning](https://github.com/teh-hippo/ha-govee-led-ble/issues/210) is tracked separately as future work.
 

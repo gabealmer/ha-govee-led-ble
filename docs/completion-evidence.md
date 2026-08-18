@@ -7,7 +7,7 @@ This matrix reconciles the UX completion programme against the final remediation
 | Audit finding | Status | Durable evidence |
 | --- | --- | --- |
 | Original issue #165 | Complete | [Issue #165](https://github.com/teh-hippo/ha-govee-led-ble/issues/165) is closed.  Layered scenes decode into canonical, raw-preserving content and round-trip through Kaitai-owned structures. |
-| Open-issue triage | Corrected | Current open issues are classified below.  Current-model issues #112, #125, #130 and #166 are closed with evidence.  Issue #131 is retained as a known unknown. |
+| Open-issue triage | Corrected | Current open issues are classified below.  Current-model issues #112, #125, #130, #131 and #166 are closed with evidence. |
 | Explicit exclusions | Corrected | [README scope and non-goals](../README.md#scope-non-goals-and-expert-tools) records expert, future, unavailable, and intentional non-goal boundaries. |
 | One-off tooling | Corrected | Completed protocol probes were removed.  [Harness tool ownership](../tools/harness/README.md#tool-ownership) maps every retained utility family to a supported workflow. |
 | Repository cleanup depth | Complete | Four behaviour-preserving passes and an independent residual audit removed dead APIs, duplicate validation, compatibility façades, stale constants, unused dependencies, completed probes, test-only production code, and historical narration. |
@@ -21,18 +21,19 @@ This matrix reconciles the UX completion programme against the final remediation
 
 | Issue | Disposition | Blocks H617A/H6199 completion |
 | --- | --- | --- |
-| [#131: persistent `0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) | Known protocol unknown.  The raw gradual-change boolean is preserved; H617A advertises no supported gradual-change capability and no user-facing semantic claim is made. | No |
 | [#129: Fountain body from a larger device](https://github.com/teh-hippo/ha-govee-led-ble/issues/129) | Cross-hardware evidence request. | No |
 | [#148: H7025 music cross-validation](https://github.com/teh-hippo/ha-govee-led-ble/issues/148) | Cross-SKU evidence and potential model contribution. | No |
 | [#115: H6102](https://github.com/teh-hippo/ha-govee-led-ble/issues/115), [#117: H6125](https://github.com/teh-hippo/ha-govee-led-ble/issues/117) | Additional-model future programme. | No |
-| [#92](https://github.com/teh-hippo/ha-govee-led-ble/issues/92), [#93](https://github.com/teh-hippo/ha-govee-led-ble/issues/93), [#94](https://github.com/teh-hippo/ha-govee-led-ble/issues/94), [#95](https://github.com/teh-hippo/ha-govee-led-ble/issues/95), [#96](https://github.com/teh-hippo/ha-govee-led-ble/issues/96) | Separate Home Assistant quality-scale programme. | No |
-| [#138: restart-free updates](https://github.com/teh-hippo/ha-govee-led-ble/issues/138) | Separate lifecycle/architecture programme. | No |
+| [#96: quality-scale tracking](https://github.com/teh-hippo/ha-govee-led-ble/issues/96) | `7.0.0` quality tracking; all applicable in-repository rules are complete. | No |
 | [#210: Home Assistant Wi-Fi provisioning](https://github.com/teh-hippo/ha-govee-led-ble/issues/210) | Future administrator-only integration.  The existing expert CLI workflow remains supported. | No |
 
 ## Closed completion-audit issues
 
 | Issue | Result |
 | --- | --- |
+| [#131](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) | APK analysis identifies `0xa3` as the gradual-colour-change switch and classifies H617A goods type 73 as unsupported.  Six paired false/true comparisons across native scenes, segment paint, and immediate static colour changes showed no visible difference; read-back and final restoration were verified. |
+| [#92](https://github.com/teh-hippo/ha-govee-led-ble/issues/92), [#93](https://github.com/teh-hippo/ha-govee-led-ble/issues/93), [#94](https://github.com/teh-hippo/ha-govee-led-ble/issues/94), [#95](https://github.com/teh-hippo/ha-govee-led-ble/issues/95) | The full quality inventory, strict production typing, packaged `py.typed`, manual pre-configuration BLE validation, and core-submission disposition are complete. |
+| [#138](https://github.com/teh-hippo/ha-govee-led-ble/issues/138) | HACS integration updates require a Home Assistant restart; an integration-local Python hot loader is unsupported and was not added. |
 | [#112: Kelvin retention](https://github.com/teh-hippo/ha-govee-led-ble/issues/112) | H617A and H6199 retained 4000 K through explicit BLE refresh from static mode.  H6199 query-backed segment colour matched the Kelvin companion. |
 | [#125: H617A layout-1 scene](https://github.com/teh-hippo/ha-govee-led-ble/issues/125) | The crafted `0x93` body was acknowledged but did not replace normal Halloween rendering.  H617A support is rejected rather than inferred from the parser. |
 | [#130: Fountain speed](https://github.com/teh-hippo/ha-govee-led-ble/issues/130) | A controlled `0x10`/`0x50` comparison showed slower/faster motion and return to baseline.  Kaitai records the field as speed without inferring extreme-value scaling. |
