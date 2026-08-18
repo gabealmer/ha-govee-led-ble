@@ -1,0 +1,151 @@
+name: Prerelease Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact commit SHA from the ux branch
+        required: true
+        type: string
+      version:
+        description: Prerelease version, for example 6.5.0-rc.13
+        required: true
+        type: string
+      publish:
+        description: Create the GitHub prerelease and tag
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: prerelease-${{ inputs.target_sha }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Validate exact SHA package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate inputs
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "target_sha must be a lowercase 40-character commit SHA" >&2
+            exit 1
+          }
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || {
+            echo "version must use the form 6.5.0-rc.13" >&2
+            exit 1
+          }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify immutable ux commit
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch --no-tags origin ux
+          git merge-base --is-ancestor "$TARGET_SHA" origin/ux || {
+            echo "target_sha is not reachable from the remote ux branch" >&2
+            exit 1
+          }
+
+      - name: Verify source version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import tomllib
+          from pathlib import Path
+
+          expected = os.environ["VERSION"].replace("-rc.", "rc")
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          manifest = json.loads(
+              Path("custom_components/ha_govee_led_ble/manifest.json").read_text(encoding="utf-8")
+          )
+          versions = {
+              "pyproject.toml": project["project"]["version"],
+              "manifest.json": manifest["version"],
+          }
+          mismatched = {path: value for path, value in versions.items() if value != expected}
+          if mismatched:
+              raise SystemExit(f"source version does not match {expected}: {mismatched}")
+          PY
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.14"
+
+      - uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4
+        with:
+          install_args: github:kaitai-io/kaitai_struct_compiler
+
+      - name: Build deterministic package
+        run: |
+          uv sync --locked
+          make clean package
+          uv run --no-sync python scripts/package.py \
+            --source custom_components/ha_govee_led_ble \
+            --verify-archive dist/ha_govee_led_ble.zip
+          (cd dist && sha256sum --check ha_govee_led_ble.zip.sha256)
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: prerelease-${{ inputs.target_sha }}
+          path: |
+            dist/ha_govee_led_ble.zip
+            dist/ha_govee_led_ble.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish exact SHA prerelease
+    if: ${{ inputs.publish }}
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: prerelease-${{ inputs.target_sha }}
+          path: dist
+
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          (cd dist && sha256sum --check ha_govee_led_ble.zip.sha256)
+          tag="v$VERSION"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $tag already exists" >&2
+            exit 1
+          fi
+          gh release create "$tag" \
+            dist/ha_govee_led_ble.zip \
+            dist/ha_govee_led_ble.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "$tag" \
+            --generate-notes \
+            --prerelease \
+            --latest=false
