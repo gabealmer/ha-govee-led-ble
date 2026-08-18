@@ -148,6 +148,37 @@ async def test_legacy_migration_keeps_only_live_head(hass: HomeAssistant) -> Non
     assert "Old" not in str(await Store[dict[str, Any]](hass, LIBRARY_STORE_VERSION, LIBRARY_STORE_KEY).async_load())
 
 
+@pytest.mark.parametrize("invalid_value", ["version", "name", "origin", "target"])
+async def test_legacy_migration_reports_invalid_domain_values_as_storage_errors(
+    hass: HomeAssistant,
+    invalid_value: str,
+) -> None:
+    live = _item()
+    data = _legacy_library_data(live)
+    resource = data["resources"][str(live.id)]
+    raw_item = resource["revisions"]["2"]
+    if invalid_value == "version":
+        resource["head_revision"] = 0
+        resource["revisions"]["0"] = resource["revisions"].pop("2")
+    elif invalid_value == "name":
+        raw_item["name"] = " "
+    elif invalid_value == "origin":
+        raw_item["provenance"]["source_id"] = 17
+    else:
+        raw_item["target_hint"] = {"model": "H617A", "segment_count": 0}
+    await Store[dict[str, Any]](
+        hass,
+        1,
+        LIBRARY_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=1,
+    ).async_save(data)
+
+    with pytest.raises(EffectStorageError, match="legacy effect head is invalid"):
+        await EffectLibraryRepository(hass).async_load()
+
+
 async def test_multi_store_migration_restores_original_documents_after_failure(
     hass: HomeAssistant,
     monkeypatch,

@@ -210,32 +210,32 @@ def _migrate_legacy_item(raw: Mapping[str, Any], *, version: int, updated_at: st
         content = effect_content_from_dict(as_persisted_mapping(raw.get("content"), "legacy effect content"))
         provenance = as_persisted_mapping(raw.get("provenance"), "legacy effect provenance")
         kind = SourceKind(str(provenance.get("source_kind", SourceKind.MIGRATED.value)))
+        target_raw = raw.get("target_hint")
+        target = None
+        if target_raw is not None:
+            target_mapping = as_persisted_mapping(target_raw, "legacy effect target")
+            model = target_mapping.get("model")
+            segment_count = target_mapping.get("segment_count")
+            if not isinstance(model, str) or (
+                segment_count is not None and (not isinstance(segment_count, int) or isinstance(segment_count, bool))
+            ):
+                raise EffectStorageError("legacy effect target is invalid")
+            target = TargetHint(model, segment_count)
+        extensions = raw.get("extensions", {})
+        if not isinstance(extensions, Mapping):
+            raise EffectStorageError("legacy effect extensions must be a mapping")
+        return LibraryItem(
+            id=item_id,
+            version=version,
+            updated_at=updated_at,
+            name=name,
+            content=content,
+            origin=Origin(kind, cast(str | None, provenance.get("source_id"))),
+            target_hint=target,
+            extensions=cast(dict[str, Any], dict(extensions)),
+        )
     except (KeyError, TypeError, ValueError, EffectValidationError) as exc:
         raise EffectStorageError(f"legacy effect head is invalid: {exc}") from exc
-    target_raw = raw.get("target_hint")
-    target = None
-    if target_raw is not None:
-        target_mapping = as_persisted_mapping(target_raw, "legacy effect target")
-        model = target_mapping.get("model")
-        segment_count = target_mapping.get("segment_count")
-        if not isinstance(model, str) or (
-            segment_count is not None and (not isinstance(segment_count, int) or isinstance(segment_count, bool))
-        ):
-            raise EffectStorageError("legacy effect target is invalid")
-        target = TargetHint(model, segment_count)
-    extensions = raw.get("extensions", {})
-    if not isinstance(extensions, Mapping):
-        raise EffectStorageError("legacy effect extensions must be a mapping")
-    return LibraryItem(
-        id=item_id,
-        version=version,
-        updated_at=updated_at,
-        name=name,
-        content=content,
-        origin=Origin(kind, cast(str | None, provenance.get("source_id"))),
-        target_hint=target,
-        extensions=cast(dict[str, Any], dict(extensions)),
-    )
 
 
 def _empty_library() -> dict[str, Any]:
