@@ -149,9 +149,9 @@ Bash ownership and restoration branches are covered through subprocess-based stu
 | --- | --- |
 | Authoritative repository gate | Passed after remediation and again after UX corrections. |
 | Python suite | 1,052 cases after restoring the cleanup-failure safety test. |
-| Frontend suite | 84 DOM-free Node cases after the scene-copy cancellation correction. |
+| Frontend suite | 85 DOM-free Node cases after the scene-copy cancellation and live-administrator corrections. |
 | Critical coverage | No line or branch regression in the listed modules. |
-| Deterministic package | Two clean builds matched SHA-256 `55f40d93d0e59b1a9287942631676b2239f7b611d49a1ea290a5b9bbabd22da2` before the final evidence-only corrections. |
+| Deterministic package | The final `6.5.0rc16` source produces SHA-256 `286b3440e61a933de2a50a7333eff0d4d4cda2c83930d87bc1744bf1d6a08da7`; the post-commit gate repeats the clean-build comparison. |
 | Package paths | The only cleanup-baseline path removed is dead `effect_scene_codec.py`. |
 | H617A production-package UX | Sidebar/deep link, one-device selector rule, off-state root opening, active scene opening, dirty marker, scene-copy cancel, save/overwrite/stale conflict/delete, All scenes, native reset, standard Home Assistant replay, Advanced and Music surfaces, live-apply status, read-only presentation, desktop pane bounds, and mobile zero-overflow navigation passed. |
 | H6199 production-package UX | Video Movie/Game profiles, saturation, white balance, relative brightness, blank screen, sound effects, Special DIY, Advanced, and read-only presentation passed. |
