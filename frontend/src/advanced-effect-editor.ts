@@ -2,17 +2,25 @@ import { LitElement, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import {
-  blankBrightnessPattern,
-  blankLayer,
   bytePercent,
-  cloneLayer,
   hexByte,
   isKnownBrightnessOrder,
-  isKnownSelectionType,
   KNOWN_BRIGHTNESS_ORDERS,
-  KNOWN_SELECTION_TYPES,
-  parseHexByte,
 } from "./advanced-effect-model";
+import {
+  AdvancedEffectEditorController,
+  AUTHORING_LAYER_LIMIT,
+  AUTHORING_PALETTE_LIMIT,
+  DEFAULT_SEGMENT_COUNT,
+  type MovementKey,
+} from "./advanced-effect-editor-controller";
+import {
+  renderDistribution,
+  renderHexByteField,
+  renderNumberField,
+  renderRangeField,
+  renderSelectionControls,
+} from "./advanced-effect-editor-fields";
 import { advancedEffectEditorStyles } from "./advanced-effect-editor-styles";
 import type { AppliedAreaChange } from "./applied-area-control";
 import "./applied-area-control";
@@ -34,7 +42,6 @@ import type {
   SegmentedControlOption,
 } from "./segmented-control";
 import "./segmented-control";
-import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
 import type { SwitchControlChange } from "./switch-control";
 import "./switch-control";
@@ -45,25 +52,12 @@ import type {
   EffectLayer,
   Movement,
   RGB,
-  SelectionType,
 } from "./types";
-import { clampInteger, relocatedIndex } from "./ui-utils";
-
-const AUTHORING_LAYER_LIMIT = 5;
-const AUTHORING_PALETTE_LIMIT = 8;
-const DEFAULT_SEGMENT_COUNT = 15;
 
 const PRIORITY_OPTIONS = [1, 2, 3, 4, 5].map((value) => ({
   value,
   label: String(value),
 })) satisfies readonly SegmentedControlOption<number>[];
-
-const SELECTION_LABELS: Record<SelectionType, string> = {
-  0: "Segment",
-  1: "Continuous",
-  2: "Random",
-  3: "Custom",
-};
 
 const BRIGHTNESS_LABELS: Record<BrightnessOrder, string> = {
   0: "Brightest to darkest",
@@ -71,6 +65,14 @@ const BRIGHTNESS_LABELS: Record<BrightnessOrder, string> = {
   2: "Darkest to brightest",
   3: "Darkest, brightest, darkest",
 };
+
+const BRIGHTNESS_RANGES = [
+  ["Scope low", "scope_low"],
+  ["Scope high", "scope_high"],
+  ["Changing speed", "change_speed"],
+  ["Brightest retention", "brightest_retention"],
+  ["Darkest retention", "darkest_retention"],
+] as const;
 
 const MOVEMENT_LABELS: Record<number, string> = {
   0: "Forward",
@@ -90,14 +92,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   public segmentCount = DEFAULT_SEGMENT_COUNT;
 
   @state()
-  private activeLayerIndex = 0;
-
-  @state()
-  private activePatternIndex = 0;
-
-  @state()
   private movementAnnouncement = "";
 
+  private readonly controller = new AdvancedEffectEditorController();
   private previewInteraction: LivePreviewInteraction = "committed";
 
   public connectedCallback(): void {
@@ -113,28 +110,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   }
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
-    if (!changed.has("content") || !this.content) {
-      return;
+    if (changed.has("content") || changed.has("disabled")) {
+      this.controller.sync(this.content, this.disabled);
     }
-    if (this.content.layers.length === 0) {
-      this.activeLayerIndex = 0;
-      this.activePatternIndex = 0;
-      return;
-    }
-    this.activeLayerIndex = clampInteger(
-      this.activeLayerIndex,
-      0,
-      this.content.layers.length - 1,
-    );
-    if (this.activeLayer.brightness_patterns.length === 0) {
-      this.activePatternIndex = 0;
-      return;
-    }
-    this.activePatternIndex = clampInteger(
-      this.activePatternIndex,
-      0,
-      this.activeLayer.brightness_patterns.length - 1,
-    );
   }
 
   protected render() {
@@ -163,7 +141,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         <div class="layer-toolbar">
           <govee-reorderable-strip
             .items=${layerItems}
-            .activeIndex=${this.activeLayerIndex}
+            .activeIndex=${this.controller.activeLayerIndex}
             ariaLabel="Effect layers"
             itemRole="tab"
             addLabel="Add layer"
@@ -216,12 +194,20 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       <section
         id="advanced-layer-panel"
         role="tabpanel"
-        aria-labelledby="advanced-layer-tab-${this.activeLayerIndex}"
+        aria-labelledby="advanced-layer-tab-${this.controller.activeLayerIndex}"
       >
         <div class="control-grid">
           ${this.renderAppliedArea(layer)}
           ${this.renderPalette(layer)}
-          ${this.renderDistribution(layer)}
+          ${renderDistribution(
+            layer,
+            this.disabled,
+            (update) =>
+              this.applyContentChange(
+                this.controller.updateNested("distribution", update),
+              ),
+            (update) => this.updateLayer(update),
+          )}
           ${this.renderBrightness(layer)}
           ${this.renderMovement(
             layer,
@@ -261,7 +247,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   }
 
   private get activeLayer(): EffectLayer {
-    return this.content!.layers[this.activeLayerIndex];
+    return this.controller.activeLayer;
   }
 
   private renderAppliedArea(layer: EffectLayer) {
@@ -273,129 +259,20 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           .disabled=${this.disabled}
           .segmentCount=${this.segmentCount}
           @area-changed=${(event: CustomEvent<AppliedAreaChange>) =>
-            this.replaceActiveLayer(
-              event.detail.layer,
+            this.applyContentChange(
+              this.controller.replaceActiveLayer(event.detail.layer),
               event.detail.interaction,
             )}
         ></govee-applied-area-control>
-        ${this.renderSelectionControls(layer)}
+        ${renderSelectionControls(
+          layer,
+          this.disabled,
+          (update) =>
+            this.applyContentChange(
+              this.controller.updateNested("selection", update),
+            ),
+        )}
       </section>
-    `;
-  }
-
-  private renderSelectionControls(layer: EffectLayer) {
-    const selection = layer.selection;
-    const knownType = isKnownSelectionType(selection.type);
-    return html`
-      <div class="selection-controls">
-        <span class="parameter-label">Selection</span>
-        <label class="field">
-          <span>Type</span>
-          <select
-            aria-label="Selection type"
-            .value=${String(selection.type)}
-            ?disabled=${this.disabled}
-            @change=${(event: Event) =>
-              this.updateSelection({
-                type: Number((event.target as HTMLSelectElement).value),
-              })}
-          >
-            ${KNOWN_SELECTION_TYPES.map(
-              (value) =>
-                html`<option
-                  value=${value}
-                  .selected=${selection.type === value}
-                >
-                  ${SELECTION_LABELS[value]}
-                </option>`,
-            )}
-            ${!knownType
-              ? html`
-                  <option value=${selection.type} .selected=${true}>
-                    Raw type ${selection.type} (0x${hexByte(selection.type)})
-                  </option>
-                `
-              : nothing}
-          </select>
-        </label>
-        ${!knownType
-          ? html`
-              <p class="muted">
-                Selection type ${selection.type} is not defined by the known
-                schema. Its raw value and parameters remain preserved.
-              </p>
-              ${this.byteNumberField(
-                "Type (raw byte)",
-                selection.type,
-                (value) => this.updateSelection({ type: value }),
-              )}
-            `
-          : nothing}
-        ${selection.type === 0
-          ? html`
-              ${this.byteNumberField(
-                "Segments",
-                selection.param_2,
-                (value) => this.updateSelection({ param_2: value }),
-              )}
-              ${this.byteNumberField(
-                "Parameter 1 (raw byte)",
-                selection.param_1,
-                (value) => this.updateSelection({ param_1: value }),
-              )}
-            `
-          : selection.type === 1
-            ? html`
-                ${this.byteNumberField(
-                  "Count",
-                  selection.param_2,
-                  (value) => this.updateSelection({ param_2: value }),
-                )}
-                ${this.byteNumberField(
-                  "Parameter 1 (raw byte)",
-                  selection.param_1,
-                  (value) => this.updateSelection({ param_1: value }),
-                )}
-              `
-            : selection.type === 2
-              ? html`
-                  ${this.byteNumberField(
-                    "Minimum",
-                    selection.param_2,
-                    (value) => this.updateSelection({ param_2: value }),
-                  )}
-                  ${this.byteNumberField(
-                    "Maximum",
-                    selection.param_1,
-                    (value) => this.updateSelection({ param_1: value }),
-                  )}
-                `
-              : selection.type === 3
-                ? html`
-                  ${this.byteNumberField(
-                    "Lit length",
-                    selection.param_1,
-                    (value) => this.updateSelection({ param_1: value }),
-                  )}
-                  ${this.byteNumberField(
-                    "Gap",
-                    selection.param_2,
-                    (value) => this.updateSelection({ param_2: value }),
-                  )}
-                `
-                : html`
-                    ${this.byteNumberField(
-                      "Parameter 1 (raw byte)",
-                      selection.param_1,
-                      (value) => this.updateSelection({ param_1: value }),
-                    )}
-                    ${this.byteNumberField(
-                      "Parameter 2 (raw byte)",
-                      selection.param_2,
-                      (value) => this.updateSelection({ param_2: value }),
-                    )}
-                  `}
-      </div>
     `;
   }
 
@@ -409,11 +286,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           .maxColours=${AUTHORING_PALETTE_LIMIT}
           .disabled=${this.disabled}
           @palette-changed=${(event: CustomEvent<{ palette: RGB[] }>) =>
-            this.updateLayer({
-              palette: event.detail.palette.map(
-                (colour) => [...colour] as RGB,
-              ),
-            })}
+            this.applyContentChange(
+              this.controller.updatePalette(event.detail.palette),
+            )}
         ></govee-palette-editor>
         ${layer.palette.length > AUTHORING_PALETTE_LIMIT
           ? html`
@@ -423,92 +298,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
               </p>
             `
           : nothing}
-      </section>
-    `;
-  }
-
-  private renderDistribution(layer: EffectLayer) {
-    const method = layer.distribution.method;
-    return html`
-      <section class="card">
-        <h3 class="section-title">Distribution</h3>
-        <label class="field">
-          <span>Method</span>
-          <select
-            .value=${String(method)}
-            ?disabled=${this.disabled}
-            @change=${(event: Event) =>
-              this.updateLayer({
-                distribution: {
-                  ...layer.distribution,
-                  method: Number(
-                    (event.target as HTMLSelectElement).value,
-                  ),
-                },
-              })}
-          >
-            <option value="0">Unified</option>
-            <option value="1">By IC</option>
-            <option value="2">By segment</option>
-            ${method > 2
-              ? html`<option value=${method}>Raw method ${method}</option>`
-              : nothing}
-          </select>
-        </label>
-        ${method > 2
-          ? this.numberField(
-              "Method (raw 7-bit value)",
-              method,
-              0,
-              127,
-              (value) =>
-                this.updateLayer({
-                  distribution: {
-                    ...layer.distribution,
-                    method: value,
-                  },
-                }),
-            )
-          : nothing}
-        ${method !== 0
-          ? html`
-              <label class="field">
-                <span>Direction</span>
-                <select
-                  .value=${layer.distribution.backwards
-                    ? "backwards"
-                    : "forwards"}
-                  ?disabled=${this.disabled}
-                  @change=${(event: Event) =>
-                    this.updateLayer({
-                      distribution: {
-                        ...layer.distribution,
-                        backwards:
-                          (event.target as HTMLSelectElement).value ===
-                          "backwards",
-                      },
-                    })}
-                >
-                  <option value="forwards">Forward</option>
-                  <option value="backwards">Backward</option>
-                </select>
-              </label>
-            `
-          : nothing}
-        ${this.rangeField(
-          "Colour speed",
-          layer.colour_speed,
-          0,
-          255,
-          (value) => this.updateLayer({ colour_speed: value }),
-        )}
-        ${this.rangeField(
-          "Colour retention",
-          layer.colour_retention,
-          0,
-          255,
-          (value) => this.updateLayer({ colour_retention: value }),
-        )}
       </section>
     `;
   }
@@ -533,10 +322,8 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         </section>
       `;
     }
-    const activeIndex = clampInteger(
-      this.activePatternIndex,
-      0,
-      layer.brightness_patterns.length - 1,
+    const activeIndex = this.controller.visiblePatternIndex(
+      layer.brightness_patterns.length,
     );
     const pattern = layer.brightness_patterns[activeIndex];
     const knownOrder = isKnownBrightnessOrder(pattern.order);
@@ -573,9 +360,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   role="tab"
                   aria-selected=${index === activeIndex}
                   tabindex=${index === activeIndex ? "0" : "-1"}
-                  @click=${() => {
-                    this.activePatternIndex = index;
-                  }}
+                  @click=${() => this.selectPattern(index)}
                   @keydown=${(event: KeyboardEvent) =>
                     this.patternTabKeyPressed(index, event)}
                 >
@@ -639,54 +424,22 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   Brightness order ${pattern.order} is not defined by the
                   known schema. Its raw value remains preserved.
                 </p>
-                ${this.byteNumberField(
+                ${renderNumberField(
                   "Order (raw byte)",
                   pattern.order,
                   (value) =>
                     this.updateBrightnessPattern({ order: value }),
+                  this.disabled,
                 )}
               `
             : nothing}
-          ${this.rangeField(
-            "Scope low",
-            pattern.scope_low,
-            0,
-            255,
-            (value) => this.updateBrightnessPattern({ scope_low: value }),
-          )}
-          ${this.rangeField(
-            "Scope high",
-            pattern.scope_high,
-            0,
-            255,
-            (value) => this.updateBrightnessPattern({ scope_high: value }),
-          )}
-          ${this.rangeField(
-            "Changing speed",
-            pattern.change_speed,
-            0,
-            255,
-            (value) => this.updateBrightnessPattern({ change_speed: value }),
-          )}
-          ${this.rangeField(
-            "Brightest retention",
-            pattern.brightest_retention,
-            0,
-            255,
-            (value) =>
-              this.updateBrightnessPattern({
-                brightest_retention: value,
-              }),
-          )}
-          ${this.rangeField(
-            "Darkest retention",
-            pattern.darkest_retention,
-            0,
-            255,
-            (value) =>
-              this.updateBrightnessPattern({
-                darkest_retention: value,
-              }),
+          ${BRIGHTNESS_RANGES.map(([label, key]) =>
+            renderRangeField(
+              label,
+              pattern[key],
+              (value) => this.updateBrightnessPattern({ [key]: value }),
+              this.disabled,
+            ),
           )}
         </div>
       </section>
@@ -719,12 +472,16 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         </div>
         ${movement.enabled
           ? html`
-              ${this.byteNumberField("Distance", movement.distance, (value) =>
-                this.updateMovement(
-                  key,
-                  { distance: value },
-                  `${label} distance ${value}.`,
-                ),
+              ${renderNumberField(
+                "Distance",
+                movement.distance,
+                (value) =>
+                  this.updateMovement(
+                    key,
+                    { distance: value },
+                    `${label} distance ${value}.`,
+                  ),
+                this.disabled,
               )}
               <label class="field">
                 <span>Direction</span>
@@ -748,17 +505,16 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   )}
                 </select>
               </label>
-              ${this.rangeField(
+              ${renderRangeField(
                 "Speed",
                 movement.speed,
-                0,
-                255,
                 (value) =>
                   this.updateMovement(
                     key,
                     { speed: value },
                     `${label} speed ${bytePercent(value)} per cent.`,
                   ),
+                this.disabled,
               )}
               <govee-checkbox-control
                 class="movement-enter-exit"
@@ -814,10 +570,11 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                 ) => this.updateLayer({ priority: event.detail.value })}
               ></govee-segmented-control>
               ${layer.priority > 5
-                ? this.byteNumberField(
+                ? renderNumberField(
                     "Priority (raw byte)",
                     layer.priority,
                     (value) => this.updateLayer({ priority: value }),
+                    this.disabled,
                   )
                 : nothing}
             `
@@ -836,49 +593,58 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             know the source byte values.
           </p>
           <div class="raw-grid">
-            ${this.hexByteField(
+            ${renderHexByteField(
               "Layer flags",
               layer.unknown_flags,
               (value) => this.updateLayer({ unknown_flags: value }),
+              this.disabled,
               0xfd,
             )}
-            ${this.hexByteField(
+            ${renderHexByteField(
               "Selected movement flags",
               layer.selected_movement.unknown_flags,
               (value) =>
                 this.updateMovement("selected_movement", {
                   unknown_flags: value,
                 }),
+              this.disabled,
               0xe8,
             )}
-            ${this.hexByteField(
+            ${renderHexByteField(
               "Whole-layer movement flags",
               layer.overall_movement.unknown_flags,
               (value) =>
                 this.updateMovement("overall_movement", {
                   unknown_flags: value,
                 }),
+              this.disabled,
               0xe8,
             )}
-            ${this.numberField(
+            ${renderNumberField(
               "Applied-area start (raw nibble)",
               layer.area.start_tenths,
+              (value) =>
+                this.applyContentChange(
+                  this.controller.updateNested("area", {
+                    start_tenths: value,
+                  }),
+                ),
+              this.disabled,
               0,
               15,
-              (value) =>
-                this.updateLayer({
-                  area: { ...layer.area, start_tenths: value },
-                }),
             )}
-            ${this.numberField(
+            ${renderNumberField(
               "Applied-area width (raw nibble)",
               layer.area.width_tenths,
+              (value) =>
+                this.applyContentChange(
+                  this.controller.updateNested("area", {
+                    width_tenths: value,
+                  }),
+                ),
+              this.disabled,
               0,
               15,
-              (value) =>
-                this.updateLayer({
-                  area: { ...layer.area, width_tenths: value },
-                }),
             )}
             <label class="field">
               <span>Excess bytes (hex)</span>
@@ -898,306 +664,67 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     `;
   }
 
-  private rangeField(
-    label: string,
-    value: number,
-    minimum: number,
-    maximum: number,
-    changed: (value: number) => void,
-  ) {
-    return html`
-      <govee-slider-control
-        .label=${label}
-        .value=${value}
-        .minimum=${minimum}
-        .maximum=${maximum}
-        .disabled=${this.disabled}
-        @value-changed=${(event: CustomEvent<SliderControlChange>) =>
-          changed(event.detail.value)}
-      ></govee-slider-control>
-    `;
+  private updateLayer(update: Partial<EffectLayer>, interaction?: LivePreviewInteraction): void {
+    this.applyContentChange(this.controller.updateLayer(update), interaction);
   }
 
-  private byteNumberField(
-    label: string,
-    value: number,
-    changed: (value: number) => void,
-  ) {
-    return this.numberField(label, value, 0, 255, changed);
+  private updateBrightnessPattern(update: Partial<BrightnessPattern>): void {
+    this.applyContentChange(this.controller.updateBrightnessPattern(update));
   }
 
-  private numberField(
-    label: string,
-    value: number,
-    minimum: number,
-    maximum: number,
-    changed: (value: number) => void,
-  ) {
-    return html`
-      <label class="field">
-        <span>${label}</span>
-        <input
-          type="number"
-          min=${minimum}
-          max=${maximum}
-          .value=${String(value)}
-          ?disabled=${this.disabled}
-          @change=${(event: Event) =>
-            changed(
-              clampInteger(
-                Number((event.target as HTMLInputElement).value),
-                minimum,
-                maximum,
-              ),
-            )}
-        />
-      </label>
-    `;
-  }
-
-  private hexByteField(
-    label: string,
-    value: number,
-    changed: (value: number) => void,
-    allowedMask = 0xff,
-  ) {
-    return html`
-      <label class="field">
-        <span>${label}</span>
-        <input
-          type="text"
-          inputmode="text"
-          spellcheck="false"
-          .value=${hexByte(value)}
-          ?disabled=${this.disabled}
-          @change=${(event: Event) => {
-            const input = event.target as HTMLInputElement;
-            const parsed = parseHexByte(input.value);
-            if (parsed === undefined) {
-              input.setCustomValidity("Enter one byte from 00 to FF.");
-              input.reportValidity();
-              return;
-            }
-            if ((parsed & ~allowedMask) !== 0) {
-              input.setCustomValidity(
-                `Known flag bits are controlled elsewhere. Allowed mask: ${hexByte(
-                  allowedMask,
-                )}.`,
-              );
-              input.reportValidity();
-              return;
-            }
-            input.setCustomValidity("");
-            changed(parsed);
-          }}
-        />
-      </label>
-    `;
-  }
-
-  private updateLayer(
-    update: Partial<EffectLayer>,
-    interaction?: LivePreviewInteraction,
-  ): void {
-    if (!this.content || this.disabled) {
-      return;
-    }
-    const layers = this.content.layers.map((layer, index) =>
-      index === this.activeLayerIndex
-        ? cloneLayer({ ...layer, ...update })
-        : cloneLayer(layer),
-    );
-    this.emitContent({ kind: "advanced", layers }, interaction);
-  }
-
-  private replaceActiveLayer(
-    replacement: EffectLayer,
-    interaction: LivePreviewInteraction,
-  ): void {
-    if (!this.content || this.disabled) {
-      return;
-    }
-    const layers = this.content.layers.map((layer, index) =>
-      index === this.activeLayerIndex
-        ? cloneLayer(replacement)
-        : cloneLayer(layer),
-    );
-    this.emitContent({ kind: "advanced", layers }, interaction);
-  }
-
-  private updateSelection(
-    update: Partial<EffectLayer["selection"]>,
-  ): void {
-    this.updateLayer({
-      selection: { ...this.activeLayer.selection, ...update },
-    });
-  }
-
-  private updateBrightnessPattern(
-    update: Partial<BrightnessPattern>,
-  ): void {
-    const patterns = this.activeLayer.brightness_patterns.map(
-      (pattern, index) =>
-        index === this.activePatternIndex
-          ? { ...pattern, ...update }
-          : { ...pattern },
-    );
-    this.updateLayer({ brightness_patterns: patterns });
-  }
-
-  private updateMovement(
-    key: "selected_movement" | "overall_movement",
-    update: Partial<Movement>,
-    announcement?: string,
-  ): void {
-    this.updateLayer({
-      [key]: { ...this.activeLayer[key], ...update },
-    });
+  private updateMovement(key: MovementKey, update: Partial<Movement>, announcement?: string): void {
+    this.applyContentChange(this.controller.updateNested(key, update));
     if (announcement) {
       this.movementAnnouncement = announcement;
     }
   }
 
   private addLayer(): void {
-    if (
-      !this.content ||
-      this.disabled ||
-      this.content.layers.length >= AUTHORING_LAYER_LIMIT
-    ) {
-      return;
-    }
-    const layers = [
-      ...this.content.layers.map(cloneLayer),
-      blankLayer(),
-    ];
-    this.installContent({ kind: "advanced", layers });
-    this.activeLayerIndex = layers.length - 1;
-    this.activePatternIndex = 0;
-    this.focusActiveTab();
+    this.applyLayerChange(this.controller.addLayer());
   }
 
   private copyLayer(): void {
-    if (
-      !this.content ||
-      this.disabled ||
-      this.content.layers.length >= AUTHORING_LAYER_LIMIT
-    ) {
-      return;
-    }
-    const layers = this.content.layers.map(cloneLayer);
-    layers.splice(
-      this.activeLayerIndex + 1,
-      0,
-      cloneLayer(this.activeLayer),
-    );
-    this.installContent({ kind: "advanced", layers });
-    this.activeLayerIndex += 1;
-    this.activePatternIndex = 0;
-    this.focusActiveTab();
+    this.applyLayerChange(this.controller.copyLayer());
   }
 
   private deleteLayer(): void {
-    if (!this.content || this.disabled || this.content.layers.length === 1) {
-      return;
-    }
-    const layers = this.content.layers
-      .filter((_layer, index) => index !== this.activeLayerIndex)
-      .map(cloneLayer);
-    this.activeLayerIndex = Math.min(
-      this.activeLayerIndex,
-      layers.length - 1,
-    );
-    this.activePatternIndex = 0;
-    this.emitContent({ kind: "advanced", layers });
-    this.focusActiveTab();
+    this.applyLayerChange(this.controller.deleteLayer());
   }
 
   private reorderLayer(from: number, to: number): void {
-    if (!this.content || this.disabled) {
-      return;
-    }
-    if (
-      from < 0 ||
-      from >= this.content.layers.length ||
-      to < 0 ||
-      to >= this.content.layers.length ||
-      from === to
-    ) {
-      return;
-    }
-    const layers = this.content.layers.map(cloneLayer);
-    const [moving] = layers.splice(from, 1);
-    layers.splice(to, 0, moving);
-    this.activeLayerIndex = relocatedIndex(
-      this.activeLayerIndex,
-      from,
-      to,
-    );
-    this.emitContent({ kind: "advanced", layers });
+    this.applySelectionChange(this.controller.reorderLayer(from, to));
   }
 
   private addBrightnessPattern(): void {
-    if (
-      this.disabled ||
-      this.activeLayer.brightness_patterns.length >= 3
-    ) {
-      return;
-    }
-    const patterns = [
-      ...this.activeLayer.brightness_patterns.map((pattern) => ({
-        ...pattern,
-      })),
-      blankBrightnessPattern(),
-    ];
-    this.activePatternIndex = patterns.length - 1;
-    this.updateLayer({ brightness_patterns: patterns });
+    this.applySelectionChange(this.controller.addBrightnessPattern());
   }
 
   private deleteBrightnessPattern(): void {
-    if (
-      this.disabled ||
-      this.activeLayer.brightness_patterns.length === 1
-    ) {
-      return;
-    }
-    const patterns = this.activeLayer.brightness_patterns
-      .filter((_pattern, index) => index !== this.activePatternIndex)
-      .map((pattern) => ({ ...pattern }));
-    this.activePatternIndex = Math.min(
-      this.activePatternIndex,
-      patterns.length - 1,
-    );
-    this.updateLayer({ brightness_patterns: patterns });
+    this.applySelectionChange(this.controller.deleteBrightnessPattern());
   }
 
   private selectLayer(index: number): void {
-    if (index === this.activeLayerIndex) {
-      return;
+    if (this.controller.selectLayer(index)) {
+      this.requestUpdate();
     }
-    this.activeLayerIndex = index;
-    this.activePatternIndex = 0;
+  }
+
+  private selectPattern(index: number): void {
+    if (this.controller.selectPattern(index)) {
+      this.requestUpdate();
+    }
   }
 
   private patternTabKeyPressed(
     index: number,
     event: KeyboardEvent,
   ): void {
-    const count = this.activeLayer.brightness_patterns.length;
-    let next: number | undefined;
-    if (event.key === "ArrowLeft") {
-      next = index === 0 ? count - 1 : index - 1;
-    } else if (event.key === "ArrowRight") {
-      next = index === count - 1 ? 0 : index + 1;
-    } else if (event.key === "Home") {
-      next = 0;
-    } else if (event.key === "End") {
-      next = count - 1;
-    }
+    const next = this.controller.movePatternSelection(index, event.key);
     if (next === undefined) {
       return;
     }
     event.preventDefault();
-    this.activePatternIndex = next;
+    this.requestUpdate();
     void this.updateComplete.then(() => {
       this.shadowRoot
         ?.querySelectorAll<HTMLButtonElement>(".pattern-tabs button")
@@ -1209,7 +736,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     void this.updateComplete.then(() => {
       this.shadowRoot
         ?.querySelector<GoveeReorderableStrip>("govee-reorderable-strip")
-        ?.focusItem(this.activeLayerIndex);
+        ?.focusItem(this.controller.activeLayerIndex);
     });
   }
 
@@ -1244,6 +771,31 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     }
   };
 
+  private applyLayerChange(content: AdvancedContent | undefined): void {
+    if (this.applySelectionChange(content)) {
+      this.focusActiveTab();
+    }
+  }
+
+  private applySelectionChange(content: AdvancedContent | undefined): boolean {
+    if (!this.applyContentChange(content)) {
+      return false;
+    }
+    this.requestUpdate();
+    return true;
+  }
+
+  private applyContentChange(content: AdvancedContent | undefined, interaction?: LivePreviewInteraction): boolean {
+    if (!content) {
+      return false;
+    }
+    if (this.controller.isCurrentContent(content)) {
+      this.content = content;
+    }
+    this.emitContent(content, interaction);
+    return true;
+  }
+
   private emitContent(
     content: AdvancedContent,
     interaction: LivePreviewInteraction = this.previewInteraction,
@@ -1259,11 +811,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         composed: true,
       }),
     );
-  }
-
-  private installContent(content: AdvancedContent): void {
-    this.content = content;
-    this.emitContent(content);
   }
 
   static styles = advancedEffectEditorStyles;
