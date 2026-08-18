@@ -1,10 +1,9 @@
 import { expect, test } from "vitest";
 
+import { PanelController } from "../../src/panel-controller";
 import { PanelEditorController } from "../../src/panel-editor-controller";
-import { PanelLibraryController } from "../../src/panel-library-controller";
 import { PanelModalController } from "../../src/panel-modal-controller";
 import { PanelModel } from "../../src/panel-model";
-import { PanelNavigationController } from "../../src/panel-navigation-controller";
 import { PanelPreviewController } from "../../src/panel-preview-controller";
 import type {
   DeviceCapabilities,
@@ -144,28 +143,24 @@ test("initial navigation preserves unavailable deep links and their notice", asy
     root: () => null,
     canMutate: () => true,
   });
-  let library!: PanelLibraryController;
+  let controller!: PanelController;
   const editorController = new PanelEditorController(model, preview, modal, {
     apiReady: () => true,
-    selectItem: (itemId) => void library.selectItem(itemId),
+    selectItem: (itemId) => void controller.selectItem(itemId),
   });
-  library = new PanelLibraryController(model, editorController, modal, {
-    api: () => undefined,
-    rememberNavigation: () => undefined,
-  });
-  const navigation = new PanelNavigationController(
+  controller = new PanelController(
     model,
     editorController,
-    library,
     preview,
+    modal,
     {
-      api: () => undefined,
+      connected: () => true,
       pathname: () => "/ha-govee-led-ble/editor/unavailable",
       replacePath: () => undefined,
     },
   );
 
-  expect(await navigation.initialiseSelectedDevice()).toBeUndefined();
+  expect(await controller.initialiseSelectedDevice()).toBeUndefined();
   expect(model.selectedDeviceId).toBe("unavailable");
   expect(model.notice).toContain("temporarily unavailable");
 });

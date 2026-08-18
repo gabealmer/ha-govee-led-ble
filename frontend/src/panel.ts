@@ -4,7 +4,6 @@ import { property, state } from "lit/decorators.js";
 import "./advanced-effect-editor";
 import "./colour-picker";
 import "./custom-effect-editor";
-import type { CustomEffectListEntry } from "./custom-effect-list";
 import type {
   CustomEffectBrowserCategoryRequest,
   CustomEffectBrowserEntryRequest,
@@ -21,12 +20,10 @@ import type { LivePreviewInteraction } from "./live-preview-controller";
 import "./music-profile-editor";
 import "./palette-editor";
 import "./painted-segment-editor";
-import { PanelDataController } from "./panel-data-controller";
+import { PanelController } from "./panel-controller";
 import { PanelEditorController } from "./panel-editor-controller";
-import { PanelLibraryController } from "./panel-library-controller";
 import { PanelModalController } from "./panel-modal-controller";
 import { PanelModel, type DeleteCandidate } from "./panel-model";
-import { PanelNavigationController } from "./panel-navigation-controller";
 import { PanelPreviewController } from "./panel-preview-controller";
 import { effectStudioPanelStyles } from "./panel-styles";
 import type {
@@ -74,12 +71,10 @@ export class GoveeLedEffectStudio extends LitElement {
   private readonly modal = new PanelModalController(this.model, {
     updateComplete: () => this.updateComplete,
     root: () => this.shadowRoot,
-    canMutate: () => this.data?.api !== undefined,
+    canMutate: () => this.controller?.api !== undefined,
   });
   private readonly editor: PanelEditorController;
-  private readonly libraryController: PanelLibraryController;
-  private readonly navigation: PanelNavigationController;
-  private readonly data: PanelDataController;
+  private readonly controller: PanelController;
 
   public constructor() {
     super();
@@ -88,88 +83,36 @@ export class GoveeLedEffectStudio extends LitElement {
       this.preview,
       this.modal,
       {
-        apiReady: () => this.data?.api !== undefined,
-        selectItem: (itemId) => void this.libraryController.selectItem(itemId),
+        apiReady: () => this.controller?.api !== undefined,
+        selectItem: (itemId) => void this.controller.selectItem(itemId),
       },
     );
-    this.libraryController = new PanelLibraryController(
+    this.controller = new PanelController(
       this.model,
       this.editor,
+      this.preview,
       this.modal,
       {
-        api: () => this.data?.api,
-        rememberNavigation: () => this.navigation.remember(),
-      },
-    );
-    this.navigation = new PanelNavigationController(
-      this.model,
-      this.editor,
-      this.libraryController,
-      this.preview,
-      {
-        api: () => this.data?.api,
+        connected: () => this.isConnected,
         pathname: () => window.location.pathname,
         replacePath: (path) => {
           window.history.replaceState(window.history.state, "", path);
         },
       },
     );
-    this.data = new PanelDataController(this.model, this.preview, {
-      connected: () => this.isConnected,
-      initialiseSelectedDevice: () =>
-        this.navigation.initialiseSelectedDevice(),
-      openInitialContext: () => this.navigation.openInitialContext(),
-      libraryChanged: (snapshot) =>
-        this.libraryController.libraryChanged(snapshot),
-    });
   }
 
-  private get api() { return this.data.api; }
-  private get loading() { return this.model.loading; }
-  private get error() { return this.model.error; }
-  private get notice() { return this.model.notice; }
-  private get devices() { return this.model.devices; }
-  private get selectedDeviceId() { return this.model.selectedDeviceId; }
-  private get sceneInitialSelection() { return this.model.sceneInitialSelection; }
   private get section() { return this.model.section; }
-  private get customEffectCategory() { return this.model.customEffectCategory; }
-  private get sceneEditorOpen() { return this.model.sceneEditorOpen; }
-  private get customTemplateSelection() { return this.model.customTemplateSelection; }
   private get templateSourceLabel() { return this.model.templateSourceLabel; }
-  private get customCopyStarted() { return this.model.customCopyStarted; }
-  private get library() { return this.model.library; }
-  private get customCatalogue() { return this.model.customCatalogue; }
   private get currentItem() { return this.model.currentItem; }
-  private get savedSceneSelection() { return this.model.savedSceneSelection; }
-  private get name() { return this.model.name; }
   private get content() { return this.model.content; }
-  private get paintBrushes() { return this.model.paintBrushes; }
-  private get selectedPaintBrush() { return this.model.selectedPaintBrush; }
-  private get brushUsesBackground() { return this.model.brushUsesBackground; }
-  private get saving() { return this.model.saving; }
-  private get saveNameDialogOpen() { return this.model.saveNameDialogOpen; }
-  private get saveNameValue() { return this.model.saveNameValue; }
-  private get saveNameError() { return this.model.saveNameError; }
-  private get deleteCandidate() { return this.model.deleteCandidate; }
-  private get deletingItemId() { return this.model.deletingItemId; }
-  private get liveApplyEnabled() { return this.model.liveApplyEnabled; }
-  private get previewStatus() { return this.model.previewStatus; }
   private get isAdmin() { return this.model.isAdmin; }
-  private get modalOpen() { return this.modal.open; }
-  private get selectedDevice() { return this.model.selectedDevice; }
-  private get showDeviceSelector() { return this.model.showDeviceSelector; }
   private get editorReadOnly() { return this.model.editorReadOnly; }
-  private get modelCatalogue() { return this.model.modelCatalogue; }
-  private get videoAvailable() { return this.model.videoAvailable; }
-  private get customEffectsAvailable() { return this.model.customEffectsAvailable; }
-  private get customEffectListContext() { return this.model.customEffectListContext; }
-  private get dirty() { return this.model.dirty; }
-  private get deletingCurrentItem() { return this.model.deletingCurrentItem; }
 
   public connectedCallback(): void {
     super.connectedCallback();
-    if (this.hass && !this.data.api) {
-      void this.data.load(this.hass, this.hass.user?.is_admin === true);
+    if (this.hass && !this.controller.api) {
+      void this.controller.load(this.hass, this.hass.user?.is_admin === true);
     }
   }
 
@@ -177,22 +120,22 @@ export class GoveeLedEffectStudio extends LitElement {
     this.modal.releaseScrollLock();
     super.disconnectedCallback();
     this.editor.beginTransition();
-    this.data.disconnect();
+    this.controller.disconnect();
   }
 
   protected updated(changed: Map<PropertyKey, unknown>): void {
-    if (changed.has("hass") && this.hass && !this.data.api) {
-      void this.data.load(this.hass, this.hass.user?.is_admin === true);
+    if (changed.has("hass") && this.hass && !this.controller.api) {
+      void this.controller.load(this.hass, this.hass.user?.is_admin === true);
     }
     this.modal.syncScrollLock();
     this.syncSingleEffectSelects();
   }
 
   protected render() {
-    if (this.loading) {
+    if (this.model.loading) {
       return html`<div class="centred" role="status">Loading effect studio...</div>`;
     }
-    if (this.error) {
+    if (this.model.error) {
       return this.renderFatalError();
     }
 
@@ -201,11 +144,11 @@ export class GoveeLedEffectStudio extends LitElement {
 
       ${this.renderStudioToolbar()}
 
-      ${this.selectedDevice
+      ${this.model.selectedDevice
         ? this.renderStudio()
         : this.renderMissingDevice()}
-      ${this.saveNameDialogOpen ? this.renderSaveNameDialog() : nothing}
-      ${this.deleteCandidate ? this.renderDeleteConfirmation() : nothing}
+      ${this.model.saveNameDialogOpen ? this.renderSaveNameDialog() : nothing}
+      ${this.model.deleteCandidate ? this.renderDeleteConfirmation() : nothing}
     `;
   }
 
@@ -213,38 +156,40 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       <main
         class="studio ${this.section}-mode"
-        ?inert=${this.modalOpen}
+        ?inert=${this.modal.open}
       >
         <nav class="primary-nav" aria-label="Create">
-          ${this.videoAvailable
+          ${this.model.videoAvailable
             ? this.navButton("video", "Video")
             : nothing}
           ${this.navButton("scenes", "Built-in")}
-          ${this.customEffectsAvailable
+          ${this.model.customEffectsAvailable
             ? this.navButton("custom", "Custom")
             : nothing}
         </nav>
 
         <govee-scene-browser
           ?hidden=${this.section !== "scenes"}
-          .externalEditActive=${this.sceneEditorOpen}
-          .api=${this.api}
-          .device=${this.selectedDevice}
-          .library=${this.library}
-          .panelNotice=${this.notice}
-          .previewStatus=${this.previewStatus}
+          .externalEditActive=${this.model.sceneEditorOpen}
+          .api=${this.controller.api}
+          .device=${this.model.selectedDevice}
+          .library=${this.model.library}
+          .panelNotice=${this.model.notice}
+          .previewStatus=${this.model.previewStatus}
           .isAdmin=${this.isAdmin}
-          .savedSceneSelection=${this.savedSceneSelection}
-          .initialSelection=${this.sceneInitialSelection}
+          .savedSceneSelection=${this.model.savedSceneSelection}
+          .initialSelection=${this.model.sceneInitialSelection}
           @library-item-saved=${this.sceneLibraryItemSaved}
           @library-item-delete-requested=${this.sceneLibraryItemDeleteRequested}
           @scene-edit-selected=${this.sceneTemplateSelected}
-          @scene-preview-requested=${this.scenePreviewRequested}
+          @scene-preview-requested=${(
+            event: CustomEvent<ScenePreviewRequest>,
+          ) => this.preview.scheduleScene(event.detail)}
           @scene-external-edit-cancelled=${this.cancelSceneEdit}
           @scene-initial-selection-opened=${this.sceneInitialSelectionOpened}
           @scene-initial-selection-failed=${this.sceneInitialSelectionFailed}
         ></govee-scene-browser>
-        ${this.section === "scenes" && this.sceneEditorOpen
+        ${this.section === "scenes" && this.model.sceneEditorOpen
           ? html`
               <section class="editor-surface editor">
                 ${this.renderPanelNotice()}
@@ -259,7 +204,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderMissingDevice() {
-    const linked = this.selectedDeviceId !== undefined;
+    const linked = this.model.selectedDeviceId !== undefined;
     return html`
       <main class="empty-state">
         <h2>${linked ? "This Govee light is unavailable" : "No Govee lights are available"}</h2>
@@ -277,15 +222,15 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderStudioToolbar() {
     if (
-      !this.showDeviceSelector &&
-      (!this.isAdmin || this.selectedDevice === undefined)
+      !this.model.showDeviceSelector &&
+      (!this.isAdmin || this.model.selectedDevice === undefined)
     ) {
       return nothing;
     }
     return html`
       <div class="studio-toolbar">
         ${this.renderDeviceSelector()}
-        ${this.isAdmin && this.selectedDevice
+        ${this.isAdmin && this.model.selectedDevice
           ? this.renderLiveApplyControl()
           : nothing}
       </div>
@@ -293,23 +238,26 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderDeviceSelector() {
-    if (!this.showDeviceSelector) {
+    if (!this.model.showDeviceSelector) {
       return nothing;
     }
     const selectedUnavailable =
-      this.selectedDeviceId !== undefined && this.selectedDevice === undefined;
+      this.model.selectedDeviceId !== undefined && this.model.selectedDevice === undefined;
     return html`
       <label class="device-selector">
         <span>Govee light</span>
         <select
           aria-label="Govee light"
-          .value=${this.selectedDeviceId ?? ""}
-          @change=${this.deviceChanged}
+          .value=${this.model.selectedDeviceId ?? ""}
+          @change=${(event: Event) =>
+            void this.controller.deviceChanged(
+              (event.target as HTMLSelectElement).value,
+            )}
         >
           ${selectedUnavailable
-            ? html`<option value=${this.selectedDeviceId!}>Unavailable light</option>`
+            ? html`<option value=${this.model.selectedDeviceId!}>Unavailable light</option>`
             : nothing}
-          ${[...this.devices]
+          ${[...this.model.devices]
             .sort((left, right) =>
               compareLabels(left.display_name, right.display_name),
             )
@@ -326,7 +274,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderLiveApplyControl() {
-    const phase = this.previewStatus?.phase;
+    const phase = this.model.previewStatus?.phase;
     const pending = phase === "queued" || phase === "writing";
     const warning = phase === "failed";
     const current =
@@ -341,7 +289,7 @@ export class GoveeLedEffectStudio extends LitElement {
           ? phase === "unconfirmed"
             ? "Changes sent; readback is unavailable"
             : "Changes applied"
-          : this.liveApplyEnabled
+          : this.model.liveApplyEnabled
             ? "Live apply is ready"
             : "Live apply is off";
     return html`
@@ -350,8 +298,9 @@ export class GoveeLedEffectStudio extends LitElement {
           class="live-apply-toggle"
           type="button"
           role="switch"
-          aria-checked=${this.liveApplyEnabled}
-          @click=${this.toggleLiveApply}
+          aria-checked=${this.model.liveApplyEnabled}
+          @click=${() =>
+            this.preview.toggle(this.currentScenePreviewRequest())}
         >
           <span class="live-apply-track" aria-hidden="true">
             <span class="live-apply-thumb"></span>
@@ -379,7 +328,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       <main class="fatal">
         <h1>Effect Studio is unavailable</h1>
-        <p role="alert">${this.error}</p>
+        <p role="alert">${this.model.error}</p>
         <p>Existing light controls are unaffected.</p>
         <a href=${this.panel?.config?.configuration_path ?? "/config/integrations"}>
           Open integration configuration
@@ -394,7 +343,7 @@ export class GoveeLedEffectStudio extends LitElement {
         class="selector ${this.section === section ? "selected" : ""}"
         type="button"
         aria-current=${this.section === section ? "page" : nothing}
-        @click=${() => void this.selectSection(section)}
+        @click=${() => void this.controller.selectSection(section)}
       >
         ${label}
       </button>
@@ -404,27 +353,27 @@ export class GoveeLedEffectStudio extends LitElement {
   private renderCustomEffects() {
     return html`
       <govee-custom-effect-browser
-        .context=${this.customEffectListContext}
-        .category=${this.customEffectCategory}
+        .context=${this.model.customEffectListContext}
+        .category=${this.model.customEffectCategory}
         .currentItemId=${this.currentItem?.id}
-        .templateSelection=${this.customTemplateSelection}
+        .templateSelection=${this.model.customTemplateSelection}
         .isAdmin=${this.isAdmin}
         @custom-category-requested=${(
           event: CustomEvent<CustomEffectBrowserCategoryRequest>,
         ) => {
-          this.navigation.categoryChanged(event.detail.category);
+          this.controller.categoryChanged(event.detail.category);
         }}
         @custom-entry-requested=${(
           event: CustomEvent<CustomEffectBrowserEntryRequest>,
-        ) => this.selectCustomEffectEntry(event.detail.entry)}
+        ) => this.editor.selectCustomEffectEntry(event.detail.entry)}
         @custom-new-requested=${(
           event: CustomEvent<CustomEffectBrowserCategoryRequest>,
-        ) => this.newCustomEffect(event.detail.category)}
+        ) => this.editor.newCustomEffect(event.detail.category)}
       ></govee-custom-effect-browser>
 
       <section class="editor-surface editor">
         ${this.renderPanelNotice()}
-        ${this.name || this.currentItem
+        ${this.model.name || this.currentItem
           ? this.renderCurrentCustomEditor()
           : nothing}
       </section>
@@ -455,11 +404,11 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderVideo() {
-    const catalogue = this.modelCatalogue;
-    if (!catalogue || !this.videoAvailable) {
+    const catalogue = this.model.modelCatalogue;
+    if (!catalogue || !this.model.videoAvailable) {
       return nothing;
     }
-    const saved = this.library.items
+    const saved = this.model.library.items
       .filter(
         (item) =>
           item.kind === "video_profile" && this.libraryItemAvailable(item),
@@ -471,14 +420,14 @@ export class GoveeLedEffectStudio extends LitElement {
           this.videoListButton(
             `template:video:${mode.id}`,
             mode.label,
-            () => this.openVideoTemplate(mode.id, mode.label),
+            () => this.editor.openVideoTemplate(mode.id, mode.label),
           ),
         )}
         ${saved.map((item) =>
           this.videoListButton(
             `saved:${item.id}`,
             item.name,
-            () => void this.selectItem(item.id),
+            () => void this.controller.selectItem(item.id),
             item,
           ),
         )}
@@ -500,7 +449,7 @@ export class GoveeLedEffectStudio extends LitElement {
   ) {
     const selected = item
       ? this.currentItem?.id === item.id
-      : !this.currentItem && this.customTemplateSelection === key;
+      : !this.currentItem && this.model.customTemplateSelection === key;
     return html`
       <button
         class="selector item ${selected ? "selected" : ""}"
@@ -511,10 +460,6 @@ export class GoveeLedEffectStudio extends LitElement {
         <span>${label}</span>
       </button>
     `;
-  }
-
-  private openVideoTemplate(mode: string, label: string): void {
-    this.editor.openVideoTemplate(mode, label);
   }
 
   private renderVideoProfileEditor() {
@@ -550,7 +495,7 @@ export class GoveeLedEffectStudio extends LitElement {
       ${this.renderProfileHeading()}
       <govee-music-profile-editor
         .content=${this.content}
-        .catalogue=${this.modelCatalogue}
+        .catalogue=${this.model.modelCatalogue}
         .disabled=${this.editorReadOnly}
         .showModeSelector=${!this.templateSourceLabel}
         @content-changed=${(
@@ -580,24 +525,18 @@ export class GoveeLedEffectStudio extends LitElement {
     return this.model.customEffectKindAvailable(kind);
   }
 
-  private newCustomEffect(
-    category: CustomEffectBrowserCategoryRequest["category"],
-  ): void {
-    this.editor.newCustomEffect(category);
-  }
-
   private renderPanelNotice() {
-    return this.notice
-      ? html`<div class="feedback" role="status">${this.notice}</div>`
+    return this.model.notice
+      ? html`<div class="feedback" role="status">${this.model.notice}</div>`
       : nothing;
   }
 
 
   private renderDeleteConfirmation() {
-    const candidate = this.deleteCandidate!;
+    const candidate = this.model.deleteCandidate!;
     const discardsOpenEdits =
       candidate.discardsOpenEdits === true ||
-      (this.currentItem?.id === candidate.id && this.dirty);
+      (this.currentItem?.id === candidate.id && this.model.dirty);
     return html`
       <div class="dialog-backdrop" @click=${this.cancelDelete}>
         <section
@@ -628,7 +567,7 @@ export class GoveeLedEffectStudio extends LitElement {
             <button
               class="danger"
               type="button"
-              @click=${this.confirmDelete}
+              @click=${() => void this.controller.confirmDelete()}
             >
               Delete effect
             </button>
@@ -649,19 +588,24 @@ export class GoveeLedEffectStudio extends LitElement {
           tabindex="-1"
           @click=${(event: Event) => event.stopPropagation()}
           @keydown=${this.saveNameDialogKeyDown}
-          @submit=${this.confirmNamedSave}
+          @submit=${(event: SubmitEvent) => {
+            event.preventDefault();
+            this.modal.confirmNamedSave(
+              () => void this.controller.save(),
+            );
+          }}
         >
           <h2 id="save-effect-title">Save effect</h2>
           <label class="field">
             <span>Effect name</span>
             <input
               aria-label="Effect name"
-              aria-describedby=${this.saveNameError
+              aria-describedby=${this.model.saveNameError
                 ? "save-effect-name-error"
                 : nothing}
               maxlength="128"
               autocomplete="off"
-              .value=${this.saveNameValue}
+              .value=${this.model.saveNameValue}
               @input=${(event: Event) => {
                 this.modal.saveNameChanged(
                   (event.target as HTMLInputElement).value,
@@ -669,10 +613,10 @@ export class GoveeLedEffectStudio extends LitElement {
               }}
             />
           </label>
-          ${this.saveNameError
+          ${this.model.saveNameError
             ? html`
                 <p id="save-effect-name-error" class="dialog-error" role="alert">
-                  ${this.saveNameError}
+                  ${this.model.saveNameError}
                 </p>
               `
             : nothing}
@@ -689,10 +633,6 @@ export class GoveeLedEffectStudio extends LitElement {
         </form>
       </div>
     `;
-  }
-
-  private selectCustomEffectEntry(entry: CustomEffectListEntry): void {
-    this.editor.selectCustomEffectEntry(entry);
   }
 
   private renderAdvancedEditor() {
@@ -714,7 +654,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-advanced-effect-editor
         .content=${advancedEditorContent(this.content)}
         .disabled=${!this.isAdmin}
-        .segmentCount=${this.selectedDevice?.segment_count ?? 15}
+        .segmentCount=${this.model.selectedDevice?.segment_count ?? 15}
         @content-changed=${(
           event: CustomEvent<{
             content: AdvancedContent;
@@ -735,7 +675,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading({
         save: false,
-        title: html`<h2>${this.name}</h2>`,
+        title: html`<h2>${this.model.name}</h2>`,
       })}
       <div class="feedback read-only" role="note">
         This effect definition can be inspected, but this editor cannot change,
@@ -783,7 +723,7 @@ export class GoveeLedEffectStudio extends LitElement {
             interaction: LivePreviewInteraction;
           }>,
         ) =>
-          this.setSegmentColour(
+          this.editor.setSegmentColour(
             event.detail.index,
             event.detail.interaction,
           )}
@@ -794,34 +734,45 @@ export class GoveeLedEffectStudio extends LitElement {
           <h3 class="section-title">Brushes</h3>
           <govee-palette-editor
             class="paint-brushes"
-            .palette=${this.paintBrushes}
+            .palette=${this.model.paintBrushes}
             .minColours=${2}
             .maxColours=${8}
             .disabled=${this.editorReadOnly}
             .persistentPicker=${true}
-            .selectedIndex=${this.selectedPaintBrush}
+            .selectedIndex=${this.model.selectedPaintBrush}
             ariaLabel="Brushes"
             itemName="brush"
-            @palette-changed=${this.paintBrushesChanged}
-            @colour-selected=${this.paintBrushSelected}
+            @palette-changed=${(event: CustomEvent<{ palette: RGB[] }>) =>
+              this.editor.paintBrushesChanged(event.detail.palette)}
+            @colour-selected=${(event: CustomEvent<{ index: number }>) =>
+              this.model.patch({
+                selectedPaintBrush: event.detail.index,
+                brushUsesBackground: false,
+              })}
           ></govee-palette-editor>
           <div class="background-colour">
             <span class="parameter-label">Background</span>
             <govee-colour-picker
               .colour=${this.content.background}
               .disabled=${this.editorReadOnly}
-              @colour-changing=${this.backgroundChanged}
-              @colour-changed=${this.backgroundChanged}
+              @colour-changing=${(
+                event: CustomEvent<{ colour: RGB }>,
+              ) => this.editor.backgroundChanged(event.detail.colour, "changing")}
+              @colour-changed=${(
+                event: CustomEvent<{ colour: RGB }>,
+              ) => this.editor.backgroundChanged(event.detail.colour, "committed")}
             ></govee-colour-picker>
           </div>
           <div class="button-row">
             <button
-              class="secondary ${this.brushUsesBackground ? "active" : ""}"
+              class="secondary ${this.model.brushUsesBackground ? "active" : ""}"
               type="button"
               ?disabled=${this.editorReadOnly}
-              aria-pressed=${this.brushUsesBackground}
+              aria-pressed=${this.model.brushUsesBackground}
               @click=${() => {
-                this.editor.toggleBackgroundBrush();
+                this.model.patch({
+                  brushUsesBackground: !this.model.brushUsesBackground,
+                });
               }}
             >
               Use background
@@ -830,7 +781,7 @@ export class GoveeLedEffectStudio extends LitElement {
               class="secondary"
               type="button"
               ?disabled=${this.editorReadOnly}
-              @click=${this.paintAll}
+              @click=${() => this.editor.paintAll()}
             >
               Paint all
             </button>
@@ -838,7 +789,7 @@ export class GoveeLedEffectStudio extends LitElement {
               class="secondary"
               type="button"
               ?disabled=${this.editorReadOnly}
-              @click=${this.resetPaint}
+              @click=${() => this.editor.resetPaint()}
             >
               Reset
             </button>
@@ -889,7 +840,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <govee-custom-effect-editor
         .content=${content}
-        .catalogue=${this.modelCatalogue}
+        .catalogue=${this.model.modelCatalogue}
         .disabled=${this.editorReadOnly}
         @content-changed=${(
           event: CustomEvent<{
@@ -915,7 +866,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderSingleEffectSelector() {
     if (
-      !this.customCatalogue ||
+      !this.model.customCatalogue ||
       this.templateSourceLabel ||
       (this.content.kind !== "h617a_painted" &&
         this.content.kind !== "h617a_single" &&
@@ -933,7 +884,7 @@ export class GoveeLedEffectStudio extends LitElement {
     const effectFamilies =
       this.currentItem?.content.kind === "h617a_painted"
         ? []
-        : this.modelCatalogue?.effects.filter(
+        : this.model.modelCatalogue?.effects.filter(
             (effect) => effect.category === "single_layer",
           ) ?? [];
     const familyAvailable = effectFamilies.some(
@@ -956,7 +907,10 @@ export class GoveeLedEffectStudio extends LitElement {
             aria-label="Effect"
             .value=${selectedEffect}
             ?disabled=${this.editorReadOnly}
-            @change=${this.singleEffectChanged}
+            @change=${(event: Event) =>
+              this.editor.selectSingleEffect(
+                (event.target as HTMLSelectElement).value,
+              )}
           >
             ${(this.content.kind === "h617a_single" ||
               this.content.kind === "palette_diy") && !familyAvailable
@@ -993,11 +947,11 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderPaintedVariationField() {
-    if (!this.customCatalogue || this.content.kind !== "h617a_painted") {
+    if (!this.model.customCatalogue || this.content.kind !== "h617a_painted") {
       return nothing;
     }
     const content = this.content;
-    const variations = this.customCatalogue.painted_effects;
+    const variations = this.model.customCatalogue.painted_effects;
     const knownVariation = variations.some(
       (variation) => variation.id === content.effect,
     );
@@ -1011,7 +965,14 @@ export class GoveeLedEffectStudio extends LitElement {
           aria-label="Variation"
           .value=${content.effect}
           ?disabled=${this.editorReadOnly}
-          @change=${this.paintedEffectVariationChanged}
+          @change=${(event: Event) =>
+            this.editor.updatePaintedContent(
+              {
+                effect: (event.target as HTMLSelectElement)
+                  .value as PaintedContent["effect"],
+              },
+              "committed",
+            )}
         >
           ${knownVariation
             ? nothing
@@ -1040,7 +1001,7 @@ export class GoveeLedEffectStudio extends LitElement {
       ? effectOriginDescription(this.currentItem.origin)
       : undefined;
     const marker =
-      this.dirty && !this.templateSourceLabel
+      this.model.dirty && !this.templateSourceLabel
         ? html`<span class="dirty-marker" aria-label="Unsaved changes">*</span>`
         : nothing;
     if (this.templateSourceLabel) {
@@ -1053,8 +1014,8 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     if (!this.currentItem) {
       const title =
-        this.customCopyStarted && this.name.trim()
-          ? this.name
+        this.model.customCopyStarted && this.model.name.trim()
+          ? this.model.name
           : "New effect";
       return html`
         <div class="editor-title">
@@ -1070,9 +1031,12 @@ export class GoveeLedEffectStudio extends LitElement {
             class="editor-name"
             aria-label="Effect name"
             maxlength="128"
-            .value=${this.name}
+            .value=${this.model.name}
             ?disabled=${!this.isAdmin}
-            @input=${this.nameChanged}
+            @input=${(event: Event) =>
+              this.model.patch({
+                name: (event.target as HTMLInputElement).value,
+              })}
           />
           ${marker}
         </div>
@@ -1093,7 +1057,7 @@ export class GoveeLedEffectStudio extends LitElement {
                 <button
                   class="secondary"
                   type="button"
-                  ?disabled=${this.saving}
+                  ?disabled=${this.model.saving}
                   @click=${this.cancelSceneEdit}
                 >
                   Cancel
@@ -1114,16 +1078,16 @@ export class GoveeLedEffectStudio extends LitElement {
           class="secondary"
           type="button"
           ?disabled=${!this.isAdmin ||
-          this.saving ||
-          this.deletingCurrentItem}
-          @click=${this.editTemplate}
+          this.model.saving ||
+          this.model.deletingCurrentItem}
+          @click=${() => this.editor.prepareTemplateEdit()}
         >
           Edit
         </button>
       `;
     }
     const saveLabel =
-      !this.currentItem && this.customCopyStarted
+      !this.currentItem && this.model.customCopyStarted
         ? "Save as Custom"
         : "Save";
     return html`
@@ -1131,12 +1095,16 @@ export class GoveeLedEffectStudio extends LitElement {
         class="primary"
         type="button"
         ?disabled=${!this.isAdmin ||
-        !this.dirty ||
-        this.saving ||
-        this.deletingCurrentItem}
-        @click=${this.requestSave}
+        !this.model.dirty ||
+        this.model.saving ||
+        this.model.deletingCurrentItem}
+        @click=${(event: Event) =>
+          this.modal.requestSave(
+            event.currentTarget as HTMLElement,
+            () => void this.controller.save(),
+          )}
       >
-        ${this.saving ? "Saving..." : saveLabel}
+        ${this.model.saving ? "Saving..." : saveLabel}
       </button>
     `;
   }
@@ -1188,27 +1156,17 @@ export class GoveeLedEffectStudio extends LitElement {
         .valueText=${valueText}
         .disabled=${this.editorReadOnly}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
-          this.updateContent({ [key]: event.detail.value })}
+          this.editor.updatePaintedContent({ [key]: event.detail.value })}
       ></govee-slider-control>
     `;
   }
 
-  private selectSection(section: StudioSection): void {
-    void this.navigation.selectSection(section);
-  }
-
-  private deviceChanged = (event: Event): void => {
-    void this.navigation.deviceChanged(
-      (event.target as HTMLSelectElement).value,
-    );
-  };
-
   private sceneInitialSelectionOpened = (): void => {
-    this.navigation.sceneInitialSelectionOpened();
+    this.controller.sceneInitialSelectionOpened();
   };
 
   private sceneInitialSelectionFailed = (): void => {
-    this.navigation.sceneInitialSelectionFailed();
+    this.controller.sceneInitialSelectionFailed();
   };
 
   private sceneLibraryItemSaved(
@@ -1216,7 +1174,7 @@ export class GoveeLedEffectStudio extends LitElement {
       item: LibraryItem;
     }>,
   ): void {
-    this.libraryController.sceneItemSaved(event.detail.item);
+    this.controller.sceneItemSaved(event.detail.item);
   }
 
   private sceneTemplateSelected(
@@ -1249,8 +1207,8 @@ export class GoveeLedEffectStudio extends LitElement {
       <button
         class="danger"
         type="button"
-        ?disabled=${this.deletingItemId !== undefined ||
-        this.saving}
+        ?disabled=${this.model.deletingItemId !== undefined ||
+        this.model.saving}
         @click=${(event: Event) =>
           this.requestDelete(
             {
@@ -1262,7 +1220,7 @@ export class GoveeLedEffectStudio extends LitElement {
             event.currentTarget as HTMLElement,
           )}
       >
-        ${this.deletingCurrentItem ? "Deleting..." : "Delete"}
+        ${this.model.deletingCurrentItem ? "Deleting..." : "Delete"}
       </button>
     `;
   }
@@ -1282,25 +1240,6 @@ export class GoveeLedEffectStudio extends LitElement {
     this.modal.dialogKeyDown(event, () => this.cancelDelete());
   }
 
-  private confirmDelete(): void {
-    void this.libraryController.confirmDelete();
-  }
-
-  private selectItem(itemId: string): void {
-    void this.libraryController.selectItem(itemId);
-  }
-
-  private nameChanged(event: Event): void {
-    this.editor.nameChanged((event.target as HTMLInputElement).value);
-  }
-
-  private requestSave(event: Event): void {
-    this.modal.requestSave(
-      event.currentTarget as HTMLElement,
-      () => void this.libraryController.save(),
-    );
-  }
-
   private cancelSaveName(): void {
     this.modal.cancelSaveName();
   }
@@ -1308,80 +1247,6 @@ export class GoveeLedEffectStudio extends LitElement {
   private saveNameDialogKeyDown(event: KeyboardEvent): void {
     this.modal.dialogKeyDown(event, () => this.cancelSaveName());
   }
-
-  private confirmNamedSave(event: SubmitEvent): void {
-    event.preventDefault();
-    this.modal.confirmNamedSave(
-      () => void this.libraryController.save(),
-    );
-  }
-
-  private editTemplate(): void {
-    this.editor.editTemplate();
-  }
-
-  private paintBrushesChanged(
-    event: CustomEvent<{ palette: RGB[] }>,
-  ): void {
-    this.editor.paintBrushesChanged(event.detail.palette);
-  }
-
-  private paintBrushSelected(
-    event: CustomEvent<{ index: number }>,
-  ): void {
-    this.editor.paintBrushSelected(event.detail.index);
-  }
-
-  private backgroundChanged(event: CustomEvent<{ colour: RGB }>): void {
-    this.editor.backgroundChanged(
-      event.detail.colour,
-      event.type === "colour-changing" ? "changing" : "committed",
-    );
-  }
-
-  private singleEffectChanged(event: Event): void {
-    this.editor.selectSingleEffect(
-      (event.target as HTMLSelectElement).value,
-    );
-  }
-
-  private paintedEffectVariationChanged(event: Event): void {
-    this.editor.paintedVariationChanged(
-      (event.target as HTMLSelectElement).value as PaintedContent["effect"],
-    );
-  }
-
-  private setSegmentColour(
-    index: number,
-    interaction: LivePreviewInteraction,
-  ): void {
-    this.editor.setSegmentColour(index, interaction);
-  }
-
-  private paintAll(): void {
-    this.editor.paintAll();
-  }
-
-  private resetPaint(): void {
-    this.editor.resetPaint();
-  }
-
-  private updateContent(
-    update: { speed?: number; brightness?: number },
-    interaction: LivePreviewInteraction = "changing",
-  ): void {
-    this.editor.updatePaintedContent(update, interaction);
-  }
-
-  private scenePreviewRequested(
-    event: CustomEvent<ScenePreviewRequest>,
-  ): void {
-    this.preview.scheduleScene(event.detail);
-  }
-
-  private toggleLiveApply = (): void => {
-    this.preview.toggle(this.currentScenePreviewRequest());
-  };
 
   private currentScenePreviewRequest(): ScenePreviewRequest | undefined {
     return this.shadowRoot

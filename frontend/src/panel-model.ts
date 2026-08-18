@@ -1,43 +1,14 @@
-import {
-  customEffectCategoryAvailable,
-  customEffectKindAvailable,
-  libraryItemAvailable,
-  type CustomEffectListContext,
-} from "./custom-effect-list";
-import {
-  defaultCustomEffectCategory,
-  showCustomEffectSelector,
-} from "./custom-effect-workflow";
-import {
-  blankPainted,
-  defaultPalette,
-  isEditableEffectContent,
-  serialiseEditable,
-} from "./effect-editor-model";
-import type {
-  CustomEffectCategory,
-} from "./effect-editor-model";
+import { customEffectCategoryAvailable, customEffectKindAvailable, libraryItemAvailable, type CustomEffectListContext } from "./custom-effect-list";
+import { defaultCustomEffectCategory, showCustomEffectSelector } from "./custom-effect-workflow";
+import { blankPainted, defaultPalette, isEditableEffectContent, serialiseEditable, type CustomEffectCategory } from "./effect-editor-model";
 import type { SceneInitialSelection } from "./scene-browser";
 import type { StudioSection } from "./studio-navigation";
 import type {
-  CustomEffectCatalogue,
-  DeviceCapabilities,
-  DiyEffectFamily,
-  EffectContent,
-  EffectUserState,
-  LibraryItem,
-  LibrarySnapshot,
-  LibrarySummary,
-  ModelEffectCatalogue,
-  ModelSku,
-  PreviewStatus,
-  RGB,
+  CustomEffectCatalogue, DeviceCapabilities, DiyEffectFamily, EffectContent, EffectUserState, LibraryItem, LibrarySnapshot,
+  LibrarySummary, ModelEffectCatalogue, ModelSku, PreviewStatus, RGB,
 } from "./types";
 
-export type DeleteCandidate = Pick<
-  LibrarySummary,
-  "id" | "version" | "updated_at" | "name"
-> & {
+export type DeleteCandidate = Pick<LibrarySummary, "id" | "version" | "updated_at" | "name"> & {
   discardsOpenEdits?: boolean;
 };
 
@@ -85,10 +56,6 @@ export class PanelModel {
 
   public patch(change: Partial<PanelModel>): void {
     Object.assign(this, change);
-    this.changed();
-  }
-
-  public touch(): void {
     this.changed();
   }
 

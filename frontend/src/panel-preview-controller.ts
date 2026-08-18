@@ -1,15 +1,7 @@
 import { EffectStudioApi } from "./api";
-import {
-  LivePreviewController,
-  type LivePreviewInteraction,
-} from "./live-preview-controller";
+import { LivePreviewController, type LivePreviewInteraction } from "./live-preview-controller";
 import { PanelModel } from "./panel-model";
-import {
-  EffectStudioPreviewSession,
-  scenePreviewRequest,
-  snapshotPreviewRequest,
-  type PanelPreviewRequest,
-} from "./panel-preview";
+import { EffectStudioPreviewSession, scenePreviewRequest, snapshotPreviewRequest, type PanelPreviewRequest } from "./panel-preview";
 import type { ScenePreviewRequest } from "./scene-browser";
 import { isEditableEffectContent } from "./effect-editor-model";
 import { errorCode, errorMessage } from "./ui-utils";
@@ -31,10 +23,6 @@ export class PanelPreviewController {
   });
 
   public constructor(private readonly model: PanelModel) {}
-
-  public get ready(): boolean {
-    return this.session?.ready === true;
-  }
 
   public async open(
     api: EffectStudioApi,
@@ -65,15 +53,10 @@ export class PanelPreviewController {
   }
 
   public beginEditorTransition(): number {
-    this.model.editorTransitionEpoch += 1;
+    const editorTransitionEpoch = this.model.editorTransitionEpoch + 1;
     this.scheduler.reset();
-    this.model.previewStatus = undefined;
-    this.model.touch();
-    return this.model.editorTransitionEpoch;
-  }
-
-  public editorTransitionIsCurrent(epoch: number): boolean {
-    return epoch === this.model.editorTransitionEpoch;
+    this.model.patch({ editorTransitionEpoch, previewStatus: undefined });
+    return editorTransitionEpoch;
   }
 
   public scheduleEdited(
@@ -128,13 +111,6 @@ export class PanelPreviewController {
     }
   }
 
-  public reset(): void {
-    this.scheduler.reset();
-    this.model.update((model) => {
-      model.previewStatus = undefined;
-    });
-  }
-
   public dispose(): void {
     this.scheduler.dispose();
     this.session?.close();
@@ -177,7 +153,7 @@ export class PanelPreviewController {
       !this.model.deletingCurrentItem &&
       this.model.previewCapability === "supported" &&
       this.model.selectedDevice !== undefined &&
-      this.ready
+      this.session?.ready === true
     );
   }
 }

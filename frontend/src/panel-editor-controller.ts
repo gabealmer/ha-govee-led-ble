@@ -71,10 +71,6 @@ export class PanelEditorController {
     return this.preview.beginEditorTransition();
   }
 
-  public transitionIsCurrent(epoch: number): boolean {
-    return this.preview.editorTransitionIsCurrent(epoch);
-  }
-
   public reset(): void {
     this.beginTransition();
     this.model.patch({
@@ -155,16 +151,12 @@ export class PanelEditorController {
     });
   }
 
-  public openDefaultTemplate(existingTransitionEpoch?: number): void {
-    this.newEffect("h617a_painted", existingTransitionEpoch, {
-      name: "Paint", content: blankPainted(), selectionIdentity: "template:paint", templateLabel: "Paint",
-    });
-  }
-
   public openDefaultAvailableTemplate(existingTransitionEpoch?: number): void {
     const catalogue = this.model.modelCatalogue;
     if (this.model.customEffectKindAvailable("h617a_painted")) {
-      this.openDefaultTemplate(existingTransitionEpoch);
+      this.newEffect("h617a_painted", existingTransitionEpoch, {
+        name: "Paint", content: blankPainted(), selectionIdentity: "template:paint", templateLabel: "Paint",
+      });
       return;
     }
     const family = catalogue?.effects.find((effect) => effect.category === "single_layer") ?? catalogue?.effects[0];
@@ -273,10 +265,6 @@ export class PanelEditorController {
     this.model.patch({ sceneEditorOpen: false, notice: undefined });
   }
 
-  public editTemplate(): void {
-    this.prepareTemplateEdit();
-  }
-
   public prepareTemplateEdit(): boolean {
     const source = this.model.templateSourceLabel;
     if (!source) return true;
@@ -312,10 +300,6 @@ export class PanelEditorController {
     this.installEditedContent(cloneVideoProfileContent(content), interaction);
   }
 
-  public nameChanged(name: string): void {
-    this.model.patch({ name });
-  }
-
   public paintBrushesChanged(palette: RGB[]): void {
     const paintBrushes = palette.map((colour) => [...colour] as RGB);
     this.model.patch({
@@ -323,14 +307,6 @@ export class PanelEditorController {
       selectedPaintBrush: Math.max(0, Math.min(this.model.selectedPaintBrush, paintBrushes.length - 1)),
       brushUsesBackground: false,
     });
-  }
-
-  public paintBrushSelected(index: number): void {
-    this.model.patch({ selectedPaintBrush: index, brushUsesBackground: false });
-  }
-
-  public toggleBackgroundBrush(): void {
-    this.model.patch({ brushUsesBackground: !this.model.brushUsesBackground });
   }
 
   public backgroundChanged(colour: RGB, interaction: LivePreviewInteraction): void {
@@ -363,10 +339,6 @@ export class PanelEditorController {
       if (selectingTemplate) model.customTemplateSelection = `template:single:${family.family}:${variation.variant}`;
       this.updateGeneratedEffectName(model, family.label);
     });
-  }
-
-  public paintedVariationChanged(effect: PaintedContent["effect"]): void {
-    this.updatePaintedContent({ effect }, "committed");
   }
 
   public setSegmentColour(index: number, interaction: LivePreviewInteraction): void {
