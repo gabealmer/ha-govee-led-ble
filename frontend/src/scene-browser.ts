@@ -276,6 +276,18 @@ export class GoveeSceneBrowser extends LitElement {
             : nothing}
         </div>
         <div class="actions">
+          ${savingCopy
+            ? html`
+                <button
+                  class="secondary"
+                  type="button"
+                  ?disabled=${state.saving}
+                  @click=${this.cancelCopy}
+                >
+                  Cancel
+                </button>
+              `
+            : nothing}
           <button
             class=${layered || nativeSelection ? "secondary" : "primary"}
             type="button"
@@ -428,6 +440,10 @@ export class GoveeSceneBrowser extends LitElement {
     if (detail) {
       this.emit<SceneEditSelection>("scene-edit-selected", detail);
     }
+  }
+
+  private cancelCopy(): void {
+    void this.workflow.cancelCopy();
   }
 
   private save(): void {

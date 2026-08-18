@@ -465,6 +465,11 @@ export class SceneBrowserWorkflow {
     return undefined;
   }
 
+  public async cancelCopy(): Promise<boolean> {
+    const scene = this.stateValue.selectedScene;
+    return this.stateValue.editingCopy && scene ? this.selectBuiltin(scene) : false;
+  }
+
   private async openInitialSavedScene(itemId: string): Promise<boolean> {
     const summary = this.compatibleCustomScenes.find((item) => item.id === itemId);
     return summary ? this.selectCustom(summary) : false;

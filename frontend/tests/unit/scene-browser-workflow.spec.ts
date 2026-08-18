@@ -177,6 +177,26 @@ describe("SceneBrowserWorkflow", () => {
     expect(workflow.state.notice).toBe("Custom scene saved.");
   });
 
+  test("cancelling a scene copy restores the selected catalogue scene", async () => {
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1)),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+    workflow.edit(true);
+    workflow.setName("Changed copy");
+    workflow.setSpeedIndex(2);
+
+    await expect(workflow.cancelCopy()).resolves.toBe(true);
+
+    expect(workflow.state.editingCopy).toBe(false);
+    expect(workflow.state.name).toBe(firstScene.display_name);
+    expect(workflow.state.speedIndex).toBe(1);
+    expect(api.sceneDetail).toHaveBeenCalledTimes(2);
+  });
+
   test("a completed stale save is announced without restoring its old selection", async () => {
     const pendingSave = deferred<LibraryItem>();
     const saved = libraryItem("saved-copy", firstScene, "Glacier copy");

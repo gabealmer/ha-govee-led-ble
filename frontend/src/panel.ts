@@ -1052,7 +1052,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <div class="editor-heading">
         <div>${options.title ?? this.renderEffectName()}</div>
         <div class="actions">
-          ${this.content.kind === "scene_layered"
+          ${this.model.sceneEditorOpen
             ? html`
                 <button
                   class="secondary"
