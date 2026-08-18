@@ -311,21 +311,11 @@ def test_generated_type_1_parser_requires_bytes(raw_param) -> None:
         b"\x83",
         b"\x83\x01\x01",
         b"\x83\x00",
-    ],
-)
-def test_generated_type_1_parser_rejects_truncated_parameters(raw_param: bytes) -> None:
-    with pytest.raises(KaitaiStructError):
-        parse_scene_type1_body_param(raw_param)
-
-
-@pytest.mark.parametrize(
-    "raw_param",
-    [
         b"\x82\x00\x00",
         b"\x83\x00\x00\x01",
     ],
 )
-def test_generated_type_1_parser_rejects_malformed_parameters(raw_param: bytes) -> None:
+def test_generated_type_1_parser_rejects_invalid_parameters(raw_param: bytes) -> None:
     with pytest.raises(KaitaiStructError):
         parse_scene_type1_body_param(raw_param)
 

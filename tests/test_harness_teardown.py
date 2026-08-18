@@ -89,36 +89,24 @@ def _state_file(tmp_path: Path) -> Path:
     return tmp_path / "state"
 
 
-def test_a_failed_capture_verdict_still_gives_the_link_back(tmp_path: Path):
-    """The device is ownerless when the capture is judged, so the verdict cannot abort here."""
+def test_a_failed_capture_verdict_is_reported_after_link_restoration(tmp_path: Path):
     result, calls = _run_down(tmp_path, capture_exit=3)
 
     assert "ha_entry entry-tv enable" in calls
     assert calls.index("capture stop") < calls.index("ha_entry entry-tv enable")
-
-
-def test_a_failed_capture_verdict_is_reported_rather_than_swallowed(tmp_path: Path):
-    """It used to go to /dev/null, which is the failure shape this rig keeps paying for."""
-    result, _ = _run_down(tmp_path, capture_exit=3)
-
     assert result.returncode == 1
     assert "not usable as evidence" in result.stderr
     assert "repeat the run" in result.stderr
-
-
-def test_the_report_comes_after_the_entry_is_confirmed_back(tmp_path: Path):
-    result, _ = _run_down(tmp_path, capture_exit=3)
-
     assert "entry loaded, disabled_by null" in result.stdout
 
 
-def test_a_capture_with_nothing_to_report_tears_down_quietly(tmp_path: Path):
-    """Positive control: the failure above is the verdict, not the teardown path itself."""
+def test_successful_capture_teardown_restores_entry_without_extra_polling(tmp_path: Path):
     result, calls = _run_down(tmp_path, capture_exit=0)
 
     assert result.returncode == 0, result.stderr
     assert "not usable as evidence" not in result.stderr
     assert "ha_entry entry-tv enable" in calls
+    assert calls.count("ha_entry entry-tv status") == 1
 
 
 @pytest.mark.parametrize("capture_exit", [1, 2])
@@ -132,30 +120,12 @@ def test_other_capture_failures_stay_tolerated(tmp_path: Path, capture_exit: int
     assert "ha_entry entry-tv enable" in calls
 
 
-def test_an_entry_that_has_not_loaded_yet_still_completes_the_teardown(tmp_path: Path):
-    """The entry can only load once the light's one BLE link is free, and that happens when
-    the phone drops it, asynchronously. Treating the first reading as fatal aborted teardown
-    before the phone was released and before the state file was removed, so the next shell
-    believed a session was up. Home Assistant retries on its own backoff; this script's job
-    is to finish."""
+def test_an_entry_that_has_not_loaded_yet_completes_teardown_and_reports_failure(tmp_path: Path):
     result, calls = _run_down(tmp_path, capture_exit=0, entry_status=_ENTRY_STUCK)
 
     assert "phone_usbipd_release" in calls
     assert not _state_file(tmp_path).exists(), "a rig that is down must not look live"
-
-
-def test_an_entry_that_has_not_loaded_yet_is_reported_loudly(tmp_path: Path):
-    """Not fatal is not the same as not mentioned: the light is the point of the rig."""
-    result, _ = _run_down(tmp_path, capture_exit=0, entry_status=_ENTRY_STUCK)
-
     assert result.returncode == 1
     assert "has not loaded yet" in result.stderr
     assert "one BLE link" in result.stderr
     assert "entry loaded, disabled_by null" not in result.stdout
-
-
-def test_a_loaded_entry_is_not_polled_repeatedly(tmp_path: Path):
-    """Positive control for the retry: it must not cost a delay on the normal path."""
-    _, calls = _run_down(tmp_path, capture_exit=0)
-
-    assert calls.count("ha_entry entry-tv status") == 1

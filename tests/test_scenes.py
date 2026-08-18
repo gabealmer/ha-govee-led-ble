@@ -47,9 +47,9 @@ _SIMPLE = ["sunrise", "sunset", "rainbow", "candlelight", "romantic", "movie", "
 _COMPLEX = ["forest", "aurora", "fire", "christmas", "disco"]
 
 
-@pytest.mark.parametrize("name,simple", [*((n, True) for n in _SIMPLE), *((n, False) for n in _COMPLEX)])
-def test_scene_type(name, simple):
-    assert bool(SCENES[name].param) is not simple
+def test_scene_type_examples():
+    assert all(not SCENES[name].param for name in _SIMPLE)
+    assert all(SCENES[name].param for name in _COMPLEX)
 
 
 def test_known_codes():

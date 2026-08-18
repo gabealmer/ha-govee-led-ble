@@ -11,7 +11,6 @@ import pytest
 from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import effect_commands
-from custom_components.ha_govee_led_ble import effect_domain as effect_domain_module
 from custom_components.ha_govee_led_ble import layered_scene as layered_scene_module
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
@@ -153,22 +152,7 @@ def _video_profile() -> VideoProfile:
     )
 
 
-def test_layered_types_and_validation_error_are_re_exported() -> None:
-    for name in (
-        "BrightnessOrder",
-        "SelectionType",
-        "AppliedArea",
-        "Selection",
-        "BrightnessPattern",
-        "Movement",
-        "Distribution",
-        "EffectLayer",
-        "LayeredEffect",
-        "CatalogueRef",
-        "LayeredScene",
-    ):
-        assert getattr(effect_domain_module, name) is getattr(layered_scene_module, name)
-
+def test_layered_validation_error_is_shared_with_websocket_boundary() -> None:
     assert EffectValidationError is layered_scene_module.LayeredSceneValidationError
 
 

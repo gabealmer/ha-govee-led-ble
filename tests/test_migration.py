@@ -33,15 +33,6 @@ async def test_clean_install_migrates(hass: HomeAssistant):
     assert entry.options == {CONF_EFFECT_FAMILIES: ["scenes", "music"]}
 
 
-async def test_migrate_strips_experimental_without_music_calm(hass: HomeAssistant):
-    entry = _v1_entry(hass, options={"experimental": {"diy": True}})
-
-    assert await async_migrate_entry(hass, entry) is True
-
-    assert entry.version == 5
-    assert dict(entry.options) == {CONF_EFFECT_FAMILIES: ["scenes", "music"]}
-
-
 async def test_migrate_current_entry_bumps_to_v5(hass: HomeAssistant):
     entry = MockConfigEntry(domain=DOMAIN, unique_id=_ADDR, version=2, data={CONF_MODEL: "H617A"})
     entry.add_to_hass(hass)

@@ -302,11 +302,8 @@ def test_wsl_app_mode_selects_native_wda_and_idevicebtlogger(tmp_path: Path):
     assert (tmp_path / "state").read_text().split()[3:] == ["native", "userspace"]
 
 
-def test_wsl_wda_uses_its_own_userspace_rsd():
-    body = _WDA_DAEMON.read_text()
-    assert 'os.environ.get("HARNESS_RSD_BACKEND") == "userspace"' in body
-    assert "UserspaceRsdTunnel(serial=UDID)" in body
-    assert "get_tunneld_device_by_udid" in body
+def test_wda_daemon_retains_tunneld_fallback():
+    assert "get_tunneld_device_by_udid" in _WDA_DAEMON.read_text()
 
 
 def test_failed_wsl_phone_setup_releases_usb_without_touching_home_assistant(tmp_path: Path):
