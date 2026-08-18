@@ -46,7 +46,7 @@ FRONTEND_INPUTS := $(sort $(FRONTEND_SOURCE) $(FRONTEND_CONFIG) $(FRONTEND_CONTR
 
 PACKAGE_PATH := $(DIST_DIR)/ha_govee_led_ble.zip
 
-.PHONY: protocol frontend build check package clean verify-node verify-kaitai verify-protocol verify-frontend verify-generated
+.PHONY: protocol frontend build check package clean verify-node verify-kaitai verify-protocol verify-frontend verify-generated verify-quality-scale
 
 verify-node:
 	@expected="$$(cat .node-version)"; actual="$$($(NODE) --version)"; \
@@ -88,8 +88,12 @@ verify-frontend: frontend
 
 verify-generated: verify-protocol verify-frontend
 
+verify-quality-scale: scripts/check_quality_scale.py $(INTEGRATION_DIR)/quality_scale.yaml hacs.json
+	uv run --no-sync python -m scripts.check_quality_scale
+
 check:
 	uv sync --locked
+	$(MAKE) --no-print-directory verify-quality-scale
 	$(MAKE) --no-print-directory build
 	uv run --no-sync python -m tools.generate_frontend_contract_fixtures --check
 	$(NPM) --prefix frontend run typecheck

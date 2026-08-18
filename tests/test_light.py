@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bleak import BleakError
 from homeassistant.components.light import ColorMode
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -37,6 +37,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
     kelvin_to_rgb,
 )
+from custom_components.ha_govee_led_ble.light_services import async_register_light_services
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENES
 
@@ -127,13 +128,15 @@ async def test_turn_on_variants(light, mock_coordinator):
 
 async def test_power_rollback(light, mock_coordinator):
     mock_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("fail")])
-    with pytest.raises(BleakError):
+    with pytest.raises(HomeAssistantError) as turn_on:
         await light.async_turn_on(brightness=128)
+    assert turn_on.value.translation_key == "device_command_failed"
     assert mock_coordinator.is_on is False and mock_coordinator.brightness_pct == 100
     mock_coordinator.is_on = True
     mock_coordinator.send_command = AsyncMock(side_effect=BleakError("timeout"))
-    with pytest.raises(BleakError):
+    with pytest.raises(HomeAssistantError) as turn_off:
         await light.async_turn_off()
+    assert turn_off.value.translation_key == "device_command_failed"
     assert mock_coordinator.is_on is True
 
 
@@ -460,19 +463,22 @@ async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordin
     assert h6199_light.effect == "off"
 
 
-async def test_setup_entry_registers_segment_services(mock_coordinator):
+def test_registers_segment_services_during_integration_setup():
+    hass = MagicMock()
+    hass.data = {}
+    async_register_light_services(hass)
+    registered = {call.args[1] for call in hass.services.async_register.call_args_list}
+    assert registered == {
+        "paint_segments",
+        "set_segment_brightness",
+        "set_segment_color",
+    }
+
+
+async def test_setup_entry_adds_light(mock_coordinator):
     entry = MagicMock(runtime_data=mock_coordinator)
     added: list = []
-    platform = MagicMock()
-    with patch(
-        "custom_components.ha_govee_led_ble.light.entity_platform.async_get_current_platform",
-        return_value=platform,
-    ):
-        await async_setup_entry(MagicMock(), entry, lambda e: added.extend(e))
-    handlers = {call.args[0]: call.args[2] for call in platform.async_register_entity_service.call_args_list}
-    assert handlers["paint_segments"] == "async_paint_segments"
-    assert handlers["set_segment_color"] == "async_set_segment_color"
-    assert handlers["set_segment_brightness"] == "async_set_segment_brightness"
+    await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
     assert len(added) == 1 and isinstance(added[0], GoveeBLELight)
 
 
@@ -534,6 +540,14 @@ async def test_paint_segments_reports_invalid_input(light, mock_coordinator, err
     assert exc.value.translation_key == "invalid_segments"
 
 
+async def test_segment_service_wraps_transport_failure(light, mock_coordinator):
+    mock_coordinator.async_paint_segments.side_effect = BleakError("transport failed")
+
+    with pytest.raises(HomeAssistantError) as exc:
+        await light.async_paint_segments([{"segments": [1], "rgb_color": (1, 2, 3)}])
+    assert exc.value.translation_key == "device_command_failed"
+
+
 async def test_set_segment_brightness_sends_packet(light, mock_coordinator):
     light.async_write_ha_state = MagicMock()
     await light.async_set_segment_brightness(segments=[2, 4], brightness=60)
@@ -545,12 +559,17 @@ async def test_segment_services_reject_unsupported(mock_coordinator):
     mock_coordinator.profile = replace(MODEL_PROFILES["H617A"], segment_count=0)
     e = GoveeBLELight(mock_coordinator)
     e.async_write_ha_state = MagicMock()
-    with pytest.raises(ServiceValidationError, match="H617A"):
-        await e.async_paint_segments([{"segments": [1], "rgb_color": (1, 2, 3)}])
-    with pytest.raises(ServiceValidationError, match="H617A"):
-        await e.async_set_segment_color(segments=[1], color=(1, 2, 3))
-    with pytest.raises(ServiceValidationError, match="H617A"):
-        await e.async_set_segment_brightness(segments=[1], brightness=50)
+    actions = (
+        lambda: e.async_paint_segments([{"segments": [1], "rgb_color": (1, 2, 3)}]),
+        lambda: e.async_set_segment_color(segments=[1], color=(1, 2, 3)),
+        lambda: e.async_set_segment_brightness(segments=[1], brightness=50),
+    )
+    for action in actions:
+        with pytest.raises(ServiceValidationError) as exc:
+            await action()
+        assert exc.value.translation_key == "unsupported_model"
+        assert exc.value.translation_placeholders is not None
+        assert exc.value.translation_placeholders["model"] == "H617A"
     mock_coordinator.async_paint_segments.assert_not_awaited()
     mock_coordinator.send_command.assert_not_called()
 
@@ -837,8 +856,9 @@ async def test_control_lock_keeps_failed_rollback_before_newer_colour(light, moc
     assert sent == [red]
 
     release_first.set()
-    with pytest.raises(BleakError):
+    with pytest.raises(HomeAssistantError) as exc:
         await first
+    assert exc.value.translation_key == "device_command_failed"
     await second
 
     assert sent == [red, blue]

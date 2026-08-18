@@ -13,6 +13,7 @@ from custom_components.ha_govee_led_ble import (
     async_unload_entry,
 )
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, MODEL_PROFILES
+from custom_components.ha_govee_led_ble.coordinator import AVAILABILITY_UNAVAILABLE_DATA_KEY
 from custom_components.ha_govee_led_ble.editor import (
     EDITOR_ELEMENT_NAME,
     EDITOR_PANEL_PATH,
@@ -122,6 +123,7 @@ async def test_unload_entry_stops_preview_before_platforms_and_disconnect(hass: 
 
 async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssistant):
     entry = _entry()
+    hass.data.setdefault(DOMAIN, {})[AVAILABILITY_UNAVAILABLE_DATA_KEY] = {entry.unique_id}
     backend = MagicMock()
     backend.scene_defaults.async_delete_device = AsyncMock()
     backend.device_cache.async_delete_device = AsyncMock()
@@ -138,6 +140,7 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
     backend.device_cache.async_delete_device.assert_awaited_once_with(entry.entry_id)
     backend.deployments.async_delete_device.assert_awaited_once_with(entry.entry_id)
     backend.user_state.async_clear_config_entry.assert_awaited_once_with(entry.entry_id)
+    assert hass.data[DOMAIN][AVAILABILITY_UNAVAILABLE_DATA_KEY] == set()
 
 
 async def test_cleanup_legacy_entities(hass: HomeAssistant):
@@ -208,6 +211,7 @@ async def test_async_setup_registers_effect_studio_sidebar_panel():
     hass.http.async_register_static_paths = AsyncMock()
     with (
         patch("custom_components.ha_govee_led_ble.editor.frontend.async_register_built_in_panel") as register,
+        patch("custom_components.ha_govee_led_ble.async_register_light_services") as register_services,
         patch(
             "custom_components.ha_govee_led_ble.async_setup_effects",
             new_callable=AsyncMock,
@@ -215,6 +219,7 @@ async def test_async_setup_registers_effect_studio_sidebar_panel():
     ):
         assert await async_setup(hass, {}) is True
 
+    register_services.assert_called_once_with(hass)
     setup_effects.assert_awaited_once_with(hass)
     hass.http.async_register_static_paths.assert_awaited_once()
     (static_path,) = hass.http.async_register_static_paths.await_args.args[0]

@@ -10,13 +10,17 @@ from zipfile import ZipFile
 
 import pytest
 
+from scripts.check_quality_scale import validate_quality_scale
 from scripts.package import verify_archive
 
 _REPO = Path(__file__).parents[1]
 _BUILD_FILES = (
     "Makefile",
     ".node-version",
+    "hacs.json",
     "mise.toml",
+    "custom_components/ha_govee_led_ble/quality_scale.yaml",
+    "scripts/check_quality_scale.py",
     "scripts/generate-frontend.sh",
     "scripts/generate-kaitai.sh",
     "scripts/node-tool.sh",
@@ -65,6 +69,7 @@ def build_repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     integration = root / "custom_components/ha_govee_led_ble"
     _write(integration / "__init__.py", 'DOMAIN = "ha_govee_led_ble"\n')
     _write(integration / "manifest.json", '{"domain":"ha_govee_led_ble","version":"1.0.0"}\n')
+    _write(integration / "py.typed", "")
     _write(integration / "scene_catalogues/H617A.json", '{"scenes":[]}\n')
     _write(integration / "frontend/editor-loader.js", "export const loader = true;\n")
     _write(integration / "frontend/editor.js", "export const fallback = true;\n")
@@ -184,6 +189,119 @@ def _generated_files(root: Path) -> list[Path]:
     ]
 
 
+def test_quality_scale_inventory_matches_pinned_home_assistant_rules() -> None:
+    assert validate_quality_scale() == []
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        ("  async-dependency: done\n", "", "missing rules: async-dependency"),
+        (
+            "  strict-typing: done\n",
+            "  strict-typing: done\n  invented-rule: done\n",
+            "extra rules: invented-rule",
+        ),
+        (
+            "  async-dependency: done\n",
+            "  async-dependency: invalid\n",
+            "async-dependency: status must be one of",
+        ),
+        (
+            "  async-dependency: done\n",
+            "  async-dependency: todo\n",
+            "async-dependency: todo is not permitted",
+        ),
+        (
+            "    comment: The integration does not use HTTP clients.\n",
+            '    comment: ""\n',
+            "inject-websession: exempt rules require a non-empty comment",
+        ),
+        ("  brands: todo\n", "  brands: done\n", "brands: must remain todo"),
+        (
+            "  test-before-configure: done\n",
+            "  test-before-configure: todo\n",
+            "test-before-configure: todo is not permitted",
+        ),
+        (
+            "  strict-typing: done\n",
+            "  strict-typing: todo\n",
+            "strict-typing: todo is not permitted",
+        ),
+        (
+            "  log-when-unavailable: done\n",
+            "  log-when-unavailable: todo\n",
+            "log-when-unavailable: todo is not permitted",
+        ),
+        (
+            "  exception-translations: done\n",
+            "  exception-translations: todo\n",
+            "exception-translations: todo is not permitted",
+        ),
+        (
+            "    comment: No LightEntity device class exists that would add applicable context.\n",
+            '    comment: ""\n',
+            "entity-device-class: done status requires a non-empty evidence comment",
+        ),
+        (
+            "    comment: The sole entity is the device's primary LightEntity control, "
+            "so there are no secondary or noisy entities that should be disabled by default.\n",
+            '    comment: ""\n',
+            "entity-disabled-by-default: done status requires a non-empty evidence comment",
+        ),
+        (
+            "    comment: The sole main LightEntity uses the built-in light-domain icon "
+            "and defines no custom or state-specific icon logic.\n",
+            '    comment: ""\n',
+            "icon-translations: done status requires a non-empty evidence comment",
+        ),
+        (
+            "  entity-device-class:\n    status: done\n",
+            "  entity-device-class:\n    status: exempt\n",
+            "entity-device-class: must remain done",
+        ),
+        (
+            "  entity-disabled-by-default:\n    status: done\n",
+            "  entity-disabled-by-default:\n    status: exempt\n",
+            "entity-disabled-by-default: must remain done",
+        ),
+        (
+            "  icon-translations:\n    status: done\n",
+            "  icon-translations:\n    status: exempt\n",
+            "icon-translations: must remain done",
+        ),
+    ],
+)
+def test_quality_scale_validation_rejects_invalid_inventory(
+    tmp_path: Path,
+    old: str,
+    new: str,
+    expected: str,
+) -> None:
+    quality_scale = tmp_path / "quality_scale.yaml"
+    hacs = tmp_path / "hacs.json"
+    source = (_REPO / "custom_components/ha_govee_led_ble/quality_scale.yaml").read_text(encoding="utf-8")
+    assert old in source
+    quality_scale.write_text(source.replace(old, new, 1), encoding="utf-8")
+    shutil.copy2(_REPO / "hacs.json", hacs)
+
+    assert any(expected in error for error in validate_quality_scale(quality_scale, hacs))
+
+
+def test_quality_scale_validation_rejects_home_assistant_version_drift(tmp_path: Path) -> None:
+    quality_scale = tmp_path / "quality_scale.yaml"
+    hacs = tmp_path / "hacs.json"
+    shutil.copy2(_REPO / "custom_components/ha_govee_led_ble/quality_scale.yaml", quality_scale)
+    hacs.write_text('{"homeassistant": "2026.4.0"}\n', encoding="utf-8")
+
+    assert any("homeassistant must remain 2026.3.0" in error for error in validate_quality_scale(quality_scale, hacs))
+
+
+def test_quality_scale_make_target_is_available(build_repo: tuple[Path, dict[str, str]]) -> None:
+    root, env = build_repo
+    _make(root, env, "verify-quality-scale")
+
+
 def _make_fails(root: Path, env: dict[str, str], *targets: str) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(  # noqa: S603
         ["/usr/bin/make", "--no-print-directory", *targets],
@@ -287,6 +405,7 @@ def test_package_has_stable_runtime_layout_and_metadata(build_repo: tuple[Path, 
         assert names == sorted(names)
         assert "__init__.py" in names
         assert "manifest.json" in names
+        assert "py.typed" in names
         assert "generated_protocol/sample.py" in names
         assert "scene_catalogues/H617A.json" in names
         assert "frontend/editor-loader.js" in names

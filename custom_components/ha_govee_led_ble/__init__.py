@@ -21,9 +21,10 @@ from .const import (
     effect_families_from_options,
     resolve_model,
 )
-from .coordinator import GoveeBLECoordinator
+from .coordinator import GoveeBLECoordinator, clear_availability_log_state
 from .editor import async_register_editor_panel, editor_url
 from .effect_setup import async_setup_effects, get_effect_backend
+from .light_services import async_register_light_services
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
@@ -76,6 +77,7 @@ def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    async_register_light_services(hass)
     effects = await async_setup_effects(hass)
     await async_register_editor_panel(hass, advanced_available=effects is not None)
     return True
@@ -186,3 +188,5 @@ async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
             effect_backend.user_state.async_clear_config_entry(entry.entry_id),
         )
     ir.async_delete_issue(hass, DOMAIN, _unsupported_model_issue_id(entry))
+    if entry.unique_id is not None:
+        clear_availability_log_state(hass, entry.unique_id)

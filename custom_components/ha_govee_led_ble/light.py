@@ -7,7 +7,6 @@ from contextlib import contextmanager
 from functools import partial
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.components.light import (  # type: ignore[attr-defined]
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
@@ -21,9 +20,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import entity_platform
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
@@ -134,27 +131,6 @@ async def async_setup_entry(
             )
         ]
     )
-    p = entity_platform.async_get_current_platform()
-    _pct = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
-    _segment = vol.All(vol.Coerce(int), vol.Range(min=1, max=15))
-    _segments = vol.All([_segment], vol.Length(min=1))
-    _rgb = vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple))
-    # fmt: off
-    p.async_register_entity_service("paint_segments", {
-        vol.Required("groups"): vol.All([{
-            vol.Required("segments"): _segments,
-            vol.Required("rgb_color"): _rgb,
-        }], vol.Length(min=1)),
-    }, "async_paint_segments")
-    p.async_register_entity_service("set_segment_color", {
-        vol.Required("segments"): _segments,
-        vol.Required("color"): _rgb,
-    }, "async_set_segment_color")
-    p.async_register_entity_service("set_segment_brightness", {
-        vol.Required("segments"): _segments,
-        vol.Required("brightness"): _pct,
-    }, "async_set_segment_brightness")
-    # fmt: on
 
 
 class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, LightEntity):
@@ -186,11 +162,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         mode_snap = self._attr_color_mode
         try:
             yield
-        except Exception:
+        except Exception as err:
             for f, v in snap.items():
                 setattr(self.coordinator, f, v)
             self._attr_color_mode = mode_snap
-            raise
+            if isinstance(err, HomeAssistantError):
+                raise
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="device_command_failed",
+            ) from err
 
     @property
     def is_on(self) -> bool:
@@ -418,7 +399,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         model = self.coordinator.model
         raise ServiceValidationError(
-            f"{service} is not supported on {model}",
             translation_domain=DOMAIN,
             translation_key="unsupported_model",
             translation_placeholders={"service": service, "model": model},
@@ -522,10 +502,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
             except (EffectNotFoundError, EffectVersionConflictError) as exc:
                 raise ServiceValidationError(
-                    "The saved effect changed before it could be applied",
                     translation_domain=DOMAIN,
                     translation_key="unknown_effect",
                     translation_placeholders={"effect": item.name},
+                ) from exc
+            except HomeAssistantError:
+                raise
+            except Exception as exc:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="effect_apply_failed",
                 ) from exc
             self._notify_state_changed()
             return
@@ -541,7 +527,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             )
         except EffectValidationError as exc:
             raise ServiceValidationError(
-                str(exc),
                 translation_domain=DOMAIN,
                 translation_key="unknown_effect",
                 translation_placeholders={"effect": effect_name},

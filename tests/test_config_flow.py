@@ -1,6 +1,8 @@
+import logging
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from bleak import BleakError
 from homeassistant import config_entries
 from homeassistant.components.bluetooth import BluetoothServiceInfo
 from homeassistant.const import CONF_ADDRESS
@@ -11,6 +13,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_govee_led_ble.config_flow import _extract_model
 from custom_components.ha_govee_led_ble.const import CONF_EFFECT_FAMILIES, CONF_MODEL, DOMAIN
 
+M = "custom_components.ha_govee_led_ble.config_flow"
 SVC = BluetoothServiceInfo("ihoment_H617A_ABCD", "AA:BB:CC:DD:EE:FF", -60, {}, {}, [], "local")
 SVC_LOWER = BluetoothServiceInfo("ihoment_H617A_ABCD", "aa:bb:cc:dd:ee:ff", -60, {}, {}, [], "local")
 SVC_UNSUPPORTED = BluetoothServiceInfo("SomeOtherDevice", "11:22:33:44:55:66", -60, {}, {}, [], "local")
@@ -21,6 +24,15 @@ async def mock_bluetooth(hass, enable_custom_integrations):
     hass.config.components |= {"bluetooth", "bluetooth_adapters"}
 
 
+@pytest.fixture(autouse=True)
+def mock_manual_validation():
+    with (
+        patch(f"{M}.async_validate_ble_connection", new_callable=AsyncMock) as validation,
+        patch(f"{M}.bluetooth.async_last_service_info", return_value=None),
+    ):
+        yield validation
+
+
 async def _init(hass, source, data=None):
     return await hass.config_entries.flow.async_init(DOMAIN, context={"source": source}, data=data)
 
@@ -29,13 +41,14 @@ async def _confirm(hass, result):
     return await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
 
-async def test_bluetooth_discovery(hass: HomeAssistant):
+async def test_bluetooth_discovery(hass: HomeAssistant, mock_manual_validation):
     r = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC)
     assert r["type"] == FlowResultType.FORM and r["step_id"] == "bluetooth_confirm"
     assert r["description_placeholders"] == {"model": "H617A"}
     r2 = await _confirm(hass, r)
     assert r2["type"] == FlowResultType.CREATE_ENTRY and r2["title"] == "Govee H617A"
     assert r2["data"][CONF_MODEL] == "H617A"
+    mock_manual_validation.assert_not_awaited()
 
 
 async def test_bluetooth_discovery_unsupported_aborts(hass: HomeAssistant):
@@ -81,9 +94,63 @@ async def test_user_step_shows_form(hass: HomeAssistant):
     assert r["type"] == FlowResultType.FORM and r["step_id"] == "user"
 
 
-async def test_user_step_creates_entry(hass: HomeAssistant):
+async def test_user_step_creates_entry(hass: HomeAssistant, mock_manual_validation):
     r = await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: "H617A"})
     assert r["type"] == FlowResultType.CREATE_ENTRY and r["data"][CONF_MODEL] == "H617A"
+    mock_manual_validation.assert_awaited_once_with(hass, "AA:BB:CC:DD:EE:FF")
+
+
+async def test_user_step_rejects_positive_model_mismatch(hass: HomeAssistant, mock_manual_validation):
+    with patch(f"{M}.bluetooth.async_last_service_info", return_value=SVC):
+        r = await _init(
+            hass,
+            config_entries.SOURCE_USER,
+            {CONF_ADDRESS: SVC.address, CONF_MODEL: "H6199"},
+        )
+    assert r["type"] == FlowResultType.FORM
+    assert r["errors"] == {"base": "model_mismatch"}
+    assert not hass.config_entries.async_entries(DOMAIN)
+    mock_manual_validation.assert_not_awaited()
+
+
+async def test_user_step_validates_when_advertised_name_is_unknown(hass: HomeAssistant, mock_manual_validation):
+    service_info = BluetoothServiceInfo("Unknown_Device", "AA:BB:CC:DD:EE:FF", -60, {}, {}, [], "local")
+    with patch(f"{M}.bluetooth.async_last_service_info", return_value=service_info):
+        r = await _init(
+            hass,
+            config_entries.SOURCE_USER,
+            {CONF_ADDRESS: service_info.address, CONF_MODEL: "H617A"},
+        )
+    assert r["type"] == FlowResultType.CREATE_ENTRY
+    mock_manual_validation.assert_awaited_once_with(hass, service_info.address)
+
+
+async def test_user_step_surfaces_connection_failure(hass: HomeAssistant, mock_manual_validation):
+    mock_manual_validation.side_effect = BleakError("unreachable")
+    r = await _init(
+        hass,
+        config_entries.SOURCE_USER,
+        {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: "H617A"},
+    )
+    assert r["type"] == FlowResultType.FORM
+    assert r["errors"] == {"base": "cannot_connect"}
+    assert not hass.config_entries.async_entries(DOMAIN)
+
+
+async def test_user_step_logs_and_surfaces_unexpected_validation_failure(
+    hass: HomeAssistant, mock_manual_validation, caplog
+):
+    mock_manual_validation.side_effect = RuntimeError("unexpected")
+    with caplog.at_level(logging.ERROR):
+        r = await _init(
+            hass,
+            config_entries.SOURCE_USER,
+            {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: "H617A"},
+        )
+    assert r["type"] == FlowResultType.FORM
+    assert r["errors"] == {"base": "unknown"}
+    assert not hass.config_entries.async_entries(DOMAIN)
+    assert "Unexpected error validating a Govee BLE device" in caplog.text
 
 
 @pytest.mark.parametrize("address", ["aa-bb-cc-dd-ee-ff", "aabbccddeeff"])

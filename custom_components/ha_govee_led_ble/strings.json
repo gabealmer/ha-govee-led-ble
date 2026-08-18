@@ -12,11 +12,18 @@
         "data": {
           "address": "BLE Address",
           "model": "Device Model"
+        },
+        "data_description": {
+          "address": "The 12-digit Bluetooth address printed by the device or shown by a BLE scanner.",
+          "model": "The model printed on the device. A conflicting supported model advertised at this address is rejected."
         }
       }
     },
     "error": {
-      "invalid_address": "Enter a valid 12-digit BLE MAC address."
+      "invalid_address": "Enter a valid 12-digit BLE MAC address.",
+      "cannot_connect": "Unable to connect to the device.",
+      "model_mismatch": "The device at this address advertises a different supported model.",
+      "unknown": "Unexpected error while validating the device."
     },
     "abort": {
       "already_configured": "Device is already configured",
@@ -32,6 +39,27 @@
     },
     "invalid_segments": {
       "message": "Select at least one valid segment."
+    },
+    "device_command_failed": {
+      "message": "The device command failed."
+    },
+    "invalid_custom_effect": {
+      "message": "The saved effect is invalid or unavailable."
+    },
+    "effect_storage_unavailable": {
+      "message": "Saved effect storage is unavailable."
+    },
+    "invalid_effect_target": {
+      "message": "{entity_id} is not a Govee BLE light."
+    },
+    "effect_permission_denied": {
+      "message": "You are not allowed to control {entity_id}."
+    },
+    "effect_target_not_loaded": {
+      "message": "{entity_id} is not loaded."
+    },
+    "effect_apply_failed": {
+      "message": "The saved effect could not be applied."
     }
   },
   "issues": {

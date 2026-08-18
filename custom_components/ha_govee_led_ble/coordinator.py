@@ -5,7 +5,7 @@ import logging
 import time
 from collections.abc import Mapping
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from bleak import BleakClient, BleakError  # type: ignore[attr-defined]
 from bleak_retry_connector import establish_connection
@@ -16,6 +16,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
+from .ble_connection import RETRY_BACKOFF_SECONDS, async_establish_ble_connection
 from .ble_device_resolver import BLEDeviceResolver
 from .const import DOMAIN, MUSIC_MODE_SLUGS, default_effect_families, get_profile
 from .coordinator_expectations import expectations_from_packet
@@ -63,11 +64,10 @@ KEEP_ALIVE_INTERVAL = 5
 STATE_QUERY_EVERY_N_KEEP_ALIVES = 3
 RX_STALE_TIMEOUT = KEEP_ALIVE_INTERVAL * 4
 IDENTITY_RETRY_TICKS = 6
-RETRY_BACKOFF_SECONDS = 2
-DEVICE_DISCOVERY_ATTEMPTS = 4
 PACKET_LOG_LIMIT = 50
 PACKET_LOG_RAW_BYTES_LIMIT = 512
 EXPECTED_STATE_TTL = 2.0
+AVAILABILITY_UNAVAILABLE_DATA_KEY = "availability_unavailable"
 
 _CORE_STATE_FIELDS = (
     "is_on",
@@ -439,7 +439,23 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     def _set_present(self, present: bool) -> None:
         if self._present != present:
             self._present = present
+            self._log_availability_transition()
             self.async_update_listeners()
+
+    def _log_availability_transition(self) -> None:
+        if self.hass.is_stopping:
+            return
+        unavailable = cast(
+            set[str],
+            self.hass.data.setdefault(DOMAIN, {}).setdefault(AVAILABILITY_UNAVAILABLE_DATA_KEY, set()),
+        )
+        if self.available:
+            if self.address in unavailable:
+                _LOGGER.info("Govee %s is back online", self.model)
+                unavailable.discard(self.address)
+        elif self.address not in unavailable:
+            _LOGGER.info("Govee %s is unavailable", self.model)
+            unavailable.add(self.address)
 
     @callback
     def _handle_hass_stop(self, _event: Event) -> None:
@@ -461,10 +477,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             except BleakError as err:
                 # ConfigEntryNotReady on first setup only; steady-state refreshes degrade silently
                 # and presence-driven availability tracks the running state.
+                self._log_availability_transition()
                 if first_refresh:
                     raise UpdateFailed(f"{self.address} unreachable at setup") from err
                 _LOGGER.debug("State refresh skipped for %s", self.address)
         elif first_refresh and not self._present:
+            self._log_availability_transition()
             raise UpdateFailed(f"{self.address} not advertising at setup")
         return self._state_snapshot()
 
@@ -478,16 +496,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 return self._client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
             await self.disconnect()
-        resolution = None
-        for attempt in range(DEVICE_DISCOVERY_ATTEMPTS):
-            resolution = await self._device_resolver.async_resolve(self.hass, self.address)
-            if resolution is not None:
-                break
-            if attempt < DEVICE_DISCOVERY_ATTEMPTS - 1:
-                await asyncio.sleep(RETRY_BACKOFF_SECONDS)
-        if resolution is None:
-            raise BleakError(f"Device {self.address} not found")
-        self._client = await establish_connection(resolution.client_class, resolution.device, self.address)
+        self._client = await async_establish_ble_connection(
+            self.hass,
+            self.address,
+            resolver=self._device_resolver,
+            establish=establish_connection,
+            sleep=asyncio.sleep,
+        )
         self._reset_disconnect_timer()
         if self.profile.state_readable:
             try:
@@ -498,6 +513,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             except BleakError:
                 await self.disconnect()
                 raise
+        self._log_availability_transition()
         return self._client
 
     def _reset_disconnect_timer(self) -> None:
@@ -1327,3 +1343,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 self._notify_started_monotonic = None
                 self._last_rx_monotonic = None
                 self._expected_state.clear()
+
+
+def clear_availability_log_state(hass: HomeAssistant, address: str) -> None:
+    """Forget deduplication state when a config entry is removed."""
+    unavailable = hass.data.get(DOMAIN, {}).get(AVAILABILITY_UNAVAILABLE_DATA_KEY)
+    if isinstance(unavailable, set):
+        unavailable.discard(address)

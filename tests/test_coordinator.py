@@ -1,3 +1,4 @@
+import logging
 import time
 from dataclasses import replace
 from types import SimpleNamespace
@@ -1429,6 +1430,48 @@ def test_available_reflects_link_or_presence(coord):
     assert coord.available is True
     coord._client = MagicMock(is_connected=False)
     assert coord.available is False
+
+
+def test_availability_transitions_log_once_without_address(coord, caplog):
+    coord._client, coord._present = None, True
+
+    with caplog.at_level(logging.INFO, logger="custom_components.ha_govee_led_ble.coordinator"):
+        coord._set_present(False)
+        coord._set_present(False)
+        coord._set_present(True)
+        coord._set_present(True)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert messages == ["Govee H617A is unavailable", "Govee H617A is back online"]
+    assert coord.address not in caplog.text
+
+
+def test_availability_log_deduplicates_across_setup_retries(hass, coord, caplog):
+    coord._client, coord._present = None, False
+    retry = GoveeBLECoordinator(
+        hass,
+        coord.address,
+        coord.model,
+        configuration_url=_CONFIGURATION_URL,
+    )
+
+    with caplog.at_level(logging.INFO, logger="custom_components.ha_govee_led_ble.coordinator"):
+        coord._log_availability_transition()
+        retry._log_availability_transition()
+        retry._set_present(True)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert messages == ["Govee H617A is unavailable", "Govee H617A is back online"]
+
+
+async def test_intentional_disconnect_does_not_log_unavailability(coord, caplog):
+    coord._present = False
+    coord._client = _c(disconnect=AsyncMock())
+
+    with caplog.at_level(logging.INFO, logger="custom_components.ha_govee_led_ble.coordinator"):
+        await coord.disconnect()
+
+    assert caplog.records == []
 
 
 def test_device_info_carries_versions_and_omits_connections(coord):

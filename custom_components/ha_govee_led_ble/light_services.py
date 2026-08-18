@@ -4,8 +4,14 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Any
 
+import voluptuous as vol
 from homeassistant.components.light import ColorMode  # type: ignore[attr-defined]
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import service
+from homeassistant.helpers.typing import VolDictType
 
 from .const import DOMAIN
 from .coordinator import GoveeBLECoordinator
@@ -13,7 +19,52 @@ from .generated_protocol_adapter import build_h6199_video, build_power
 from .light_commands import SegmentColorGroup
 from .native_profile_controls import apply_active_video_mode
 
-__all__ = ("apply_active_video_mode",)
+__all__ = ("apply_active_video_mode", "async_register_light_services")
+
+_PERCENTAGE = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
+_SEGMENT = vol.All(vol.Coerce(int), vol.Range(min=1, max=15))
+_SEGMENTS = vol.All([_SEGMENT], vol.Length(min=1))
+_RGB = vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple))
+_PAINT_SEGMENTS_SCHEMA: VolDictType = {
+    vol.Required("groups"): vol.All(
+        [
+            {
+                vol.Required("segments"): _SEGMENTS,
+                vol.Required("rgb_color"): _RGB,
+            }
+        ],
+        vol.Length(min=1),
+    ),
+}
+_SET_SEGMENT_COLOR_SCHEMA: VolDictType = {
+    vol.Required("segments"): _SEGMENTS,
+    vol.Required("color"): _RGB,
+}
+_SET_SEGMENT_BRIGHTNESS_SCHEMA: VolDictType = {
+    vol.Required("segments"): _SEGMENTS,
+    vol.Required("brightness"): _PERCENTAGE,
+}
+
+
+def async_register_light_services(hass: HomeAssistant) -> None:
+    """Register light entity services before config entries are loaded."""
+    for name, schema, method in (
+        ("paint_segments", _PAINT_SEGMENTS_SCHEMA, "async_paint_segments"),
+        ("set_segment_color", _SET_SEGMENT_COLOR_SCHEMA, "async_set_segment_color"),
+        (
+            "set_segment_brightness",
+            _SET_SEGMENT_BRIGHTNESS_SCHEMA,
+            "async_set_segment_brightness",
+        ),
+    ):
+        service.async_register_platform_entity_service(
+            hass,
+            DOMAIN,
+            name,
+            entity_domain=Platform.LIGHT,
+            func=method,
+            schema=schema,
+        )
 
 
 class _GoveeLightOwner:
@@ -111,6 +162,13 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                     translation_domain=DOMAIN,
                     translation_key="invalid_segments",
                 ) from err
+            except HomeAssistantError:
+                raise
+            except Exception as err:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="device_command_failed",
+                ) from err
 
     async def async_set_segment_color(self, segments: list[int], color: tuple[int, int, int]) -> None:
         group: dict[str, Any] = {"segments": segments, "rgb_color": color}
@@ -130,5 +188,12 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,
                     translation_key="invalid_segments",
+                ) from err
+            except HomeAssistantError:
+                raise
+            except Exception as err:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="device_command_failed",
                 ) from err
             self._notify_state_changed()

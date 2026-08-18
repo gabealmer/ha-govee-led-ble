@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 import voluptuous as vol
+from bleak import BleakError  # type: ignore[attr-defined]
+from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfo
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 
+from .ble_connection import async_validate_ble_connection
 from .const import (
     CONF_EFFECT_FAMILIES,
     CONF_MODEL,
@@ -22,6 +26,8 @@ from .const import (
     resolve_model,
     supported_effect_families,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H\w+)")
 _MANUAL_ADDRESS_PATTERN = re.compile(r"^[0-9A-F]{12}$")
@@ -78,9 +84,19 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self._show_user_form(errors={CONF_ADDRESS: "invalid_address"})
             await self.async_set_unique_id(address)
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title=f"Govee {user_input[CONF_MODEL]}", data={CONF_MODEL: user_input[CONF_MODEL]}
-            )
+            selected_model = user_input[CONF_MODEL]
+            service_info = bluetooth.async_last_service_info(self.hass, address, connectable=True)
+            advertised_model = _extract_model(service_info.name) if service_info is not None else None
+            if advertised_model is not None and advertised_model != selected_model:
+                return self._show_user_form(errors={"base": "model_mismatch"})
+            try:
+                await async_validate_ble_connection(self.hass, address)
+            except BleakError:
+                return self._show_user_form(errors={"base": "cannot_connect"})
+            except Exception:  # noqa: BLE001 - config flows must surface unexpected validation failures.
+                _LOGGER.exception("Unexpected error validating a Govee BLE device")
+                return self._show_user_form(errors={"base": "unknown"})
+            return self.async_create_entry(title=f"Govee {selected_model}", data={CONF_MODEL: selected_model})
         return self._show_user_form()
 
     def _show_user_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:

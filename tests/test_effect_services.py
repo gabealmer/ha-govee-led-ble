@@ -101,7 +101,7 @@ async def test_service_rejects_non_govee_entity(
         "test-light",
     )
 
-    with pytest.raises(ServiceValidationError, match="not a Govee"):
+    with pytest.raises(ServiceValidationError) as exc:
         await async_apply_custom_effect(
             hass,
             backend,
@@ -113,6 +113,9 @@ async def test_service_rejects_non_govee_entity(
                 },
             ),
         )
+    assert exc.value.translation_domain == DOMAIN
+    assert exc.value.translation_key == "invalid_effect_target"
+    assert exc.value.translation_placeholders == {"entity_id": registry_entry.entity_id}
 
 
 async def test_service_checks_entity_control_permission(
@@ -130,7 +133,7 @@ async def test_service_checks_entity_control_permission(
         config_entry=entry,
     )
 
-    with pytest.raises(ServiceValidationError, match="not allowed"):
+    with pytest.raises(ServiceValidationError) as exc:
         await async_apply_custom_effect(
             hass,
             backend,
@@ -142,3 +145,6 @@ async def test_service_checks_entity_control_permission(
                 },
             ),
         )
+    assert exc.value.translation_domain == DOMAIN
+    assert exc.value.translation_key == "effect_permission_denied"
+    assert exc.value.translation_placeholders == {"entity_id": registry_entry.entity_id}

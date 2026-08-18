@@ -73,7 +73,10 @@ async def async_apply_custom_effect(
             config_entry_id=config_entry.entry_id,
             error_type=type(exc).__name__,
         )
-        raise ServiceValidationError(str(exc)) from exc
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_custom_effect",
+        ) from exc
     except EffectStorageError as exc:
         _record_rejection(
             backend,
@@ -82,7 +85,10 @@ async def async_apply_custom_effect(
             config_entry_id=config_entry.entry_id,
             error_type=type(exc).__name__,
         )
-        raise HomeAssistantError(str(exc)) from exc
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="effect_storage_unavailable",
+        ) from exc
     await _async_apply_item(backend, config_entry, item, correlation_id)
 
 
@@ -101,7 +107,11 @@ async def _async_resolve_target(
         or registry_entry.config_entry_id is None
     ):
         _record_rejection(backend, correlation_id, "invalid_target")
-        raise ServiceValidationError(f"{entity_id} is not a Govee BLE light")
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_effect_target",
+            translation_placeholders={"entity_id": entity_id},
+        )
     if call.context.user_id is not None:
         user = await hass.auth.async_get_user(call.context.user_id)
         if user is None or not user.permissions.check_entity(
@@ -109,11 +119,19 @@ async def _async_resolve_target(
             POLICY_CONTROL,
         ):
             _record_rejection(backend, correlation_id, "permission_denied")
-            raise ServiceValidationError(f"User is not allowed to control {entity_id}")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="effect_permission_denied",
+                translation_placeholders={"entity_id": entity_id},
+            )
     config_entry = hass.config_entries.async_get_entry(registry_entry.config_entry_id)
     if config_entry is None or config_entry.state is not ConfigEntryState.LOADED:
         _record_rejection(backend, correlation_id, "target_not_loaded")
-        raise ServiceValidationError(f"{entity_id} is not loaded")
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="effect_target_not_loaded",
+            translation_placeholders={"entity_id": entity_id},
+        )
     return config_entry
 
 
@@ -150,7 +168,10 @@ async def _async_apply_item(
             operation_id=correlation_id,
             details={"error_type": type(exc).__name__},
         )
-        raise ServiceValidationError(str(exc)) from exc
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_custom_effect",
+        ) from exc
     except EffectNotFoundError as exc:
         _record_rejection(
             backend,
@@ -159,7 +180,10 @@ async def _async_apply_item(
             config_entry_id=config_entry.entry_id,
             error_type=type(exc).__name__,
         )
-        raise ServiceValidationError(str(exc)) from exc
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_custom_effect",
+        ) from exc
     except EffectStorageError as exc:
         _record_rejection(
             backend,
@@ -168,7 +192,10 @@ async def _async_apply_item(
             config_entry_id=config_entry.entry_id,
             error_type=type(exc).__name__,
         )
-        raise HomeAssistantError(str(exc)) from exc
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="effect_storage_unavailable",
+        ) from exc
     except Exception as exc:
         _record_rejection(
             backend,
@@ -177,7 +204,10 @@ async def _async_apply_item(
             config_entry_id=config_entry.entry_id,
             error_type=type(exc).__name__,
         )
-        raise HomeAssistantError(str(exc)) from exc
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="effect_apply_failed",
+        ) from exc
 
 
 def _record_rejection(

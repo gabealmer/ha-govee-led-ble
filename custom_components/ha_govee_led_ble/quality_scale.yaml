@@ -1,8 +1,80 @@
 rules:
+  # Bronze
+  action-setup: done
+  appropriate-polling: done
+  brands: todo
+  common-modules: done
   config-flow: done
-  config-entry-unloading: done
-  diagnostics: done
+  config-flow-test-coverage: done
+  dependency-transparency: done
+  docs-actions: todo
+  docs-high-level-description: todo
+  docs-installation-instructions: todo
+  docs-removal-instructions: todo
+  entity-event-setup:
+    status: exempt
+    comment: Entities use CoordinatorEntity lifecycle handling; BLE subscriptions belong to the config-entry coordinator.
+  entity-unique-id: done
   has-entity-name: done
-  parallel-updates: done
   runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  # Silver
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters: todo
+  docs-installation-parameters: todo
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow:
+    status: exempt
+    comment: The local BLE protocol does not use authentication.
   test-coverage: done
+
+  # Gold
+  devices: done
+  diagnostics: done
+  discovery: done
+  discovery-update-info:
+    status: exempt
+    comment: The BLE address is the stable device identity, and the integration stores no mutable network information.
+  docs-data-update: todo
+  docs-examples: todo
+  docs-known-limitations: todo
+  docs-supported-devices: todo
+  docs-supported-functions: todo
+  docs-troubleshooting: todo
+  docs-use-cases: todo
+  dynamic-devices:
+    status: exempt
+    comment: Each config entry represents exactly one BLE device.
+  entity-category: done
+  entity-device-class:
+    status: done
+    comment: No LightEntity device class exists that would add applicable context.
+  entity-disabled-by-default:
+    status: done
+    comment: The sole entity is the device's primary LightEntity control, so there are no secondary or noisy entities that should be disabled by default.
+  entity-translations: done
+  exception-translations: done
+  icon-translations:
+    status: done
+    comment: The sole main LightEntity uses the built-in light-domain icon and defines no custom or state-specific icon logic.
+  reconfiguration-flow:
+    status: exempt
+    comment: The configured BLE address and device model are immutable device identity.
+  repair-issues: done
+  stale-devices:
+    status: exempt
+    comment: Each config entry owns one device, which is removed with the config entry.
+
+  # Platinum
+  async-dependency: done
+  inject-websession:
+    status: exempt
+    comment: The integration does not use HTTP clients.
+  strict-typing: done

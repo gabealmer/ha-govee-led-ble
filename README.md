@@ -94,6 +94,10 @@ Timers, the active-mode sensor and the old mode services were removed.  Segment 
 
 Download `ha_govee_led_ble.zip` from the GitHub release, extract it into `config/custom_components/ha_govee_led_ble/`, and restart Home Assistant.  A source checkout does not contain generated runtime modules; developers building from source must run `make package` and install the resulting ZIP.
 
+### Updating
+
+Restart Home Assistant after updating this integration through HACS or replacing the manual installation.  Home Assistant can reload a config entry's runtime state, but integration updates contain Python modules that are loaded when Home Assistant starts.
+
 ## Configuration
 
 The integration auto-discovers nearby supported devices.
