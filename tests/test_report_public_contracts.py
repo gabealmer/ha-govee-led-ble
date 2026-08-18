@@ -16,6 +16,4 @@ def test_service_and_websocket_names_are_stable() -> None:
         "paint_segments",
         "set_value",
     ]
-    assert _websocket_commands('WS_INFO = f"{DOMAIN}/editor/info"\n') == [
-        "ha_govee_led_ble/editor/info"
-    ]
+    assert _websocket_commands('WS_INFO = f"{DOMAIN}/editor/info"\n') == ["ha_govee_led_ble/editor/info"]

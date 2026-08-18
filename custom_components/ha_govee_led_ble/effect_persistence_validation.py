@@ -127,8 +127,7 @@ def validate_persisted_rgb(value: tuple[int, int, int], name: str) -> None:
         not isinstance(value, tuple)
         or len(value) != 3
         or any(
-            not isinstance(channel, int) or isinstance(channel, bool) or not 0 <= channel <= 0xFF
-            for channel in value
+            not isinstance(channel, int) or isinstance(channel, bool) or not 0 <= channel <= 0xFF for channel in value
         )
     ):
         raise EffectStorageError(f"{name} must contain three channels from 0 to 255")

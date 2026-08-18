@@ -70,6 +70,7 @@ _LOGGER = logging.getLogger(__name__)
 MIN_COLOR_TEMP_KELVIN = 2000
 MAX_COLOR_TEMP_KELVIN = 9000
 
+
 def _coerce_rgb(raw: Any) -> tuple[int, int, int] | None:
     if not isinstance(raw, list | tuple) or len(raw) != 3:
         return None

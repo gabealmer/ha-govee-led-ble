@@ -40,13 +40,10 @@ def categories(path: str) -> set[str]:
         result.add("python_tests")
     if path.startswith(FRONTEND_TESTS):
         result.add("frontend_tests")
-    if (
-        (path.startswith("tools/generate_frontend_") and suffix == ".py")
-        or (
-            path.startswith(("tools/ble/", "tools/harness/"))
-            and not path.startswith("tools/ble/kaitai/")
-            and suffix in TOOL_SOURCE_SUFFIXES
-        )
+    if (path.startswith("tools/generate_frontend_") and suffix == ".py") or (
+        path.startswith(("tools/ble/", "tools/harness/"))
+        and not path.startswith("tools/ble/kaitai/")
+        and suffix in TOOL_SOURCE_SUFFIXES
     ):
         result.add("non_kaitai_tools")
     if path == "Makefile" or path.startswith(("scripts/", ".github/workflows/")):
@@ -105,9 +102,7 @@ def report(ref: str, *, working_generated: bool = False) -> dict[str, int | str]
             add(category, lines)
     if working_generated and values["ref"] == _run("git", "rev-parse", "HEAD").decode().strip():
         protocol_root = REPO / GENERATED_PROTOCOL
-        values["ignored_generated_protocol"] = sum(
-            line_count(path.read_bytes()) for path in protocol_root.glob("*.py")
-        )
+        values["ignored_generated_protocol"] = sum(line_count(path.read_bytes()) for path in protocol_root.glob("*.py"))
         values["ignored_generated_frontend"] = sum(
             line_count((REPO / path).read_bytes()) for path in IGNORED_FRONTEND_OUTPUTS if (REPO / path).is_file()
         )

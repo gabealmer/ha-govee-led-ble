@@ -19,9 +19,7 @@ VIDEO_EFFECTS: dict[str, str] = {
     "Video: Movie": "movie",
     "Video: Game": "game",
 }
-MUSIC_EFFECTS: dict[str, str] = {
-    f"Music: {slug.replace('_', ' ').title()}": slug for slug in MUSIC_MODE_SLUGS
-}
+MUSIC_EFFECTS: dict[str, str] = {f"Music: {slug.replace('_', ' ').title()}": slug for slug in MUSIC_MODE_SLUGS}
 
 
 def normalise_effect_name(effect_name: str) -> str:
