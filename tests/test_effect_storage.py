@@ -1,0 +1,382 @@
+"""Current-only saved-effect storage and migration."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import replace
+from pathlib import Path
+from typing import Any
+from unittest.mock import AsyncMock
+
+import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import STORAGE_DIR, Store, get_internal_store_manager
+
+from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
+from custom_components.ha_govee_led_ble.effect_domain import (
+    LibraryItem,
+    Origin,
+    SingleEffect,
+    SourceKind,
+)
+from custom_components.ha_govee_led_ble.effect_migration import (
+    LEGACY_DRAFT_STORE_KEY,
+    MIGRATION_BACKUP_STORE_KEY,
+)
+from custom_components.ha_govee_led_ble.effect_scene_defaults import (
+    NativeSceneDefault,
+    NativeSceneDefaultRepository,
+)
+from custom_components.ha_govee_led_ble.effect_storage import (
+    LIBRARY_STORE_KEY,
+    LIBRARY_STORE_VERSION,
+    EffectLibraryRepository,
+    EffectNotFoundError,
+    EffectStorageError,
+    EffectVersionConflictError,
+)
+from tests.storage_test_double import InMemoryVersionedDocumentStore
+
+TIMESTAMP = "2026-08-17T00:00:00+00:00"
+
+
+def _item(name: str = "Test", *, updated_at: str = TIMESTAMP) -> LibraryItem:
+    return LibraryItem.new(
+        name,
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+        updated_at=updated_at,
+    )
+
+
+async def test_current_only_library_creates_updates_and_hard_deletes() -> None:
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectLibraryRepository(store)
+    assert (await repository.async_load()).items == ()
+    item = _item()
+
+    created = await repository.async_create(item)
+    updated_item = replace(
+        item,
+        version=2,
+        updated_at="2026-08-17T00:01:00+00:00",
+        name="Renamed",
+    )
+    updated = await repository.async_update(
+        updated_item,
+        expected_version=1,
+        expected_updated_at=TIMESTAMP,
+    )
+    deleted = await repository.async_delete(
+        item.id,
+        expected_version=2,
+        expected_updated_at=updated_item.updated_at,
+    )
+
+    assert created.items == (item,)
+    assert updated.items == (updated_item,)
+    assert deleted.items == ()
+    with pytest.raises(EffectNotFoundError):
+        repository.get(item.id)
+    assert store.data == {"items": {}}
+
+
+@pytest.mark.parametrize(
+    ("version", "updated_at"),
+    [(0, TIMESTAMP), (1, "2026-08-17T00:00:01+00:00")],
+)
+async def test_update_rejects_stale_version_or_timestamp(version: int, updated_at: str) -> None:
+    repository = EffectLibraryRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    item = _item()
+    await repository.async_create(item)
+
+    with pytest.raises(EffectVersionConflictError) as error:
+        await repository.async_update(
+            replace(item, version=2, updated_at="2026-08-17T00:01:00+00:00"),
+            expected_version=version,
+            expected_updated_at=updated_at,
+        )
+
+    assert error.value.current_version == 1
+
+
+async def test_update_rejects_origin_mutation() -> None:
+    repository = EffectLibraryRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    item = _item()
+    await repository.async_create(item)
+
+    with pytest.raises(EffectStorageError, match="origin is immutable"):
+        await repository.async_update(
+            replace(
+                item,
+                version=2,
+                updated_at="2026-08-17T00:01:00+00:00",
+                origin=Origin(SourceKind.IMPORTED, "other"),
+            ),
+            expected_version=1,
+            expected_updated_at=TIMESTAMP,
+        )
+
+
+async def test_failed_save_does_not_publish_candidate_state(monkeypatch) -> None:
+    repository = EffectLibraryRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    listener = AsyncMock()
+    repository.subscribe(listener)
+    monkeypatch.setattr(repository._store, "async_save", AsyncMock(side_effect=OSError("disk unavailable")))
+
+    with pytest.raises(OSError, match="disk unavailable"):
+        await repository.async_create(_item())
+
+    assert repository.snapshot().items == ()
+    listener.assert_not_called()
+
+
+async def test_legacy_migration_keeps_only_live_head(hass: HomeAssistant) -> None:
+    live = _item()
+    deleted = _item("Deleted")
+    await _save_legacy_library(hass, live, deleted)
+
+    (migrated,) = (await EffectLibraryRepository(hass).async_load()).items
+
+    assert migrated.id == live.id
+    assert migrated.version == 2
+    assert migrated.name == "Current"
+    assert migrated.origin == Origin()
+    assert "Old" not in str(await Store[dict[str, Any]](hass, LIBRARY_STORE_VERSION, LIBRARY_STORE_KEY).async_load())
+
+
+async def test_multi_store_migration_restores_original_documents_after_failure(
+    hass: HomeAssistant,
+    monkeypatch,
+) -> None:
+    live = _item()
+    await _save_legacy_library(hass, live)
+    await _save_legacy_drafts(hass)
+    _write_raw_store(hass, LIBRARY_STORE_KEY, 1, 1, _legacy_library_data(live))
+    _write_raw_store(hass, LEGACY_DRAFT_STORE_KEY, 1, 1, {"owners": {}})
+    library_path = Path(hass.config.path(STORAGE_DIR, LIBRARY_STORE_KEY))
+    draft_path = Path(hass.config.path(STORAGE_DIR, LEGACY_DRAFT_STORE_KEY))
+    original_library = library_path.read_text(encoding="utf-8")
+    original_drafts = draft_path.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        EffectDeploymentRepository,
+        "async_load",
+        AsyncMock(side_effect=OSError("deployment migration failed")),
+    )
+
+    with pytest.raises(OSError, match="deployment migration failed"):
+        await EffectBackend.async_create(hass)
+
+    assert library_path.read_text(encoding="utf-8") == original_library
+    assert draft_path.read_text(encoding="utf-8") == original_drafts
+    backup_store: Store[dict[str, Any]] = Store(
+        hass,
+        1,
+        MIGRATION_BACKUP_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=0,
+    )
+    assert await backup_store.async_load() is not None
+    await backup_store.async_remove()
+
+
+async def test_successful_multi_store_migration_removes_drafts_and_temporary_backup(
+    hass: HomeAssistant,
+) -> None:
+    live = _item()
+    await _save_legacy_library(hass, live)
+    await _save_legacy_drafts(hass)
+    _write_raw_store(hass, LIBRARY_STORE_KEY, 1, 1, _legacy_library_data(live))
+    _write_raw_store(hass, LEGACY_DRAFT_STORE_KEY, 1, 1, {"owners": {}})
+    draft_path = Path(hass.config.path(STORAGE_DIR, LEGACY_DRAFT_STORE_KEY))
+
+    backend = await EffectBackend.async_create(hass)
+
+    assert backend.library.get(live.id).name == "Current"
+    assert (
+        await Store[dict[str, Any]](
+            hass,
+            1,
+            MIGRATION_BACKUP_STORE_KEY,
+            private=True,
+            atomic_writes=True,
+            minor_version=0,
+        ).async_load()
+        is not None
+    )
+    assert draft_path.is_file()
+
+    await backend.async_complete_storage_migration()
+
+    assert (
+        await Store[dict[str, Any]](
+            hass,
+            1,
+            MIGRATION_BACKUP_STORE_KEY,
+            private=True,
+            atomic_writes=True,
+            minor_version=0,
+        ).async_load()
+        is None
+    )
+    assert not draft_path.exists()
+
+
+async def _save_legacy_library(
+    hass: HomeAssistant,
+    live: LibraryItem,
+    deleted: LibraryItem | None = None,
+) -> None:
+    legacy = Store[dict[str, Any]](
+        hass,
+        1,
+        LIBRARY_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=1,
+    )
+    await legacy.async_save(_legacy_library_data(live, deleted))
+
+
+def _legacy_library_data(
+    live: LibraryItem,
+    deleted: LibraryItem | None = None,
+) -> dict[str, Any]:
+    resources: dict[str, Any] = {
+        str(live.id): {
+            "head_revision": 2,
+            "deleted": False,
+            "revisions": {
+                "1": _legacy_item(live, revision=1, name="Old"),
+                "2": _legacy_item(live, revision=2, name="Current"),
+            },
+        }
+    }
+    if deleted is not None:
+        resources[str(deleted.id)] = {
+            "head_revision": 1,
+            "deleted": True,
+            "revisions": {"1": _legacy_item(deleted, revision=1)},
+        }
+    return {"library_revision": 7, "resources": resources}
+
+
+def _write_raw_store(
+    hass: HomeAssistant,
+    key: str,
+    version: int,
+    minor_version: int,
+    data: dict[str, Any],
+) -> None:
+    path = Path(hass.config.path(STORAGE_DIR, key))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "version": version,
+                "minor_version": minor_version,
+                "key": key,
+                "data": data,
+            }
+        ),
+        encoding="utf-8",
+    )
+    get_internal_store_manager(hass).async_invalidate(key)
+
+
+async def _save_legacy_drafts(hass: HomeAssistant) -> None:
+    await Store[dict[str, Any]](
+        hass,
+        1,
+        LEGACY_DRAFT_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=1,
+    ).async_save({"owners": {}})
+
+
+async def test_corrupt_current_store_fails_closed(hass: HomeAssistant) -> None:
+    store = Store[dict[str, Any]](
+        hass,
+        LIBRARY_STORE_VERSION,
+        LIBRARY_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+    )
+    await store.async_save({"items": {"not-a-uuid": {"id": "not-a-uuid"}}})
+
+    with pytest.raises(EffectStorageError):
+        await EffectLibraryRepository(hass).async_load()
+
+
+async def test_native_scene_defaults_persist_complete_bodies_and_delete_with_device() -> None:
+    store = InMemoryVersionedDocumentStore()
+    repository = NativeSceneDefaultRepository(store)
+    await repository.async_load()
+    value = NativeSceneDefault(
+        config_entry_id="entry-a",
+        scene_id=1,
+        effect_id=2,
+        updated_at=TIMESTAMP,
+        canonical_body=b"\x01\x02\x03",
+        speed_index=4,
+    )
+
+    await repository.async_set(value)
+    reloaded = NativeSceneDefaultRepository(store)
+    await reloaded.async_load()
+    persisted = reloaded.get("entry-a", 1, 2)
+
+    assert persisted == value
+    assert persisted is not None
+    assert persisted.content_hash == value.to_dict()["content_hash"]
+
+    await reloaded.async_delete("entry-a", 1, 2)
+    assert reloaded.get("entry-a", 1, 2) is None
+
+    await reloaded.async_set(value)
+    await reloaded.async_delete_device("entry-a")
+    assert reloaded.get("entry-a", 1, 2) is None
+
+
+def test_native_scene_default_rejects_body_hash_mismatch() -> None:
+    value = NativeSceneDefault(
+        config_entry_id="entry-a",
+        scene_id=1,
+        effect_id=2,
+        updated_at=TIMESTAMP,
+        canonical_body=b"\x01\x02\x03",
+    )
+    document = value.to_dict()
+    document["content_hash"] = "0" * 64
+
+    with pytest.raises(EffectStorageError, match="content hash"):
+        NativeSceneDefault.from_dict(document)
+
+
+def _legacy_item(item: LibraryItem, *, revision: int, name: str | None = None) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "id": str(item.id),
+        "revision": revision,
+        "name": name or item.name,
+        "content": {
+            "kind": "h617a_single",
+            "family": 0,
+            "variant": 0,
+            "speed": 50,
+            "palette": [[255, 0, 0]],
+        },
+        "provenance": {
+            "source_kind": "authored",
+            "source_id": None,
+            "source_revision": None,
+            "parent_id": None,
+            "parent_revision": None,
+        },
+        "extensions": {},
+    }

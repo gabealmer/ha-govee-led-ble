@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,13 +9,35 @@ from bleak import BleakError
 from homeassistant.components.light import ColorMode
 from homeassistant.exceptions import ServiceValidationError
 
-from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+from custom_components.ha_govee_led_ble.effect_domain import (
+    LibraryItem,
+    RelativeBrightness,
+    SingleEffect,
+    VideoProfile,
+)
+from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefault
+from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
+    build_h617a_scene,
+    build_h6199_video,
+    build_power,
+)
 from custom_components.ha_govee_led_ble.light import (
     GoveeBLELight,
+    _coerce_segment_brightness,
     _coerce_segment_colors,
     async_setup_entry,
 )
+from custom_components.ha_govee_led_ble.light_commands import (
+    build_color_rgb,
+    build_color_temp,
+    kelvin_to_rgb,
+)
+from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENES
 
 
@@ -55,7 +78,7 @@ def test_basic_and_color_props(light, mock_coordinator):
 @pytest.mark.parametrize("on", [True, False])
 async def test_power(light, mock_coordinator, on):
     await (light.async_turn_on() if on else light.async_turn_off())
-    mock_coordinator.send_command.assert_called_with(proto.build_power(on))
+    mock_coordinator.send_command.assert_called_with(build_power(on))
     assert mock_coordinator.is_on is on
 
 
@@ -70,35 +93,35 @@ async def test_turn_on_variants(light, mock_coordinator):
 
     await light.async_turn_on(brightness=128)
     c = co.send_command.call_args_list
-    assert len(c) == 2 and c[1].args[0] == proto.build_brightness(50)
+    assert len(c) == 2 and c[1].args[0] == build_brightness(50)
     co.send_command.reset_mock()
     co.refresh_state.reset_mock()
     co.is_on = True
     await light.async_turn_on(brightness=128)
     assert co.send_command.call_count == 1
-    assert co.send_command.call_args_list[0].args[0] == proto.build_brightness(50)
+    assert co.send_command.call_args_list[0].args[0] == build_brightness(50)
     assert co.refresh_state.await_args.kwargs["expected_brightness"] == 50
     c = await _on(rgb_color=(255, 0, 128))
-    assert len(c) == 2 and c[1].args[0] == proto.build_color_rgb(255, 0, 128) and co.rgb_color == (255, 0, 128)
+    assert len(c) == 2 and c[1].args[0] == build_color_rgb(255, 0, 128) and co.rgb_color == (255, 0, 128)
     c = await _on(color_temp_kelvin=4000)
-    assert c[1].args[0] == proto.build_color_temp(4000) and co.color_temp_kelvin == 4000
+    assert c[1].args[0] == build_color_temp(4000) and co.color_temp_kelvin == 4000
     assert light._attr_color_mode == ColorMode.COLOR_TEMP
     co.effect = "rainbow"
     await _on(color_temp_kelvin=5000)
     assert co.effect is None
     c = await _on(effect="rainbow")
-    assert c[1].args[0] == proto.build_scene(SCENES["rainbow"].code) and co.effect == "rainbow"
+    assert c[1].args[0] == build_h617a_scene(SCENES["rainbow"].code) and co.effect == "rainbow"
     c = await _on(effect="Candy")
     packets = [call.args[0] for call in c]
-    assert packets[1][0] == 0xA3 and packets[-1] == proto.build_scene(SCENES["candy"].code) and co.effect == "candy"
+    assert packets[1][0] == 0xA3 and packets[-1] == build_h617a_scene(SCENES["candy"].code) and co.effect == "candy"
     c = await _on(effect="“candy”")
     packets = [call.args[0] for call in c]
-    assert packets[1][0] == 0xA3 and packets[-1] == proto.build_scene(SCENES["candy"].code) and co.effect == "candy"
+    assert packets[1][0] == 0xA3 and packets[-1] == build_h617a_scene(SCENES["candy"].code) and co.effect == "candy"
     co.send_command.reset_mock()
     co.is_on = False
     await light.async_turn_on(effect="forest")
     packets = [call.args[0] for call in co.send_command.call_args_list]
-    assert packets[0] == proto.build_power(True)
+    assert packets[0] == build_power(True)
     assert len(packets) > 2 and packets[1][0] == 0xA3 and packets[-1][0] == 0x33
 
 
@@ -121,13 +144,166 @@ def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinat
     assert "Music: Energetic" in el and "Music: Piano Keys" in el
     assert "Video: Movie" not in el and "music: energetic" not in el
     h = h6199_light.effect_list
-    assert h == ["Video: Movie", "Video: Game"]
+    assert h == ["off", "Video: Movie", "Video: Game"]
 
     mock_h6199_coordinator.effect_families = frozenset({"scenes", "music", "video"})
     h = h6199_light.effect_list
     assert "Sunrise" in h and "Music: Rhythm" in h and h[-2:] == ["Video: Movie", "Video: Game"]
     assert "Music: Bloom" not in h and "Music: Shiny" not in h
     assert "Forest" in h and "Aurora-A" in h
+
+
+async def test_saved_effects_are_compatible_reactive_and_lock_safe(
+    mock_coordinator,
+):
+    saved = LibraryItem.new(
+        "My Effect",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    incompatible = LibraryItem.new(
+        "Movie profile",
+        VideoProfile(
+            "H6199",
+            "movie",
+            True,
+            100,
+            False,
+            100,
+            10,
+            RelativeBrightness(100, 100, 100, 100),
+            False,
+        ),
+    )
+    listener = None
+
+    def subscribe(callback):
+        nonlocal listener
+        listener = callback
+        return MagicMock()
+
+    application = SimpleNamespace(
+        library_snapshot=MagicMock(
+            return_value=LibrarySnapshot((saved, incompatible)),
+        ),
+        subscribe_library=MagicMock(side_effect=subscribe),
+        async_apply_saved_effect=AsyncMock(),
+    )
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=application,
+            engine=MagicMock(),
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+    entity.async_write_ha_state = MagicMock()
+
+    assert entity.effect_list[-1] == "My Effect"
+    assert "Movie profile" not in entity.effect_list
+
+    await entity.async_turn_on(effect="my effect")
+
+    application.async_apply_saved_effect.assert_awaited_once_with(
+        backend.engine,
+        mock_coordinator,
+        item_id=str(saved.id),
+        config_entry_id="entry-a",
+        updated_at=application.async_apply_saved_effect.await_args.kwargs["updated_at"],
+        expected_version=saved.version,
+    )
+    mock_coordinator.send_command.assert_awaited_once_with(build_power(True))
+    assert mock_coordinator.is_on is True
+
+    assert listener is None
+    entity._async_restore_static_color = AsyncMock()
+    entity._async_restore_segments = AsyncMock()
+    entity.async_on_remove = MagicMock()
+    with patch(
+        "custom_components.ha_govee_led_ble.entity.GoveeBLEEntity.async_added_to_hass",
+        new_callable=AsyncMock,
+    ):
+        await entity.async_added_to_hass()
+    assert listener is not None
+
+    listener(LibrarySnapshot(()))
+
+    assert "My Effect" not in entity.effect_list
+    entity.async_write_ha_state.assert_called()
+
+
+def test_active_saved_effect_uses_current_name_only_for_matching_content(
+    mock_coordinator,
+):
+    saved = LibraryItem.new(
+        "Original name",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    renamed = replace(
+        saved,
+        version=2,
+        name="Renamed effect",
+        updated_at="2026-08-17T00:00:01+00:00",
+    )
+    hint = SimpleNamespace(
+        source_kind="saved_effect",
+        item_id=saved.id,
+        content_hash=saved.content_hash,
+        observable_signature="custom:800",
+    )
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(
+                    return_value=LibrarySnapshot((renamed,)),
+                )
+            ),
+            device_cache=SimpleNamespace(
+                get=MagicMock(
+                    return_value=SimpleNamespace(active_effect=hint),
+                )
+            ),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+    entity.async_write_ha_state = MagicMock()
+    mock_coordinator.is_on = True
+    mock_coordinator.diy_code = 800
+
+    assert entity.effect == "Renamed effect"
+
+    mock_coordinator.diy_code = None
+    mock_coordinator.effect = "forest"
+    assert entity.effect == "Forest"
+
+    mock_coordinator.effect = None
+    assert entity.effect == "off"
+
+    mock_coordinator.unknown_scene_code = 800
+    assert entity.effect == "Renamed effect"
+
+    mock_coordinator.unknown_scene_code = None
+    mock_coordinator.diy_code = 800
+
+    changed = replace(
+        renamed,
+        version=3,
+        content=SingleEffect(0, 0, 60, ((255, 0, 0),)),
+        updated_at="2026-08-17T00:00:02+00:00",
+        content_hash="",
+    )
+    entity._library_updated(LibrarySnapshot((changed,)))
+
+    assert entity.effect == "off"
 
 
 async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
@@ -138,25 +314,76 @@ async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
     await light.async_turn_on(effect="rainbow")
     sent = [call.args[0] for call in co.send_command.call_args_list]
     scene = SCENES["rainbow"]
-    assert sent == proto.build_scene_multi(scene.param, scene.code, scene.scene_type)
+    assert sent == build_native_scene_packets("H617A", scene)
     assert co.effect == "rainbow"
     assert co.diy_code is None
     assert co.music_mode == "off" and co.video_mode == "off"
 
 
-async def test_turn_on_scene_reuses_only_that_scenes_speed(light, mock_coordinator):
-    co = mock_coordinator
-    scene = SCENES["glacier"]
-    assert scene.speed is not None
-    co.is_on = True
-    co.scene_speed_scene_code, co.scene_speed_index = scene.code, 0
+async def test_turn_on_effect_off_returns_to_static_colour(light, mock_coordinator):
+    mock_coordinator.is_on = True
+    mock_coordinator.effect = "rainbow"
+    mock_coordinator.rgb_color = (12, 34, 56)
+    mock_coordinator.segment_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)] * 5
+    mock_coordinator.unknown_scene_code = 800
 
-    await light.async_turn_on(effect="glacier")
+    await light.async_turn_on(effect="off")
 
-    assert [call.args[0] for call in co.send_command.await_args_list] == proto.build_scene_multi(
-        scene.param, scene.code, scene.scene_type, scene.speed, speed_index=0
+    mock_coordinator.send_command.assert_awaited_once_with(build_color_rgb(12, 34, 56))
+    assert mock_coordinator.effect is None
+    assert mock_coordinator.unknown_scene_code is None
+    assert mock_coordinator.segment_colors == [(12, 34, 56)] * 15
+    assert mock_coordinator.segment_state_source == "optimistic"
+    assert light.effect == "off"
+
+
+async def test_turn_on_effect_off_restores_colour_temperature(light, mock_coordinator):
+    mock_coordinator.is_on = True
+    mock_coordinator.effect = "rainbow"
+    mock_coordinator.color_temp_kelvin = 4000
+
+    await light.async_turn_on(effect="off")
+
+    mock_coordinator.send_command.assert_awaited_once_with(build_color_temp(4000))
+    assert mock_coordinator.segment_colors == [kelvin_to_rgb(4000)] * 15
+    assert light.color_mode is ColorMode.COLOR_TEMP
+
+
+async def test_turn_on_scene_uses_the_device_stored_default(mock_coordinator):
+    scene = MODEL_SCENES["H617A"]["forest"]
+    scene_default = NativeSceneDefault(
+        config_entry_id="entry-a",
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        updated_at="2026-08-17T00:00:00Z",
+        canonical_body=b"\x00",
     )
-    co._sync_scene_speed.assert_called_once_with("glacier", speed_index=0)
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
+            ),
+            scene_defaults=SimpleNamespace(
+                get=MagicMock(return_value=scene_default),
+            ),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+    entity.async_write_ha_state = MagicMock()
+    mock_coordinator.is_on = True
+
+    await entity.async_turn_on(effect="forest")
+
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == build_native_scene_packets(
+        "H617A",
+        scene,
+        canonical_body=scene_default.canonical_body,
+    )
 
 
 async def test_h6199_scene_disables_linked_music(h6199_light, mock_h6199_coordinator):
@@ -166,7 +393,7 @@ async def test_h6199_scene_disables_linked_music(h6199_light, mock_h6199_coordin
     await h6199_light.async_turn_on(effect="sunrise")
     sent = [call.args[0] for call in co.send_command.call_args_list]
     scene = MODEL_SCENES["H6199"]["sunrise"]
-    assert sent == proto.build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
+    assert sent == build_native_scene_packets("H6199", scene)
     assert sent[0][5:7] == b"\x00\x00"
     assert co.effect == "sunrise"
 
@@ -177,12 +404,7 @@ async def test_h6199_uploads_an_opted_in_scene(h6199_light, mock_h6199_coordinat
     co.effect_families = frozenset({"scenes"})
     await h6199_light.async_turn_on(effect="forest")
     scene = MODEL_SCENES["H6199"]["forest"]
-    assert [call.args[0] for call in co.send_command.await_args_list] == proto.build_h6199_scene_multi(
-        scene.param,
-        scene.code,
-        scene.scene_type,
-        scene.music_code,
-    )
+    assert [call.args[0] for call in co.send_command.await_args_list] == build_native_scene_packets("H6199", scene)
 
 
 async def test_turn_on_unknown_effect_raises(light, mock_coordinator):
@@ -211,17 +433,11 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
     co.video_sound_effects_softness = 27
     co.refresh_state = AsyncMock(side_effect=[False, True])
     await h6199_light.async_turn_on(effect=effect)
-    packet = proto.build_video_mode(
-        full_screen=False,
-        game_mode=mode == "game",
-        saturation=63,
-        sound_effects=True,
-        sound_effects_softness=27,
-    )
+    packet = build_h6199_video(False, mode == "game", 63, True, 27)
     assert [call.args[0] for call in co.send_command.call_args_list] == [
-        proto.build_power(True),
+        build_power(True),
         packet,
-        proto.build_power(True),
+        build_power(True),
         packet,
     ]
     for call in co.refresh_state.await_args_list:
@@ -260,13 +476,6 @@ async def test_setup_entry_registers_segment_services(mock_coordinator):
     assert len(added) == 1 and isinstance(added[0], GoveeBLELight)
 
 
-async def test_paint_segments_calls_coordinator(light, mock_coordinator):
-    await light.async_paint_segments(
-        [{"segments": [1, 2, 3], "rgb_color": (255, 0, 0)}, {"segments": [4, 5], "rgb_color": (0, 255, 0)}]
-    )
-    mock_coordinator.async_paint_segments.assert_awaited_once_with([([1, 2, 3], (255, 0, 0)), ([4, 5], (0, 255, 0))])
-
-
 @pytest.mark.parametrize(
     "method,kwargs",
     [
@@ -283,17 +492,52 @@ async def test_segment_services_reject_empty_selections(light, mock_coordinator,
     mock_coordinator.send_command.assert_not_awaited()
 
 
-async def test_set_segment_color_delegates(light, mock_coordinator):
-    await light.async_set_segment_color(segments=[7, 8], color=(1, 2, 3))
-    mock_coordinator.async_paint_segments.assert_awaited_once_with([([7, 8], (1, 2, 3))])
+@pytest.mark.parametrize(
+    ("method", "kwargs", "expected"),
+    [
+        (
+            "async_paint_segments",
+            {
+                "groups": [
+                    {"segments": [1, 2, 3], "rgb_color": (255, 0, 0)},
+                    {"segments": [4, 5], "rgb_color": (0, 255, 0)},
+                ]
+            },
+            [([1, 2, 3], (255, 0, 0)), ([4, 5], (0, 255, 0))],
+        ),
+        (
+            "async_set_segment_color",
+            {"segments": [2, 4], "color": (10, 20, 30)},
+            [([2, 4], (10, 20, 30))],
+        ),
+    ],
+)
+async def test_segment_colour_services_normalise_groups(
+    light,
+    mock_coordinator,
+    method,
+    kwargs,
+    expected,
+):
+    await getattr(light, method)(**kwargs)
+
+    mock_coordinator.async_paint_segments.assert_awaited_once_with(expected)
+
+
+@pytest.mark.parametrize("error", [TypeError("bad segment"), ValueError("bad colour")])
+async def test_paint_segments_reports_invalid_input(light, mock_coordinator, error):
+    mock_coordinator.async_paint_segments.side_effect = error
+
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_paint_segments([{"segments": [1], "rgb_color": (1, 2, 3)}])
+
+    assert exc.value.translation_key == "invalid_segments"
 
 
 async def test_set_segment_brightness_sends_packet(light, mock_coordinator):
     light.async_write_ha_state = MagicMock()
     await light.async_set_segment_brightness(segments=[2, 4], brightness=60)
-    mock_coordinator.send_command.assert_called_once_with(proto.build_segment_brightness([2, 4], 60))
-    mock_coordinator._enter_static_mode.assert_called_once_with()
-    mock_coordinator.async_set_updated_data.assert_called_once_with(mock_coordinator.data)
+    mock_coordinator.async_set_segment_brightness.assert_awaited_once_with([2, 4], 60)
     light.async_write_ha_state.assert_called_once_with()
 
 
@@ -315,12 +559,16 @@ def test_segment_colors_attribute_present(light, mock_coordinator):
     mock_coordinator.segment_colors = [(10, 20, 30)] * 15
     assert light.extra_state_attributes == {
         "segment_colors": [[10, 20, 30]] * 15,
+        "segment_brightness": [100] * 15,
+        "segment_state_source": "initial",
     }
 
 
 def test_h6199_segment_surface_is_exposed(h6199_light):
     assert h6199_light.extra_state_attributes == {
         "segment_colors": [[255, 255, 255]] * 15,
+        "segment_brightness": [100] * 15,
+        "segment_state_source": "initial",
     }
 
 
@@ -329,7 +577,7 @@ async def test_whole_strip_write_fills_segment_colors(light, mock_coordinator):
     await light.async_turn_on(rgb_color=(10, 20, 30))
     assert mock_coordinator.segment_colors == [(10, 20, 30)] * 15
     await light.async_turn_on(color_temp_kelvin=4000)
-    assert mock_coordinator.segment_colors == [proto.kelvin_to_rgb(4000)] * 15
+    assert mock_coordinator.segment_colors == [kelvin_to_rgb(4000)] * 15
 
 
 def test_segment_colors_attribute_absent_for_zero_count(mock_coordinator):
@@ -340,44 +588,108 @@ def test_segment_colors_attribute_absent_for_zero_count(mock_coordinator):
     assert attrs == {}
 
 
-async def test_segment_restore_rehydrates(light, mock_coordinator):
-    mock_coordinator.segment_colors = [(255, 255, 255)] * 15
-    light.async_get_last_state = AsyncMock(return_value=MagicMock(attributes={"segment_colors": [[1, 2, 3]] * 15}))
+@pytest.mark.parametrize(
+    (
+        "segment_count",
+        "initial_colors",
+        "initial_source",
+        "stored_colors",
+        "stored_brightness",
+        "expected_colors",
+        "expected_brightness",
+        "reads_last_state",
+        "updates_coordinator",
+    ),
+    [
+        pytest.param(
+            15,
+            [(255, 255, 255)] * 15,
+            "initial",
+            [[1, 2, 3]] * 15,
+            [40] * 15,
+            [(1, 2, 3)] * 15,
+            [40] * 15,
+            True,
+            True,
+            id="restores-last-state",
+        ),
+        pytest.param(
+            15,
+            [(255, 255, 255)] * 15,
+            "observed",
+            [[1, 2, 3]] * 15,
+            [40] * 15,
+            [(255, 255, 255)] * 15,
+            [100] * 15,
+            False,
+            False,
+            id="observed-white-device-state",
+        ),
+        pytest.param(
+            15,
+            [(255, 255, 255)] * 15,
+            "initial",
+            [[1, 2, 3]] * 15,
+            None,
+            [(255, 255, 255)] * 15,
+            [100] * 15,
+            True,
+            False,
+            id="missing-brightness",
+        ),
+        pytest.param(
+            15,
+            [(255, 255, 255)] * 15,
+            "initial",
+            [[1, 2]] * 15,
+            [40] * 15,
+            [(255, 255, 255)] * 15,
+            [100] * 15,
+            True,
+            False,
+            id="malformed-last-state",
+        ),
+        pytest.param(0, [], "initial", [[1, 2, 3]], [40], [], [], False, False, id="unsupported-model"),
+    ],
+)
+async def test_segment_restore(
+    light,
+    mock_coordinator,
+    segment_count,
+    initial_colors,
+    initial_source,
+    stored_colors,
+    stored_brightness,
+    expected_colors,
+    expected_brightness,
+    reads_last_state,
+    updates_coordinator,
+):
+    mock_coordinator.profile = replace(MODEL_PROFILES["H617A"], segment_count=segment_count)
+    mock_coordinator.segment_colors = initial_colors
+    mock_coordinator.segment_brightness = [100] * segment_count
+    mock_coordinator.segment_state_source = initial_source
+    last_state = MagicMock(
+        attributes={
+            "segment_colors": stored_colors,
+            "segment_brightness": stored_brightness,
+        }
+    )
+    light.async_get_last_state = AsyncMock(return_value=last_state)
+
     await light._async_restore_segments()
-    assert mock_coordinator.segment_colors == [(1, 2, 3)] * 15
-    mock_coordinator.async_set_updated_data.assert_called_once_with(mock_coordinator.data)
 
-
-async def test_segment_restore_skips_when_customised(light, mock_coordinator):
-    mock_coordinator.segment_colors = [(9, 9, 9)] * 15
-    light.async_get_last_state = AsyncMock()
-    await light._async_restore_segments()
-    light.async_get_last_state.assert_not_called()
-    mock_coordinator.async_set_updated_data.assert_not_called()
-
-
-async def test_segment_restore_without_last_state(light, mock_coordinator):
-    mock_coordinator.segment_colors = [(255, 255, 255)] * 15
-    light.async_get_last_state = AsyncMock(return_value=None)
-    await light._async_restore_segments()
-    assert mock_coordinator.segment_colors == [(255, 255, 255)] * 15
-    mock_coordinator.async_set_updated_data.assert_not_called()
-
-
-async def test_segment_restore_ignores_malformed(light, mock_coordinator):
-    mock_coordinator.segment_colors = [(255, 255, 255)] * 15
-    light.async_get_last_state = AsyncMock(return_value=MagicMock(attributes={"segment_colors": [[1, 2]] * 15}))
-    await light._async_restore_segments()
-    assert mock_coordinator.segment_colors == [(255, 255, 255)] * 15
-    mock_coordinator.async_set_updated_data.assert_not_called()
-
-
-async def test_segment_restore_skips_unsupported(mock_coordinator):
-    mock_coordinator.profile = replace(MODEL_PROFILES["H617A"], segment_count=0)
-    e = GoveeBLELight(mock_coordinator)
-    e.async_get_last_state = AsyncMock()
-    await e._async_restore_segments()
-    e.async_get_last_state.assert_not_called()
+    assert mock_coordinator.segment_colors == expected_colors
+    assert mock_coordinator.segment_brightness == expected_brightness
+    assert mock_coordinator.segment_state_source == ("restored" if updates_coordinator else initial_source)
+    if reads_last_state:
+        light.async_get_last_state.assert_awaited_once()
+    else:
+        light.async_get_last_state.assert_not_awaited()
+    if updates_coordinator:
+        mock_coordinator.async_set_updated_data.assert_called_once_with(mock_coordinator.data)
+    else:
+        mock_coordinator.async_set_updated_data.assert_not_called()
 
 
 def test_coerce_segment_colors_variants():
@@ -388,6 +700,9 @@ def test_coerce_segment_colors_variants():
     assert _coerce_segment_colors([[1, 2, 3]], 2) is None
     assert _coerce_segment_colors([[1, 2]], 1) is None
     assert _coerce_segment_colors([["a", "b", "c"]], 1) is None
+    assert _coerce_segment_brightness([0, 50, 100], 3) == [0, 50, 100]
+    assert _coerce_segment_brightness([-1, 101], 2) == [0, 100]
+    assert _coerce_segment_brightness([True], 1) is None
 
 
 async def test_async_added_to_hass_triggers_restore(light):
@@ -404,13 +719,14 @@ async def test_async_added_to_hass_triggers_restore(light):
 
 
 async def test_restore_static_rgb_as_last_known_presentation(light, mock_coordinator):
-    mock_coordinator.color_mode = proto.ParsedMode.COLOUR
+    mock_coordinator.color_mode = ParsedMode.COLOUR
     light.async_get_last_state = AsyncMock(
         return_value=SimpleNamespace(
             attributes={
                 "color_mode": ColorMode.RGB,
                 "rgb_color": [12, 34, 56],
                 "segment_colors": [[12, 34, 56]] * 15,
+                "segment_brightness": [100] * 15,
             }
         )
     )
@@ -425,7 +741,7 @@ async def test_restore_static_rgb_as_last_known_presentation(light, mock_coordin
 
 
 async def test_restore_static_colour_temperature_as_last_known_presentation(light, mock_coordinator):
-    mock_coordinator.color_mode = proto.ParsedMode.COLOUR
+    mock_coordinator.color_mode = ParsedMode.COLOUR
     light.async_get_last_state = AsyncMock(
         return_value=SimpleNamespace(
             attributes={
@@ -442,8 +758,53 @@ async def test_restore_static_colour_temperature_as_last_known_presentation(ligh
     mock_coordinator.send_command.assert_not_awaited()
 
 
+async def test_restore_static_state_never_replaces_observed_segments(light, mock_coordinator):
+    mock_coordinator.color_mode = ParsedMode.COLOUR
+    mock_coordinator.segment_state_source = "observed"
+    mock_coordinator.segment_colors = [(255, 255, 255)] * 15
+    mock_coordinator.rgb_color = (255, 255, 255)
+    light.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            attributes={
+                "color_mode": ColorMode.RGB,
+                "rgb_color": [12, 34, 56],
+                "segment_colors": [[12, 34, 56]] * 15,
+                "segment_brightness": [50] * 15,
+            }
+        )
+    )
+
+    await light._async_restore_static_color()
+    await light._async_restore_segments()
+
+    assert mock_coordinator.rgb_color == (255, 255, 255)
+    assert mock_coordinator.segment_colors == [(255, 255, 255)] * 15
+    assert mock_coordinator.segment_brightness == [100] * 15
+    assert mock_coordinator.segment_state_source == "observed"
+    mock_coordinator.mark_segment_state_restored.assert_not_called()
+
+
+async def test_restore_kelvin_only_when_observed_companion_matches(light, mock_coordinator):
+    mock_coordinator.color_mode = ParsedMode.COLOUR
+    mock_coordinator.segment_state_source = "observed"
+    mock_coordinator.segment_colors = [kelvin_to_rgb(4200)] * 15
+    light.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            attributes={
+                "color_mode": ColorMode.COLOR_TEMP,
+                "color_temp_kelvin": 4200,
+            }
+        )
+    )
+
+    await light._async_restore_static_color()
+
+    assert mock_coordinator.color_temp_kelvin == 4200
+    assert mock_coordinator.segment_state_source == "observed"
+
+
 async def test_restore_static_colour_never_overwrites_a_live_effect(light, mock_coordinator):
-    mock_coordinator.color_mode = proto.ParsedMode.SCENE
+    mock_coordinator.color_mode = ParsedMode.SCENE
     mock_coordinator.effect = "rainbow"
     light.async_get_last_state = AsyncMock()
 
@@ -458,8 +819,8 @@ async def test_control_lock_keeps_failed_rollback_before_newer_colour(light, moc
     first_started = asyncio.Event()
     release_first = asyncio.Event()
     sent: list[bytes] = []
-    red = proto.build_color_rgb(255, 0, 0)
-    blue = proto.build_color_rgb(0, 0, 255)
+    red = build_color_rgb(255, 0, 0)
+    blue = build_color_rgb(0, 0, 255)
 
     async def send(packet: bytes) -> None:
         sent.append(packet)
