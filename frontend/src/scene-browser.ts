@@ -14,7 +14,6 @@ import {
   sceneSpeedOptions,
   type CategorySelection,
   type SceneBrowserViewState,
-  type SceneContent,
   type SceneInitialSelection,
   type ScenePreviewRequest,
 } from "./scene-browser-model";
