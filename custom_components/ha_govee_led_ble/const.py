@@ -18,8 +18,6 @@ class ModelProfile:
     name: str
     state_readable: bool = False
     supports_scenes: bool = False
-    uses_h6199_scene_protocol: bool = False
-    supports_scene_speed: bool = False
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
     supports_white_balance: bool = False
@@ -82,25 +80,21 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H617A LED Strip",
         state_readable=True,
         supports_scenes=True,
-        supports_scene_speed=True,
         music_modes=tuple(MUSIC_MODE_SLUGS),
         supports_music_color=True,
+        # H617A exposes fifteen segments through five explicit aa a5 query groups of three.
+        # Segment writes ACK normally but do not publish updated groups without those queries.
         segment_count=15,
         supports_segment_writes=True,
-        # supports_white_brightness stays false, and NOT because the command does nothing. Driven
-        # directly on 2026-07-31 it dims the strip and compounds with the whole-strip opcode 0x04
-        # rather than duplicating it (command_write::static_brightness). Two things block exposing
-        # it through this service. It has no read-back, and async_set_white_brightness verifies
-        # through _refresh_with_retry, which raises when the field is never observed. And the
-        # service means "the level of the white mode" and forces ColorMode.COLOR_TEMP, which is not
-        # what the frame does here: on this model it is a relative brightness that multiplies the
-        # master. Exposing that axis needs its own control, which is a feature, not a correction.
+        # supports_white_brightness stays false because static subcommand 0x02 is segment-relative
+        # brightness, not the level of a white colour-temperature mode. It compounds with master
+        # brightness and is exposed through set_segment_brightness, including all-segment writes;
+        # the aa a5 groups provide its per-segment readback.
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
         supports_scenes=True,
-        uses_h6199_scene_protocol=True,
         supports_video_mode=True,
         supports_video_sound_effects=True,
         # The three registers the app reaches from the same video sheet, each modelled from an
@@ -115,9 +109,11 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_color=True,
         # The attributable H6199 static reply carries mode 0x15 followed only by zeros
         # (h6199_status_reply::colour_mode_body). It identifies static mode but echoes neither
-        # colour nor white brightness, so the verified white-brightness service cannot be offered.
-        # Fifteen segments, and this now carries a protocol claim rather than sizing a preview
-        # image. A whole-strip write from the app addresses fifteen bits (0x7fff) and the app draws
+        # colour nor Kelvin. Query-backed segment groups expose the rendered RGB and brightness,
+        # but exact Kelvin remains last-known state because the wire carries only its RGB companion.
+        # The verified white-brightness service therefore cannot be offered.
+        # The H6199 segment count is fifteen. A whole-strip write from the app addresses fifteen
+        # bits (0x7fff), and the app draws
         # fifteen tiles for this model, captured 2026-08-03; colouring one segment, then a second,
         # then both gave 0x0001, 0x0004 and their OR, which is what makes it a mask rather than an
         # index (h6199_command_write::static_colour_body::segment_mask).
@@ -130,7 +126,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # and per-segment alike, so painting segments is the app's own behaviour on this model
         # rather than an H617A habit carried across. Segment brightness was then driven through HA
         # on 2026-08-05 for one segment, a disjoint pair and all fifteen; attributed aa a5 replies
-        # independently reported 17, 37 and 73 at exactly the addressed positions.
+        # independently reported 17, 37 and 73 at exactly the addressed positions. The app queries
+        # groups 1..4 explicitly; attributed write captures contain only the normal command ACK
+        # until those queries are sent, so segment state is query-backed rather than passive push.
         supports_segment_writes=True,
     ),
 }

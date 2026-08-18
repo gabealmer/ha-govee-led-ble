@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import ModelProfile
-from .protocol import ParsedMode
+from .coordinator_status import ParsedMode
 
 if TYPE_CHECKING:
     from .coordinator_modes import PreModeSnapshot
@@ -38,8 +38,6 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     music_calm: bool
     diy_code: int | None
     color_mode: ParsedMode | None
-    scene_speed_scene_code: int | None
-    scene_speed_index: int | None
     _control_lock: asyncio.Lock
     _pre_mode_snapshot: PreModeSnapshot
     segment_colors: list[tuple[int, int, int]]
@@ -48,7 +46,12 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         async def send_command(self, packet: bytes) -> None: ...
 
-        async def refresh_state(self, *, expected_effect: str | None = None) -> bool: ...
+        async def refresh_state(
+            self,
+            *,
+            expected_effect: str | None = None,
+            expected_on: bool | None = None,
+        ) -> bool: ...
 
         @property
         def scene_name_set(self) -> frozenset[str]: ...
