@@ -36,10 +36,25 @@ from .layered_scene import Movement as Movement
 from .layered_scene import Selection as Selection
 from .layered_scene import SelectionType as SelectionType
 from .layered_scene import (
+    _as_mapping,
+    _hex_bytes,
+    _optional_int,
+    _required_bool,
+    _required_int,
+    _required_mapping,
+    _required_sequence,
+    _required_str,
+    _validate_bool,
     layered_effect_from_value,
     layered_effect_to_value,
     layered_scene_from_value,
     layered_scene_to_value,
+)
+from .layered_scene import (
+    _catalogue_ref_from_value as _catalogue_ref_from_dict,
+)
+from .layered_scene import (
+    _catalogue_ref_to_value as _catalogue_ref_to_dict,
 )
 
 EFFECT_SCHEMA_VERSION = 1
@@ -582,11 +597,6 @@ def _validate_range(value: int, name: str, *, minimum: int, maximum: int) -> Non
         raise EffectValidationError(f"{name} must be an integer from {minimum} to {maximum}")
 
 
-def _validate_bool(value: bool, name: str) -> None:
-    if not isinstance(value, bool):
-        raise EffectValidationError(f"{name} must be a boolean")
-
-
 def _validate_identifier(value: str, name: str) -> None:
     validate_bounded_string(
         value,
@@ -855,15 +865,6 @@ def _painted_groups_from_value(value: object) -> tuple[PaintGroup, ...]:
     return tuple(groups)
 
 
-def _catalogue_ref_to_dict(reference: CatalogueRef) -> dict[str, JsonValue]:
-    return {
-        "sku": reference.sku,
-        "scene_id": reference.scene_id,
-        "effect_id": reference.effect_id,
-        "catalogue_schema_version": reference.catalogue_schema_version,
-    }
-
-
 def _relative_brightness_to_dict(relative_brightness: RelativeBrightness) -> dict[str, JsonValue]:
     return {
         "left": relative_brightness.left,
@@ -879,15 +880,6 @@ def _relative_brightness_from_dict(raw: Mapping[str, Any]) -> RelativeBrightness
         top=_required_int(raw, "top"),
         right=_required_int(raw, "right"),
         bottom=_required_int(raw, "bottom"),
-    )
-
-
-def _catalogue_ref_from_dict(raw: Mapping[str, Any]) -> CatalogueRef:
-    return CatalogueRef(
-        sku=_required_str(raw, "sku"),
-        scene_id=_required_int(raw, "scene_id"),
-        effect_id=_required_int(raw, "effect_id"),
-        catalogue_schema_version=_required_int(raw, "catalogue_schema_version"),
     )
 
 
@@ -948,55 +940,6 @@ def _origin_from_dict(raw: Mapping[str, Any]) -> Origin:
     )
 
 
-def _as_mapping(value: object, name: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping):
-        raise EffectValidationError(f"{name} must be a mapping")
-    return cast(Mapping[str, Any], value)
-
-
-def _required_mapping(raw: Mapping[str, Any], key: str) -> Mapping[str, Any]:
-    if key not in raw:
-        raise EffectValidationError(f"missing required field {key!r}")
-    return _as_mapping(raw[key], key)
-
-
-def _required_sequence(raw: Mapping[str, Any], key: str) -> Sequence[Any]:
-    value = raw.get(key)
-    if not isinstance(value, Sequence) or isinstance(value, str | bytes):
-        raise EffectValidationError(f"{key} must be a list")
-    return value
-
-
-def _required_int(raw: Mapping[str, Any], key: str) -> int:
-    value = raw.get(key)
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise EffectValidationError(f"{key} must be an integer")
-    return value
-
-
-def _optional_int(raw: Mapping[str, Any], key: str) -> int | None:
-    value = raw.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise EffectValidationError(f"{key} must be an integer or null")
-    return value
-
-
-def _required_bool(raw: Mapping[str, Any], key: str) -> bool:
-    value = raw.get(key)
-    if not isinstance(value, bool):
-        raise EffectValidationError(f"{key} must be a boolean")
-    return value
-
-
-def _required_str(raw: Mapping[str, Any], key: str) -> str:
-    value = raw.get(key)
-    if not isinstance(value, str):
-        raise EffectValidationError(f"{key} must be a string")
-    return value
-
-
 def _optional_str(raw: Mapping[str, Any], key: str) -> str | None:
     value = raw.get(key)
     if value is None:
@@ -1022,12 +965,3 @@ def _required_optional_bool(raw: Mapping[str, Any], key: str) -> bool | None:
     if not isinstance(value, bool):
         raise EffectValidationError(f"{key} must be a boolean or null")
     return value
-
-
-def _hex_bytes(value: object, name: str) -> bytes:
-    if not isinstance(value, str):
-        raise EffectValidationError(f"{name} must be a hexadecimal string")
-    try:
-        return bytes.fromhex(value)
-    except ValueError as exc:
-        raise EffectValidationError(f"{name} must be a hexadecimal string") from exc

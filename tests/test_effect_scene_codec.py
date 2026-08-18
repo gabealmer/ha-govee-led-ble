@@ -22,12 +22,6 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     effect_content_from_dict,
     effect_content_to_dict,
 )
-from custom_components.ha_govee_led_ble.effect_scene_codec import (
-    decode_layered_scene as compatibility_decode_layered_scene,
-)
-from custom_components.ha_govee_led_ble.effect_scene_codec import (
-    encode_layered_scene as compatibility_encode_layered_scene,
-)
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     _check_tree,
@@ -105,11 +99,6 @@ def _assert_layer(decoded: Any, parsed: Any) -> None:
     assert decoded.priority == int(parsed.priority)
     assert decoded.unknown_flags == int(parsed.unknown_flags)
     assert decoded.excess == bytes(parsed.excess)
-
-
-def test_compatibility_import_reexports_master_decoder() -> None:
-    assert compatibility_decode_layered_scene is decode_layered_scene
-    assert compatibility_encode_layered_scene is encode_layered_scene
 
 
 def test_all_committed_type_2_scenes_decode_losslessly() -> None:

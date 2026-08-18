@@ -61,53 +61,6 @@ export type LibraryItemSyncResult =
 
 export const PAINTED_SEGMENT_COUNT = 15;
 
-export function effectOriginName(
-  content: EffectContent,
-  catalogue?: ModelEffectCatalogue,
-): string | undefined {
-  switch (content.kind) {
-    case "h617a_painted":
-      return "Paint";
-    case "h617a_single":
-    case "palette_diy": {
-      const family = catalogue?.effects.find(
-        (candidate) => candidate.family === content.family,
-      );
-      const variation = family?.variations.find(
-        (candidate) => candidate.variant === content.variant,
-      );
-      return family && variation
-        ? `${family.label}: ${variation.label}`
-        : family?.label;
-    }
-    case "h617a_multi":
-      return "Mix";
-    case "music_profile":
-      return catalogue?.music_modes.find(
-        (candidate) => candidate.id === content.mode,
-      )?.label;
-    case "video_profile":
-      return catalogue?.video_modes.find(
-        (candidate) => candidate.id === content.mode,
-      )?.label;
-    case "advanced":
-      return "Layered";
-    case "workshop":
-      return catalogue?.workshop_templates.find(
-        (candidate) => candidate.id === content.template,
-      )?.label;
-    case "special_diy":
-      return catalogue?.special_diy_templates.find(
-        (candidate) => candidate.id === content.template,
-      )?.label;
-    case "scene_builtin":
-    case "scene_palette":
-    case "scene_layered":
-    case "opaque":
-      return undefined;
-  }
-}
-
 export function effectOriginDescription(
   origin: LibraryOrigin | undefined,
   sourceName?: string,

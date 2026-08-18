@@ -629,10 +629,6 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         for field, value in expectations.items():
             self._expected_state[field] = (value, deadline)
 
-    def _clear_expected_fields(self, *fields: str) -> None:
-        for field in fields:
-            self._expected_state.pop(field, None)
-
     def _accept_expected_values(self, values: dict[str, Any]) -> bool:
         """Accept a composite reply atomically; one stale sibling rejects the whole group."""
         return all(self._accept_expected(field, value) for field, value in values.items())

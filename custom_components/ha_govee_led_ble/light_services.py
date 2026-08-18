@@ -9,7 +9,6 @@ from homeassistant.exceptions import ServiceValidationError
 
 from .const import DOMAIN
 from .coordinator import GoveeBLECoordinator
-from .coordinator_modes import MUSIC_STYLE_SLUGS
 from .generated_protocol_adapter import build_h6199_video, build_power
 from .light_commands import SegmentColorGroup
 from .native_profile_controls import apply_active_video_mode
@@ -30,22 +29,14 @@ class _GoveeLightOwner:
         async def _refresh_with_retry(
             self,
             *,
-            expected_effect: str | None = None,
             expected_on: bool | None = None,
             expected_brightness: int | None = None,
-            expected_music_mode: str | None = None,
-            expected_music_sensitivity: int | None = None,
-            expected_music_calm: bool | None = None,
-            expected_music_color: tuple[int, int, int] | None = None,
-            expected_music_auto_color: bool = False,
             expected_video_mode: str | None = None,
             expected_video_full_screen: bool | None = None,
             expected_video_saturation: int | None = None,
             expected_video_sound_effects: bool | None = None,
             expected_video_sound_effects_softness: int | None = None,
-            expected_white_brightness: int | None = None,
             retry_command: Callable[[], Awaitable[None]] | None = None,
-            required: bool = True,
         ) -> None: ...
 
         def _notify_state_changed(self) -> None: ...
@@ -102,51 +93,6 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             c.video_sound_effects = resolved_sound
             if supports_sound:
                 c.video_sound_effects_softness = resolved_softness
-        self._notify_state_changed()
-
-    async def _async_set_music_mode(self, mode: str, sensitivity: int = 99,
-            color: tuple[int, int, int] | None = None, calm: bool | None = None) -> None:
-        slug = mode.replace(" ", "_")
-        self._require_support("set_music_mode", supported=slug in self.coordinator.profile.music_modes)
-        if color is not None:
-            self._require_support(
-                "set_music_mode",
-                supported=self.coordinator.profile.supports_music_color,
-            )
-        if calm is not None:
-            self._require_support(
-                "set_music_mode",
-                supported=slug in MUSIC_STYLE_SLUGS,
-            )
-        with self._rollback():
-            c = self.coordinator
-            resolved_sensitivity = max(
-                c.profile.music_sensitivity_min,
-                min(sensitivity, c.profile.music_sensitivity_max),
-            )
-            if slug in MUSIC_STYLE_SLUGS and calm is not None:
-                c.music_calm = calm
-            style_calm = c.music_calm if slug in MUSIC_STYLE_SLUGS else None
-            # Rhythm reflects STYLE in its status reply; Bloom/Shiny repurpose that byte, so their
-            # calm is written optimistically but not verified on read-back.
-            verify_calm = c.music_calm if slug == "rhythm" else None
-
-            async def apply() -> None:
-                c.music_sensitivity, c.music_color = resolved_sensitivity, color
-                if style_calm is not None:
-                    c.music_calm = style_calm
-                await c.async_select_music_slug(slug)
-
-            await apply()
-            await self._refresh_with_retry(
-                expected_on=True,
-                expected_music_mode=slug,
-                expected_music_sensitivity=resolved_sensitivity,
-                expected_music_calm=verify_calm,
-                expected_music_color=color,
-                expected_music_auto_color=color is None,
-                retry_command=apply,
-            )
         self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:

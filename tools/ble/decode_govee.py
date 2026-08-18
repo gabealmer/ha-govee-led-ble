@@ -50,7 +50,6 @@ if TYPE_CHECKING:
         is_music_stream,
         is_wifi_provision,
         status_domain,
-        sum8_checksum,
         xor_checksum,
     )
 elif __package__:
@@ -60,7 +59,6 @@ elif __package__:
         is_music_stream,
         is_wifi_provision,
         status_domain,
-        sum8_checksum,
         xor_checksum,
     )
 else:
@@ -70,7 +68,6 @@ else:
         is_music_stream,
         is_wifi_provision,
         status_domain,
-        sum8_checksum,
         xor_checksum,
     )
 
@@ -106,10 +103,6 @@ class CaptureTrace:
 
 def _xor_ok(v: bytes) -> bool:
     return len(v) == 20 and xor_checksum(v[:19]) == v[19]
-
-
-def _sum8_ok(v: bytes) -> bool:
-    return len(v) == 7 and sum8_checksum(v[:6]) == v[6]
 
 
 def _is_music_stream(v: bytes) -> bool:
@@ -512,24 +505,6 @@ def parse_capture(data: bytes, *, allow_truncated: bool = False) -> CaptureTrace
             )
         )
     return CaptureTrace(tuple(connection_events), tuple(att_records))
-
-
-def active_connections_at(trace: CaptureTrace, timestamp: datetime) -> dict[int, str]:
-    active: dict[int, str] = {}
-    for event in trace.connections:
-        if event.timestamp > timestamp:
-            break
-        if event.connected and event.address is not None:
-            active[event.connection_handle] = event.address
-        else:
-            active.pop(event.connection_handle, None)
-    return active
-
-
-def _iter_att(data: bytes) -> Iterator[tuple[str, int, int, bytes]]:
-    """Yield the legacy (direction, opcode, attribute handle, value) ATT tuples."""
-    for record in parse_capture(data).att:
-        yield record.direction, record.opcode, record.attribute_handle, record.value
 
 
 UNATTRIBUTED_PREFIX = "?conn-"

@@ -423,17 +423,6 @@ class Screen:
             raise WdaError("WDA did not return a source string")
         return value
 
-    def await_name(self, name: str, deadline: float = DEFAULT_DEADLINE) -> str:
-        """Return the source once `name` is on screen. Polls for the THING, not the clock."""
-        expiry = time.monotonic() + deadline
-        while True:
-            source = self.source()
-            if matching(source, name):
-                return source
-            if time.monotonic() >= expiry:
-                raise NotFoundError(f"{name!r} did not appear within {deadline}s")
-            time.sleep(0.3)
-
     def await_usable(self, name: str, deadline: float = DEFAULT_DEADLINE) -> tuple[str, dict[str, Any]]:
         """Wait until `name` is not merely PRESENT but usable, and return it with its source.
 
@@ -509,9 +498,6 @@ class Screen:
             return ["up", "down"]
         return ["down", "up"]
 
-    def reveal(self, name: str, *, attempts: int = 8) -> dict[str, Any]:
-        return self.scroll_to(name, attempts=attempts)
-
     def tap(self, name: str, deadline: float = DEFAULT_DEADLINE) -> dict[str, Any]:
         """Tap the uniquely named element. Refuses a genuinely ambiguous name.
 
@@ -561,24 +547,6 @@ class Screen:
         siblings = [e for e in elements(source) if e["name"] == name and e["type"] == element["type"]]
         index = siblings.index(element) + 1 if element in siblings else 1
         self._click(f'**/{element["type"]}[`name == "{name}"`][{index}]')
-
-    def frontmost(self) -> str | None:
-        """The application element's name, so a caller can tell WHICH app it is driving."""
-        root = ElementTree.fromstring(self.source())
-        app = next((e for e in root.iter() if e.tag == "XCUIElementTypeApplication"), None)
-        return app.get("name") if app is not None else None
-
-    def require_app(self, expected: str = "Govee Home") -> None:
-        """Fail loudly if the phone is no longer showing the app being driven.
-
-        A class-chain tap that misses can land on something that switches app entirely: one
-        did, and opened a camera's live view. Everything after that point reads a foreign
-        element tree, and the taps that follow are not merely useless, they are being
-        delivered to somebody else's UI.
-        """
-        actual = self.frontmost()
-        if actual != expected:
-            raise WdaError(f"expected to be driving {expected!r} but the frontmost app is {actual!r}")
 
     def type_text(self, text: str) -> None:
         """Type into the focused field, for dialogs that demand a value before proceeding.
@@ -781,13 +749,6 @@ class Screen:
             },
             timeout=30.0,
         )
-
-    def tap_beside(self, name: str, anchor: str, where: str = "row") -> dict[str, Any]:
-        """Tap the element called `name` that belongs to the item or section labelled `anchor`."""
-        source = self.source()
-        chosen = pair(source, name, anchor, where)
-        self._click_element(source, chosen, name)
-        return chosen
 
     def tap_chain(self, chain: str, *, scroll: bool = True) -> None:
         """Tap by class chain, for controls that carry NO name at all.

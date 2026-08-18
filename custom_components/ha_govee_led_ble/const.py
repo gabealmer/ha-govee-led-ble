@@ -41,23 +41,6 @@ class ModelProfile:
         return bool(self.music_modes)
 
 
-MUSIC_MODES: dict[str, int] = {
-    "energetic": 0x05,
-    "rhythm": 0x03,
-    "spectrum": 0x04,
-    "rolling": 0x06,
-    "separation": 0x32,
-    "hopping": 0x33,
-    "piano keys": 0x34,
-    "fountain": 0x35,
-    "day and night": 0x37,
-    "bloom": 0x30,
-    "shiny": 0x31,
-}
-
-# Single source of truth for the ``select.music_mode`` options: HA slugs (underscored, no
-# "off") mapped to their live-confirmed mode codes. Distinct from ``MUSIC_MODES`` above, whose
-# spaced display names remain the parse/service vocabulary.
 MUSIC_MODE_SLUGS: dict[str, int] = {
     "energetic": 0x05,
     "rhythm": 0x03,

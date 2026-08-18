@@ -1,11 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import backendContracts from "../fixtures/backend-contracts.json";
-import { DEPLOYMENT_PHASES } from "../../src/types";
 import {
   decodeCustomCatalogue,
-  decodeDeployment,
-  decodeDeploymentSnapshot,
   decodeDevices,
   decodeEditorApiInfo,
   decodeEffectContent,
@@ -63,10 +60,6 @@ test("canonical backend responses decode through the production validators", () 
   );
   expect(decodeLibraryItem(responses.library_item).content.kind).toBe(
     "h617a_painted",
-  );
-  expect(decodeDeployment(responses.deployment).phase).toBe("confirmed");
-  expect(decodeDeploymentSnapshot(responses.deployment_snapshot).deployments).toHaveLength(
-    1,
   );
   expect(decodePreviewStatus(responses.preview_status).phase).toBe("confirmed");
   expect(
@@ -140,27 +133,6 @@ describe("focused response mutations", () => {
     malformed.items = {};
     expect(() => decodeLibrarySnapshot(malformed)).toThrow(
       "library items must be an array",
-    );
-  });
-
-  test("deployment phases and progress remain bounded", () => {
-    for (const phase of DEPLOYMENT_PHASES) {
-      const payload = cloneObject(responses.deployment);
-      payload.phase = phase;
-      expect(decodeDeployment(payload).phase).toBe(phase);
-    }
-
-    const invalidPhase = cloneObject(responses.deployment);
-    invalidPhase.phase = "drifted";
-    expect(() => decodeDeployment(invalidPhase)).toThrow(
-      "deployment phase is invalid",
-    );
-
-    const invalidProgress = cloneObject(responses.deployment);
-    invalidProgress.progress_current = 3;
-    invalidProgress.progress_total = 2;
-    expect(() => decodeDeployment(invalidProgress)).toThrow(
-      "deployment progress exceeds its total",
     );
   });
 

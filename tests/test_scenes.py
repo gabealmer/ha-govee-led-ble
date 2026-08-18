@@ -38,7 +38,7 @@ def test_catalogue_valid():
     assert all(isinstance(e, SceneEntry) and k == k.lower() for k, e in SCENES.items())
     names = sorted(SCENES)
     assert names == sorted(names) and len(names) == len(SCENES)
-    codes = [e.code for e in SCENES.values() if e.is_simple]
+    codes = [e.code for e in SCENES.values() if not e.param]
     assert len(codes) == len(set(codes))
     assert {scene.speed.option_count for scene in SCENES.values() if scene.speed is not None} == {3, 4}
 
@@ -49,7 +49,7 @@ _COMPLEX = ["forest", "aurora", "fire", "christmas", "disco"]
 
 @pytest.mark.parametrize("name,simple", [*((n, True) for n in _SIMPLE), *((n, False) for n in _COMPLEX)])
 def test_scene_type(name, simple):
-    assert SCENES[name].is_simple is simple
+    assert bool(SCENES[name].param) is not simple
 
 
 def test_known_codes():

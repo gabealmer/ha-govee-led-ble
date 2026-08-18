@@ -452,50 +452,6 @@ export interface LibrarySnapshot {
   items: LibrarySummary[];
 }
 
-export const DEPLOYMENT_PHASES = [
-  "compiling",
-  "pending",
-  "uploading",
-  "activating",
-  "verifying",
-  "confirmed",
-  "applied",
-  "uncertain",
-  "recovering",
-  "failed",
-  "interrupted",
-  "unknown",
-] as const;
-
-export type DeploymentPhase = (typeof DEPLOYMENT_PHASES)[number];
-
-export interface DeploymentRecord {
-  operation_id: string;
-  config_entry_id: string;
-  diy_code: number | null;
-  content_kind: string;
-  target_mode: "custom" | "scene" | "music" | "video";
-  target_effect: string | null;
-  phase: DeploymentPhase;
-  updated_at: string;
-  item_id: string | null;
-  item_version: number | null;
-  source_kind: "saved_effect" | "snapshot" | "deleted_effect";
-  selector_label: string;
-  source_origin_kind: string;
-  source_origin_id: string | null;
-  source_content_hash: string;
-  error_code: string | null;
-  progress_current: number;
-  progress_total: number;
-  verification_confidence: ObservationConfidence;
-}
-
-export interface DeploymentSnapshot {
-  version: number;
-  deployments: DeploymentRecord[];
-}
-
 export const PREVIEW_PHASES = [
   "queued",
   "writing",
@@ -514,7 +470,7 @@ export interface PreviewStatus {
   config_entry_id: string;
   phase: PreviewPhase;
   content_kind: string;
-  confidence: DeploymentRecord["verification_confidence"];
+  confidence: ObservationConfidence;
   error_code: string | null;
 }
 

@@ -6,7 +6,6 @@ import {
   coloursForSegments,
   customEffectCategoryForKind,
   effectOriginDescription,
-  effectOriginName,
   groupsFromColours,
   isEditableEffectContent,
   libraryItemSyncResult,
@@ -201,9 +200,6 @@ test("library updates distinguish removal, conflicts, and safe reloads", () => {
 });
 
 test("effect origins retain both provenance and source names", () => {
-  const content = blankCustomEffect("h617a_single", catalogue);
-
-  expect(effectOriginName(content, catalogue)).toBe("Steady: Base");
   expect(
     effectOriginDescription(
       { kind: "authored", source_id: null },

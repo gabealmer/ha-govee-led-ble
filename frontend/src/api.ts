@@ -1,6 +1,5 @@
 import type {
   CustomEffectCatalogue,
-  DeploymentSnapshot,
   DeviceCapabilities,
   EditorApiInfo,
   EffectContent,
@@ -15,7 +14,6 @@ import type {
 } from "./types";
 import {
   decodeCustomCatalogue,
-  decodeDeploymentSnapshot,
   decodeDevices,
   decodeEditorApiInfo,
   decodeEffectUserState,
@@ -226,24 +224,6 @@ export class EffectStudioApi {
       },
       {
         type: `${PREFIX}/library/subscribe`,
-      },
-    );
-  }
-
-  public subscribeDeployments(
-    callback: (snapshot: DeploymentSnapshot) => void,
-    onError?: (error: Error) => void,
-  ): Promise<() => void> {
-    return this.hass.connection.subscribeMessage(
-      (snapshot) => {
-        try {
-          callback(decodeDeploymentSnapshot(snapshot));
-        } catch (error) {
-          onError?.(asError(error));
-        }
-      },
-      {
-        type: `${PREFIX}/deployment/subscribe`,
       },
     );
   }

@@ -1545,53 +1545,6 @@
         }
       ]
     },
-    "deployment": {
-      "config_entry_id": "h617a-main",
-      "content_kind": "h617a_painted",
-      "diy_code": 800,
-      "error_code": null,
-      "item_id": "00000000-0000-4000-8000-000000000001",
-      "item_version": 1,
-      "operation_id": "00000000-0000-4000-8000-000000000003",
-      "phase": "confirmed",
-      "progress_current": 2,
-      "progress_total": 2,
-      "selector_label": "Canonical painted effect",
-      "source_content_hash": "f10a2218682366eabf1436d7be3ebcc54154c0611a6ca7f1db90ee66b803e7cf",
-      "source_kind": "saved_effect",
-      "source_origin_id": null,
-      "source_origin_kind": "authored",
-      "target_effect": null,
-      "target_mode": "custom",
-      "updated_at": "2026-08-17T00:00:00Z",
-      "verification_confidence": "activation_match"
-    },
-    "deployment_snapshot": {
-      "deployments": [
-        {
-          "config_entry_id": "h617a-main",
-          "content_kind": "h617a_painted",
-          "diy_code": 800,
-          "error_code": null,
-          "item_id": "00000000-0000-4000-8000-000000000001",
-          "item_version": 1,
-          "operation_id": "00000000-0000-4000-8000-000000000003",
-          "phase": "confirmed",
-          "progress_current": 2,
-          "progress_total": 2,
-          "selector_label": "Canonical painted effect",
-          "source_content_hash": "f10a2218682366eabf1436d7be3ebcc54154c0611a6ca7f1db90ee66b803e7cf",
-          "source_kind": "saved_effect",
-          "source_origin_id": null,
-          "source_origin_kind": "authored",
-          "target_effect": null,
-          "target_mode": "custom",
-          "updated_at": "2026-08-17T00:00:00Z",
-          "verification_confidence": "activation_match"
-        }
-      ],
-      "version": 1
-    },
     "devices": [
       {
         "active_state": {

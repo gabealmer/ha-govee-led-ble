@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import replace
 from hashlib import sha256
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -73,14 +71,6 @@ def _deployment(phase: DeploymentPhase = DeploymentPhase.COMPILING) -> Deploymen
         item_id=item.id,
         item_version=1,
     )
-
-
-def test_frontend_deployment_phase_contract_matches_backend() -> None:
-    source = (Path(__file__).parents[1] / "frontend" / "src" / "types.ts").read_text(encoding="utf-8")
-    phase_block = source.split("export const DEPLOYMENT_PHASES = [", 1)[1].split("] as const;", 1)[0]
-    frontend_phases = tuple(re.findall(r'"([^"]+)"', phase_block))
-
-    assert frontend_phases == tuple(phase.value for phase in DeploymentPhase)
 
 
 async def test_personal_repositories_use_injected_stores_without_home_assistant() -> None:

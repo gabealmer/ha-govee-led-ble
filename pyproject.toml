@@ -20,9 +20,8 @@ dev = [
     # what Home Assistant actually ships, and overriding it tests something nobody runs.
     # Pillow is test-only and never ships with the integration. Wait for upstream.
     "pytest-homeassistant-custom-component>=0.13.316",
-    "pyserial>=3.5",
     "ruff>=0.9",
-    "serialx[esphome]>=1.8.2",
+    "serialx>=1.8.2",
     "defusedxml>=0.7.1",
 ]
 

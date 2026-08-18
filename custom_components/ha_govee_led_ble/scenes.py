@@ -66,10 +66,6 @@ class SceneEntry:
     music_code: int = 0
 
     @property
-    def is_simple(self) -> bool:
-        return not self.param
-
-    @property
     def display_name(self) -> str:
         return self.name if not self.variant else f"{self.name}-{self.variant}"
 

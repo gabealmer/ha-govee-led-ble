@@ -70,9 +70,6 @@ _LOGGER = logging.getLogger(__name__)
 MIN_COLOR_TEMP_KELVIN = 2000
 MAX_COLOR_TEMP_KELVIN = 9000
 
-_DEFAULT_SEGMENT_COLOR: tuple[int, int, int] = (255, 255, 255)
-
-
 def _coerce_rgb(raw: Any) -> tuple[int, int, int] | None:
     if not isinstance(raw, list | tuple) or len(raw) != 3:
         return None
@@ -383,47 +380,32 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     async def _refresh_with_retry(
         self,
         *,
-        expected_effect: str | None = None,
         expected_on: bool | None = None,
         expected_brightness: int | None = None,
-        expected_music_mode: str | None = None,
-        expected_music_sensitivity: int | None = None,
-        expected_music_calm: bool | None = None,
-        expected_music_color: tuple[int, int, int] | None = None,
-        expected_music_auto_color: bool = False,
         expected_video_mode: str | None = None,
         expected_video_full_screen: bool | None = None,
         expected_video_saturation: int | None = None,
         expected_video_sound_effects: bool | None = None,
         expected_video_sound_effects_softness: int | None = None,
-        expected_white_brightness: int | None = None,
         retry_command: Callable[[], Awaitable[None]] | None = None,
-        required: bool = True,
     ) -> None:
         if not self.coordinator.profile.state_readable:
             return
         confirm = partial(
             self.coordinator.refresh_state,
-            expected_effect=expected_effect,
             expected_on=expected_on,
             expected_brightness=expected_brightness,
-            expected_music_mode=expected_music_mode,
-            expected_music_sensitivity=expected_music_sensitivity,
-            expected_music_calm=expected_music_calm,
-            expected_music_color=expected_music_color,
-            expected_music_auto_color=expected_music_auto_color,
             expected_video_mode=expected_video_mode,
             expected_video_full_screen=expected_video_full_screen,
             expected_video_saturation=expected_video_saturation,
             expected_video_sound_effects=expected_video_sound_effects,
             expected_video_sound_effects_softness=expected_video_sound_effects_softness,
-            expected_white_brightness=expected_white_brightness,
         )
         if await confirm():
             return
         if retry_command is not None:
             await retry_command()
-        if not await confirm() and required:
+        if not await confirm():
             raise RuntimeError(f"Failed to confirm state for {self.coordinator.model}")
 
     def _notify_state_changed(self) -> None:

@@ -15,7 +15,6 @@ from custom_components.ha_govee_led_ble.effect_contracts import EditorApiInfo, d
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
-    DeploymentSnapshot,
     ObservationConfidence,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
@@ -40,10 +39,7 @@ from custom_components.ha_govee_led_ble.effect_identity import ActiveEffectHint,
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewStatus
 from custom_components.ha_govee_led_ble.effect_scenes import scene_catalogue_payload, scene_detail_payload
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
-from custom_components.ha_govee_led_ble.effect_websocket_payloads import (
-    deployment_snapshot_payload,
-    library_snapshot_payload,
-)
+from custom_components.ha_govee_led_ble.effect_websocket_payloads import library_snapshot_payload
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -277,8 +273,6 @@ def rendered_data() -> str:
             "custom_catalogue": catalogue,
             "library_snapshot": library_snapshot_payload(library_snapshot),
             "library_item": item.to_dict(),
-            "deployment": deployment.to_public_dict(),
-            "deployment_snapshot": deployment_snapshot_payload(DeploymentSnapshot(1, (deployment,))),
             "preview_status": preview.to_dict(),
             "scene_catalogues": {model: _compact_scene_catalogue(model) for model in MODELS},
             "scene_details": scene_details,

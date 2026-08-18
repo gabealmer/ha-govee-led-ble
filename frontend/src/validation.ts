@@ -1,8 +1,6 @@
 import type {
   AdvancedContent,
   BuiltinSceneContent,
-  DeploymentRecord,
-  DeploymentSnapshot,
   DeviceCapabilities,
   EditorApiInfo,
   EffectContent,
@@ -53,7 +51,7 @@ import {
   requireUnique,
   stringValue,
 } from "./payload-validation";
-import { DEPLOYMENT_PHASES, PREVIEW_PHASES } from "./types";
+import { PREVIEW_PHASES } from "./types";
 import {
   LAYER_UNKNOWN_FLAGS_MASK,
   MAX_CATALOGUE_BYTES,
@@ -426,125 +424,6 @@ export function decodeLibraryItem(value: unknown): LibraryItem {
         }
       : {}),
   };
-}
-
-export function decodeDeployment(value: unknown): DeploymentRecord {
-  const deployment = objectValue(value, "deployment");
-  const phase = enumString(
-    deployment.phase,
-    DEPLOYMENT_PHASES,
-    "deployment phase",
-  );
-  const decoded: DeploymentRecord = {
-    operation_id: boundedString(
-      deployment.operation_id,
-      "deployment operation ID",
-      MAX_IDENTIFIER_LENGTH,
-    ),
-    config_entry_id: boundedString(
-      deployment.config_entry_id,
-      "deployment config entry ID",
-      MAX_IDENTIFIER_LENGTH,
-    ),
-    diy_code:
-      deployment.diy_code === null
-        ? null
-        : integerValue(deployment.diy_code, "deployment DIY code", 0, 65_535),
-    content_kind: boundedString(
-      deployment.content_kind,
-      "deployment content kind",
-      MAX_IDENTIFIER_LENGTH,
-    ),
-    target_mode: enumString(
-      deployment.target_mode,
-      ["custom", "scene", "music", "video"] as const,
-      "deployment target mode",
-    ),
-    target_effect: nullableBoundedString(
-      deployment.target_effect,
-      "deployment target effect",
-    ),
-    phase,
-    updated_at: timestampString(
-      deployment.updated_at,
-      "deployment timestamp",
-    ),
-    item_id: nullableBoundedString(deployment.item_id, "deployment item ID"),
-    item_version:
-      deployment.item_version === null
-        ? null
-        : revisionValue(
-            deployment.item_version,
-            "deployment item version",
-            1,
-          ),
-    source_kind: enumString(
-      deployment.source_kind,
-      ["saved_effect", "snapshot", "deleted_effect"] as const,
-      "deployment source kind",
-    ),
-    selector_label: boundedString(
-      deployment.selector_label,
-      "deployment selector label",
-      MAX_EFFECT_NAME_LENGTH,
-    ),
-    source_origin_kind: boundedString(
-      deployment.source_origin_kind,
-      "deployment origin kind",
-      MAX_IDENTIFIER_LENGTH,
-    ),
-    source_origin_id: nullableBoundedString(
-      deployment.source_origin_id,
-      "deployment origin source ID",
-    ),
-    source_content_hash: contentHash(
-      deployment.source_content_hash,
-      "deployment source content hash",
-    ),
-    error_code: nullableBoundedString(
-      deployment.error_code,
-      "deployment error code",
-    ),
-    progress_current: integerValue(
-      deployment.progress_current,
-      "deployment progress",
-      0,
-      1024,
-    ),
-    progress_total: integerValue(
-      deployment.progress_total,
-      "deployment progress total",
-      0,
-      1024,
-    ),
-    verification_confidence: enumString(
-      deployment.verification_confidence,
-      VERIFICATION_CONFIDENCE,
-      "deployment verification confidence",
-    ),
-  };
-  if (decoded.progress_current > decoded.progress_total) {
-    invalid("deployment progress exceeds its total");
-  }
-  return decoded;
-}
-
-export function decodeDeploymentSnapshot(value: unknown): DeploymentSnapshot {
-  const snapshot = objectValue(value, "deployment snapshot");
-  const decoded = {
-    version: revisionValue(snapshot.version, "deployment version", 0),
-    deployments: arrayValue(
-      snapshot.deployments,
-      "deployments",
-      MAX_DEPLOYMENT_RECORDS,
-    ).map(decodeDeployment),
-  };
-  requireUnique(
-    decoded.deployments,
-    (deployment) => deployment.operation_id,
-    "deployment operation IDs",
-  );
-  return decoded;
 }
 
 export function decodePreviewStatus(value: unknown): PreviewStatus {
