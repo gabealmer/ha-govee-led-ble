@@ -18,6 +18,7 @@ function device(
 ): DeviceCapabilities {
   return {
     config_entry_id: id,
+    light_entity_id: `light.${id}`,
     model,
     display_name: id,
     segment_count: 15,

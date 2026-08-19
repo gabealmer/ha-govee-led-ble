@@ -110,6 +110,7 @@ def test_real_rest_client_sends_the_configured_bearer_token(monkeypatch):
 def _device(model="H617A"):
     return {
         "config_entry_id": "entry-secret",
+        "light_entity_id": "light.cupboard",
         "model": model,
         "display_name": "Cupboard",
         "custom_effects": {

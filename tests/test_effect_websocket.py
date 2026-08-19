@@ -5,8 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.ha_govee_led_ble.const import DOMAIN
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_domain import SingleEffect, effect_content_to_dict
 from custom_components.ha_govee_led_ble.effect_websocket import (
@@ -21,6 +24,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_USER_STATE_GET,
     WS_USER_STATE_RECORD_COLOUR,
     WS_USER_STATE_UPDATE,
+    _light_entity_id,
     async_register_effect_websocket,
 )
 
@@ -34,6 +38,46 @@ async def _setup_backend(hass: HomeAssistant) -> EffectBackend:
 
 def _content(speed: int = 50) -> dict[str, Any]:
     return effect_content_to_dict(SingleEffect(0, 0, speed, ((255, 0, 0),)))
+
+
+async def test_light_entity_resolution_requires_one_enabled_integration_light(
+    hass: HomeAssistant,
+    entity_registry,
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.add_to_hass(hass)
+    other = entity_registry.async_get_or_create(
+        "light",
+        "other",
+        "other-light",
+        config_entry=entry,
+    )
+    disabled = entity_registry.async_get_or_create(
+        "light",
+        DOMAIN,
+        "disabled-light",
+        config_entry=entry,
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+
+    assert _light_entity_id(hass, entry.entry_id) is None
+    assert other.entity_id != disabled.entity_id
+
+    first = entity_registry.async_get_or_create(
+        "light",
+        DOMAIN,
+        "first-light",
+        config_entry=entry,
+    )
+    assert _light_entity_id(hass, entry.entry_id) == first.entity_id
+
+    entity_registry.async_get_or_create(
+        "light",
+        DOMAIN,
+        "second-light",
+        config_entry=entry,
+    )
+    assert _light_entity_id(hass, entry.entry_id) is None
 
 
 async def test_authenticated_users_can_read_contracts(

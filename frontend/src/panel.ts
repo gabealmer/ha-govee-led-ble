@@ -52,7 +52,13 @@ import type {
   SpecialDiyContent,
   VideoProfileContent,
 } from "./types";
-import { compareLabels, showHomeAssistantHeader } from "./ui-utils";
+import {
+  compareLabels,
+  lightControlEntityId,
+  moreInfoDetail,
+  showHomeAssistantHeader,
+  showStudioToolbar,
+} from "./ui-utils";
 
 export class GoveeLedEffectStudio extends LitElement {
   @property({ attribute: false })
@@ -271,20 +277,55 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderStudioToolbar() {
-    if (
-      !this.model.showDeviceSelector &&
-      (!this.isAdmin || this.model.selectedDevice === undefined)
-    ) {
+    const device = this.model.selectedDevice;
+    const liveApplyVisible = this.isAdmin && device !== undefined;
+    const lightEntityId = lightControlEntityId(device);
+    if (!showStudioToolbar(
+      this.model.showDeviceSelector,
+      liveApplyVisible,
+      lightEntityId,
+    )) {
       return nothing;
     }
     return html`
       <div class="studio-toolbar">
         ${this.renderDeviceSelector()}
-        ${this.isAdmin && this.model.selectedDevice
-          ? this.renderLiveApplyControl()
-          : nothing}
+        <div class="studio-toolbar-controls">
+          ${liveApplyVisible ? this.renderLiveApplyControl() : nothing}
+          ${device && lightEntityId
+            ? this.renderLightControl(device.display_name, lightEntityId)
+            : nothing}
+        </div>
       </div>
     `;
+  }
+
+  private renderLightControl(displayName: string, entityId: string) {
+    return html`
+      <button
+        class="light-control-button"
+        type="button"
+        aria-label=${`Control ${displayName}`}
+        title=${`Control ${displayName}`}
+        @click=${() => this.showLightControls(entityId)}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path
+            d="M20 15.31 23.31 12 20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69M12 18V6a6 6 0 0 1 0 12"
+          ></path>
+        </svg>
+      </button>
+    `;
+  }
+
+  private showLightControls(entityId: string): void {
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail: moreInfoDetail(entityId),
+      }),
+    );
   }
 
   private renderDeviceSelector() {

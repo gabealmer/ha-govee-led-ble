@@ -19,7 +19,7 @@ from .effect_limits import (
 )
 
 EDITOR_API_VERSION: Final = 5
-EDITOR_ASSET_VERSION: Final = 4
+EDITOR_ASSET_VERSION: Final = 5
 EFFECT_COMPILER_VERSION: Final = 4
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -458,6 +458,7 @@ class EditorApiInfo:
 @dataclass(frozen=True, slots=True)
 class DeviceEffectCapabilities:
     config_entry_id: str
+    light_entity_id: str | None
     model: str
     display_name: str
     segment_count: int
@@ -475,6 +476,7 @@ class DeviceEffectCapabilities:
     def to_dict(self) -> dict[str, JsonValue]:
         return {
             "config_entry_id": self.config_entry_id,
+            "light_entity_id": self.light_entity_id,
             "model": self.model,
             "display_name": self.display_name,
             "segment_count": self.segment_count,
@@ -500,9 +502,12 @@ def device_effect_capabilities(
     model: str,
     display_name: str,
     segment_count: int,
+    *,
+    light_entity_id: str | None = None,
 ) -> DeviceEffectCapabilities:
     return DeviceEffectCapabilities(
         config_entry_id=config_entry_id,
+        light_entity_id=light_entity_id,
         model=model,
         display_name=display_name,
         segment_count=segment_count,

@@ -268,6 +268,7 @@ def rendered_data() -> str:
             model,
             MODEL_PROFILES[model].name,
             MODEL_PROFILES[model].segment_count,
+            light_entity_id="light.h617a_main" if model == "H617A" else None,
         ).to_dict()
         device["active_state"] = active_state.to_public_dict() if model == "H617A" else None
         devices.append(device)

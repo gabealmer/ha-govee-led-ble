@@ -1590,6 +1590,7 @@
           "workshop": "supported"
         },
         "display_name": "H617A LED Strip",
+        "light_entity_id": "light.h617a_main",
         "model": "H617A",
         "profiles": {
           "music": "supported",
@@ -1611,6 +1612,7 @@
           "workshop": "supported"
         },
         "display_name": "H6199 DreamView T1",
+        "light_entity_id": null,
         "model": "H6199",
         "profiles": {
           "music": "supported",

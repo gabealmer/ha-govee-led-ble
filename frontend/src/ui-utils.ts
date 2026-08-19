@@ -1,4 +1,4 @@
-import type { RGB } from "./types";
+import type { DeviceCapabilities, RGB } from "./types";
 
 export function clamp(
   value: number,
@@ -56,6 +56,24 @@ export function showHomeAssistantHeader(
   kioskMode: boolean | undefined,
 ): boolean {
   return kioskMode !== true && (narrow || dockedSidebar === "always_hidden");
+}
+
+export function lightControlEntityId(
+  device: DeviceCapabilities | undefined,
+): string | undefined {
+  return device?.light_entity_id ?? undefined;
+}
+
+export function showStudioToolbar(
+  showDeviceSelector: boolean,
+  liveApplyVisible: boolean,
+  lightEntityId: string | undefined,
+): boolean {
+  return showDeviceSelector || liveApplyVisible || lightEntityId !== undefined;
+}
+
+export function moreInfoDetail(entityId: string): { entityId: string } {
+  return { entityId };
 }
 
 export function relocatedIndex(

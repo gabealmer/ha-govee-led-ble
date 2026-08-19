@@ -723,6 +723,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
         },
     }
     assert h617a.painted is CapabilityState.SUPPORTED
+    assert h617a.light_entity_id is None
     assert h617a.single is CapabilityState.SUPPORTED
     assert h617a.multi is CapabilityState.SUPPORTED
     assert h617a.palette_diy is CapabilityState.UNSUPPORTED

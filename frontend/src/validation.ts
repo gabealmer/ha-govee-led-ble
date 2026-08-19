@@ -154,6 +154,10 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         `devices[${index}].config_entry_id`,
         MAX_IDENTIFIER_LENGTH,
       ),
+      light_entity_id: optionalLightEntityId(
+        device.light_entity_id,
+        `devices[${index}].light_entity_id`,
+      ),
       model: boundedString(
         device.model,
         `devices[${index}].model`,
@@ -205,6 +209,17 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
   });
   requireUnique(devices, (device) => device.config_entry_id, "device IDs");
   return devices;
+}
+
+function optionalLightEntityId(value: unknown, name: string): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const entityId = boundedString(value, name, MAX_IDENTIFIER_LENGTH);
+  if (!entityId.startsWith("light.") || entityId.length === "light.".length) {
+    invalid(`${name} must identify a light entity`);
+  }
+  return entityId;
 }
 
 export function decodeEffectUserState(value: unknown): EffectUserState {

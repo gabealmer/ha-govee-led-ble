@@ -158,7 +158,47 @@ export const effectStudioPanelStyles = [
       display: flex;
       align-items: center;
       gap: 9px;
+    }
+
+    .studio-toolbar-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
       margin-inline-start: auto;
+    }
+
+    .light-control-button {
+      display: inline-grid;
+      width: 36px;
+      height: 36px;
+      padding: 8px;
+      border: 0;
+      border-radius: 50%;
+      place-items: center;
+      color: var(--secondary-text-color);
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .light-control-button:hover {
+      color: var(--primary-text-color);
+      background: color-mix(
+        in srgb,
+        var(--primary-text-color) 8%,
+        transparent
+      );
+    }
+
+    .light-control-button:focus-visible {
+      color: var(--primary-text-color);
+      outline: 2px solid var(--studio-blue);
+      outline-offset: 1px;
+    }
+
+    .light-control-button svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
     }
 
     .live-apply-toggle {
@@ -512,7 +552,7 @@ export const effectStudioPanelStyles = [
         width: 100%;
       }
 
-      .live-apply-control {
+      .studio-toolbar-controls {
         align-self: flex-end;
       }
 

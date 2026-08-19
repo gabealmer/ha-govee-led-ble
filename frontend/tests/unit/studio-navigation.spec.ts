@@ -17,6 +17,7 @@ const device = (
   painted: "supported" | "unsupported",
 ): DeviceCapabilities => ({
   config_entry_id: id,
+  light_entity_id: `light.${id}`,
   model: "H617A",
   display_name: id,
   segment_count: 15,

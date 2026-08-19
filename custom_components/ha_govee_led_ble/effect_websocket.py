@@ -16,6 +16,7 @@ from homeassistant.components.websocket_api.decorators import (
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, EFFECT_FAMILY_SCENES
@@ -133,6 +134,7 @@ async def ws_editor_devices(
             coordinator.model,
             entry.title,
             coordinator.profile.segment_count,
+            light_entity_id=_light_entity_id(hass, entry.entry_id),
         ).to_dict()
         device["active_state"] = observed.to_public_dict()
         devices.append(device)
@@ -144,6 +146,15 @@ async def ws_editor_devices(
         )
         return
     connection.send_result(msg["id"], {"devices": devices})
+
+
+def _light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str | None:
+    entries = [
+        entry
+        for entry in er.async_entries_for_config_entry(er.async_get(hass), config_entry_id)
+        if entry.domain == "light" and entry.platform == DOMAIN and entry.disabled_by is None
+    ]
+    return entries[0].entity_id if len(entries) == 1 else None
 
 
 @websocket_command({vol.Required("type"): WS_CUSTOM_CATALOGUE})

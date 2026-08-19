@@ -48,6 +48,7 @@ export interface EditorApiInfo {
 
 export interface DeviceCapabilities {
   config_entry_id: string;
+  light_entity_id: string | null;
   model: string;
   display_name: string;
   segment_count: number;

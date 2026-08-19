@@ -11,7 +11,9 @@ from homeassistant.components import frontend
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import UnsupportedStorageVersionError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import async_setup
 from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENES
@@ -192,6 +194,14 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         runtime_data=coordinator,
         title="Govee H617A",
     )
+    registry_entry = MockConfigEntry(domain=DOMAIN, entry_id=entry.entry_id)
+    registry_entry.add_to_hass(hass)
+    light = er.async_get(hass).async_get_or_create(
+        "light",
+        DOMAIN,
+        "isolated-light",
+        config_entry=registry_entry,
+    )
     with monkeypatch.context() as context:
         context.setattr(
             hass.config_entries,
@@ -223,6 +233,7 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
     assert library["result"] == {"items": []}
     device = devices["result"]["devices"][0]
     assert device["config_entry_id"] == "isolated-entry"
+    assert device["light_entity_id"] == light.entity_id
     assert device["model"] == "H617A"
     assert device["segment_count"] == coordinator.profile.segment_count
     assert device["custom_effects"]["painted"] == "supported"

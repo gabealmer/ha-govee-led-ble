@@ -117,6 +117,8 @@ class EffectStudioValidator:
         ]
         if len(light_entities) != 1:
             raise ValidationError("cupboard config entry does not have exactly one enabled light entity")
+        if device.get("light_entity_id") != light_entities[0]:
+            raise ValidationError("Effect Studio device does not reference the enabled light entity")
         self.selection = DeviceSelection(
             config_entry_id=self.identity_entry_id,
             model=device["model"],
