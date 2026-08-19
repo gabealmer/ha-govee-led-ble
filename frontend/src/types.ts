@@ -516,6 +516,8 @@ export interface HomeAssistant {
   user?: {
     is_admin: boolean;
   };
+  dockedSidebar?: "auto" | "docked" | "always_hidden";
+  kioskMode?: boolean;
 }
 
 export interface PanelConfig {

@@ -52,7 +52,7 @@ import type {
   SpecialDiyContent,
   VideoProfileContent,
 } from "./types";
-import { compareLabels } from "./ui-utils";
+import { compareLabels, showHomeAssistantHeader } from "./ui-utils";
 
 export class GoveeLedEffectStudio extends LitElement {
   @property({ attribute: false })
@@ -60,6 +60,9 @@ export class GoveeLedEffectStudio extends LitElement {
 
   @property({ attribute: false })
   public panel?: PanelConfig;
+
+  @property({ type: Boolean })
+  public narrow = false;
 
   @state()
   private modelRevision = 0;
@@ -137,13 +140,20 @@ export class GoveeLedEffectStudio extends LitElement {
 
   protected render() {
     if (this.model.loading) {
-      return html`<div class="centred" role="status">Loading effect studio...</div>`;
+      return html`
+        ${this.renderHomeAssistantHeader()}
+        <div class="centred" role="status">Loading effect studio...</div>
+      `;
     }
     if (this.model.error) {
-      return this.renderFatalError();
+      return html`
+        ${this.renderHomeAssistantHeader()}
+        ${this.renderFatalError()}
+      `;
     }
 
     return html`
+      ${this.renderHomeAssistantHeader()}
       <h1 class="visually-hidden">Effect Studio</h1>
 
       ${this.renderStudioToolbar()}
@@ -154,6 +164,42 @@ export class GoveeLedEffectStudio extends LitElement {
       ${this.model.saveNameDialogOpen ? this.renderSaveNameDialog() : nothing}
       ${this.model.deleteCandidate ? this.renderDeleteConfirmation() : nothing}
     `;
+  }
+
+  private renderHomeAssistantHeader() {
+    if (
+      !showHomeAssistantHeader(
+        this.narrow,
+        this.hass?.dockedSidebar,
+        this.hass?.kioskMode,
+      )
+    ) {
+      return nothing;
+    }
+    return html`
+      <header class="home-assistant-header">
+        <button
+          class="home-assistant-menu"
+          type="button"
+          aria-label="Open Home Assistant navigation"
+          @click=${this.toggleHomeAssistantMenu}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"></path>
+          </svg>
+        </button>
+        <span>Govee Effect Studio</span>
+      </header>
+    `;
+  }
+
+  private toggleHomeAssistantMenu(): void {
+    this.dispatchEvent(
+      new CustomEvent("hass-toggle-menu", {
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private renderStudio() {

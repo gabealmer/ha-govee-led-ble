@@ -6,6 +6,7 @@ import {
   clonePalette,
   relocatedIndex,
   sameRgb,
+  showHomeAssistantHeader,
 } from "../../src/ui-utils";
 import type { RGB } from "../../src/types";
 
@@ -31,4 +32,11 @@ test("relocated indexes follow the moved item and shifted neighbours", () => {
   expect(relocatedIndex(2, 1, 3)).toBe(1);
   expect(relocatedIndex(2, 3, 1)).toBe(3);
   expect(relocatedIndex(undefined, 1, 3)).toBeUndefined();
+});
+
+test("Home Assistant header appears only when native navigation is unavailable", () => {
+  expect(showHomeAssistantHeader(true, "auto", false)).toBe(true);
+  expect(showHomeAssistantHeader(false, "always_hidden", false)).toBe(true);
+  expect(showHomeAssistantHeader(false, "docked", false)).toBe(false);
+  expect(showHomeAssistantHeader(true, "auto", true)).toBe(false);
 });

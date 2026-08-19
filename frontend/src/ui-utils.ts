@@ -50,6 +50,14 @@ export function compareLabels(left: string, right: string): number {
   return left.localeCompare(right, "en-AU", { sensitivity: "base" });
 }
 
+export function showHomeAssistantHeader(
+  narrow: boolean,
+  dockedSidebar: string | undefined,
+  kioskMode: boolean | undefined,
+): boolean {
+  return kioskMode !== true && (narrow || dockedSidebar === "always_hidden");
+}
+
 export function relocatedIndex(
   current: number,
   from: number,

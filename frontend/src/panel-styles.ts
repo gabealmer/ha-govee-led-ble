@@ -81,6 +81,45 @@ export const effectStudioPanelStyles = [
       background: var(--studio-card);
     }
 
+    .home-assistant-header {
+      display: flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 0 16px;
+      flex: 0 0 40px;
+      box-sizing: border-box;
+      border-bottom: var(--app-header-border-bottom, none);
+      color: var(--app-header-text-color, #fff);
+      background: var(--app-header-background-color, var(--primary-color));
+      font-size: var(--ha-font-size-l, 18px);
+      font-weight: var(--ha-font-weight-normal, 400);
+    }
+
+    .home-assistant-menu {
+      display: inline-grid;
+      width: 40px;
+      height: 40px;
+      margin: 0 16px 0 -10px;
+      padding: 10px;
+      border: 0;
+      place-items: center;
+      color: inherit;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .home-assistant-menu svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    .home-assistant-menu:focus-visible {
+      border-radius: 50%;
+      outline: 2px solid currentColor;
+      outline-offset: -4px;
+    }
+
     .studio-toolbar {
       position: sticky;
       z-index: 4;
