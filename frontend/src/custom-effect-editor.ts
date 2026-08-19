@@ -187,7 +187,6 @@ export class GoveeCustomEffectEditor extends LitElement {
         <select
           aria-label="Variation"
           data-single-variation
-          .value=${String(content.variant)}
           ?disabled=${this.disabled}
           @change=${(event: Event) =>
             this.emitContent({
@@ -198,13 +197,16 @@ export class GoveeCustomEffectEditor extends LitElement {
           ${knownVariation
             ? nothing
             : html`
-                <option value=${String(content.variant)}>
+                <option value=${String(content.variant)} .selected=${true}>
                   Unknown variation ${content.variant}
                 </option>
               `}
           ${variations.map(
             (variation) => html`
-              <option value=${String(variation.variant)}>
+              <option
+                value=${String(variation.variant)}
+                .selected=${variation.variant === content.variant}
+              >
                 ${variation.label}
               </option>
             `,
@@ -289,7 +291,6 @@ export class GoveeCustomEffectEditor extends LitElement {
           <select
             aria-label="Layer ${index + 1} effect"
             data-effect-index=${index}
-            .value=${family?.id ?? `unknown:${pair.family}`}
             ?disabled=${this.disabled}
             @change=${(event: Event) =>
               this.effectFamilyChanged(
@@ -300,13 +301,21 @@ export class GoveeCustomEffectEditor extends LitElement {
             ${family
               ? nothing
               : html`
-                  <option value=${`unknown:${pair.family}`}>
+                  <option
+                    value=${`unknown:${pair.family}`}
+                    .selected=${true}
+                  >
                     Unknown effect ${pair.family}
                   </option>
                 `}
             ${this.multiFamilies.map(
               (effect) => html`
-                <option value=${effect.id}>${effect.label}</option>
+                <option
+                  value=${effect.id}
+                  .selected=${effect.id === family?.id}
+                >
+                  ${effect.label}
+                </option>
               `,
             )}
           </select>
@@ -316,7 +325,6 @@ export class GoveeCustomEffectEditor extends LitElement {
           <select
             aria-label="Layer ${index + 1} variation"
             data-variation-index=${index}
-            .value=${String(pair.variant)}
             ?disabled=${this.disabled}
             @change=${(event: Event) =>
               this.effectVariationChanged(
@@ -329,13 +337,16 @@ export class GoveeCustomEffectEditor extends LitElement {
             )
               ? nothing
               : html`
-                  <option value=${String(pair.variant)}>
+                  <option value=${String(pair.variant)} .selected=${true}>
                     Unknown variation ${pair.variant}
                   </option>
                 `}
             ${variations.map(
               (variation) => html`
-                <option value=${String(variation.variant)}>
+                <option
+                  value=${String(variation.variant)}
+                  .selected=${variation.variant === pair.variant}
+                >
                   ${variation.label}
                 </option>
               `,

@@ -338,14 +338,20 @@ export class GoveeLedEffectStudio extends LitElement {
       <label class="device-selector">
         <select
           aria-label="Light"
-          .value=${this.model.selectedDeviceId ?? ""}
           @change=${(event: Event) =>
             void this.controller.deviceChanged(
               (event.target as HTMLSelectElement).value,
             )}
         >
           ${selectedUnavailable
-            ? html`<option value=${this.model.selectedDeviceId!}>Unavailable light</option>`
+            ? html`
+                <option
+                  value=${this.model.selectedDeviceId!}
+                  .selected=${true}
+                >
+                  Unavailable light
+                </option>
+              `
             : nothing}
           ${[...this.model.devices]
             .sort((left, right) =>
@@ -353,7 +359,11 @@ export class GoveeLedEffectStudio extends LitElement {
             )
             .map(
               (device) => html`
-                <option value=${device.config_entry_id}>
+                <option
+                  value=${device.config_entry_id}
+                  .selected=${device.config_entry_id ===
+                  this.model.selectedDeviceId}
+                >
                   ${device.display_name} (${device.model})
                 </option>
               `,

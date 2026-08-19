@@ -391,7 +391,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             <span>Order</span>
             <select
               aria-label="Brightness order"
-              .value=${knownOrder ? String(pattern.order) : ""}
               ?disabled=${this.disabled}
               @change=${(event: Event) =>
                 this.updateBrightnessPattern({
@@ -400,12 +399,15 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             >
               ${KNOWN_BRIGHTNESS_ORDERS.map(
                 (order) =>
-                  html`<option value=${order}>
+                  html`<option
+                    value=${order}
+                    .selected=${pattern.order === order}
+                  >
                     ${BRIGHTNESS_LABELS[order]}
                   </option>`,
               )}
               ${!knownOrder
-                ? html`<option value="" disabled selected>
+                ? html`<option value="" disabled .selected=${true}>
                     Choose an order
                   </option>`
                 : nothing}
@@ -465,7 +467,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
               <label class="field">
                 <span>Direction</span>
                 <select
-                  .value=${String(movement.direction)}
                   ?disabled=${this.disabled}
                   @change=${(event: Event) => {
                     const direction = Number(
@@ -480,7 +481,12 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                 >
                   ${Object.entries(MOVEMENT_LABELS).map(
                     ([value, direction]) =>
-                      html`<option value=${value}>${direction}</option>`,
+                      html`<option
+                        value=${value}
+                        .selected=${movement.direction === Number(value)}
+                      >
+                        ${direction}
+                      </option>`,
                   )}
                 </select>
               </label>
