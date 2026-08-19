@@ -57,7 +57,7 @@ from .layered_scene import (
     _catalogue_ref_to_value as _catalogue_ref_to_dict,
 )
 
-EFFECT_SCHEMA_VERSION = 1
+EFFECT_SCHEMA_VERSION = 2
 MAX_PALETTE_COLOURS = 8
 MAX_MULTI_EFFECTS = 4
 H617A_SEGMENT_COUNT = 15
@@ -116,28 +116,11 @@ class TargetHint:
 
 
 @dataclass(frozen=True, slots=True)
-class PaintGroup:
-    fill: RGB
-    segments: tuple[int, ...]
-
-    def __post_init__(self) -> None:
-        _validate_rgb(self.fill, "paint-group fill")
-        if not self.segments:
-            raise EffectValidationError("paint group must contain at least one segment")
-        if len(set(self.segments)) != len(self.segments):
-            raise EffectValidationError("paint group contains duplicate segments")
-        for segment in self.segments:
-            if not isinstance(segment, int) or not 0 <= segment < H617A_SEGMENT_COUNT:
-                raise EffectValidationError(f"painted segment {segment!r} outside 0..{H617A_SEGMENT_COUNT - 1}")
-
-
-@dataclass(frozen=True, slots=True)
 class PaintedEffect:
     effect: str
     speed: int
     brightness: int
-    background: RGB
-    groups: tuple[PaintGroup, ...] = ()
+    segments: tuple[RGB | None, ...]
 
     def __post_init__(self) -> None:
         validate_bounded_string(
@@ -148,13 +131,11 @@ class PaintedEffect:
         )
         _validate_percent(self.speed, "speed")
         _validate_percent(self.brightness, "brightness")
-        _validate_rgb(self.background, "background")
-        claimed: set[int] = set()
-        for group in self.groups:
-            overlap = claimed.intersection(group.segments)
-            if overlap:
-                raise EffectValidationError(f"painted segments appear in multiple groups: {sorted(overlap)}")
-            claimed.update(group.segments)
+        if len(self.segments) != H617A_SEGMENT_COUNT:
+            raise EffectValidationError(f"painted effect must contain exactly {H617A_SEGMENT_COUNT} segments")
+        for segment in self.segments:
+            if segment is not None:
+                _validate_rgb(segment, "painted segment")
 
 
 @dataclass(frozen=True, slots=True)
@@ -640,8 +621,7 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "effect": content.effect,
             "speed": content.speed,
             "brightness": content.brightness,
-            "background": list(content.background),
-            "groups": [{"fill": list(group.fill), "segments": list(group.segments)} for group in content.groups],
+            "segments": [None if segment is None else list(segment) for segment in content.segments],
         }
     if isinstance(content, SingleEffect):
         return {
@@ -750,8 +730,7 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             effect=_required_str(raw, "effect"),
             speed=_required_int(raw, "speed"),
             brightness=_required_int(raw, "brightness"),
-            background=_rgb_from_value(raw.get("background"), "background"),
-            groups=_painted_groups_from_value(raw.get("groups")),
+            segments=_painted_segments_from_value(raw.get("segments")),
         )
     if kind == "h617a_single":
         return SingleEffect(
@@ -847,22 +826,12 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
     return OpaqueContent(kind=kind, body=cast(dict[str, JsonValue], body))
 
 
-def _painted_groups_from_value(value: object) -> tuple[PaintGroup, ...]:
+def _painted_segments_from_value(value: object) -> tuple[RGB | None, ...]:
     if not isinstance(value, Sequence) or isinstance(value, str | bytes):
-        raise EffectValidationError("groups must be a list")
-    groups: list[PaintGroup] = []
-    for raw_group in value:
-        group = _as_mapping(raw_group, "paint group")
-        raw_segments = _required_sequence(group, "segments")
-        if any(not isinstance(segment, int) for segment in raw_segments):
-            raise EffectValidationError("paint-group segments must be integers")
-        groups.append(
-            PaintGroup(
-                fill=_rgb_from_value(group.get("fill"), "paint-group fill"),
-                segments=tuple(cast(Sequence[int], raw_segments)),
-            )
-        )
-    return tuple(groups)
+        raise EffectValidationError("painted segments must be a list")
+    if len(value) != H617A_SEGMENT_COUNT:
+        raise EffectValidationError(f"painted effect must contain exactly {H617A_SEGMENT_COUNT} segments")
+    return tuple(None if segment is None else _rgb_from_value(segment, "painted segment") for segment in value)
 
 
 def _relative_brightness_to_dict(relative_brightness: RelativeBrightness) -> dict[str, JsonValue]:

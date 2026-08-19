@@ -43,9 +43,12 @@ class EffectBackend:
         scene_defaults = NativeSceneDefaultRepository(hass)
         loaded = False
         try:
-            await library.async_load()
+            library_snapshot = await library.async_load()
             deployment_snapshot = await deployments.async_load()
             await device_cache.async_load()
+            await deployments.async_reconcile_library_hashes(library_snapshot.items)
+            await device_cache.async_reconcile_library_hashes(library_snapshot.items)
+            deployment_snapshot = deployments.snapshot()
             await user_state.async_load()
             await scene_defaults.async_load()
             loaded = True

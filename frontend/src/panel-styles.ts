@@ -5,7 +5,6 @@ import {
   studioBaseStyles,
   studioCardStyles,
   studioEditorStyles,
-  studioFeedbackStyles,
   studioFormStyles,
   studioSelectorStyles,
   studioVisuallyHiddenStyles,
@@ -19,7 +18,6 @@ export const effectStudioPanelStyles = [
   studioSelectorStyles,
   studioFormStyles,
   studioEditorStyles,
-  studioFeedbackStyles,
   studioVisuallyHiddenStyles,
   studioWorkspaceStyles,
   css`
@@ -168,10 +166,12 @@ export const effectStudioPanelStyles = [
 
     .live-apply-status {
       position: relative;
+      display: grid;
       width: 18px;
       height: 18px;
       flex: 0 0 18px;
-      border: 2px solid var(--disabled-color, #9e9e9e);
+      place-items: center;
+      border: 2px solid transparent;
       border-radius: 50%;
     }
 
@@ -183,20 +183,6 @@ export const effectStudioPanelStyles = [
       );
       border-top-color: var(--studio-blue);
       animation: live-apply-spin 700ms linear infinite;
-    }
-
-    .live-apply-status.current {
-      border-color: var(--success-color, #2e7d32);
-    }
-
-    .live-apply-status.current::after {
-      position: absolute;
-      width: 7px;
-      height: 4px;
-      border-bottom: 2px solid var(--success-color, #2e7d32);
-      border-left: 2px solid var(--success-color, #2e7d32);
-      content: "";
-      transform: translate(4px, 4px) rotate(-45deg);
     }
 
     .live-apply-status.warning {
@@ -350,10 +336,57 @@ export const effectStudioPanelStyles = [
       overflow-wrap: anywhere;
     }
 
-    .background-colour {
-      display: grid;
+    .paint-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 10px;
-      margin-top: 18px;
+      margin-top: 14px;
+    }
+
+    .paint-off {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      padding: 6px 10px;
+      border: 1px solid var(--studio-border);
+      border-radius: var(--studio-button-radius);
+      color: var(--primary-text-color);
+      background: var(--studio-card);
+      cursor: pointer;
+    }
+
+    .paint-off.active {
+      border-color: color-mix(
+        in srgb,
+        var(--studio-blue) 58%,
+        var(--studio-border)
+      );
+      box-shadow: inset 0 0 0 1px var(--studio-blue);
+    }
+
+    .paint-off-swatch {
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--studio-border);
+      border-radius: 50%;
+      background: #000;
+      box-shadow: inset 0 0 0 1px rgb(255 255 255 / 14%);
+    }
+
+    .action-error,
+    .read-only-copy {
+      margin: 0 0 var(--studio-section-gap);
+      line-height: 1.45;
+    }
+
+    .action-error {
+      color: var(--error-color, #db4437);
+    }
+
+    .read-only-copy {
+      color: var(--studio-muted);
     }
 
     @media (max-width: 900px) {

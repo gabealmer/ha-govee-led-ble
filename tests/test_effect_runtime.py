@@ -47,7 +47,7 @@ from tests.storage_test_double import InMemoryVersionedDocumentStore
 def _item() -> LibraryItem:
     return LibraryItem.new(
         "Paint",
-        PaintedEffect("clockwise", 50, 100, (0, 0, 0)),
+        PaintedEffect("clockwise", 50, 100, (None,) * 15),
     )
 
 

@@ -45,37 +45,10 @@ export const advancedEffectEditorStyles = [
     }
 
     .card-heading,
-    .pattern-toolbar {
+    .patterns-heading {
       display: flex;
       align-items: center;
       gap: 8px;
-    }
-
-    .pattern-tabs {
-      display: flex;
-      flex: 1;
-      gap: 6px;
-      min-width: 0;
-      overflow-x: auto;
-      padding-bottom: 2px;
-      scrollbar-width: thin;
-    }
-
-    .pattern-tabs button {
-      flex: 0 0 auto;
-      padding: 8px 14px;
-      border: 1px solid var(--studio-border);
-      border-radius: 8px;
-      color: var(--primary-text-color);
-      background: var(--studio-card);
-      cursor: pointer;
-    }
-
-    .pattern-tabs button.selected {
-      color: var(--studio-blue);
-      border-color: var(--studio-blue);
-      background: var(--studio-blue-soft);
-      font-weight: 650;
     }
 
     .add-button {
@@ -119,6 +92,7 @@ export const advancedEffectEditorStyles = [
     .control-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
       gap: 18px;
     }
 
@@ -137,21 +111,28 @@ export const advancedEffectEditorStyles = [
       margin-bottom: 4px;
     }
 
-    .pattern-toolbar {
-      align-items: stretch;
+    .brightness-style {
       margin-top: 16px;
     }
 
-    .icon-action {
-      flex: 0 0 44px;
-      width: 44px;
-      padding: 0;
-      border: 1px solid var(--studio-border);
-      border-radius: 8px;
-      color: var(--studio-blue);
-      background: var(--studio-card);
-      cursor: pointer;
-      font-size: 22px;
+    .patterns-heading {
+      justify-content: space-between;
+      margin-top: 20px;
+    }
+
+    .patterns-heading h4 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .pattern-delete {
+      min-height: 36px;
+      padding: 6px 12px;
+    }
+
+    .pattern-strip {
+      margin-top: 10px;
     }
 
     .brightness-fields {
@@ -162,11 +143,6 @@ export const advancedEffectEditorStyles = [
 
     .brightness-fields .field:first-child {
       grid-column: 1 / -1;
-    }
-
-    .brightness-fields .raw-value-note {
-      grid-column: 1 / -1;
-      margin: 14px 0 0;
     }
 
     .card-heading {
@@ -185,23 +161,9 @@ export const advancedEffectEditorStyles = [
       margin-top: 16px;
     }
 
-    details summary {
-      min-height: 44px;
-      color: var(--primary-text-color);
-      cursor: pointer;
-      font-weight: 650;
-    }
-
-    .raw-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0 18px;
-    }
-
     @media (max-width: 760px) {
       .control-grid,
-      .brightness-fields,
-      .raw-grid {
+      .brightness-fields {
         grid-template-columns: 1fr;
       }
 

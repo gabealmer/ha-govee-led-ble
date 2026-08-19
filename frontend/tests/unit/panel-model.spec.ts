@@ -45,8 +45,10 @@ function painted(): PaintedContent {
     effect: "cycle",
     speed: 50,
     brightness: 100,
-    background: [0, 0, 0],
-    groups: [{ fill: [1, 2, 3], segments: [0] }],
+    segments: [
+      [1, 2, 3],
+      ...Array.from({ length: 14 }, () => null),
+    ],
   };
 }
 
@@ -91,7 +93,6 @@ test("derives selected-device and preview decisions from panel state", () => {
   model.selectedDeviceId = "missing";
   expect(model.selectedDevice).toBeUndefined();
   expect(model.showDeviceSelector).toBe(true);
-  expect(model.availabilityNotice()).toContain("temporarily unavailable");
 });
 
 test("administrator state follows late Home Assistant user updates", () => {
@@ -119,10 +120,45 @@ test("installs saved content as an isolated editable baseline", () => {
   if (model.content.kind !== "h617a_painted") {
     throw new Error("saved painted content changed kind");
   }
-  model.content.background[0] = 255;
+  model.content.segments[0] = [255, 0, 0];
 
-  expect(source.background).toEqual([0, 0, 0]);
+  expect(source.segments[0]).toEqual([1, 2, 3]);
   expect(model.dirty).toBe(true);
+});
+
+test("paint editing applies colour and off as distinct draft states", () => {
+  const model = new PanelModel(() => undefined);
+  const controller = editor(model);
+
+  controller.paintColourChanged([12, 34, 56]);
+  expect(controller.setSegmentColour(2, "committed")).toBe(true);
+  expect(model.content).toMatchObject({
+    kind: "h617a_painted",
+    segments: expect.arrayContaining([[12, 34, 56]]),
+  });
+  expect(controller.setSegmentColour(2, "committed")).toBe(false);
+
+  controller.selectPaintOff();
+  controller.setSegmentColour(2, "committed");
+  if (model.content.kind !== "h617a_painted") {
+    throw new Error("paint content changed kind");
+  }
+  expect(model.content.segments[2]).toBeNull();
+
+  controller.paintColourChanged([90, 80, 70]);
+  controller.setSegmentColour(4, "committed");
+  controller.resetPaint();
+  if (model.content.kind !== "h617a_painted") {
+    throw new Error("paint content changed kind");
+  }
+  expect(model.content.segments.every((segment) => segment === null)).toBe(true);
+  expect(model.content).toMatchObject({
+    kind: "h617a_painted",
+    effect: "clockwise",
+    speed: 50,
+    brightness: 100,
+    segments: Array.from({ length: 15 }, () => null),
+  });
 });
 
 test("template editing creates a custom copy and invalidates prior transitions", () => {
@@ -139,11 +175,59 @@ test("template editing creates a custom copy and invalidates prior transitions",
   expect(model.editorTransitionEpoch).toBeGreaterThan(templateEpoch);
   expect(model.templateSourceLabel).toBeUndefined();
   expect(model.customCopyStarted).toBe(true);
+  expect(model.editorCancelAvailable).toBe(true);
   expect(model.name).toBe("Custom Paint");
   expect(model.dirty).toBe(true);
+
+  controller.cancelCreation();
+  expect(model.templateSourceLabel).toBe("Paint");
+  expect(model.customCopyStarted).toBe(false);
+  expect(model.editorCancelAvailable).toBe(false);
 });
 
-test("initial navigation preserves unavailable deep links and their notice", async () => {
+test("cancelling a new effect restores the prior editor state", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [device("entry-a", "H617A")];
+  model.devices[0].custom_effects.advanced = "supported";
+  model.selectedDeviceId = "entry-a";
+  model.name = "Prior";
+  model.content = painted();
+  const controller = editor(model);
+
+  controller.newEffect("advanced");
+  expect(model.editorCancelAvailable).toBe(true);
+  expect(model.name).toBe("New Layered effect");
+
+  controller.cancelCreation();
+  expect(model.editorCancelAvailable).toBe(false);
+  expect(model.name).toBe("Prior");
+  expect(model.content).toEqual(painted());
+
+  controller.newEffect("advanced");
+  expect(model.editorCancelAvailable).toBe(true);
+  controller.cancelCreation();
+  controller.cancelCreation();
+  expect(model.editorCancelAvailable).toBe(false);
+  expect(model.name).toBe("Prior");
+});
+
+test("automatic default templates do not expose Cancel", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [device("entry-a", "H617A")];
+  model.devices[0].custom_effects.advanced = "supported";
+  model.selectedDeviceId = "entry-a";
+  const controller = editor(model);
+  const transitionEpoch = controller.beginTransition();
+
+  controller.newEffect("advanced", transitionEpoch);
+
+  expect(model.name).toBe("New Layered effect");
+  expect(model.editorCancelAvailable).toBe(false);
+});
+
+test("initial navigation preserves unavailable deep links without a feedback banner", async () => {
   const model = new PanelModel(() => undefined);
   model.devices = [device("entry-a", "H617A")];
   model.userState = {
@@ -177,5 +261,5 @@ test("initial navigation preserves unavailable deep links and their notice", asy
 
   expect(await controller.initialiseSelectedDevice()).toBeUndefined();
   expect(model.selectedDeviceId).toBe("unavailable");
-  expect(model.notice).toContain("temporarily unavailable");
+  expect(model.notice).toBeUndefined();
 });

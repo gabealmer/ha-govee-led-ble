@@ -144,18 +144,6 @@ export function bytePercent(value: number): number {
   return Math.round((clampInteger(value, 0, 255) / 255) * 100);
 }
 
-export function hexByte(value: number): string {
-  return value.toString(16).padStart(2, "0").toUpperCase();
-}
-
-export function parseHexByte(value: string): number | undefined {
-  const normalised = value.trim().replace(/^0x/i, "");
-  if (!/^[0-9a-f]{1,2}$/i.test(normalised)) {
-    return undefined;
-  }
-  return Number.parseInt(normalised, 16);
-}
-
 interface AppliedAreaBounds {
   start: number;
   end: number;

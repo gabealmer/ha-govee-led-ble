@@ -237,10 +237,6 @@ export const studioFormStyles = css`
     margin: 0;
   }
 
-  .range-field output {
-    color: var(--primary-text-color);
-    text-align: end;
-  }
 `;
 
 export const studioEditorStyles = css`
@@ -374,16 +370,5 @@ export const studioWorkspaceStyles = css`
     .editor-surface {
       padding: 20px 16px 32px;
     }
-  }
-`;
-
-export const studioFeedbackStyles = css`
-  .feedback {
-    margin-bottom: var(--studio-section-gap);
-    padding: 12px 14px;
-    border: 1px solid var(--studio-border);
-    border-radius: var(--studio-button-radius);
-    background: var(--studio-card);
-    line-height: 1.45;
   }
 `;

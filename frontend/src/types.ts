@@ -100,11 +100,6 @@ export interface ObservedEffectState {
   active_effect: ActiveEffectHint | null;
 }
 
-interface PaintedGroup {
-  fill: RGB;
-  segments: number[];
-}
-
 export interface PaintedContent {
   kind: "h617a_painted";
   effect:
@@ -116,8 +111,7 @@ export interface PaintedContent {
     | "breathe";
   speed: number;
   brightness: number;
-  background: RGB;
-  groups: PaintedGroup[];
+  segments: (RGB | null)[];
 }
 
 export interface SingleContent {

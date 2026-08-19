@@ -38,10 +38,10 @@ def painted_content(catalogue: Mapping[str, Any]) -> JsonObject:
         "effect": required_str(painted, "id"),
         "speed": 55,
         "brightness": 70,
-        "background": [0, 0, 0],
-        "groups": [
-            {"fill": [255, 32, 0], "segments": [0, 1, 2]},
-            {"fill": [0, 64, 255], "segments": [3, 4, 5]},
+        "segments": [
+            *[[255, 32, 0] for _ in range(3)],
+            *[[0, 64, 255] for _ in range(3)],
+            *([None] * 9),
         ],
     }
 

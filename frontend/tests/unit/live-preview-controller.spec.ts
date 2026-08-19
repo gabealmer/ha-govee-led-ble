@@ -2,8 +2,10 @@ import { expect, test } from "vitest";
 
 import {
   LivePreviewController,
+  LivePreviewProgressController,
   type LivePreviewRequest,
 } from "../../src/live-preview-controller";
+import type { PreviewStatus } from "../../src/types";
 
 interface Request extends LivePreviewRequest {
   value: number;
@@ -141,4 +143,119 @@ test("toggle-on without a current target still enables later edits", () => {
   expect(submitted).toEqual([
     { fingerprint: "later", value: 2, committed: true },
   ]);
+});
+
+function status(
+    sequence: number,
+    phase: PreviewStatus["phase"],
+    configEntryId = "entry-a",
+  ): PreviewStatus {
+    return {
+      session_id: "session-a",
+      sequence,
+      config_entry_id: configEntryId,
+      phase,
+      content_kind: "advanced",
+      confidence: "unknown",
+      error_code: null,
+    };
+}
+
+test("shows progress only after five slow successful writes and a display delay", () => {
+    let now = 0;
+    let nextTimer = 1;
+    const timers = new Map<number, () => void>();
+    const visible: boolean[] = [];
+    const progress = new LivePreviewProgressController({
+      changed: (value) => visible.push(value),
+      now: () => now,
+      setTimer: (callback) => {
+        const id = nextTimer++;
+        timers.set(id, callback);
+        return id;
+      },
+      clearTimer: (id) => {
+        timers.delete(id);
+      },
+    });
+
+    for (let sequence = 1; sequence <= 5; sequence += 1) {
+      progress.accept(status(sequence, "queued"));
+      now += 1_100;
+      progress.accept(status(sequence, "written"));
+    }
+
+    progress.accept(status(6, "queued"));
+    expect(visible).toEqual([]);
+    expect(timers.size).toBe(1);
+    [...timers.values()][0]();
+    expect(visible).toEqual([true]);
+
+    now += 1_100;
+    progress.accept(status(6, "written"));
+    expect(visible).toEqual([true, false]);
+});
+
+test("fast writes, failures, cancellation, and device changes clear delayed progress", () => {
+    let now = 0;
+    let nextTimer = 1;
+    const timers = new Map<number, () => void>();
+    const visible: boolean[] = [];
+    const progress = new LivePreviewProgressController({
+      changed: (value) => visible.push(value),
+      now: () => now,
+      setTimer: (callback) => {
+        const id = nextTimer++;
+        timers.set(id, callback);
+        return id;
+      },
+      clearTimer: (id) => {
+        timers.delete(id);
+      },
+    });
+
+    for (let sequence = 1; sequence <= 5; sequence += 1) {
+      progress.accept(status(sequence, "queued"));
+      now += 1_200;
+      progress.accept(status(sequence, "written"));
+    }
+    progress.accept(status(6, "queued"));
+    expect(timers.size).toBe(1);
+    progress.accept(status(6, "failed"));
+    expect(timers.size).toBe(0);
+
+    progress.accept(status(7, "queued"));
+    progress.accept(status(7, "cancelled"));
+    expect(timers.size).toBe(0);
+
+    progress.accept(status(8, "queued", "entry-b"));
+    expect(timers.size).toBe(0);
+    expect(visible).toEqual([]);
+});
+
+test("writing without queued status does not create timing samples", () => {
+    let now = 0;
+    let nextTimer = 1;
+    const timers = new Map<number, () => void>();
+    const progress = new LivePreviewProgressController({
+      changed: () => undefined,
+      now: () => now,
+      setTimer: (callback) => {
+        const id = nextTimer++;
+        timers.set(id, callback);
+        return id;
+      },
+      clearTimer: (id) => {
+        timers.delete(id);
+      },
+    });
+
+    for (let sequence = 1; sequence <= 6; sequence += 1) {
+      progress.accept(status(sequence, "writing"));
+      now += 2_000;
+      progress.accept(status(sequence, "written"));
+    }
+
+    progress.accept(status(7, "queued"));
+    expect(timers.size).toBe(0);
 });

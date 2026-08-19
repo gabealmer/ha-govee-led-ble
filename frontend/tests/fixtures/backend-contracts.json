@@ -158,28 +158,38 @@
       "speed": 60
     },
     "h617a_painted": {
-      "background": [
-        0,
-        0,
-        0
-      ],
       "brightness": 80,
       "effect": "clockwise",
-      "groups": [
-        {
-          "fill": [
-            255,
-            0,
-            0
-          ],
-          "segments": [
-            0,
-            1,
-            2
-          ]
-        }
-      ],
       "kind": "h617a_painted",
+      "segments": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          0
+        ],
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
       "speed": 50
     },
     "h617a_single": {
@@ -1550,7 +1560,7 @@
         "active_state": {
           "active_effect": {
             "confidence": "activation_match",
-            "content_hash": "f10a2218682366eabf1436d7be3ebcc54154c0611a6ca7f1db90ee66b803e7cf",
+            "content_hash": "0e36f8c2b65a812a76063516a7895c2704b5d966e3636d11a9e97338762ae201",
             "item_id": "00000000-0000-4000-8000-000000000001",
             "item_version": 1,
             "observable_signature": "custom:800",
@@ -1611,9 +1621,9 @@
       }
     ],
     "editor_info": {
-      "api_version": 4,
-      "compiler_version": 3,
-      "effect_schema_version": 1,
+      "api_version": 5,
+      "compiler_version": 4,
+      "effect_schema_version": 2,
       "limits": {
         "deployment_records": 128,
         "devices": 512,
@@ -1627,31 +1637,41 @@
     },
     "library_item": {
       "content": {
-        "background": [
-          0,
-          0,
-          0
-        ],
         "brightness": 80,
         "effect": "clockwise",
-        "groups": [
-          {
-            "fill": [
-              255,
-              0,
-              0
-            ],
-            "segments": [
-              0,
-              1,
-              2
-            ]
-          }
-        ],
         "kind": "h617a_painted",
+        "segments": [
+          [
+            255,
+            0,
+            0
+          ],
+          [
+            255,
+            0,
+            0
+          ],
+          [
+            255,
+            0,
+            0
+          ],
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
         "speed": 50
       },
-      "content_hash": "f10a2218682366eabf1436d7be3ebcc54154c0611a6ca7f1db90ee66b803e7cf",
+      "content_hash": "0e36f8c2b65a812a76063516a7895c2704b5d966e3636d11a9e97338762ae201",
       "extensions": {},
       "id": "00000000-0000-4000-8000-000000000001",
       "name": "Canonical painted effect",
@@ -1659,7 +1679,7 @@
         "kind": "authored",
         "source_id": null
       },
-      "schema_version": 1,
+      "schema_version": 2,
       "target_hint": {
         "model": "H617A",
         "segment_count": 15
@@ -1670,7 +1690,7 @@
     "library_snapshot": {
       "items": [
         {
-          "content_hash": "f10a2218682366eabf1436d7be3ebcc54154c0611a6ca7f1db90ee66b803e7cf",
+          "content_hash": "0e36f8c2b65a812a76063516a7895c2704b5d966e3636d11a9e97338762ae201",
           "id": "00000000-0000-4000-8000-000000000001",
           "kind": "h617a_painted",
           "model": "H617A",

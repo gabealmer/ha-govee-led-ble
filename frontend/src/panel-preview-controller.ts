@@ -1,5 +1,9 @@
 import { EffectStudioApi } from "./api";
-import { LivePreviewController, type LivePreviewInteraction } from "./live-preview-controller";
+import {
+  LivePreviewController,
+  LivePreviewProgressController,
+  type LivePreviewInteraction,
+} from "./live-preview-controller";
 import { PanelModel } from "./panel-model";
 import { EffectStudioPreviewSession, scenePreviewRequest, snapshotPreviewRequest, type PanelPreviewRequest } from "./panel-preview";
 import type { ScenePreviewRequest } from "./scene-browser";
@@ -8,6 +12,11 @@ import { errorCode, errorMessage } from "./ui-utils";
 
 export class PanelPreviewController {
   private session?: EffectStudioPreviewSession;
+  private readonly progress = new LivePreviewProgressController({
+    changed: (visible) => {
+      this.model.patch({ previewProgressVisible: visible });
+    },
+  });
   private readonly scheduler = new LivePreviewController<PanelPreviewRequest>({
     submit: (request) => {
       if (
@@ -37,6 +46,11 @@ export class PanelPreviewController {
         ) {
           return;
         }
+        if (status) {
+          this.progress.accept(status);
+        } else {
+          this.progress.clear();
+        }
         this.model.update((model) => {
           model.previewStatus = status;
         });
@@ -44,6 +58,7 @@ export class PanelPreviewController {
       subscriptionFailed,
     );
     this.session = session;
+    this.progress.reset();
     const opened = await session.open();
     if (!opened || this.session !== session) {
       session.close();
@@ -55,7 +70,12 @@ export class PanelPreviewController {
   public beginEditorTransition(): number {
     const editorTransitionEpoch = this.model.editorTransitionEpoch + 1;
     this.scheduler.reset();
-    this.model.patch({ editorTransitionEpoch, previewStatus: undefined });
+    this.progress.clear();
+    this.model.patch({
+      editorTransitionEpoch,
+      previewStatus: undefined,
+      previewProgressVisible: false,
+    });
     return editorTransitionEpoch;
   }
 
@@ -85,7 +105,9 @@ export class PanelPreviewController {
       this.model.update((model) => {
         model.liveApplyEnabled = false;
         model.previewStatus = undefined;
+        model.previewProgressVisible = false;
       });
+      this.progress.clear();
       this.scheduler.disable();
       return;
     }
@@ -105,7 +127,7 @@ export class PanelPreviewController {
     } catch (error) {
       if (errorCode(error) !== "not_found") {
         this.model.update((model) => {
-          model.notice = `Could not cancel Live apply: ${errorMessage(error)}`;
+          model.notice = `Could not cancel Live: ${errorMessage(error)}`;
         });
       }
     }
@@ -113,10 +135,12 @@ export class PanelPreviewController {
 
   public dispose(): void {
     this.scheduler.dispose();
+    this.progress.reset();
     this.session?.close();
     this.session = undefined;
     this.model.update((model) => {
       model.previewStatus = undefined;
+      model.previewProgressVisible = false;
     });
   }
 

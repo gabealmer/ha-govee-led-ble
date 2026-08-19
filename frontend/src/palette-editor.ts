@@ -99,8 +99,8 @@ export class GoveePaletteEditor extends LitElement {
         .itemRole=${this.persistentPicker ? "tab" : "button"}
         .ariaLabel=${this.ariaLabel}
         .addLabel=${`Add ${this.itemName}`}
-        .addDisabled=${this.disabled ||
-        this.palette.length >= this.maxColours}
+        .addDisabled=${this.disabled}
+        .addHidden=${this.palette.length >= this.maxColours}
         .reorderDisabled=${this.disabled || this.persistentPicker}
         @item-selected=${(event: CustomEvent<{ index: number }>) =>
           this.swatchClicked(event.detail.index)}

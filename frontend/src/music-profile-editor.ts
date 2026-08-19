@@ -25,7 +25,6 @@ import {
   studioFormStyles,
 } from "./studio-styles";
 import type {
-  EffectStudioModeOption,
   JsonObject,
   ModelEffectCatalogue,
   MusicProfileContent,
@@ -45,15 +44,6 @@ type OwnedMusicParameterKey =
 type FountainDirection = "clockwise" | "two_way" | "counterclockwise";
 
 const STYLE_MODE_IDS = new Set(["rhythm", "bloom", "shiny"]);
-const OWNED_MUSIC_PARAMETER_KEYS = new Set<OwnedMusicParameterKey>([
-  "point",
-  "gradient",
-  "relative_brightness",
-  "key_count",
-  "direction",
-  "segment_count",
-  "speed",
-]);
 const FOUNTAIN_DIRECTIONS: ReadonlyArray<{
   id: FountainDirection;
   label: string;
@@ -73,9 +63,6 @@ export class GoveeMusicProfileEditor extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
-  @property({ type: Boolean })
-  public showModeSelector = true;
-
   private lastFixedColour?: RGB;
   private interaction: LivePreviewInteraction = "committed";
 
@@ -90,7 +77,6 @@ export class GoveeMusicProfileEditor extends LitElement {
       return nothing;
     }
 
-    const modeOptions = modeOptionsFor(this.content.mode, this.catalogue);
     const sensitivityMinimum = this.catalogue?.limits.music_sensitivity_min ?? 0;
     const sensitivityMaximum = this.catalogue?.limits.music_sensitivity_max ?? 100;
     const sensitivity = clampInteger(
@@ -104,31 +90,6 @@ export class GoveeMusicProfileEditor extends LitElement {
     return html`
       <section class="card">
         <div class="parameter-stack">
-          ${this.showModeSelector
-            ? html`
-                <label class="field">
-                  <span class="parameter-label">Mode</span>
-                  <select
-                    aria-label="Mode"
-                    .value=${live(this.content.mode)}
-                    ?disabled=${this.disabled}
-                    @change=${this.modeChanged}
-                  >
-                    ${modeOptions.map(
-                      (mode) => html`
-                        <option
-                          value=${mode.id}
-                          .selected=${mode.id === this.content?.mode}
-                        >
-                          ${mode.label}
-                        </option>
-                      `,
-                    )}
-                  </select>
-                </label>
-              `
-            : nothing}
-
           ${this.renderRangeField(
             "Sensitivity",
             sensitivity,
@@ -210,7 +171,6 @@ export class GoveeMusicProfileEditor extends LitElement {
     min: number,
     max: number,
     commit: (value: number) => void,
-    showValue = false,
   ) {
     return html`
       <govee-slider-control
@@ -218,7 +178,6 @@ export class GoveeMusicProfileEditor extends LitElement {
         .value=${value}
         .minimum=${min}
         .maximum=${max}
-        .showValue=${showValue}
         .disabled=${this.disabled}
         @value-changed=${(event: CustomEvent<SliderControlChange>) => {
           this.interaction = "changing";
@@ -333,7 +292,6 @@ export class GoveeMusicProfileEditor extends LitElement {
         1,
         7,
         (value) => this.updateParameter("segment_count", value),
-        true,
       )}
       ${this.renderRangeField("Speed", speed, 1, 50, (value) =>
         this.updateParameter("speed", value))}
@@ -357,16 +315,6 @@ export class GoveeMusicProfileEditor extends LitElement {
       ></govee-checkbox-control>
     `;
   }
-
-  private modeChanged = (event: Event): void => {
-    const mode = (event.target as HTMLSelectElement).value;
-    this.updateContent((content) => {
-      content.mode = mode;
-      content.parameters = preserveExtensionParameters(content.parameters);
-      content.calm = isStyleMode(mode) ? content.calm ?? false : null;
-      return content;
-    });
-  };
 
   private colourModeChanged(fixed: boolean): void {
     this.updateContent((content) => {
@@ -452,25 +400,6 @@ export class GoveeMusicProfileEditor extends LitElement {
 
     `,
   ];
-}
-
-function modeOptionsFor(
-  currentMode: string,
-  catalogue?: ModelEffectCatalogue,
-): EffectStudioModeOption[] {
-  const options = catalogue?.music_modes.map((mode) => ({ ...mode })) ?? [];
-  if (options.some((mode) => mode.id === currentMode)) {
-    return options;
-  }
-  return [{ id: currentMode, label: `Unknown mode ${currentMode}` }, ...options];
-}
-
-function preserveExtensionParameters(parameters: JsonObject): JsonObject {
-  const preserved = cloneJsonObject(parameters);
-  for (const key of OWNED_MUSIC_PARAMETER_KEYS) {
-    delete preserved[key];
-  }
-  return preserved;
 }
 
 function isStyleMode(mode: string): boolean {

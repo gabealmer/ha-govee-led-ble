@@ -6,7 +6,6 @@ import {
 } from "../../src/custom-effect-list";
 import {
   defaultCustomEffectCategory,
-  filterCustomEffectEntries,
   showCustomEffectSelector,
   starterBaseline,
 } from "../../src/custom-effect-workflow";
@@ -86,13 +85,11 @@ test("starter lists expose product choices but not protocol evidence fixtures", 
   ).toEqual(["Rhythm"]);
 });
 
-test("My Effects takes priority and search filters labels case-insensitively", () => {
+test("My Effects takes priority", () => {
   const entries = buildCustomEffectEntries(context([saved]), "my-effects");
 
   expect(defaultCustomEffectCategory(context([saved]))).toBe("my-effects");
   expect(entries.map((entry) => entry.label)).toEqual(["My Jump"]);
-  expect(filterCustomEffectEntries(entries, " jump ")).toEqual(entries);
-  expect(filterCustomEffectEntries(entries, "missing")).toEqual([]);
 });
 
 test("starters stay clean until edited while intentional New shows its selector", () => {

@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 from .effect_deployments import DeploymentRecord, ObservationConfidence
+from .effect_domain import LibraryItem
 from .effect_limits import (
     MAX_DEVICE_CACHE_ENTRIES,
     MAX_DEVICE_CACHE_STORE_BYTES,
@@ -307,6 +308,29 @@ class EffectDeviceCache:
 
     async def async_flush(self) -> None:
         await self._store.async_save(copy.deepcopy(self._require_loaded()))
+
+    async def async_reconcile_library_hashes(self, items: tuple[LibraryItem, ...]) -> None:
+        hashes = {(item.id, item.version): item.content_hash for item in items}
+        candidate = copy.deepcopy(self._require_loaded())
+        changed = False
+        for key, raw in candidate["devices"].items():
+            state = ObservedDeviceState.from_dict(_as_mapping(raw, f"device state {key}"))
+            hint = state.active_effect
+            if hint is None or hint.source_kind != "saved_effect" or hint.item_id is None or hint.item_version is None:
+                continue
+            content_hash = hashes.get((hint.item_id, hint.item_version))
+            if content_hash is None or content_hash == hint.content_hash:
+                continue
+            candidate["devices"][key] = replace(
+                state,
+                active_effect=replace(hint, content_hash=content_hash),
+            ).to_dict()
+            changed = True
+        if not changed:
+            return
+        _validate_device_cache(candidate)
+        await self._store.async_save(candidate)
+        self._data = candidate
 
     def _require_loaded(self) -> dict[str, Any]:
         if self._data is None:

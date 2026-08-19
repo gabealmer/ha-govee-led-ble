@@ -384,8 +384,8 @@ def compile_h617a(item: LibraryItem, diy_code: int) -> CompiledEffect:
             content.effect,
             content.speed,
             content.brightness,
-            content.background,
-            tuple(DiyPaintGroup(group.fill, group.segments) for group in content.groups),
+            (0, 0, 0),
+            _paint_groups(content.segments),
         )
     elif isinstance(content, SingleEffect):
         content_kind = "h617a_single"
@@ -418,6 +418,17 @@ def compile_h617a(item: LibraryItem, diy_code: int) -> CompiledEffect:
         upload_packets=tuple(upload),
         activation_packet=activation,
         artifact_sha256=digest,
+    )
+
+
+def _paint_groups(segments: tuple[tuple[int, int, int] | None, ...]) -> tuple[DiyPaintGroup, ...]:
+    grouped: dict[tuple[int, int, int], list[int]] = {}
+    for index, colour in enumerate(segments):
+        if colour is not None:
+            grouped.setdefault(colour, []).append(index)
+    return tuple(
+        DiyPaintGroup(colour, tuple(indices))
+        for colour, indices in sorted(grouped.items(), key=lambda item: item[1][0])
     )
 
 

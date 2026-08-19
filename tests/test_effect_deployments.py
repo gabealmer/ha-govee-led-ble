@@ -21,7 +21,12 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
     PriorControlState,
 )
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
+from custom_components.ha_govee_led_ble.effect_domain import (
+    LibraryItem,
+    PaintedEffect,
+    SingleEffect,
+    effect_content_hash,
+)
 from custom_components.ha_govee_led_ble.effect_identity import (
     DEVICE_CACHE_STORE_KEY,
     DEVICE_CACHE_STORE_MINOR_VERSION,
@@ -87,6 +92,51 @@ async def test_personal_repositories_use_injected_stores_without_home_assistant(
     reloaded_user_state = EffectUserStateRepository(user_store)
     await reloaded_user_state.async_load()
     assert reloaded_user_state.get("user-a") == state
+
+
+async def test_library_hash_reconciliation_updates_deployments_and_active_hints() -> None:
+    item = _item()
+    stale_hash = "0" * 64
+    deployment_store = InMemoryVersionedDocumentStore()
+    deployments = EffectDeploymentRepository(deployment_store)
+    await deployments.async_load()
+    record = replace(
+        _deployment(DeploymentPhase.CONFIRMED),
+        item_id=item.id,
+        item_version=item.version,
+        source_content_hash=stale_hash,
+    )
+    await deployments.async_put(record, expected_version=0)
+
+    cache_store = InMemoryVersionedDocumentStore()
+    cache = EffectDeviceCache(cache_store)
+    await cache.async_load()
+    state = ObservedDeviceState(
+        config_entry_id="entry-a",
+        mode="custom",
+        observed_at="2026-08-11T00:00:00Z",
+        confidence=ObservationConfidence.ACTIVATION_MATCH,
+        diy_code=800,
+        active_effect=replace(
+            ActiveEffectHint.from_record(
+                record,
+                observable_signature="custom:800",
+                confidence=ObservationConfidence.ACTIVATION_MATCH,
+            ),
+            content_hash=stale_hash,
+        ),
+    )
+    cache.set(state)
+    await cache.async_flush()
+
+    await deployments.async_reconcile_library_hashes((item,))
+    await cache.async_reconcile_library_hashes((item,))
+
+    assert deployments.get(record.operation_id).source_content_hash == item.content_hash
+    reconciled = cache.get("entry-a")
+    assert reconciled is not None
+    assert reconciled.active_effect is not None
+    assert reconciled.active_effect.content_hash == item.content_hash
 
 
 async def test_config_entry_removal_purges_device_scoped_effect_state() -> None:
@@ -295,6 +345,57 @@ async def test_legacy_deployment_phases_remain_loadable(
     await repository.async_load()
 
     assert repository.get(legacy.operation_id).phase is canonical_phase
+
+
+async def test_legacy_painted_snapshot_uses_shared_schema_migration(hass: HomeAssistant) -> None:
+    legacy = _deployment(DeploymentPhase.CONFIRMED)
+    document = legacy.to_dict()
+    document["item_id"] = None
+    document["item_revision"] = document.pop("item_version")
+    for key in (
+        "source_kind",
+        "selector_label",
+        "source_origin_kind",
+        "source_origin_id",
+        "source_content_hash",
+    ):
+        document.pop(key)
+    document["snapshot"] = {
+        "name": "Legacy paint",
+        "content": {
+            "kind": "h617a_painted",
+            "effect": "clockwise",
+            "speed": 50,
+            "brightness": 100,
+            "background": [0, 0, 0],
+            "groups": [{"fill": [255, 0, 0], "segments": [0]}],
+        },
+        "provenance": {
+            "source_kind": "authored",
+            "source_id": None,
+        },
+    }
+    await Store[dict[str, Any]](
+        hass,
+        1,
+        DEPLOYMENT_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=3,
+    ).async_save(
+        {
+            "revision": 1,
+            "records": {str(legacy.operation_id): document},
+        }
+    )
+
+    repository = EffectDeploymentRepository(hass)
+    await repository.async_load()
+
+    migrated = repository.get(legacy.operation_id)
+    expected = PaintedEffect("clockwise", 50, 100, ((255, 0, 0),) + (None,) * 14)
+    assert migrated.source_kind == "snapshot"
+    assert migrated.source_content_hash == effect_content_hash(expected)
 
 
 def test_unsaved_apply_records_content_free_source_metadata() -> None:

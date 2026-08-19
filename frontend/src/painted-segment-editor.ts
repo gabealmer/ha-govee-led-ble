@@ -6,12 +6,12 @@ import {
   studioCardStyles,
 } from "./studio-styles";
 import type { LivePreviewInteraction } from "./live-preview-controller";
-import type { RGB } from "./types";
+import type { PaintedSegmentDraft } from "./effect-editor-model";
 import { rgbToHex } from "./ui-utils";
 
 export class GoveePaintedSegmentEditor extends LitElement {
   @property({ attribute: false })
-  public colours: RGB[] = [];
+  public segments: PaintedSegmentDraft[] = [];
 
   @property({ type: Boolean })
   public disabled = false;
@@ -26,13 +26,19 @@ export class GoveePaintedSegmentEditor extends LitElement {
           Painted segments
         </h3>
         <div class="segments">
-          ${this.colours.map(
-            (colour, index) => html`
+          ${this.segments.map(
+            (colour, index) => {
+              const off = colour === null;
+              const rendered = off ? "#000000" : rgbToHex(colour);
+              return html`
               <button
                 type="button"
                 data-segment=${index}
-                style="--segment-colour: ${rgbToHex(colour)}"
-                aria-label="Segment ${index + 1}, ${rgbToHex(colour)}"
+                class=${off ? "off" : ""}
+                style="--segment-colour: ${rendered}"
+                aria-label=${off
+                  ? `Segment ${index + 1}, off`
+                  : `Segment ${index + 1}, ${rendered}`}
                 ?disabled=${this.disabled}
                 @pointerdown=${(event: PointerEvent) =>
                   this.pointerStarted(index, event)}
@@ -42,7 +48,8 @@ export class GoveePaintedSegmentEditor extends LitElement {
                 @click=${(event: MouseEvent) =>
                   this.segmentClicked(index, event)}
               ></button>
-            `,
+            `;
+            },
           )}
         </div>
       </section>
@@ -139,6 +146,11 @@ export class GoveePaintedSegmentEditor extends LitElement {
     button:focus-visible {
       outline: var(--studio-focus-width) solid var(--studio-blue);
       outline-offset: var(--studio-focus-offset);
+    }
+
+    button.off {
+      border-color: color-mix(in srgb, #000 70%, var(--studio-border));
+      box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
     }
 
     @media (max-width: 600px) {

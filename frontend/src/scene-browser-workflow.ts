@@ -134,7 +134,7 @@ export class SceneBrowserWorkflow {
         content: undefined,
         hasDefault: false,
         editingCopy: false,
-        notice: "The selected custom scene was deleted.",
+        notice: undefined,
       });
     } else if (sync.action === "conflict") {
       this.patch({ notice: "This custom scene changed elsewhere. Reload it before saving." });
@@ -366,7 +366,7 @@ export class SceneBrowserWorkflow {
         content: result.content,
         name: result.name,
         category: "custom",
-        notice: "Custom scene saved.",
+        notice: undefined,
       });
     } catch (error) {
       if (this.requestIsCurrent(request)) {
@@ -406,7 +406,7 @@ export class SceneBrowserWorkflow {
         content: detail.content,
         speedIndex: detail.content.speed_index,
         hasDefault: detail.has_default,
-        notice: "Catalogue settings restored.",
+        notice: undefined,
       });
     } catch (error) {
       if (this.requestIsCurrent(request)) {

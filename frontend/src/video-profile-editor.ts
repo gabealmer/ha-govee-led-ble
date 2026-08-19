@@ -21,14 +21,6 @@ import { cloneVideoProfileContent } from "./profile-model";
 import type { RelativeBrightness, VideoProfileContent } from "./types";
 import { clampInteger } from "./ui-utils";
 
-const VIDEO_MODE_OPTIONS = [
-  { value: "movie", label: "Movie" },
-  { value: "game", label: "Game" },
-] as const satisfies ReadonlyArray<{
-  value: VideoProfileContent["mode"];
-  label: string;
-}>;
-
 const CAPTURE_AREA_OPTIONS = [
   { value: true, label: "Full screen" },
   { value: false, label: "Part screen" },
@@ -95,9 +87,6 @@ export class GoveeVideoProfileEditor extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
-  @property({ type: Boolean })
-  public showModeSelector = true;
-
   private interaction: LivePreviewInteraction = "committed";
 
   protected render() {
@@ -121,17 +110,6 @@ export class GoveeVideoProfileEditor extends LitElement {
       <div class="editor-grid">
         <section class="card">
           <div class="parameter-stack">
-            ${this.showModeSelector
-              ? this.renderSegmentedField(
-                  "Mode",
-                  this.content.mode,
-                  VIDEO_MODE_OPTIONS,
-                  (value) =>
-                    this.updateContent((content) => {
-                      content.mode = value;
-                    }),
-                )
-              : nothing}
             ${this.renderSegmentedField(
               "Capture area",
               this.content.full_screen,
@@ -155,7 +133,6 @@ export class GoveeVideoProfileEditor extends LitElement {
                   this.content.sound_effects_softness,
                   1,
                   100,
-                  String(this.content.sound_effects_softness),
                   (value) =>
                     this.updateContent((content) => {
                       content.sound_effects_softness = clampInteger(
@@ -185,7 +162,6 @@ export class GoveeVideoProfileEditor extends LitElement {
               this.content.saturation,
               0,
               100,
-              `${this.content.saturation}%`,
               (value) =>
                 this.updateContent((content) => {
                   content.saturation = clampInteger(value, 0, 100);
@@ -208,7 +184,6 @@ export class GoveeVideoProfileEditor extends LitElement {
               uniformBrightness,
               1,
               100,
-              `${uniformBrightness}%`,
               (value) =>
                 this.updateContent((content) => {
                   content.relative_brightness =
@@ -302,7 +277,6 @@ export class GoveeVideoProfileEditor extends LitElement {
     value: number,
     minimum: number,
     maximum: number,
-    output: string,
     changed: (value: number) => void,
     describedBy?: string,
   ) {
@@ -312,7 +286,6 @@ export class GoveeVideoProfileEditor extends LitElement {
         .value=${value}
         .minimum=${minimum}
         .maximum=${maximum}
-        .valueText=${output}
         .describedBy=${describedBy}
         .disabled=${this.disabled}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
@@ -350,7 +323,6 @@ export class GoveeVideoProfileEditor extends LitElement {
             <span>Warm</span>
           </div>
         </div>
-        <output aria-label="White balance value">${value}</output>
       </label>
     `;
   }
@@ -376,7 +348,6 @@ export class GoveeVideoProfileEditor extends LitElement {
               Number((event.target as HTMLInputElement).value),
             )}
         />
-        <output aria-label="${label} value">${value}%</output>
       </label>
     `;
   }
@@ -584,23 +555,15 @@ export class GoveeVideoProfileEditor extends LitElement {
         align-items: center;
         gap: 8px;
         min-width: 0;
-        font-variant-numeric: tabular-nums;
       }
 
       .screen-edge-control input {
         min-width: 0;
       }
 
-      .screen-edge-control output {
-        color: var(--studio-muted);
-        font-size: 13px;
-        font-weight: 600;
-        text-align: end;
-      }
-
       .edge-control-top,
       .edge-control-bottom {
-        grid-template-columns: 48px minmax(120px, 1fr) 44px;
+        grid-template-columns: 48px minmax(120px, 1fr);
       }
 
       .edge-control-top input,
@@ -618,7 +581,7 @@ export class GoveeVideoProfileEditor extends LitElement {
 
       .edge-control-left,
       .edge-control-right {
-        grid-template-rows: auto minmax(130px, 1fr) auto;
+        grid-template-rows: auto minmax(130px, 1fr);
         justify-items: center;
         height: 100%;
       }
@@ -639,11 +602,6 @@ export class GoveeVideoProfileEditor extends LitElement {
         direction: rtl;
       }
 
-      .edge-control-left output,
-      .edge-control-right output {
-        text-align: center;
-      }
-
       .card-heading {
         display: flex;
         align-items: center;
@@ -657,11 +615,10 @@ export class GoveeVideoProfileEditor extends LitElement {
       }
 
       .range-field {
-        grid-template-columns: minmax(118px, auto) minmax(0, 1fr) 64px;
+        grid-template-columns: minmax(118px, auto) minmax(0, 1fr);
         align-items: center;
         gap: 10px;
         margin-top: 0;
-        font-variant-numeric: tabular-nums;
       }
 
       .range-field input[type="range"] {
@@ -718,10 +675,6 @@ export class GoveeVideoProfileEditor extends LitElement {
       @media (max-width: 560px) {
         .range-field {
           grid-template-columns: 1fr;
-        }
-
-        .range-field output {
-          text-align: start;
         }
 
         .screen-brightness {

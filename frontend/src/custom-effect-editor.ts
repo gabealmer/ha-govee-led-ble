@@ -42,6 +42,13 @@ export class GoveeCustomEffectEditor extends LitElement {
   private openRowMenuIndex?: number;
 
   private draggedEffectIndex?: number;
+  private pointerDragId?: number;
+  private pointerDragIndex?: number;
+  private pointerDropIndex?: number;
+  private pointerDragHandle?: HTMLElement;
+  private pointerDragActive = false;
+  private pointerStartX = 0;
+  private pointerStartY = 0;
 
   private readonly windowPointerDown = (event: PointerEvent): void => {
     if (this.openRowMenuIndex === undefined) {
@@ -126,7 +133,7 @@ export class GoveeCustomEffectEditor extends LitElement {
       ${this.content.kind === "h617a_multi"
         ? html`
             <section class="card effect-card">
-              <h3 class="section-title">Layers</h3>
+              <h3 class="section-title">Effect Layers</h3>
               ${this.renderSequence(this.content)}
             </section>
           `
@@ -208,21 +215,34 @@ export class GoveeCustomEffectEditor extends LitElement {
   }
 
   private renderSequence(content: MultiContent) {
+    const atCapacity =
+      content.effects.length >= this.catalogue!.limits.multi_max;
     return html`
-      <ol class="sequence">
-        ${content.effects.map((pair, index) => this.effectRow(pair, index))}
-      </ol>
-      <button
-        class="add-step"
-        type="button"
-        title="Add layer"
-        aria-label="Add layer"
-        ?disabled=${this.disabled ||
-        content.effects.length >= this.catalogue!.limits.multi_max}
-        @click=${this.addEffect}
-      >
-        +
-      </button>
+      <div class="sequence-table">
+        <div class="sequence-header" aria-hidden="true">
+          <span>Order</span>
+          <span>Effect</span>
+          <span>Variation</span>
+          <span></span>
+        </div>
+        <ol class="sequence">
+          ${content.effects.map((pair, index) => this.effectRow(pair, index))}
+        </ol>
+      </div>
+      ${atCapacity
+        ? nothing
+        : html`
+            <button
+              class="add-step"
+              type="button"
+              title="Add layer"
+              aria-label="Add layer"
+              ?disabled=${this.disabled}
+              @click=${this.addEffect}
+            >
+              +
+            </button>
+          `}
     `;
   }
 
@@ -232,87 +252,98 @@ export class GoveeCustomEffectEditor extends LitElement {
     return html`
       <li
         class="effect-row"
-        @dragover=${(event: DragEvent) => {
-          if (!this.disabled) {
-            event.preventDefault();
-          }
-        }}
+        data-effect-index=${index}
+        @dragover=${this.effectDraggedOver}
+        @dragleave=${this.effectDragLeft}
         @drop=${(event: DragEvent) => this.effectDropped(index, event)}
       >
-        ${this.disabled
-          ? nothing
-          : html`
-              <span
-                class="drag-handle"
-                draggable="true"
-                title="Drag Layer ${index + 1} to reorder"
-                aria-hidden="true"
-                @dragstart=${(event: DragEvent) =>
-                  this.effectDragStarted(index, event)}
-              >⋮⋮</span>
-            `}
-        <span class="layer-heading">Layer ${index + 1}</span>
-        <div class="effect-fields">
-          <label class="field">
-            <span class="effect-label">Effect</span>
-            <select
-              aria-label="Layer ${index + 1} effect"
-              data-effect-index=${index}
-              .value=${family?.id ?? `unknown:${pair.family}`}
-              ?disabled=${this.disabled}
-              @change=${(event: Event) =>
-                this.effectFamilyChanged(
-                  index,
-                  (event.target as HTMLSelectElement).value,
-                )}
-            >
-              ${family
-                ? nothing
-                : html`
-                    <option value=${`unknown:${pair.family}`}>
-                      Unknown effect ${pair.family}
-                    </option>
-                  `}
-              ${this.multiFamilies.map(
-                (effect) => html`
-                  <option value=${effect.id}>${effect.label}</option>
-                `,
-              )}
-            </select>
-          </label>
-          <label class="field">
-            <span>Variation</span>
-            <select
-              aria-label="Layer ${index + 1} variation"
-              data-variation-index=${index}
-              .value=${String(pair.variant)}
-              ?disabled=${this.disabled}
-              @change=${(event: Event) =>
-                this.effectVariationChanged(
-                  index,
-                  Number((event.target as HTMLSelectElement).value),
-                )}
-            >
-              ${variations.some(
-                (variation) => variation.variant === pair.variant,
-              )
-                ? nothing
-                : html`
-                    <option value=${String(pair.variant)}>
-                      Unknown variation ${pair.variant}
-                    </option>
-                  `}
-              ${variations.map(
-                (variation) => html`
-                  <option value=${String(variation.variant)}>
-                    ${variation.label}
-                  </option>
-                `,
-              )}
-            </select>
-          </label>
+        <div class="order-cell">
+          ${this.disabled
+            ? nothing
+            : html`
+                <button
+                  class="drag-handle"
+                  type="button"
+                  draggable="true"
+                  title="Drag Layer ${index + 1} to reorder"
+                  aria-label="Reorder Layer ${index +
+                  1}. Drag or use Arrow Up and Arrow Down."
+                  @dragstart=${(event: DragEvent) =>
+                    this.effectDragStarted(index, event)}
+                  @dragend=${this.effectDragEnded}
+                  @pointerdown=${(event: PointerEvent) =>
+                    this.effectPointerStarted(index, event)}
+                  @pointermove=${this.effectPointerMoved}
+                  @pointerup=${this.effectPointerFinished}
+                  @pointercancel=${this.effectPointerFinished}
+                  @keydown=${(event: KeyboardEvent) =>
+                    this.effectDragKeyPressed(index, event)}
+                >
+                  ⋮⋮
+                </button>
+              `}
+          <span class="layer-heading">Layer ${index + 1}</span>
         </div>
-        ${!this.disabled
+        <label class="field effect-field">
+          <span class="field-label">Effect</span>
+          <select
+            aria-label="Layer ${index + 1} effect"
+            data-effect-index=${index}
+            .value=${family?.id ?? `unknown:${pair.family}`}
+            ?disabled=${this.disabled}
+            @change=${(event: Event) =>
+              this.effectFamilyChanged(
+                index,
+                (event.target as HTMLSelectElement).value,
+              )}
+          >
+            ${family
+              ? nothing
+              : html`
+                  <option value=${`unknown:${pair.family}`}>
+                    Unknown effect ${pair.family}
+                  </option>
+                `}
+            ${this.multiFamilies.map(
+              (effect) => html`
+                <option value=${effect.id}>${effect.label}</option>
+              `,
+            )}
+          </select>
+        </label>
+        <label class="field effect-field">
+          <span class="field-label">Variation</span>
+          <select
+            aria-label="Layer ${index + 1} variation"
+            data-variation-index=${index}
+            .value=${String(pair.variant)}
+            ?disabled=${this.disabled}
+            @change=${(event: Event) =>
+              this.effectVariationChanged(
+                index,
+                Number((event.target as HTMLSelectElement).value),
+              )}
+          >
+            ${variations.some(
+              (variation) => variation.variant === pair.variant,
+            )
+              ? nothing
+              : html`
+                  <option value=${String(pair.variant)}>
+                    Unknown variation ${pair.variant}
+                  </option>
+                `}
+            ${variations.map(
+              (variation) => html`
+                <option value=${String(variation.variant)}>
+                  ${variation.label}
+                </option>
+              `,
+            )}
+          </select>
+        </label>
+        ${!this.disabled &&
+        (this.content as MultiContent).effects.length > 1
           ? html`
               <details
                 class="row-menu"
@@ -328,32 +359,8 @@ export class GoveeCustomEffectEditor extends LitElement {
                 </summary>
                 <div class="row-menu-popover">
                   <button
-                    type="button"
-                    ?disabled=${this.disabled || index === 0}
-                    @click=${() => {
-                      this.openRowMenuIndex = undefined;
-                      this.moveEffect(index, -1);
-                    }}
-                  >
-                    Move up
-                  </button>
-                  <button
-                    type="button"
-                    ?disabled=${this.disabled ||
-                    index ===
-                      (this.content as MultiContent).effects.length - 1}
-                    @click=${() => {
-                      this.openRowMenuIndex = undefined;
-                      this.moveEffect(index, 1);
-                    }}
-                  >
-                    Move down
-                  </button>
-                  <button
                     class="danger"
                     type="button"
-                    ?disabled=${this.disabled ||
-                    (this.content as MultiContent).effects.length === 1}
                     @click=${() => {
                       this.openRowMenuIndex = undefined;
                       this.removeEffect(index);
@@ -429,7 +436,12 @@ export class GoveeCustomEffectEditor extends LitElement {
   }
 
   private addEffect(): void {
-    if (!this.content || this.content.kind !== "h617a_multi") {
+    if (
+      this.disabled ||
+      !this.content ||
+      this.content.kind !== "h617a_multi" ||
+      this.content.effects.length >= this.catalogue!.limits.multi_max
+    ) {
       return;
     }
     const next =
@@ -456,19 +468,13 @@ export class GoveeCustomEffectEditor extends LitElement {
     this.emitContent({ ...this.content, effects });
   }
 
-  private moveEffect(index: number, offset: number): void {
-    if (!this.content || this.content.kind !== "h617a_multi") {
-      return;
-    }
-    const target = index + offset;
-    if (target < 0 || target >= this.content.effects.length) {
-      return;
-    }
-    this.reorderEffect(index, target);
-  }
-
   private reorderEffect(from: number, to: number): void {
-    if (!this.content || this.content.kind !== "h617a_multi" || from === to) {
+    if (
+      this.disabled ||
+      !this.content ||
+      this.content.kind !== "h617a_multi" ||
+      from === to
+    ) {
       return;
     }
     const effects = [...this.content.effects];
@@ -478,9 +484,50 @@ export class GoveeCustomEffectEditor extends LitElement {
   }
 
   private effectDragStarted(index: number, event: DragEvent): void {
+    if (this.disabled) {
+      event.preventDefault();
+      return;
+    }
     this.draggedEffectIndex = index;
-    event.dataTransfer?.setData("text/plain", String(index));
+    const row = (event.currentTarget as HTMLElement).closest<HTMLElement>(
+      ".effect-row",
+    );
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(index));
+      if (row && typeof event.dataTransfer.setDragImage === "function") {
+        const bounds = row.getBoundingClientRect();
+        event.dataTransfer.setDragImage(
+          row,
+          Math.max(0, event.clientX - bounds.left),
+          Math.max(0, event.clientY - bounds.top),
+        );
+      }
+    }
+    row?.classList.add("dragging");
   }
+
+  private readonly effectDraggedOver = (event: DragEvent): void => {
+    if (this.disabled || this.draggedEffectIndex === undefined) {
+      return;
+    }
+    event.preventDefault();
+    this.shadowRoot
+      ?.querySelectorAll(".effect-row.drop-target")
+      .forEach((row) => row.classList.remove("drop-target"));
+    (event.currentTarget as HTMLElement).classList.add("drop-target");
+  };
+
+  private readonly effectDragLeft = (event: DragEvent): void => {
+    const row = event.currentTarget as HTMLElement;
+    if (
+      event.relatedTarget instanceof Node &&
+      row.contains(event.relatedTarget)
+    ) {
+      return;
+    }
+    row.classList.remove("drop-target");
+  };
 
   private effectDropped(index: number, event: DragEvent): void {
     event.preventDefault();
@@ -489,6 +536,114 @@ export class GoveeCustomEffectEditor extends LitElement {
     }
     this.reorderEffect(this.draggedEffectIndex, index);
     this.draggedEffectIndex = undefined;
+    this.clearEffectDragClasses();
+  }
+
+  private readonly effectDragEnded = (): void => {
+    this.draggedEffectIndex = undefined;
+    this.clearEffectDragClasses();
+  };
+
+  private effectPointerStarted(index: number, event: PointerEvent): void {
+    if (this.disabled || event.pointerType === "mouse") {
+      return;
+    }
+    this.pointerDragId = event.pointerId;
+    this.pointerDragIndex = index;
+    this.pointerDropIndex = index;
+    this.pointerDragHandle = event.currentTarget as HTMLElement;
+    this.pointerDragActive = false;
+    this.pointerStartX = event.clientX;
+    this.pointerStartY = event.clientY;
+  }
+
+  private readonly effectPointerMoved = (event: PointerEvent): void => {
+    if (
+      event.pointerId !== this.pointerDragId ||
+      this.pointerDragIndex === undefined
+    ) {
+      return;
+    }
+    const handle = this.pointerDragHandle;
+    if (!handle) {
+      return;
+    }
+    const row = handle?.closest<HTMLElement>(".effect-row");
+    if (!this.pointerDragActive) {
+      const distance = Math.hypot(
+        event.clientX - this.pointerStartX,
+        event.clientY - this.pointerStartY,
+      );
+      if (distance < 8) {
+        return;
+      }
+      this.pointerDragActive = true;
+      row?.classList.add("dragging");
+    }
+    event.preventDefault();
+    const target = this.shadowRoot
+      ?.elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>(".effect-row");
+    const targetIndex = Number(target?.dataset.effectIndex);
+    if (!Number.isInteger(targetIndex)) {
+      return;
+    }
+    this.pointerDropIndex = targetIndex;
+    this.shadowRoot
+      ?.querySelectorAll(".effect-row.drop-target")
+      .forEach((candidate) => candidate.classList.remove("drop-target"));
+    target?.classList.add("drop-target");
+  };
+
+  private readonly effectPointerFinished = (event: PointerEvent): void => {
+    if (event.pointerId !== this.pointerDragId) {
+      return;
+    }
+    const from = this.pointerDragIndex;
+    const to = this.pointerDropIndex;
+    this.pointerDragId = undefined;
+    this.pointerDragIndex = undefined;
+    this.pointerDropIndex = undefined;
+    this.pointerDragHandle = undefined;
+    this.pointerDragActive = false;
+    this.clearEffectDragClasses();
+    if (event.type === "pointercancel") {
+      return;
+    }
+    if (from !== undefined && to !== undefined) {
+      this.reorderEffect(from, to);
+    }
+  };
+
+  private effectDragKeyPressed(
+    index: number,
+    event: KeyboardEvent,
+  ): void {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+      return;
+    }
+    event.preventDefault();
+    const target = index + (event.key === "ArrowUp" ? -1 : 1);
+    if (
+      !this.content ||
+      this.content.kind !== "h617a_multi" ||
+      target < 0 ||
+      target >= this.content.effects.length
+    ) {
+      return;
+    }
+    this.reorderEffect(index, target);
+    void this.updateComplete.then(() => {
+      this.shadowRoot
+        ?.querySelectorAll<HTMLButtonElement>(".drag-handle")
+        [target]?.focus();
+    });
+  }
+
+  private clearEffectDragClasses(): void {
+    this.shadowRoot
+      ?.querySelectorAll(".effect-row.dragging, .effect-row.drop-target")
+      .forEach((row) => row.classList.remove("dragging", "drop-target"));
   }
 
   private rowMenuToggled(index: number, event: Event): void {
@@ -555,6 +710,30 @@ export class GoveeCustomEffectEditor extends LitElement {
       margin-top: var(--studio-section-gap);
     }
 
+    .sequence-table {
+      --effect-layer-columns:
+        minmax(72px, 0.45fr)
+        minmax(0, 1fr)
+        minmax(0, 1fr)
+        var(--studio-control-height);
+      container-type: inline-size;
+    }
+
+    .sequence-header,
+    .effect-row {
+      display: grid;
+      grid-template-columns: var(--effect-layer-columns);
+      align-items: center;
+      gap: 12px;
+    }
+
+    .sequence-header {
+      margin-bottom: 8px;
+      color: var(--studio-muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
     .sequence {
       display: grid;
       gap: 8px;
@@ -565,43 +744,77 @@ export class GoveeCustomEffectEditor extends LitElement {
 
     .effect-row {
       position: relative;
+      transition:
+        background-color 120ms ease,
+        box-shadow 120ms ease,
+        opacity 120ms ease;
+    }
+
+    .effect-row.dragging {
+      opacity: 0.5;
+    }
+
+    .effect-row.drop-target {
+      border-radius: var(--studio-control-radius);
+      background: var(--studio-blue-soft);
+      box-shadow: inset 0 -2px var(--studio-blue);
+    }
+
+    .order-cell {
       display: flex;
       align-items: center;
       gap: 8px;
+      min-width: 0;
     }
 
     .drag-handle {
       display: grid;
-      width: 24px;
-      min-height: var(--studio-control-height);
-      flex: 0 0 24px;
+      width: 32px;
+      height: var(--studio-control-height);
+      flex: 0 0 32px;
       place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: var(--studio-control-radius);
       color: var(--studio-muted);
+      background: transparent;
       cursor: grab;
       font-size: 18px;
       letter-spacing: -5px;
+      touch-action: none;
       user-select: none;
     }
 
-    .layer-heading {
-      display: none;
+    .drag-handle:active {
+      cursor: grabbing;
     }
 
-    .effect-fields {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      flex: 1;
-      gap: 10px;
+    .drag-handle:focus-visible {
+      outline: var(--studio-focus-width) solid var(--studio-blue);
+      outline-offset: var(--studio-focus-offset);
+    }
+
+    .layer-heading {
+      overflow: hidden;
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-weight: 650;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .effect-field {
+      margin-top: 0;
       min-width: 0;
     }
 
-    .effect-fields .field {
-      margin-top: 0;
+    .field-label {
+      display: none;
       font-size: 12px;
       font-weight: 650;
     }
 
-    .effect-fields select {
+    .effect-field select {
       width: 100%;
       min-height: var(--studio-control-height);
       padding: 8px 10px;
@@ -613,7 +826,8 @@ export class GoveeCustomEffectEditor extends LitElement {
 
     .row-menu {
       position: relative;
-      flex: 0 0 var(--studio-control-height);
+      width: var(--studio-control-height);
+      justify-self: end;
     }
 
     .row-menu summary {
@@ -640,7 +854,7 @@ export class GoveeCustomEffectEditor extends LitElement {
       top: 50px;
       right: 0;
       display: grid;
-      width: 150px;
+      width: 120px;
       padding: 6px;
       border: 1px solid var(--studio-border);
       border-radius: var(--studio-popover-radius);
@@ -676,9 +890,13 @@ export class GoveeCustomEffectEditor extends LitElement {
       font-size: 24px;
     }
 
-    @media (max-width: 560px) {
+    @container (max-width: 520px) {
       .sequence {
         gap: 12px;
+      }
+
+      .sequence-header {
+        display: none;
       }
 
       .effect-row {
@@ -692,25 +910,12 @@ export class GoveeCustomEffectEditor extends LitElement {
         background: var(--secondary-background-color, #f5f6f8);
       }
 
-      .drag-handle {
-        display: none;
-      }
-
-      .layer-heading {
-        display: block;
+      .order-cell {
         align-self: center;
-        color: var(--primary-text-color);
-        font-size: 14px;
-        font-weight: 700;
       }
 
-      .effect-fields {
+      .effect-field {
         grid-column: 1 / -1;
-        grid-template-columns: 1fr;
-      }
-
-      .effect-label {
-        display: none;
       }
 
       .row-menu {

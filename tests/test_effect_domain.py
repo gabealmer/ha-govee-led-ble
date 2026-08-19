@@ -54,7 +54,6 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     OpaqueContent,
     Origin,
     PaintedEffect,
-    PaintGroup,
     PaletteDiyEffect,
     PaletteScene,
     RelativeBrightness,
@@ -152,6 +151,15 @@ def _video_profile() -> VideoProfile:
     )
 
 
+def _painted_segments(
+    values: dict[int, tuple[int, int, int]] | None = None,
+) -> tuple[tuple[int, int, int] | None, ...]:
+    segments: list[tuple[int, int, int] | None] = [None] * 15
+    for index, colour in (values or {}).items():
+        segments[index] = colour
+    return tuple(segments)
+
+
 def test_layered_validation_error_is_shared_with_websocket_boundary() -> None:
     assert EffectValidationError is layered_scene_module.LayeredSceneValidationError
 
@@ -163,8 +171,7 @@ def test_layered_validation_error_is_shared_with_websocket_boundary() -> None:
             "clockwise",
             50,
             100,
-            (0, 0, 0),
-            (PaintGroup((255, 0, 0), (0, 1, 2)),),
+            _painted_segments({0: (255, 0, 0), 1: (255, 0, 0), 2: (255, 0, 0)}),
         ),
         SingleEffect(3, 3, 50, ((255, 0, 0), (0, 0, 255))),
         MultiEffect(
@@ -368,24 +375,15 @@ def test_layered_json_preserves_unknown_flags_and_excess() -> None:
     assert layer["excess"] == "aabb"
 
 
-def test_painted_effect_rejects_overlapping_groups() -> None:
-    with pytest.raises(EffectValidationError, match="multiple groups"):
-        PaintedEffect(
-            "clockwise",
-            50,
-            100,
-            (0, 0, 0),
-            (
-                PaintGroup((255, 0, 0), (0, 1)),
-                PaintGroup((0, 0, 255), (1, 2)),
-            ),
-        )
+def test_painted_effect_requires_exact_segment_count() -> None:
+    with pytest.raises(EffectValidationError, match="exactly 15"):
+        PaintedEffect("clockwise", 50, 100, (None,) * 14)
 
 
 def test_newer_schema_is_not_silently_loaded() -> None:
     item = LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
     document = item.to_dict()
-    document["schema_version"] = 2
+    document["schema_version"] = 3
 
     with pytest.raises(UnsupportedEffectSchemaError):
         LibraryItem.from_dict(document)
@@ -398,8 +396,7 @@ def test_h617a_compiler_emits_upload_then_activation() -> None:
             "clockwise",
             50,
             100,
-            (0, 0, 0),
-            (PaintGroup((255, 0, 0), (0, 1)),),
+            _painted_segments({0: (255, 0, 0), 1: (255, 0, 0)}),
         ),
     )
 
@@ -417,6 +414,43 @@ def test_h617a_compiler_emits_upload_then_activation() -> None:
     assert compiled.activation_packet == effect_commands.build_h617a_diy_activation(800)
     assert compiled.packets[-1] == compiled.activation_packet
     assert len(compiled.artifact_sha256) == 64
+
+
+def test_h617a_painted_compiler_preserves_off_and_explicit_black_deterministically() -> None:
+    item = LibraryItem.new(
+        "Paint",
+        PaintedEffect(
+            "clockwise",
+            50,
+            100,
+            _painted_segments(
+                {
+                    0: (255, 0, 0),
+                    1: (0, 0, 0),
+                    2: (255, 0, 0),
+                }
+            ),
+        ),
+    )
+
+    first = compile_h617a(item, 800)
+    second = compile_h617a(item, 800)
+    expected = tuple(
+        effect_commands.build_h617a_diy_painted(
+            "clockwise",
+            50,
+            100,
+            (0, 0, 0),
+            (
+                effect_commands.DiyPaintGroup((255, 0, 0), (0, 2)),
+                effect_commands.DiyPaintGroup((0, 0, 0), (1,)),
+            ),
+        )
+    )
+
+    assert first.upload_packets == expected
+    assert second.upload_packets == expected
+    assert first.artifact_sha256 == second.artifact_sha256
 
 
 @pytest.mark.parametrize(
@@ -674,8 +708,8 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
 
     assert api == {
-        "api_version": 4,
-        "effect_schema_version": 1,
+        "api_version": 5,
+        "effect_schema_version": 2,
         "compiler_version": EFFECT_COMPILER_VERSION,
         "limits": {
             "effect_name": MAX_EFFECT_NAME_LENGTH,
@@ -778,8 +812,7 @@ def test_effect_documents_reject_oversized_and_deep_opaque_content() -> None:
     [
         lambda: Origin(SourceKind.AUTHORED, "x" * 256),
         lambda: TargetHint("H617A", 0),
-        lambda: PaintGroup((255, 0, 0), ()),
-        lambda: PaintedEffect("clockwise", 50, 100, (0, 0, 256)),
+        lambda: PaintedEffect("clockwise", 50, 100, ((0, 0, 256),) + (None,) * 14),
         lambda: SingleEffect(0, 0, 50, ()),
         lambda: MusicProfile("future", "rolling", 50, None, None, {}),
         lambda: RelativeBrightness(0, 1, 1, 1),

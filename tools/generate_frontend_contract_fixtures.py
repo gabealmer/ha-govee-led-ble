@@ -11,7 +11,11 @@ from uuid import UUID
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.effect_catalogue import custom_effect_catalogue_payload
-from custom_components.ha_govee_led_ble.effect_contracts import EditorApiInfo, device_effect_capabilities
+from custom_components.ha_govee_led_ble.effect_contracts import (
+    EFFECT_COMPILER_VERSION,
+    EditorApiInfo,
+    device_effect_capabilities,
+)
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     DeploymentRecord,
@@ -24,7 +28,6 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     MusicProfile,
     OpaqueContent,
     PaintedEffect,
-    PaintGroup,
     PaletteDiyEffect,
     RelativeBrightness,
     SingleEffect,
@@ -63,6 +66,10 @@ CONTENT_FAMILIES = {
     "scene_layered",
     "future_wave",
 }
+
+
+def _painted_segments() -> tuple[tuple[int, int, int] | None, ...]:
+    return ((255, 0, 0),) * 3 + (None,) * 12
 
 
 def _compact_custom_catalogue(catalogue: dict[str, Any]) -> dict[str, Any]:
@@ -143,8 +150,7 @@ def _content_samples(
                 "clockwise",
                 50,
                 80,
-                (0, 0, 0),
-                (PaintGroup((255, 0, 0), (0, 1, 2)),),
+                _painted_segments(),
             )
         ),
         "h617a_single": effect_content_to_dict(SingleEffect(3, 3, 50, ((255, 0, 0), (0, 0, 255)))),
@@ -202,7 +208,7 @@ def rendered_data() -> str:
         version=1,
         updated_at=TIMESTAMP,
         name="Canonical painted effect",
-        content=PaintedEffect("clockwise", 50, 80, (0, 0, 0), (PaintGroup((255, 0, 0), (0, 1, 2)),)),
+        content=PaintedEffect("clockwise", 50, 80, _painted_segments()),
         target_hint=TargetHint("H617A", MODEL_PROFILES["H617A"].segment_count),
     )
     scene_item = LibraryItem(
@@ -217,7 +223,7 @@ def rendered_data() -> str:
         config_entry_id="h617a-main",
         diy_code=800,
         phase=DeploymentPhase.CONFIRMED,
-        compiler_version=3,
+        compiler_version=EFFECT_COMPILER_VERSION,
         artifact_sha256=sha256(b"frontend-contract-fixture").hexdigest(),
         updated_at=TIMESTAMP,
         content_kind="h617a_painted",

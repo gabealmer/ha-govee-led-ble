@@ -15,12 +15,14 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 from .effect_domain import (
+    EFFECT_SCHEMA_VERSION,
     EffectValidationError,
     LibraryItem,
     Origin,
     SourceKind,
     TargetHint,
     effect_content_from_dict,
+    effect_content_hash,
 )
 from .effect_limits import (
     MAX_LIBRARY_ITEMS,
@@ -35,10 +37,11 @@ from .effect_persistence_validation import (
     EffectVersionConflictError,
     as_persisted_mapping,
 )
+from .effect_schema_migration import LegacyEffectMigrationError, migrate_effect_content_v1
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 LIBRARY_STORE_VERSION: Final = 2
-LIBRARY_STORE_MINOR_VERSION: Final = 0
+LIBRARY_STORE_MINOR_VERSION: Final = 1
 LIBRARY_STORE_KEY: Final = f"{DOMAIN}.effect_library"
 
 _LOGGER = logging.getLogger(__name__)
@@ -179,8 +182,10 @@ async def _async_migrate_library(
     old_minor_version: int,
     old_data: dict[str, Any],
 ) -> dict[str, Any]:
-    if old_major_version == LIBRARY_STORE_VERSION and old_minor_version <= LIBRARY_STORE_MINOR_VERSION:
+    if old_major_version == LIBRARY_STORE_VERSION and old_minor_version == LIBRARY_STORE_MINOR_VERSION:
         return old_data
+    if old_major_version == LIBRARY_STORE_VERSION and old_minor_version == 0:
+        return _migrate_current_library(old_data)
     if old_major_version != 1 or old_minor_version > 1:
         raise EffectStorageError(f"cannot migrate effect store version {old_major_version}.{old_minor_version}")
     root = as_persisted_mapping(old_data, "legacy effect library root")
@@ -207,7 +212,9 @@ def _migrate_legacy_item(raw: Mapping[str, Any], *, version: int, updated_at: st
     try:
         item_id = UUID(str(raw["id"]))
         name = str(raw["name"])
-        content = effect_content_from_dict(as_persisted_mapping(raw.get("content"), "legacy effect content"))
+        content = effect_content_from_dict(
+            migrate_effect_content_v1(as_persisted_mapping(raw.get("content"), "legacy effect content"))
+        )
         provenance = as_persisted_mapping(raw.get("provenance"), "legacy effect provenance")
         kind = SourceKind(str(provenance.get("source_kind", SourceKind.MIGRATED.value)))
         target_raw = raw.get("target_hint")
@@ -234,8 +241,33 @@ def _migrate_legacy_item(raw: Mapping[str, Any], *, version: int, updated_at: st
             target_hint=target,
             extensions=cast(dict[str, Any], dict(extensions)),
         )
-    except (KeyError, TypeError, ValueError, EffectValidationError) as exc:
+    except (KeyError, TypeError, ValueError, EffectValidationError, LegacyEffectMigrationError) as exc:
         raise EffectStorageError(f"legacy effect head is invalid: {exc}") from exc
+
+
+def _migrate_current_library(old_data: object) -> dict[str, Any]:
+    root = as_persisted_mapping(old_data, "effect library root")
+    items_raw = as_persisted_mapping(root.get("items"), "effect library items")
+    items: dict[str, Any] = {}
+    for key, value in items_raw.items():
+        raw = dict(as_persisted_mapping(value, f"effect {key}"))
+        if raw.get("schema_version") != 1:
+            raise EffectStorageError(f"effect {key} does not use schema version 1")
+        try:
+            content_document = migrate_effect_content_v1(
+                as_persisted_mapping(raw.get("content"), f"effect {key} content")
+            )
+            content = effect_content_from_dict(content_document)
+        except (EffectValidationError, LegacyEffectMigrationError) as exc:
+            raise EffectStorageError(f"effect {key} is invalid: {exc}") from exc
+        raw["schema_version"] = EFFECT_SCHEMA_VERSION
+        raw["content"] = content_document
+        raw["content_hash"] = effect_content_hash(content)
+        item = LibraryItem.from_dict(raw)
+        if str(item.id) != str(key):
+            raise EffectStorageError(f"effect {key} has mismatched identity")
+        items[str(item.id)] = item.to_dict()
+    return {"items": items}
 
 
 def _empty_library() -> dict[str, Any]:

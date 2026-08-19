@@ -3,6 +3,7 @@ import { property, state } from "lit/decorators.js";
 
 import "./advanced-effect-editor";
 import "./colour-picker";
+import { rememberRecentColour } from "./colour-picker";
 import "./custom-effect-editor";
 import type {
   CustomEffectBrowserCategoryRequest,
@@ -11,7 +12,6 @@ import type {
 import "./custom-effect-browser";
 import {
   advancedEditorContent,
-  coloursForSegments,
   effectOriginDescription,
   isAdvancedEditableContent,
   isCustomEffectContent,
@@ -166,7 +166,7 @@ export class GoveeLedEffectStudio extends LitElement {
           ${this.model.videoAvailable
             ? this.navButton("video", "Video")
             : nothing}
-          ${this.navButton("scenes", "Built-in")}
+          ${this.navButton("scenes", "Scene")}
           ${this.model.customEffectsAvailable
             ? this.navButton("custom", "Custom")
             : nothing}
@@ -249,9 +249,8 @@ export class GoveeLedEffectStudio extends LitElement {
       this.model.selectedDeviceId !== undefined && this.model.selectedDevice === undefined;
     return html`
       <label class="device-selector">
-        <span>Govee light</span>
         <select
-          aria-label="Govee light"
+          aria-label="Light"
           .value=${this.model.selectedDeviceId ?? ""}
           @change=${(event: Event) =>
             void this.controller.deviceChanged(
@@ -279,23 +278,15 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderLiveApplyControl() {
     const phase = this.model.previewStatus?.phase;
-    const pending = phase === "queued" || phase === "writing";
+    const pending =
+      this.model.previewProgressVisible &&
+      (phase === "queued" || phase === "writing");
     const warning = phase === "failed";
-    const current =
-      phase === "written" ||
-      phase === "confirmed" ||
-      phase === "unconfirmed";
     const status = pending
       ? "Applying changes"
       : warning
         ? "The latest change could not reach the light"
-        : current
-          ? phase === "unconfirmed"
-            ? "Changes sent; readback is unavailable"
-            : "Changes applied"
-          : this.model.liveApplyEnabled
-            ? "Live apply is ready"
-            : "Live apply is off";
+        : undefined;
     return html`
       <div class="live-apply-control">
         <button
@@ -309,21 +300,22 @@ export class GoveeLedEffectStudio extends LitElement {
           <span class="live-apply-track" aria-hidden="true">
             <span class="live-apply-thumb"></span>
           </span>
-          <span>Live apply</span>
+          <span>Live</span>
         </button>
         <span
           class="live-apply-status ${pending
             ? "pending"
             : warning
               ? "warning"
-              : current
-                ? "current"
-                : "idle"}"
-          role="status"
-          aria-label=${status}
-          title=${status}
+              : "idle"}"
+          title=${status ?? nothing}
+          aria-hidden="true"
         ></span>
-        <span class="visually-hidden" aria-live="polite">${status}</span>
+        ${status
+          ? html`<span class="visually-hidden" role="status"
+              >${status}</span
+            >`
+          : nothing}
       </div>
     `;
   }
@@ -475,7 +467,6 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-video-profile-editor
         .content=${this.content}
         .disabled=${this.editorReadOnly}
-        .showModeSelector=${!this.templateSourceLabel}
         @content-changed=${(
           event: CustomEvent<{
             content: VideoProfileContent;
@@ -501,7 +492,6 @@ export class GoveeLedEffectStudio extends LitElement {
         .content=${this.content}
         .catalogue=${this.model.modelCatalogue}
         .disabled=${this.editorReadOnly}
-        .showModeSelector=${!this.templateSourceLabel}
         @content-changed=${(
           event: CustomEvent<{
             content: MusicProfileContent;
@@ -531,7 +521,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderPanelNotice() {
     return this.model.notice
-      ? html`<div class="feedback" role="status">${this.model.notice}</div>`
+      ? html`<p class="action-error" role="alert">${this.model.notice}</p>`
       : nothing;
   }
 
@@ -599,11 +589,11 @@ export class GoveeLedEffectStudio extends LitElement {
             );
           }}
         >
-          <h2 id="save-effect-title">Save effect</h2>
+          <h2 id="save-effect-title">New Custom Effect</h2>
           <label class="field">
-            <span>Effect name</span>
+            <span>Name</span>
             <input
-              aria-label="Effect name"
+              aria-label="Name"
               aria-describedby=${this.model.saveNameError
                 ? "save-effect-name-error"
                 : nothing}
@@ -632,7 +622,7 @@ export class GoveeLedEffectStudio extends LitElement {
             >
               Cancel
             </button>
-            <button class="primary" type="submit">Save effect</button>
+            <button class="primary" type="submit">Save</button>
           </div>
         </form>
       </div>
@@ -645,15 +635,6 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     return html`
       ${this.renderEditorHeading()}
-
-      ${!this.isAdmin
-        ? html`
-            <div class="feedback read-only" role="note">
-              You can inspect shared effects. An administrator is required to
-              edit or save them.
-            </div>
-          `
-        : nothing}
 
       <govee-advanced-effect-editor
         .content=${advancedEditorContent(this.content)}
@@ -681,10 +662,10 @@ export class GoveeLedEffectStudio extends LitElement {
         save: false,
         title: html`<h2>${this.model.name}</h2>`,
       })}
-      <div class="feedback read-only" role="note">
+      <p class="read-only-copy">
         This effect definition can be inspected, but this editor cannot change,
         save or preview it.
-      </div>
+      </p>
       <section class="card opaque-content">
         <h3 class="section-title">Source kind</h3>
         <p><code>${content.source_kind}</code></p>
@@ -705,89 +686,52 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading()}
 
-      ${!this.isAdmin
-        ? html`
-            <div class="feedback read-only" role="note">
-              You can inspect shared effects. An administrator is required to
-              edit them.
-            </div>
-          `
-        : nothing}
-
       ${this.showCustomEffectSelector
         ? this.renderSingleEffectSelector()
         : nothing}
 
       <govee-painted-segment-editor
-        .colours=${coloursForSegments(this.content)}
+        .segments=${this.content.segments}
         .disabled=${this.editorReadOnly}
         @segment-selected=${(
           event: CustomEvent<{
             index: number;
             interaction: LivePreviewInteraction;
           }>,
-        ) =>
-          this.editor.setSegmentColour(
+        ) => {
+          const changed = this.editor.setSegmentColour(
             event.detail.index,
             event.detail.interaction,
-          )}
+          );
+          if (changed && !this.model.paintBrushOff) {
+            rememberRecentColour(this.model.paintColour);
+          }
+        }}
       ></govee-painted-segment-editor>
 
       <div class="controls">
         <section class="card">
-          <h3 class="section-title">Brushes</h3>
-          <govee-palette-editor
-            class="paint-brushes"
-            .palette=${this.model.paintBrushes}
-            .minColours=${2}
-            .maxColours=${8}
+          <h3 class="section-title">Paint colour</h3>
+          <govee-colour-picker
+            .colour=${this.model.paintColour}
             .disabled=${this.editorReadOnly}
-            .persistentPicker=${true}
-            .selectedIndex=${this.model.selectedPaintBrush}
-            ariaLabel="Brushes"
-            itemName="brush"
-            @palette-changed=${(event: CustomEvent<{ palette: RGB[] }>) =>
-              this.editor.paintBrushesChanged(event.detail.palette)}
-            @colour-selected=${(event: CustomEvent<{ index: number }>) =>
-              this.model.patch({
-                selectedPaintBrush: event.detail.index,
-                brushUsesBackground: false,
-              })}
-          ></govee-palette-editor>
-          <div class="background-colour">
-            <span class="parameter-label">Background</span>
-            <govee-colour-picker
-              .colour=${this.content.background}
-              .disabled=${this.editorReadOnly}
-              @colour-changing=${(
-                event: CustomEvent<{ colour: RGB }>,
-              ) => this.editor.backgroundChanged(event.detail.colour, "changing")}
-              @colour-changed=${(
-                event: CustomEvent<{ colour: RGB }>,
-              ) => this.editor.backgroundChanged(event.detail.colour, "committed")}
-            ></govee-colour-picker>
-          </div>
-          <div class="button-row">
+            .selectionActive=${!this.model.paintBrushOff}
+            .rememberOnCommit=${false}
+            @colour-changing=${(event: CustomEvent<{ colour: RGB }>) =>
+              this.editor.paintColourChanged(event.detail.colour)}
+            @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
+              this.editor.paintColourChanged(event.detail.colour)}
+          ></govee-colour-picker>
+          <div class="paint-actions">
             <button
-              class="secondary ${this.model.brushUsesBackground ? "active" : ""}"
+              class="paint-off ${this.model.paintBrushOff ? "active" : ""}"
               type="button"
               ?disabled=${this.editorReadOnly}
-              aria-pressed=${this.model.brushUsesBackground}
-              @click=${() => {
-                this.model.patch({
-                  brushUsesBackground: !this.model.brushUsesBackground,
-                });
-              }}
+              aria-pressed=${this.model.paintBrushOff}
+              @click=${() => this.editor.selectPaintOff()}
             >
-              Use background
-            </button>
-            <button
-              class="secondary"
-              type="button"
-              ?disabled=${this.editorReadOnly}
-              @click=${() => this.editor.paintAll()}
-            >
-              Paint all
+              <span class="paint-off-swatch" aria-hidden="true"></span>
+              Off
             </button>
             <button
               class="secondary"
@@ -808,7 +752,6 @@ export class GoveeLedEffectStudio extends LitElement {
               "Brightness",
               "brightness",
               this.content.brightness,
-              `${this.content.brightness}%`,
             )}
           </div>
         </section>
@@ -829,14 +772,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading()}
 
-      ${!this.isAdmin
-        ? html`
-            <div class="feedback read-only" role="note">
-              You can inspect shared effects. An administrator is required to
-              edit them.
-            </div>
-          `
-        : nothing}
+
 
       ${this.showCustomEffectSelector
         ? this.renderSingleEffectSelector()
@@ -1056,13 +992,15 @@ export class GoveeLedEffectStudio extends LitElement {
       <div class="editor-heading">
         <div>${options.title ?? this.renderEffectName()}</div>
         <div class="actions">
-          ${this.model.sceneEditorOpen
+          ${this.model.sceneEditorOpen || this.model.editorCancelAvailable
             ? html`
                 <button
                   class="secondary"
                   type="button"
                   ?disabled=${this.model.saving}
-                  @click=${this.cancelSceneEdit}
+                  @click=${this.model.sceneEditorOpen
+                    ? this.cancelSceneEdit
+                    : this.cancelCreation}
                 >
                   Cancel
                 </button>
@@ -1092,7 +1030,7 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     const saveLabel =
       !this.currentItem && this.model.customCopyStarted
-        ? "Save as Custom"
+        ? "Save As"
         : "Save";
     return html`
       <button
@@ -1149,7 +1087,6 @@ export class GoveeLedEffectStudio extends LitElement {
     label: string,
     key: "speed" | "brightness",
     value: number,
-    valueText?: string,
   ) {
     return html`
       <govee-slider-control
@@ -1157,7 +1094,6 @@ export class GoveeLedEffectStudio extends LitElement {
         .value=${value}
         .minimum=${0}
         .maximum=${100}
-        .valueText=${valueText}
         .disabled=${this.editorReadOnly}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
           this.editor.updatePaintedContent({ [key]: event.detail.value })}
@@ -1201,6 +1137,10 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private cancelSceneEdit(): void {
     this.editor.cancelSceneEdit();
+  }
+
+  private cancelCreation(): void {
+    this.editor.cancelCreation();
   }
 
   private renderEditorDeleteButton() {

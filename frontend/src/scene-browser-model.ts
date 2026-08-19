@@ -97,7 +97,6 @@ export function sceneBrowserCategories(
 export function sceneBrowserEntries(
   state: SceneBrowserViewState,
   customScenes: LibrarySummary[],
-  search: string,
 ): SceneListEntry[] {
   const custom = state.category === "all" || state.category === "custom" ? customScenes : [];
   const builtin =
@@ -106,13 +105,10 @@ export function sceneBrowserEntries(
       : state.category === "all"
         ? state.catalogue.scenes
         : state.catalogue.scenes.filter((scene) => scene.category_id === state.category);
-  const query = search.trim().toLocaleLowerCase();
   return [
     ...custom.map((item): SceneListEntry => ({ kind: "custom", item, label: item.name })),
     ...builtin.map((scene): SceneListEntry => ({ kind: "builtin", scene, label: scene.display_name })),
-  ]
-    .filter((entry) => !query || entry.label.toLocaleLowerCase().includes(query))
-    .sort((left, right) => compareLabels(left.label, right.label));
+  ].sort((left, right) => compareLabels(left.label, right.label));
 }
 
 export function findCatalogueScene(catalogue: SceneCatalogue, content: SceneContent): SceneSummary | undefined {

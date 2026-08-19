@@ -29,7 +29,7 @@ from custom_components.ha_govee_led_ble.effect_services import (
 @pytest.mark.parametrize(
     "content",
     [
-        PaintedEffect("clockwise", 50, 100, (0, 0, 0)),
+        PaintedEffect("clockwise", 50, 100, (None,) * 15),
         PaletteDiyEffect("H6199", 8, 9, 50, ((255, 0, 0), (0, 0, 255))),
     ],
 )

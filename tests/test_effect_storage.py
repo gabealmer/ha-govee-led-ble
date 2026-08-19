@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,6 +17,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import EffectDeployme
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     Origin,
+    PaintedEffect,
     SingleEffect,
     SourceKind,
 )
@@ -146,6 +147,87 @@ async def test_legacy_migration_keeps_only_live_head(hass: HomeAssistant) -> Non
     assert migrated.name == "Current"
     assert migrated.origin == Origin()
     assert "Old" not in str(await Store[dict[str, Any]](hass, LIBRARY_STORE_VERSION, LIBRARY_STORE_KEY).async_load())
+
+
+@pytest.mark.parametrize(
+    ("background", "groups", "expected"),
+    [
+        (
+            [0, 0, 0],
+            [
+                {"fill": [255, 0, 0], "segments": [0]},
+                {"fill": [0, 0, 0], "segments": [1]},
+            ],
+            ((255, 0, 0), (0, 0, 0)) + (None,) * 13,
+        ),
+        (
+            [1, 2, 3],
+            [{"fill": [255, 0, 0], "segments": [0]}],
+            ((255, 0, 0),) + ((1, 2, 3),) * 14,
+        ),
+    ],
+)
+async def test_current_library_migrates_legacy_painted_content(
+    hass: HomeAssistant,
+    background: list[int],
+    groups: list[dict[str, Any]],
+    expected: tuple[tuple[int, int, int] | None, ...],
+) -> None:
+    item = LibraryItem.new("Paint", PaintedEffect("clockwise", 50, 100, (None,) * 15))
+    document = cast(dict[str, Any], item.to_dict())
+    document["schema_version"] = 1
+    document["content"] = {
+        "kind": "h617a_painted",
+        "effect": "clockwise",
+        "speed": 50,
+        "brightness": 100,
+        "background": background,
+        "groups": groups,
+    }
+    document["content_hash"] = "0" * 64
+    await Store[dict[str, Any]](
+        hass,
+        2,
+        LIBRARY_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=0,
+    ).async_save({"items": {str(item.id): document}})
+
+    (migrated,) = (await EffectLibraryRepository(hass).async_load()).items
+
+    assert migrated.schema_version == 2
+    assert isinstance(migrated.content, PaintedEffect)
+    assert migrated.content.segments == expected
+    assert migrated.content_hash != "0" * 64
+
+
+async def test_current_library_rejects_overlapping_legacy_paint_groups(hass: HomeAssistant) -> None:
+    item = LibraryItem.new("Paint", PaintedEffect("clockwise", 50, 100, (None,) * 15))
+    document = cast(dict[str, Any], item.to_dict())
+    document["schema_version"] = 1
+    document["content"] = {
+        "kind": "h617a_painted",
+        "effect": "clockwise",
+        "speed": 50,
+        "brightness": 100,
+        "background": [0, 0, 0],
+        "groups": [
+            {"fill": [255, 0, 0], "segments": [0]},
+            {"fill": [0, 0, 255], "segments": [0]},
+        ],
+    }
+    await Store[dict[str, Any]](
+        hass,
+        2,
+        LIBRARY_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=0,
+    ).async_save({"items": {str(item.id): document}})
+
+    with pytest.raises(EffectStorageError, match="multiple groups"):
+        await EffectLibraryRepository(hass).async_load()
 
 
 @pytest.mark.parametrize("invalid_value", ["version", "name", "origin", "target"])

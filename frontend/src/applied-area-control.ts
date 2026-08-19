@@ -141,9 +141,8 @@ export class GoveeAppliedAreaControl extends LitElement {
       ${!areaIsEditable
         ? html`
             <p class="muted">
-              This loaded layer encodes raw area values: start
-              ${layer.area.start_tenths}, width ${layer.area.width_tenths}.
-              They remain preserved until replaced.
+              This loaded layer uses an applied area that is not editable here.
+              It remains preserved until replaced.
             </p>
             <button
               class="secondary"
@@ -435,7 +434,7 @@ export class GoveeAppliedAreaControl extends LitElement {
         top: 0;
         bottom: 0;
         min-width: 1px;
-        border-block: 3px solid
+        border-block: 2px solid
           color-mix(in srgb, var(--area-colour) 48%, var(--studio-border));
         background: color-mix(in srgb, var(--area-colour) 5%, transparent);
       }

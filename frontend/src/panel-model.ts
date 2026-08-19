@@ -1,6 +1,12 @@
 import { customEffectCategoryAvailable, customEffectKindAvailable, libraryItemAvailable, type CustomEffectListContext } from "./custom-effect-list";
 import { defaultCustomEffectCategory, showCustomEffectSelector } from "./custom-effect-workflow";
-import { blankPainted, defaultPalette, isEditableEffectContent, serialiseEditable, type CustomEffectCategory } from "./effect-editor-model";
+import {
+  blankPainted,
+  isEditableEffectContent,
+  serialiseEditable,
+  type CustomEffectCategory,
+  type PaintedSegmentDraft,
+} from "./effect-editor-model";
 import type { SceneInitialSelection } from "./scene-browser";
 import type { StudioSection } from "./studio-navigation";
 import type {
@@ -26,15 +32,15 @@ export class PanelModel {
   public customTemplateSelection?: string;
   public templateSourceLabel?: string;
   public customCopyStarted = false;
+  public editorCancelAvailable = false;
   public library: LibrarySnapshot = { items: [] };
   public customCatalogue?: CustomEffectCatalogue;
   public currentItem?: LibraryItem;
   public savedSceneSelection?: LibraryItem;
   public name = "";
   public content: EffectContent = blankPainted();
-  public paintBrushes = defaultPalette();
-  public selectedPaintBrush = 0;
-  public brushUsesBackground = false;
+  public paintColour: RGB = [255, 69, 58];
+  public paintBrushOff = false;
   public saving = false;
   public saveNameDialogOpen = false;
   public saveNameValue = "";
@@ -43,6 +49,7 @@ export class PanelModel {
   public deletingItemId?: string;
   public liveApplyEnabled = true;
   public previewStatus?: PreviewStatus;
+  public previewProgressVisible = false;
   public savedBaseline?: string;
   public editorTransitionEpoch = 0;
   public isAdmin = false;
@@ -206,17 +213,8 @@ export class PanelModel {
     return customEffectKindAvailable(this.customEffectListContext, kind);
   }
 
-  public get activePaintBrush(): RGB {
-    return [
-      ...(this.paintBrushes[this.selectedPaintBrush] ??
-        this.paintBrushes[0] ??
-        [47, 111, 237]),
-    ] as RGB;
+  public get activePaintBrush(): PaintedSegmentDraft {
+    return this.paintBrushOff ? null : [...this.paintColour];
   }
 
-  public availabilityNotice(): string | undefined {
-    return this.selectedDeviceId && !this.selectedDevice
-      ? "This device is temporarily unavailable in Home Assistant. Live apply will resume after it is loaded and edited."
-      : undefined;
-  }
 }

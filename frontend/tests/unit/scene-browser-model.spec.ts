@@ -129,8 +129,9 @@ test("scene categories and entries are derived without DOM state", () => {
     "Custom",
     "Natural",
   ]);
-  expect(sceneBrowserEntries(state, [custom], "uro").map((entry) => entry.label)).toEqual([
+  expect(sceneBrowserEntries(state, [custom]).map((entry) => entry.label)).toEqual([
     "Aurora custom",
+    "Glacier",
   ]);
 });
 

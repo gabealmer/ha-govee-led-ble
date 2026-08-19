@@ -14,7 +14,7 @@ from uuid import UUID
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
-from .effect_domain import SourceKind, effect_content_from_dict, effect_content_hash
+from .effect_domain import LibraryItem, SourceKind, effect_content_from_dict, effect_content_hash
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
     MAX_DEPLOYMENT_STORE_BYTES,
@@ -43,6 +43,7 @@ from .effect_persistence_validation import required_persisted_mapping as _requir
 from .effect_persistence_validation import required_persisted_rgb as _required_rgb
 from .effect_persistence_validation import required_persisted_string as _required_str
 from .effect_persistence_validation import validate_persisted_rgb as _validate_rgb
+from .effect_schema_migration import LegacyEffectMigrationError, migrate_effect_content_v1
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 DEPLOYMENT_STORE_VERSION: Final = 2
@@ -775,6 +776,27 @@ class EffectDeploymentRepository:
                     _LOGGER.exception("Effect deployment subscriber failed after a committed write")
             return snapshot
 
+    async def async_reconcile_library_hashes(self, items: tuple[LibraryItem, ...]) -> None:
+        hashes = {(item.id, item.version): item.content_hash for item in items}
+        async with self._lock:
+            candidate = copy.deepcopy(self._require_loaded())
+            changed = False
+            for key, raw in candidate["records"].items():
+                record = DeploymentRecord.from_dict(_as_mapping(raw, f"deployment {key}"))
+                if record.source_kind != "saved_effect" or record.item_id is None or record.item_version is None:
+                    continue
+                content_hash = hashes.get((record.item_id, record.item_version))
+                if content_hash is None or content_hash == record.source_content_hash:
+                    continue
+                candidate["records"][key] = replace(record, source_content_hash=content_hash).to_dict()
+                changed = True
+            if not changed:
+                return
+            candidate["version"] += 1
+            _validate_deployments(candidate)
+            await self._store.async_save(candidate)
+            self._data = candidate
+
     def _require_loaded(self) -> dict[str, Any]:
         if self._data is None:
             raise EffectStorageError("deployment store has not been loaded")
@@ -824,8 +846,8 @@ def _migrate_legacy_deployment_record(raw: Mapping[str, Any]) -> dict[str, Any]:
         item_version = _optional_int(raw, "item_revision")
     elif isinstance(snapshot, Mapping):
         try:
-            content = effect_content_from_dict(_required_mapping(snapshot, "content"))
-        except Exception as exc:
+            content = effect_content_from_dict(migrate_effect_content_v1(_required_mapping(snapshot, "content")))
+        except (LegacyEffectMigrationError, ValueError) as exc:
             raise EffectStorageError(f"legacy deployment snapshot content is invalid: {exc}") from exc
         provenance = _required_mapping(snapshot, "provenance")
         source_kind = "snapshot"

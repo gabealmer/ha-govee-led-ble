@@ -174,7 +174,7 @@ describe("SceneBrowserWorkflow", () => {
     expect(libraryItemSaved).toHaveBeenCalledWith(saved);
     expect(workflow.state.selectedItem).toEqual(saved);
     expect(workflow.state.category).toBe("custom");
-    expect(workflow.state.notice).toBe("Custom scene saved.");
+    expect(workflow.state.notice).toBeUndefined();
   });
 
   test("cancelling a scene copy restores the selected catalogue scene", async () => {

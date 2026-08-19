@@ -3,7 +3,6 @@ import { property, state } from "lit/decorators.js";
 
 import {
   bytePercent,
-  hexByte,
   isKnownBrightnessOrder,
   KNOWN_BRIGHTNESS_ORDERS,
 } from "./advanced-effect-model";
@@ -16,7 +15,6 @@ import {
 } from "./advanced-effect-editor-controller";
 import {
   renderDistribution,
-  renderHexByteField,
   renderNumberField,
   renderRangeField,
   renderSelectionControls,
@@ -54,10 +52,13 @@ import type {
   RGB,
 } from "./types";
 
-const PRIORITY_OPTIONS = [1, 2, 3, 4, 5].map((value) => ({
-  value,
-  label: String(value),
-})) satisfies readonly SegmentedControlOption<number>[];
+const PRIORITY_OPTIONS = [
+  { value: 0, label: "None" },
+  ...[1, 2, 3, 4, 5].map((value) => ({
+    value,
+    label: String(value),
+  })),
+] satisfies readonly SegmentedControlOption<number>[];
 
 const BRIGHTNESS_LABELS: Record<BrightnessOrder, string> = {
   0: "Brightest to darkest",
@@ -145,8 +146,8 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             ariaLabel="Effect layers"
             itemRole="tab"
             addLabel="Add layer"
-            .addDisabled=${this.disabled ||
-            this.content.layers.length >= AUTHORING_LAYER_LIMIT}
+            .addDisabled=${this.disabled}
+            .addHidden=${this.content.layers.length >= AUTHORING_LAYER_LIMIT}
             .reorderDisabled=${this.disabled}
             @item-selected=${(event: CustomEvent<{ index: number }>) =>
               this.selectLayer(event.detail.index)}
@@ -212,15 +213,16 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           ${this.renderMovement(
             layer,
             "selected_movement",
-            "Move selected pattern",
+            "Move effect within applied area",
+            true,
           )}
           ${this.renderMovement(
             layer,
             "overall_movement",
-            "Move whole layer",
+            "Move entire layer",
+            false,
           )}
           ${this.renderPriority(layer)}
-          ${this.renderRawValues(layer)}
         </div>
       </section>
     `;
@@ -330,73 +332,66 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     return html`
       <section class="card wide-card">
         <h3 class="section-title">Brightness</h3>
-        <govee-segmented-control
-          .label=${"Distribution"}
-          .value=${layer.brightness_gradient}
-          .options=${[
-            { value: false, label: "Unified" },
-            { value: true, label: "Gradient" },
-          ]}
-          .disabled=${this.disabled}
-          @value-changed=${(
-            event: CustomEvent<SegmentedControlChange<boolean>>,
-          ) =>
-            this.updateLayer({
-              brightness_gradient: event.detail.value,
-            })}
-        ></govee-segmented-control>
+        <label class="field brightness-style">
+          <span>Brightness style</span>
+          <select
+            .value=${layer.brightness_gradient ? "gradient" : "unified"}
+            ?disabled=${this.disabled}
+            @change=${(event: Event) =>
+              this.updateLayer({
+                brightness_gradient:
+                  (event.target as HTMLSelectElement).value === "gradient",
+              })}
+          >
+            <option value="unified">Unified</option>
+            <option value="gradient">Gradient</option>
+          </select>
+        </label>
 
-        <div class="pattern-toolbar">
-          <div
-            class="pattern-tabs"
-            role="tablist"
-            aria-label="Brightness patterns"
-          >
-            ${layer.brightness_patterns.map(
-              (_item, index) => html`
-                <button
-                  class=${index === activeIndex ? "selected" : ""}
-                  type="button"
-                  role="tab"
-                  aria-selected=${index === activeIndex}
-                  tabindex=${index === activeIndex ? "0" : "-1"}
-                  @click=${() => this.selectPattern(index)}
-                  @keydown=${(event: KeyboardEvent) =>
-                    this.patternTabKeyPressed(index, event)}
-                >
-                  Pattern ${index + 1}
-                </button>
-              `,
-            )}
-          </div>
+        <div class="patterns-heading">
+          <h4>Brightness patterns</h4>
           <button
-            class="icon-action"
+            class="secondary pattern-delete"
             type="button"
-            aria-label="Add brightness pattern"
-            ?disabled=${this.disabled ||
-            layer.brightness_patterns.length >= 3}
-            @click=${this.addBrightnessPattern}
-          >
-            +
-          </button>
-          <button
-            class="icon-action danger"
-            type="button"
-            aria-label="Delete brightness pattern"
             ?disabled=${this.disabled ||
             layer.brightness_patterns.length === 1}
             @click=${this.deleteBrightnessPattern}
           >
-            −
+            Delete
           </button>
         </div>
+        <govee-reorderable-strip
+          class="pattern-strip"
+          .items=${layer.brightness_patterns.map((_item, index) => ({
+            key: `pattern-${index}`,
+            label: `Pattern ${index + 1}`,
+            ariaLabel: `Pattern ${index + 1}`,
+            id: `advanced-pattern-tab-${index}`,
+            ariaControls: "advanced-pattern-panel",
+          }))}
+          .activeIndex=${activeIndex}
+          ariaLabel="Brightness patterns"
+          itemRole="tab"
+          addLabel="Add brightness pattern"
+          .addDisabled=${this.disabled}
+          .addHidden=${layer.brightness_patterns.length >= 3}
+          .reorderDisabled=${true}
+          @item-selected=${(event: CustomEvent<{ index: number }>) =>
+            this.selectPattern(event.detail.index)}
+          @item-added=${this.addBrightnessPattern}
+        ></govee-reorderable-strip>
 
-        <div class="brightness-fields">
+        <div
+          class="brightness-fields"
+          id="advanced-pattern-panel"
+          role="tabpanel"
+          aria-labelledby="advanced-pattern-tab-${activeIndex}"
+        >
           <label class="field">
             <span>Order</span>
             <select
               aria-label="Brightness order"
-              .value=${String(pattern.order)}
+              .value=${knownOrder ? String(pattern.order) : ""}
               ?disabled=${this.disabled}
               @change=${(event: Event) =>
                 this.updateBrightnessPattern({
@@ -410,29 +405,12 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   </option>`,
               )}
               ${!knownOrder
-                ? html`
-                    <option value=${pattern.order} .selected=${true}>
-                      Raw order ${pattern.order} (0x${hexByte(pattern.order)})
-                    </option>
-                  `
+                ? html`<option value="" disabled selected>
+                    Choose an order
+                  </option>`
                 : nothing}
             </select>
           </label>
-          ${!knownOrder
-            ? html`
-                <p class="muted raw-value-note">
-                  Brightness order ${pattern.order} is not defined by the
-                  known schema. Its raw value remains preserved.
-                </p>
-                ${renderNumberField(
-                  "Order (raw byte)",
-                  pattern.order,
-                  (value) =>
-                    this.updateBrightnessPattern({ order: value }),
-                  this.disabled,
-                )}
-              `
-            : nothing}
           ${BRIGHTNESS_RANGES.map(([label, key]) =>
             renderRangeField(
               label,
@@ -450,6 +428,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     layer: EffectLayer,
     key: "selected_movement" | "overall_movement",
     label: string,
+    showEnterExit: boolean,
   ) {
     const movement = layer[key];
     return html`
@@ -473,7 +452,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         ${movement.enabled
           ? html`
               ${renderNumberField(
-                "Distance",
+                "ICs per step",
                 movement.distance,
                 (value) =>
                   this.updateMovement(
@@ -516,66 +495,27 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   ),
                 this.disabled,
               )}
-              <govee-checkbox-control
-                class="movement-enter-exit"
-                label="Enter and exit"
-                .checked=${movement.enter_exit}
-                .disabled=${this.disabled}
-                @checked-changed=${(
-                  event: CustomEvent<CheckboxControlChange>,
-                ) => {
-                    const enterExit = event.detail.checked;
-                    this.updateMovement(
-                      key,
-                      { enter_exit: enterExit },
-                      `${label} enter and exit ${enterExit
-                        ? "enabled"
-                        : "disabled"}.`,
-                    );
-                  }}
-              ></govee-checkbox-control>
-            `
-          : nothing}
-      </section>
-    `;
-  }
-
-  private renderPriority(layer: EffectLayer) {
-    const enabled = layer.priority !== 0;
-    return html`
-      <section class="card">
-        <div class="card-heading">
-          <h3 class="section-title">Priority</h3>
-          <govee-switch-control
-            label="Layer priority enabled"
-            .checked=${enabled}
-            .disabled=${this.disabled}
-            @checked-changed=${(
-              event: CustomEvent<SwitchControlChange>,
-            ) =>
-              this.updateLayer({ priority: event.detail.checked ? 1 : 0 })}
-          ></govee-switch-control>
-        </div>
-        ${enabled
-          ? html`
-              <govee-segmented-control
-                class="priority-control"
-                label="Priority"
-                .value=${layer.priority}
-                .options=${PRIORITY_OPTIONS}
-                .disabled=${this.disabled}
-                .hideLabel=${true}
-                @value-changed=${(
-                  event: CustomEvent<SegmentedControlChange<number>>,
-                ) => this.updateLayer({ priority: event.detail.value })}
-              ></govee-segmented-control>
-              ${layer.priority > 5
-                ? renderNumberField(
-                    "Priority (raw byte)",
-                    layer.priority,
-                    (value) => this.updateLayer({ priority: value }),
-                    this.disabled,
-                  )
+              ${showEnterExit
+                ? html`
+                    <govee-checkbox-control
+                      class="movement-enter-exit"
+                      label="Pause before re-entering"
+                      .checked=${movement.enter_exit}
+                      .disabled=${this.disabled}
+                      @checked-changed=${(
+                        event: CustomEvent<CheckboxControlChange>,
+                      ) => {
+                        const enterExit = event.detail.checked;
+                        this.updateMovement(
+                          key,
+                          { enter_exit: enterExit },
+                          `${label} pause before re-entering ${enterExit
+                            ? "enabled"
+                            : "disabled"}.`,
+                        );
+                      }}
+                    ></govee-checkbox-control>
+                  `
                 : nothing}
             `
           : nothing}
@@ -583,83 +523,21 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     `;
   }
 
-  private renderRawValues(layer: EffectLayer) {
+  private renderPriority(layer: EffectLayer) {
     return html`
-      <section class="card wide-card">
-        <details>
-          <summary>Preserved wire values</summary>
-          <p class="muted">
-            These fields are retained losslessly. Change them only when you
-            know the source byte values.
-          </p>
-          <div class="raw-grid">
-            ${renderHexByteField(
-              "Layer flags",
-              layer.unknown_flags,
-              (value) => this.updateLayer({ unknown_flags: value }),
-              this.disabled,
-              0xfd,
-            )}
-            ${renderHexByteField(
-              "Selected movement flags",
-              layer.selected_movement.unknown_flags,
-              (value) =>
-                this.updateMovement("selected_movement", {
-                  unknown_flags: value,
-                }),
-              this.disabled,
-              0xe8,
-            )}
-            ${renderHexByteField(
-              "Whole-layer movement flags",
-              layer.overall_movement.unknown_flags,
-              (value) =>
-                this.updateMovement("overall_movement", {
-                  unknown_flags: value,
-                }),
-              this.disabled,
-              0xe8,
-            )}
-            ${renderNumberField(
-              "Applied-area start (raw nibble)",
-              layer.area.start_tenths,
-              (value) =>
-                this.applyContentChange(
-                  this.controller.updateNested("area", {
-                    start_tenths: value,
-                  }),
-                ),
-              this.disabled,
-              0,
-              15,
-            )}
-            ${renderNumberField(
-              "Applied-area width (raw nibble)",
-              layer.area.width_tenths,
-              (value) =>
-                this.applyContentChange(
-                  this.controller.updateNested("area", {
-                    width_tenths: value,
-                  }),
-                ),
-              this.disabled,
-              0,
-              15,
-            )}
-            <label class="field">
-              <span>Excess bytes (hex)</span>
-              <input
-                type="text"
-                inputmode="text"
-                spellcheck="false"
-                .value=${layer.excess}
-                ?disabled=${this.disabled}
-                @change=${(event: Event) =>
-                  this.excessChanged(event.target as HTMLInputElement)}
-              />
-            </label>
-          </div>
-        </details>
+      <section class="card">
+        <h3 class="section-title">Priority</h3>
+        <govee-segmented-control
+          class="priority-control"
+          label="Priority"
+          .value=${layer.priority}
+          .options=${PRIORITY_OPTIONS}
+          .disabled=${this.disabled}
+          .hideLabel=${true}
+          @value-changed=${(
+            event: CustomEvent<SegmentedControlChange<number>>,
+          ) => this.updateLayer({ priority: event.detail.value })}
+        ></govee-segmented-control>
       </section>
     `;
   }
@@ -715,40 +593,12 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     }
   }
 
-  private patternTabKeyPressed(
-    index: number,
-    event: KeyboardEvent,
-  ): void {
-    const next = this.controller.movePatternSelection(index, event.key);
-    if (next === undefined) {
-      return;
-    }
-    event.preventDefault();
-    this.requestUpdate();
-    void this.updateComplete.then(() => {
-      this.shadowRoot
-        ?.querySelectorAll<HTMLButtonElement>(".pattern-tabs button")
-        [next!]?.focus();
-    });
-  }
-
   private focusActiveTab(): void {
     void this.updateComplete.then(() => {
       this.shadowRoot
         ?.querySelector<GoveeReorderableStrip>("govee-reorderable-strip")
         ?.focusItem(this.controller.activeLayerIndex);
     });
-  }
-
-  private excessChanged(input: HTMLInputElement): void {
-    const value = input.value.replace(/\s+/g, "").toLowerCase();
-    if (!/^(?:[0-9a-f]{2})*$/.test(value)) {
-      input.setCustomValidity("Enter an even number of hexadecimal digits.");
-      input.reportValidity();
-      return;
-    }
-    input.setCustomValidity("");
-    this.updateLayer({ excess: value });
   }
 
   private readonly capturePreviewInteraction = (event: Event): void => {

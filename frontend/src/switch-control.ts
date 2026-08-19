@@ -53,30 +53,47 @@ export class GoveeSwitchControl extends LitElement {
 
       button {
         position: relative;
-        width: 60px;
-        min-height: var(--studio-control-height);
-        height: var(--studio-control-height);
+        width: 42px;
+        min-height: 24px;
+        height: 24px;
         padding: 0;
         border: 1px solid var(--studio-border);
         border-radius: 999px;
-        background: var(--secondary-background-color, #f5f6f8);
+        background: color-mix(
+          in srgb,
+          var(--studio-muted) 12%,
+          var(--studio-card)
+        );
         cursor: pointer;
       }
 
       button span {
         position: absolute;
-        top: 6px;
-        left: 6px;
-        width: 30px;
-        height: 30px;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
         border-radius: 50%;
-        background: var(--studio-muted);
+        background: color-mix(
+          in srgb,
+          var(--studio-muted) 72%,
+          var(--studio-card)
+        );
+        box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
         transition: transform 120ms ease;
       }
 
       button.on {
-        border-color: var(--studio-blue);
-        background: var(--studio-blue);
+        border-color: color-mix(
+          in srgb,
+          var(--studio-blue) 62%,
+          var(--studio-border)
+        );
+        background: color-mix(
+          in srgb,
+          var(--studio-blue) 72%,
+          var(--studio-card)
+        );
       }
 
       button.on span {

@@ -1,7 +1,6 @@
 import {
   customEffectCategoryAvailable,
   type CustomEffectListContext,
-  type CustomEffectListEntry,
 } from "./custom-effect-list";
 import {
   type CustomEffectCategory,
@@ -29,18 +28,6 @@ export function defaultCustomEffectCategory(
       customEffectCategoryAvailable(context, category),
     ) ?? "all"
   );
-}
-
-export function filterCustomEffectEntries(
-  entries: CustomEffectListEntry[],
-  search: string,
-): CustomEffectListEntry[] {
-  const query = search.trim().toLocaleLowerCase();
-  return query
-    ? entries.filter((entry) =>
-        entry.label.toLocaleLowerCase().includes(query),
-      )
-    : entries;
 }
 
 export function showCustomEffectSelector(

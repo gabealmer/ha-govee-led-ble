@@ -12,10 +12,8 @@ import {
   cloneAdvancedContent,
   cloneLayer,
   cloneLayeredSceneContent,
-  hexByte,
   layerAppliedAreaSegments,
   moveAppliedArea,
-  parseHexByte,
   withAppliedAreaSegments,
 } from "../../src/advanced-effect-model";
 
@@ -60,13 +58,9 @@ test("advanced and layered scene clones do not share nested state", () => {
   expect(source.layers[0].area.start_tenths).toBe(0);
 });
 
-test("wire byte helpers preserve accepted values and reject malformed text", () => {
+test("byte percentages clamp to the supported range", () => {
   expect(bytePercent(128)).toBe(50);
   expect(bytePercent(300)).toBe(100);
-  expect(hexByte(10)).toBe("0A");
-  expect(parseHexByte(" 0x7f ")).toBe(127);
-  expect(parseHexByte("100")).toBeUndefined();
-  expect(parseHexByte("gg")).toBeUndefined();
 });
 
 test("applied area left edge resizes without moving the right edge", () => {

@@ -42,7 +42,6 @@ export class PanelController {
     const api = new EffectStudioApi(hass);
     this.api = api;
     const request = this.loadRequests.begin({ api });
-    let preferenceNotice: string | undefined;
     try {
       const [info, devices, library, customCatalogue, userState] = await Promise.all([
         api.info(), api.devices(), api.library(), api.customCatalogue(), api.userState(),
@@ -52,7 +51,7 @@ export class PanelController {
         throw new Error("This editor bundle is not compatible with the installed backend.");
       }
       this.model.patch({ devices, library, customCatalogue, userState });
-      preferenceNotice = await this.initialiseSelectedDevice();
+      await this.initialiseSelectedDevice();
       if (!this.model.customEffectsAvailable) this.model.patch({ section: "scenes" });
       const unsubscribeLibrary = await api.subscribeLibrary(
         (snapshot) => void this.libraryChanged(snapshot),
@@ -71,7 +70,6 @@ export class PanelController {
         }
       }
       await this.openInitialContext();
-      if (preferenceNotice) this.model.patch({ notice: preferenceNotice });
     } catch (error) {
       if (this.loadIsCurrent(request)) {
         this.stopSubscriptions();
@@ -96,15 +94,13 @@ export class PanelController {
     await this.preview.cancel();
     this.model.patch({ selectedDeviceId, previewStatus: undefined, notice: undefined });
     this.options.replacePath(editorDevicePath(selectedDeviceId));
-    let preferenceNotice: string | undefined;
     try {
       const userState = await this.api?.updateUserState(selectedDeviceId, this.model.userState?.navigation ?? {});
       if (userState) this.model.patch({ userState });
     } catch (error) {
-      preferenceNotice = `Could not remember the selected light: ${errorMessage(error)}`;
+      console.warn("Could not remember the selected light", error);
     }
     await this.openInitialContext();
-    if (preferenceNotice) this.model.patch({ notice: preferenceNotice });
   }
 
   public async selectSection(section: StudioSection): Promise<void> {
@@ -187,7 +183,7 @@ export class PanelController {
     const sync = libraryItemSyncResult(this.model.currentItem, snapshot.items, this.model.dirty, this.model.deletingItemId);
     if (sync.action === "none") return;
     if (sync.action === "removed") {
-      this.model.patch({ notice: "This effect was removed from the shared library." });
+      this.model.patch({ notice: undefined });
       return;
     }
     if (sync.action === "conflict") {
@@ -197,7 +193,7 @@ export class PanelController {
     const transitionEpoch = this.editor.beginTransition();
     const selected = await this.selectItem(sync.summary.id, transitionEpoch);
     if (selected && transitionEpoch === this.model.editorTransitionEpoch) {
-      this.model.patch({ notice: "Loaded the latest saved version." });
+      this.model.patch({ notice: undefined });
     }
   }
 
@@ -228,7 +224,7 @@ export class PanelController {
       if (this.model.currentItem?.id === candidate.id && this.model.currentItem.version === candidate.version) {
         this.editor.clearCurrentAfterDelete();
       }
-      this.model.patch({ notice: `Deleted ${candidate.name}.` });
+      this.model.patch({ notice: undefined });
     } catch (error) {
       const conflict = errorCode(error) === "conflict";
       this.model.patch({
@@ -279,6 +275,7 @@ export class PanelController {
         isEditableEffectContent(this.model.content) &&
         serialiseEditable(this.model.name, this.model.content) === serialiseEditable(name, content);
       if (originIsCurrent) {
+        this.editor.commitCreation();
         this.model.patch({
           currentItem: result, customCopyStarted: false, customTemplateSelection: undefined,
           name: result.name, content: cloneEditableEffect(savedContent),
@@ -320,7 +317,7 @@ export class PanelController {
     const selectedDeviceId = initialDeviceId(this.options.pathname(), this.model.devices, userState?.selected_config_entry_id);
     this.model.update((model) => {
       model.selectedDeviceId = selectedDeviceId;
-      model.notice = model.availabilityNotice();
+      model.notice = undefined;
     });
     if (!userState || !this.model.selectedDevice || selectedDeviceId === userState.selected_config_entry_id) return undefined;
     try {
@@ -328,7 +325,8 @@ export class PanelController {
       if (updated) this.model.patch({ userState: updated });
       return undefined;
     } catch (error) {
-      return `Could not remember the selected light: ${errorMessage(error)}`;
+      console.warn("Could not remember the selected light", error);
+      return undefined;
     }
   }
 
@@ -342,7 +340,7 @@ export class PanelController {
     this.model.patch({
       section: rememberedStudioSection(navigation, { custom: this.model.customEffectsAvailable, video: this.model.videoAvailable }),
       customEffectCategory,
-      notice: this.model.availabilityNotice(),
+      notice: undefined,
     });
   }
 
@@ -355,7 +353,7 @@ export class PanelController {
       });
       this.model.patch({ userState });
     } catch (error) {
-      this.model.patch({ notice: `Could not remember Studio navigation: ${errorMessage(error)}` });
+      console.warn("Could not remember Studio navigation", error);
     }
   }
 

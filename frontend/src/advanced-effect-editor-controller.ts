@@ -143,20 +143,6 @@ export class AdvancedEffectEditorController {
     return clampInteger(this.activePatternIndex, 0, Math.max(0, patternCount - 1));
   }
 
-  public movePatternSelection(index: number, key: string): number | undefined {
-    const count = this.activeLayer.brightness_patterns.length;
-    const next: number | undefined = ({
-      ArrowLeft: index === 0 ? count - 1 : index - 1,
-      ArrowRight: index === count - 1 ? 0 : index + 1,
-      Home: 0,
-      End: count - 1,
-    } as Record<string, number>)[key];
-    if (next !== undefined) {
-      this.activePatternIndex = next;
-    }
-    return next;
-  }
-
   private canEditLayer(): boolean {
     return Boolean(this.content?.layers.length && !this.disabled);
   }

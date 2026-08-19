@@ -60,6 +60,7 @@ export type LibraryItemSyncResult =
   | { action: "reload"; summary: LibrarySummary };
 
 export const PAINTED_SEGMENT_COUNT = 15;
+export type PaintedSegmentDraft = PaintedContent["segments"][number];
 
 export function effectOriginDescription(
   origin: LibraryOrigin | undefined,
@@ -91,9 +92,12 @@ export function blankPainted(): PaintedContent {
     effect: "clockwise",
     speed: 50,
     brightness: 100,
-    background: [0, 0, 0],
-    groups: [],
+    segments: blankPaintedSegments(),
   };
+}
+
+export function blankPaintedSegments(): PaintedSegmentDraft[] {
+  return Array.from({ length: PAINTED_SEGMENT_COUNT }, () => null);
 }
 
 export function blankCustomEffect(
@@ -119,14 +123,30 @@ export function blankCustomEffect(
   if (kind === "h617a_painted") {
     return blankPainted();
   }
-  const first =
+  const preferred =
     kind === "h617a_multi"
-      ? catalogue.effects.find((effect) => effect.supports_multi)
-      : catalogue.effects[0];
+      ? catalogue.effects.find(
+          (effect) =>
+            effect.supports_multi &&
+            effect.id === "flow" &&
+            effect.variations.length > 0,
+        )
+      : undefined;
+  const first =
+    preferred ??
+    (kind === "h617a_multi"
+      ? catalogue.effects.find(
+          (effect) =>
+            effect.supports_multi && effect.variations.length > 0,
+        )
+      : catalogue.effects[0]);
   if (!first) {
     throw new Error("The custom-effect catalogue has no compatible effects.");
   }
-  const variation = first.variations[0];
+  const variation =
+    (kind === "h617a_multi"
+      ? first.variations.find((candidate) => candidate.id === "clockwise")
+      : undefined) ?? first.variations[0];
   const pair = {
     family: first.family,
     variant: variation.variant,
@@ -195,11 +215,9 @@ export function blankVideoProfile(mode: string): VideoProfileContent {
 function clonePainted(content: PaintedContent): PaintedContent {
   return {
     ...content,
-    background: cloneRgb(content.background),
-    groups: content.groups.map((group) => ({
-      fill: cloneRgb(group.fill),
-      segments: [...group.segments],
-    })),
+    segments: content.segments.map((segment) =>
+      segment === null ? null : cloneRgb(segment),
+    ),
   };
 }
 
@@ -345,47 +363,11 @@ export function mergedPaintBrushes(colours: RGB[]): RGB[] {
   return brushes;
 }
 
-export function coloursForSegments(content: PaintedContent): RGB[] {
-  const colours = Array.from(
-    { length: PAINTED_SEGMENT_COUNT },
-    () => cloneRgb(content.background),
-  );
-  for (const group of content.groups) {
-    for (const segment of group.segments) {
-      colours[segment] = cloneRgb(group.fill);
-    }
-  }
-  return colours;
-}
-
-export function groupsFromColours(
-  colours: RGB[],
-  background: RGB,
-): PaintedContent["groups"] {
-  const groups = new Map<string, PaintedContent["groups"][number]>();
-  colours.forEach((colour, segment) => {
-    if (sameRgb(colour, background)) {
-      return;
-    }
-    const key = colour.join(",");
-    const group = groups.get(key);
-    if (group) {
-      group.segments.push(segment);
-    } else {
-      groups.set(key, {
-        fill: cloneRgb(colour),
-        segments: [segment],
-      });
-    }
-  });
-  return [...groups.values()];
-}
-
 export function uniquePaintedPalette(content: PaintedContent): RGB[] {
   const palette: RGB[] = [];
-  for (const colour of coloursForSegments(content)) {
+  for (const colour of content.segments) {
     if (
-      !sameRgb(colour, content.background) &&
+      colour !== null &&
       !palette.some((existing) => sameRgb(existing, colour))
     ) {
       palette.push(cloneRgb(colour));

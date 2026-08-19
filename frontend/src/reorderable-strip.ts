@@ -34,6 +34,9 @@ export class GoveeReorderableStrip extends LitElement {
   public addDisabled = false;
 
   @property({ type: Boolean })
+  public addHidden = false;
+
+  @property({ type: Boolean })
   public reorderDisabled = false;
 
   private draggedIndex?: number;
@@ -106,18 +109,22 @@ export class GoveeReorderableStrip extends LitElement {
             </li>
           `,
         )}
-        <li>
-          <button
-            class="add"
-            type="button"
-            title=${this.addLabel}
-            aria-label=${this.addLabel}
-            ?disabled=${this.addDisabled}
-            @click=${this.addClicked}
-          >
-            +
-          </button>
-        </li>
+        ${this.addHidden
+          ? nothing
+          : html`
+              <li>
+                <button
+                  class="add"
+                  type="button"
+                  title=${this.addLabel}
+                  aria-label=${this.addLabel}
+                  ?disabled=${this.addDisabled}
+                  @click=${this.addClicked}
+                >
+                  +
+                </button>
+              </li>
+            `}
       </ul>
     `;
   }

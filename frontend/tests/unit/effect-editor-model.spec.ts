@@ -2,11 +2,10 @@ import { expect, test } from "vitest";
 
 import {
   blankCustomEffect,
+  blankPaintedSegments,
   cloneEditableEffect,
-  coloursForSegments,
   customEffectCategoryForKind,
   effectOriginDescription,
-  groupsFromColours,
   isEditableEffectContent,
   libraryItemSyncResult,
   libraryKindPriority,
@@ -31,6 +30,18 @@ const catalogue = {
       label: "Steady",
       family: 1,
       variations: [{ id: "base", label: "Base", variant: 2 }],
+      supports_multi: true,
+      rate: "speed",
+      category: "single_layer",
+    },
+    {
+      id: "flow",
+      label: "Flow",
+      family: 9,
+      variations: [
+        { id: "counterclockwise", label: "Counterclockwise", variant: 8 },
+        { id: "clockwise", label: "Clockwise", variant: 9 },
+      ],
       supports_multi: true,
       rate: "speed",
       category: "single_layer",
@@ -75,28 +86,52 @@ test("custom defaults use catalogue identities without sharing palettes", () => 
   expect(second.palette[0]).toEqual([255, 0, 0]);
 });
 
-test("painted colours round trip through grouped segments", () => {
+test("multi defaults select Flow and Clockwise by catalogue identity", () => {
+  expect(blankCustomEffect("h617a_multi", catalogue).effects).toEqual([
+    { family: 9, variant: 9 },
+  ]);
+});
+
+test("multi defaults retain a compatible fallback without Flow", () => {
+  const fallbackCatalogue = {
+    ...catalogue,
+    effects: catalogue.effects.filter((effect) => effect.id !== "flow"),
+  };
+
+  expect(blankCustomEffect("h617a_multi", fallbackCatalogue).effects).toEqual([
+    { family: 1, variant: 2 },
+  ]);
+});
+
+test("painted content keeps Off separate from RGB black", () => {
   const content: PaintedContent = {
     kind: "h617a_painted",
     effect: "clockwise",
     speed: 50,
     brightness: 100,
-    background: [0, 0, 0],
-    groups: [
-      { fill: [255, 0, 0], segments: [0, 2] },
-      { fill: [0, 0, 255], segments: [1] },
+    segments: [
+      null,
+      [255, 0, 0],
+      [0, 0, 0],
+      [0, 0, 255],
+      ...Array.from({ length: 11 }, () => null),
     ],
   };
-  const colours = coloursForSegments(content);
 
-  expect(colours).toHaveLength(PAINTED_SEGMENT_COUNT);
-  expect(groupsFromColours(colours, content.background)).toEqual(
-    content.groups,
-  );
+  expect(content.segments).toHaveLength(PAINTED_SEGMENT_COUNT);
+  expect(content.segments[0]).toBeNull();
+  expect(content.segments[2]).toEqual([0, 0, 0]);
   expect(uniquePaintedPalette(content)).toEqual([
     [255, 0, 0],
+    [0, 0, 0],
     [0, 0, 255],
   ]);
+});
+
+test("paint draft defaults every segment to explicit off", () => {
+  expect(blankPaintedSegments()).toEqual(
+    Array.from({ length: PAINTED_SEGMENT_COUNT }, () => null),
+  );
 });
 
 test("paint brushes remove duplicates and retain the eight-colour limit", () => {

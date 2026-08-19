@@ -23,7 +23,6 @@ import {
   studioBaseStyles,
   studioCardStyles,
   studioEditorStyles,
-  studioFeedbackStyles,
   studioFormStyles,
   studioSelectorStyles,
   studioVisuallyHiddenStyles,
@@ -81,9 +80,6 @@ export class GoveeSceneBrowser extends LitElement {
   @state()
   private viewState: SceneBrowserViewState;
 
-  @state()
-  private search = "";
-
   private readonly workflow: SceneBrowserWorkflow;
 
   public constructor() {
@@ -109,7 +105,6 @@ export class GoveeSceneBrowser extends LitElement {
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (changed.has("device") || changed.has("api")) {
       this.workflow.configure(this.api, this.device);
-      this.search = "";
     }
     if (changed.has("initialSelection")) {
       this.workflow.setInitialSelection(this.initialSelection);
@@ -164,18 +159,6 @@ export class GoveeSceneBrowser extends LitElement {
       </aside>
 
       <aside class="sidebar item-sidebar scenes" aria-label="Scenes">
-        <label class="scene-search">
-          <span class="visually-hidden">Search scenes</span>
-          <input
-            type="search"
-            aria-label="Search scenes"
-            placeholder="Search scenes"
-            .value=${this.search}
-            @input=${(event: Event) => {
-              this.search = (event.target as HTMLInputElement).value;
-            }}
-          />
-        </label>
         ${this.filteredSceneEntries.map((entry) =>
           entry.kind === "custom"
             ? this.sceneButton(`custom:${entry.item.id}`, entry.label, () => this.selectCustom(entry.item, true))
@@ -187,8 +170,8 @@ export class GoveeSceneBrowser extends LitElement {
         ? nothing
         : html`
             <section class="editor-surface detail">
-              ${this.panelNotice ? html`<div class="feedback" role="status">${this.panelNotice}</div>` : nothing}
-              ${state.notice ? html`<div class="feedback notice" role="status">${state.notice}</div>` : nothing}
+              ${this.panelNotice ? html`<p class="action-error" role="alert">${this.panelNotice}</p>` : nothing}
+              ${state.notice ? html`<p class="action-error" role="alert">${state.notice}</p>` : nothing}
               ${state.selectedScene && state.content ? this.renderDetail() : nothing}
             </section>
           `}
@@ -200,7 +183,10 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   private get filteredSceneEntries() {
-    return sceneBrowserEntries(this.viewState, this.workflow.compatibleCustomScenes, this.search);
+    return sceneBrowserEntries(
+      this.viewState,
+      this.workflow.compatibleCustomScenes,
+    );
   }
 
   private categoryButton(category: CategorySelection, label: string) {
@@ -304,7 +290,7 @@ export class GoveeSceneBrowser extends LitElement {
                 : nativeSelection
                   ? "Edit"
                   : savingCopy
-                    ? "Save as Custom"
+                    ? "Save As"
                     : "Save"}
           </button>
           ${state.selectedItem
@@ -327,7 +313,7 @@ export class GoveeSceneBrowser extends LitElement {
                   ?disabled=${!this.isAdmin || state.saving || !state.catalogue?.enabled}
                   @click=${this.resetToCatalogue}
                 >
-                  Reset to catalogue
+                  Defaults
                 </button>
               `
             : nothing}
@@ -336,9 +322,9 @@ export class GoveeSceneBrowser extends LitElement {
 
       ${!state.catalogue?.enabled
         ? html`
-            <div class="feedback callout" role="note">
+            <p class="limitation-note">
               Native scenes are disabled for this device in the integration options. Browsing and saving copies remain available.
-            </div>
+            </p>
           `
         : nothing}
 
@@ -500,7 +486,6 @@ export class GoveeSceneBrowser extends LitElement {
     studioActionStyles,
     studioSelectorStyles,
     studioEditorStyles,
-    studioFeedbackStyles,
     studioFormStyles,
     studioVisuallyHiddenStyles,
     studioWorkspaceStyles,
@@ -509,16 +494,6 @@ export class GoveeSceneBrowser extends LitElement {
       :host([hidden]) { display: none !important; }
       h2, p { margin-top: 0; }
       h2 { margin-bottom: 0; font-size: 20px; }
-      .scene-search { display: block; margin-bottom: 12px; }
-      .scene-search input {
-        width: 100%;
-        min-height: var(--studio-control-height);
-        padding: 8px 11px;
-        border: 1px solid var(--studio-border);
-        border-radius: var(--studio-control-radius);
-        color: var(--primary-text-color);
-        background: var(--studio-card);
-      }
       .empty {
         max-width: 680px;
         padding: 28px;
@@ -564,10 +539,8 @@ export class GoveeSceneBrowser extends LitElement {
       }
       .step-order { width: 24px; color: var(--studio-muted); text-align: end; }
       .scene-steps small { display: block; color: var(--studio-muted); }
-      .notice {
-        border-color: color-mix(in srgb, var(--studio-blue) 35%, var(--studio-border));
-        background: var(--studio-blue-soft);
-      }
+      .action-error { margin: 0 0 14px; color: var(--error-color, #db4437); line-height: 1.45; }
+      .limitation-note { margin: 0 0 18px; color: var(--studio-muted); line-height: 1.5; }
       .empty p { margin-bottom: 0; color: var(--studio-muted); line-height: 1.5; }
       .status { grid-column: 2 / -1; padding: 48px 28px; }
       @media (max-width: 900px) { :host { display: block; } }

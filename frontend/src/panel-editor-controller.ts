@@ -11,14 +11,10 @@ import {
   cloneOpaqueContent,
   clonePaletteDiy,
   cloneSpecialDiy,
-  coloursForSegments,
   customKindLabel,
-  groupsFromColours,
   isAdvancedEditableContent,
   isCustomEffectContent,
   isEditableEffectContent,
-  mergedPaintBrushes,
-  PAINTED_SEGMENT_COUNT,
   serialiseEditable,
   uniquePaintedPalette,
   updateAdvancedEditorContent,
@@ -58,7 +54,22 @@ interface InitialEffect {
   customCopyStarted?: boolean;
 }
 
+interface EditorReturnState {
+  currentItem?: LibraryItem;
+  savedSceneSelection?: LibraryItem;
+  templateSourceLabel?: string;
+  customCopyStarted: boolean;
+  customTemplateSelection?: string;
+  name: string;
+  content: PanelModel["content"];
+  paintColour: RGB;
+  paintBrushOff: boolean;
+  savedBaseline?: string;
+}
+
 export class PanelEditorController {
+  private returnState?: EditorReturnState;
+
   public constructor(
     private readonly model: PanelModel,
     private readonly preview: PanelPreviewController,
@@ -73,6 +84,7 @@ export class PanelEditorController {
 
   public reset(): void {
     this.beginTransition();
+    this.clearReturnTarget();
     this.model.patch({
       sceneEditorOpen: false, sceneInitialSelection: undefined, currentItem: undefined, savedSceneSelection: undefined,
       templateSourceLabel: undefined, customCopyStarted: false, customTemplateSelection: undefined, name: "",
@@ -139,6 +151,7 @@ export class PanelEditorController {
   public openMusicTemplate(mode: string, label: string): void {
     const selectedModel = this.model.selectedModel;
     if (selectedModel !== "H617A" && selectedModel !== "H6199") return;
+    this.captureReturnTarget();
     this.beginTransition();
     const content: MusicProfileContent = {
       kind: "music_profile", model: selectedModel, mode, sensitivity: selectedModel === "H6199" ? 100 : 99,
@@ -147,7 +160,7 @@ export class PanelEditorController {
     this.model.patch({
       currentItem: undefined, templateSourceLabel: undefined, customCopyStarted: true,
       customTemplateSelection: `template:music:${mode}`, name: label, content,
-      savedBaseline: starterBaseline(label, content, true), notice: this.model.availabilityNotice(),
+      savedBaseline: starterBaseline(label, content, true), notice: undefined,
     });
   }
 
@@ -194,6 +207,9 @@ export class PanelEditorController {
       !this.options.apiReady() || !this.model.isAdmin || !this.model.customEffectKindAvailable(kind) ||
       (kind !== "advanced" && !this.model.modelCatalogue)
     ) return;
+    if (existingTransitionEpoch === undefined) {
+      this.captureReturnTarget();
+    }
     const content = initial?.content ?? (
       kind === "advanced"
         ? blankAdvancedContent()
@@ -206,12 +222,14 @@ export class PanelEditorController {
     this.model.patch({
       currentItem: undefined, templateSourceLabel: initial?.templateLabel, customCopyStarted,
       customTemplateSelection: kind === "advanced" ? undefined : initial?.selectionIdentity ?? (kind === "h617a_painted" ? "template:paint" : undefined),
-      name, content, brushUsesBackground: kind === "h617a_painted" ? false : this.model.brushUsesBackground,
-      savedBaseline: starterBaseline(name, content, customCopyStarted), notice: this.model.availabilityNotice(),
+      name, content,
+      paintBrushOff: kind === "h617a_painted" ? false : this.model.paintBrushOff,
+      savedBaseline: starterBaseline(name, content, customCopyStarted), notice: undefined,
     });
   }
 
   public applyLibraryItem(item: LibraryItem): boolean {
+    this.clearReturnTarget();
     const selection = {
       currentItem: item, templateSourceLabel: undefined, customCopyStarted: false,
       customTemplateSelection: undefined, name: item.name,
@@ -219,7 +237,7 @@ export class PanelEditorController {
     if (item.content.kind === "opaque") {
       this.model.patch({
         ...selection, content: cloneOpaqueContent(item.content), savedBaseline: undefined,
-        notice: "This effect definition is preserved, but this editor cannot change or apply it.",
+        notice: undefined,
       });
       return true;
     }
@@ -230,17 +248,19 @@ export class PanelEditorController {
     const content = item.content;
     this.model.patch({
       ...selection, content: cloneEditableEffect(content), savedBaseline: serialiseEditable(item.name, content),
-      brushUsesBackground: content.kind === "h617a_painted" ? false : this.model.brushUsesBackground,
-      notice: this.model.availabilityNotice(),
+      paintBrushOff: content.kind === "h617a_painted" ? false : this.model.paintBrushOff,
+      notice: undefined,
     });
     return true;
   }
 
   public clearCurrentAfterDelete(): void {
     this.beginTransition();
+    this.clearReturnTarget();
     this.model.patch({
       currentItem: undefined, templateSourceLabel: undefined, customCopyStarted: false,
-      customTemplateSelection: undefined, name: "", content: blankPainted(), savedBaseline: undefined,
+      customTemplateSelection: undefined, name: "", content: blankPainted(),
+      savedBaseline: undefined,
     });
   }
 
@@ -265,10 +285,30 @@ export class PanelEditorController {
     this.model.patch({ sceneEditorOpen: false, notice: undefined });
   }
 
+  public cancelCreation(): void {
+    const returnState = this.returnState;
+    if (!returnState) {
+      return;
+    }
+    this.beginTransition();
+    this.returnState = undefined;
+    this.model.patch({
+      ...returnState,
+      paintColour: [...returnState.paintColour],
+      editorCancelAvailable: false,
+      notice: undefined,
+    });
+  }
+
+  public commitCreation(): void {
+    this.clearReturnTarget();
+  }
+
   public prepareTemplateEdit(): boolean {
     const source = this.model.templateSourceLabel;
     if (!source) return true;
     if (!this.model.isAdmin || this.model.saving || this.model.deletingCurrentItem) return false;
+    this.captureReturnTarget();
     this.beginTransition();
     this.model.patch({
       templateSourceLabel: undefined, customTemplateSelection: undefined,
@@ -300,17 +340,15 @@ export class PanelEditorController {
     this.installEditedContent(cloneVideoProfileContent(content), interaction);
   }
 
-  public paintBrushesChanged(palette: RGB[]): void {
-    const paintBrushes = palette.map((colour) => [...colour] as RGB);
+  public paintColourChanged(colour: RGB): void {
     this.model.patch({
-      paintBrushes,
-      selectedPaintBrush: Math.max(0, Math.min(this.model.selectedPaintBrush, paintBrushes.length - 1)),
-      brushUsesBackground: false,
+      paintColour: [...colour],
+      paintBrushOff: false,
     });
   }
 
-  public backgroundChanged(colour: RGB, interaction: LivePreviewInteraction): void {
-    this.updatePaintedContent({ background: [...colour] }, interaction);
+  public selectPaintOff(): void {
+    this.model.patch({ paintBrushOff: true });
   }
 
   public selectSingleEffect(selected: string): void {
@@ -341,30 +379,32 @@ export class PanelEditorController {
     });
   }
 
-  public setSegmentColour(index: number, interaction: LivePreviewInteraction): void {
-    if (this.model.content.kind !== "h617a_painted") return;
-    const colours = coloursForSegments(this.model.content);
-    colours[index] = this.model.brushUsesBackground ? [...this.model.content.background] : this.model.activePaintBrush;
-    this.installEditedContent({
-      ...this.model.content, groups: groupsFromColours(colours, this.model.content.background),
-    }, interaction);
-  }
-
-  public paintAll(): void {
-    if (this.model.content.kind !== "h617a_painted") return;
-    const colour = this.model.brushUsesBackground ? this.model.content.background : this.model.activePaintBrush;
-    this.installEditedContent({
-      ...this.model.content,
-      groups: groupsFromColours(
-        Array.from({ length: PAINTED_SEGMENT_COUNT }, () => [...colour] as RGB),
-        this.model.content.background,
-      ),
-    });
+  public setSegmentColour(index: number, interaction: LivePreviewInteraction): boolean {
+    if (this.model.content.kind !== "h617a_painted") return false;
+    const segments = this.model.content.segments.map((segment) =>
+      segment === null ? null : [...segment] as RGB,
+    );
+    const brush = this.model.activePaintBrush;
+    const current = segments[index];
+    if (
+      current === null
+        ? brush === null
+        : brush !== null && current.every((channel, channelIndex) => channel === brush[channelIndex])
+    ) {
+      return false;
+    }
+    segments[index] = brush === null ? null : [...brush];
+    this.installEditedContent(
+      { ...this.model.content, segments },
+      interaction,
+    );
+    return true;
   }
 
   public resetPaint(): void {
     if (this.model.content.kind === "h617a_painted") {
-      this.installEditedContent({ ...this.model.content, groups: [] });
+      this.model.patch({ paintBrushOff: false });
+      this.installEditedContent(blankPainted());
     }
   }
 
@@ -383,18 +423,13 @@ export class PanelEditorController {
     if (kind === "h617a_single" && current.kind === "h617a_multi" && current.effects.length > 1) return;
     let next: CustomEffectContent;
     if (kind === "h617a_painted") {
-      const colour: RGB = current.kind === "h617a_painted"
-        ? this.model.activePaintBrush
-        : current.palette[0] ? [...current.palette[0]] : [47, 111, 237];
-      next = {
-        ...blankPainted(), speed: current.speed,
-        groups: [{ fill: [...colour], segments: Array.from({ length: PAINTED_SEGMENT_COUNT }, (_, index) => index) }],
-      };
       if (current.kind !== "h617a_painted") {
-        this.model.paintBrushes = mergedPaintBrushes(current.palette);
-        this.model.selectedPaintBrush = 0;
+        this.model.paintColour = current.palette[0]
+          ? [...current.palette[0]]
+          : [47, 111, 237];
       }
-      this.model.brushUsesBackground = false;
+      this.model.paintBrushOff = false;
+      next = { ...blankPainted(), speed: current.speed };
     } else if (current.kind === "h617a_painted") {
       const paintedPalette = uniquePaintedPalette(current);
       if (kind === "h617a_single") {
@@ -422,7 +457,7 @@ export class PanelEditorController {
     else this.model.content = next;
     this.model.update((model) => {
       if (/^New (Paint|Painted|Single|Multi) effect$/.test(model.name)) model.name = `New ${customKindLabel(kind)} effect`;
-      model.notice = model.availabilityNotice();
+      model.notice = undefined;
     });
   }
 
@@ -442,5 +477,29 @@ export class PanelEditorController {
     } else if (!model.currentItem && /^New .+ effect$/.test(model.name)) {
       model.name = `New ${label} effect`;
     }
+  }
+
+  private captureReturnTarget(): void {
+    if (this.returnState) {
+      return;
+    }
+    this.returnState = {
+      currentItem: this.model.currentItem,
+      savedSceneSelection: this.model.savedSceneSelection,
+      templateSourceLabel: this.model.templateSourceLabel,
+      customCopyStarted: this.model.customCopyStarted,
+      customTemplateSelection: this.model.customTemplateSelection,
+      name: this.model.name,
+      content: this.model.content,
+      paintColour: [...this.model.paintColour],
+      paintBrushOff: this.model.paintBrushOff,
+      savedBaseline: this.model.savedBaseline,
+    };
+    this.model.patch({ editorCancelAvailable: true });
+  }
+
+  private clearReturnTarget(): void {
+    this.returnState = undefined;
+    this.model.editorCancelAvailable = false;
   }
 }

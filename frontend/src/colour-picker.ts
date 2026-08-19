@@ -28,7 +28,6 @@ const DEFAULT_RECENT_COLOURS: RGB[] = [
   [139, 0, 255],
 ];
 let recentColours = loadRecentColours();
-const connectedPickers = new Set<GoveeColourPicker>();
 
 export class GoveeColourPicker extends LitElement {
   @property({ attribute: false })
@@ -37,32 +36,43 @@ export class GoveeColourPicker extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
+  @property({ type: Boolean })
+  public selectionActive = true;
+
+  @property({ type: Boolean })
+  public rememberOnCommit = true;
+
+  private displayedRecentColours = clonePalette(recentColours);
+
   public connectedCallback(): void {
     super.connectedCallback();
-    connectedPickers.add(this);
-  }
-
-  public disconnectedCallback(): void {
-    connectedPickers.delete(this);
-    super.disconnectedCallback();
+    this.displayedRecentColours = clonePalette(recentColours);
   }
 
   protected render() {
+    const selectedHex = this.selectionActive ? rgbToHex(this.colour) : "";
+    const customSelected =
+      this.selectionActive &&
+      !this.displayedRecentColours.some(
+        (recent) => rgbToHex(recent) === selectedHex,
+      );
     return html`
       <div class="preset-grid">
-        ${recentColours.map(
+        ${this.displayedRecentColours.map(
           (recent) => html`
             <button
+              class=${rgbToHex(recent) === selectedHex ? "selected" : ""}
               type="button"
               style="--preset-colour: ${rgbToHex(recent)}"
               aria-label="Use ${rgbToHex(recent)}"
+              aria-pressed=${rgbToHex(recent) === selectedHex}
               ?disabled=${this.disabled}
               @click=${() => this.commit(recent)}
             ></button>
           `,
         )}
         <label
-          class="custom-colour"
+          class="custom-colour ${customSelected ? "selected" : ""}"
           style="--custom-colour: ${rgbToHex(this.colour)}"
         >
           <input
@@ -86,7 +96,9 @@ export class GoveeColourPicker extends LitElement {
   }
 
   private commit(colour: RGB): void {
-    rememberColour(colour);
+    if (this.rememberOnCommit) {
+      rememberRecentColour(colour);
+    }
     this.emit("colour-changed", colour);
   }
 
@@ -119,6 +131,14 @@ export class GoveeColourPicker extends LitElement {
       border: 1px solid rgb(0 0 0 / 12%);
       border-radius: 6px;
       cursor: pointer;
+    }
+
+    .preset-grid button.selected,
+    .custom-colour.selected {
+      border-color: var(--studio-blue);
+      box-shadow:
+        inset 0 0 0 2px var(--studio-card),
+        0 0 0 2px var(--studio-blue);
     }
 
     .preset-grid button {
@@ -156,6 +176,10 @@ export function recentColour(index: number): RGB {
   return [...recentColours[index % recentColours.length]];
 }
 
+export function rememberRecentColour(colour: RGB): void {
+  rememberColour(colour);
+}
+
 function loadRecentColours(): RGB[] {
   const stored = localStorage.getItem(RECENT_COLOURS_STORAGE_KEY);
   if (!stored) {
@@ -190,9 +214,6 @@ function rememberColour(colour: RGB): void {
     RECENT_COLOURS_STORAGE_KEY,
     JSON.stringify(recentColours),
   );
-  for (const picker of connectedPickers) {
-    picker.requestUpdate();
-  }
 }
 
 function fillRecentColours(colours: RGB[]): RGB[] {

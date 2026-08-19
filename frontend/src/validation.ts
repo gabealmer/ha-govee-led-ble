@@ -539,6 +539,14 @@ export function decodeEffectContent(value: unknown): EffectContent {
   );
   switch (kind) {
     case "h617a_painted":
+      const paintedSegments = arrayValue(
+        content.segments,
+        "painted segments",
+        15,
+      );
+      if (paintedSegments.length !== 15) {
+        invalid("painted effect must contain exactly 15 segments");
+      }
       return {
         kind,
         effect: enumString(
@@ -560,18 +568,10 @@ export function decodeEffectContent(value: unknown): EffectContent {
           0,
           100,
         ),
-        background: rgbValue(content.background, "painted background"),
-        groups: arrayValue(content.groups, "paint groups", 15).map(
-          (item, index) => {
-            const group = objectValue(item, `paint groups[${index}]`);
-            return {
-              fill: rgbValue(group.fill, "paint-group fill"),
-              segments: arrayValue(group.segments, "painted segments", 15).map(
-                (segment) =>
-                  integerValue(segment, "painted segment", 0, 14),
-              ),
-            };
-          },
+        segments: paintedSegments.map((segment, index) =>
+          segment === null
+            ? null
+            : rgbValue(segment, `painted segments[${index}]`),
         ),
       };
     case "h617a_single":

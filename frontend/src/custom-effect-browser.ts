@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
-import { property, state } from "lit/decorators.js";
+import { property } from "lit/decorators.js";
 
 import {
   buildCustomEffectEntries,
@@ -8,12 +8,10 @@ import {
   type CustomEffectListContext,
   type CustomEffectListEntry,
 } from "./custom-effect-list";
-import { filterCustomEffectEntries } from "./custom-effect-workflow";
 import type { CustomEffectCategory } from "./effect-editor-model";
 import {
   studioBaseStyles,
   studioSelectorStyles,
-  studioVisuallyHiddenStyles,
   studioWorkspaceStyles,
 } from "./studio-styles";
 
@@ -53,18 +51,12 @@ export class GoveeCustomEffectBrowser extends LitElement {
   @property({ type: Boolean })
   public isAdmin = false;
 
-  @state()
-  private search = "";
-
   protected render() {
     const context = this.context;
     if (!context) {
       return nothing;
     }
-    const entries = filterCustomEffectEntries(
-      buildCustomEffectEntries(context, this.category),
-      this.search,
-    );
+    const entries = buildCustomEffectEntries(context, this.category);
     const canCreate =
       (this.category === "music" &&
         Boolean(context.catalogue?.music_modes.length)) ||
@@ -82,18 +74,6 @@ export class GoveeCustomEffectBrowser extends LitElement {
       </aside>
 
       <aside class="sidebar item-sidebar library" aria-label="Effects">
-        <label class="effect-search">
-          <span class="visually-hidden">Search effects</span>
-          <input
-            type="search"
-            aria-label="Search effects"
-            placeholder="Search effects"
-            .value=${this.search}
-            @input=${(event: Event) => {
-              this.search = (event.target as HTMLInputElement).value;
-            }}
-          />
-        </label>
         ${canCreate
           ? html`
               <button
@@ -187,26 +167,10 @@ export class GoveeCustomEffectBrowser extends LitElement {
   static styles = [
     studioBaseStyles,
     studioSelectorStyles,
-    studioVisuallyHiddenStyles,
     studioWorkspaceStyles,
     css`
       :host {
         display: contents;
-      }
-
-      .effect-search {
-        display: block;
-        margin-bottom: 12px;
-      }
-
-      .effect-search input {
-        width: 100%;
-        min-height: var(--studio-control-height);
-        padding: 8px 11px;
-        border: 1px solid var(--studio-border);
-        border-radius: var(--studio-control-radius);
-        color: var(--primary-text-color);
-        background: var(--studio-card);
       }
 
       .new-effect-action {

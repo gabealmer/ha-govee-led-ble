@@ -60,6 +60,7 @@ test("focused layer updates clone nested content without installing it", () => {
     param_1: 7,
     param_2: 1,
   });
+
   expect(brightness.layers[1].brightness_patterns[0].scope_low).toBe(44);
   expect(movement.layers[1].overall_movement).toMatchObject({
     enabled: true,
@@ -73,6 +74,27 @@ test("focused layer updates clone nested content without installing it", () => {
   expect(palette.layers[1].palette).toEqual([[1, 2, 3]]);
   expect(content.layers[1].selection.type).toBe(0);
   expect(selection.layers[0]).not.toBe(content.layers[0]);
+});
+
+test("visual edits preserve hidden wire values", () => {
+  const controller = new AdvancedEffectEditorController();
+  const content = blankAdvancedContent();
+  content.layers[0].unknown_flags = 0x80;
+  content.layers[0].selected_movement.unknown_flags = 0x20;
+  content.layers[0].overall_movement.enter_exit = true;
+  content.layers[0].overall_movement.unknown_flags = 0x40;
+  content.layers[0].excess = "aabb";
+  controller.sync(content, false);
+
+  const updated = controller.updateLayer({ priority: 3 })!;
+
+  expect(updated.layers[0]).toMatchObject({
+    priority: 3,
+    unknown_flags: 0x80,
+    excess: "aabb",
+    selected_movement: { unknown_flags: 0x20 },
+    overall_movement: { enter_exit: true, unknown_flags: 0x40 },
+  });
 });
 
 test("adding and copying layers install content and move selection", () => {
@@ -116,7 +138,7 @@ test("deleting and reordering layers retain the active logical layer", () => {
   expect(controller.activePatternIndex).toBe(0);
 });
 
-test("brightness pattern operations and keyboard movement share selection state", () => {
+test("brightness pattern operations share selection state", () => {
   const controller = new AdvancedEffectEditorController();
   controller.sync(blankAdvancedContent(), false);
 
@@ -125,11 +147,6 @@ test("brightness pattern operations and keyboard movement share selection state"
   expect(controller.activePatternIndex).toBe(1);
   controller.sync(added, false);
 
-  expect(controller.movePatternSelection(1, "ArrowRight")).toBe(0);
-  expect(controller.movePatternSelection(0, "ArrowLeft")).toBe(1);
-  expect(controller.movePatternSelection(1, "Home")).toBe(0);
-  expect(controller.movePatternSelection(0, "End")).toBe(1);
-  expect(controller.movePatternSelection(1, "Enter")).toBeUndefined();
   expect(controller.visiblePatternIndex(1)).toBe(0);
 
   const deleted = controller.deleteBrightnessPattern()!;

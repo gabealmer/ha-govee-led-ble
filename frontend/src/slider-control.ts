@@ -27,26 +27,14 @@ export class GoveeSliderControl extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
-  @property({ type: Boolean })
-  public showValue = false;
-
-  @property({ attribute: false })
-  public valueText?: string;
-
   @property({ attribute: false })
   public describedBy?: string;
 
   protected render() {
     const value = clamp(this.value, this.minimum, this.maximum);
-    const output = this.valueText ?? String(value);
     return html`
       <label class="slider-field">
-        <span class="slider-heading">
-          <span class="parameter-label">${this.label}</span>
-          ${this.showValue || this.valueText !== undefined
-            ? html`<output aria-label="${this.label} value">${output}</output>`
-            : nothing}
-        </span>
+        <span class="parameter-label">${this.label}</span>
         <input
           type="range"
           min=${this.minimum}
@@ -83,18 +71,6 @@ export class GoveeSliderControl extends LitElement {
       .slider-field {
         display: grid;
         gap: 10px;
-      }
-
-      .slider-heading {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 12px;
-      }
-
-      output {
-        color: var(--primary-text-color);
-        font-variant-numeric: tabular-nums;
       }
 
       input {
