@@ -681,7 +681,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if not self._accept_expected("color_mode", observed_color_mode):
             return ()
         self.color_mode = parsed.mode
-        # Only expose a scene that belongs to this model and is enabled in this entry's options.
+        # Track the device's scene independently from Home Assistant's configured effect-list projection.
         scene_effect = parsed.effect if parsed.effect in self.scene_name_set else None
         # A scene we cannot name still leaves the light running something, and effect has to stay
         # None because HA rejects one outside effect_list. Keep the raw id so the state is honest

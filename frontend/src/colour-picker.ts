@@ -115,21 +115,23 @@ export class GoveeColourPicker extends LitElement {
 
   static styles = [studioBaseStyles, css`
     :host {
+      --custom-colour-ring-width: 5px;
+      --custom-colour-inner-ring-width: 3px;
       display: block;
     }
 
     .preset-grid {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
-      gap: 4px;
+      gap: var(--studio-micro-gap);
     }
 
     .preset-grid button,
     .custom-colour {
       position: relative;
       min-height: var(--studio-control-height);
-      border: 1px solid rgb(0 0 0 / 12%);
-      border-radius: 6px;
+      border: var(--studio-border-width) solid rgb(0 0 0 / 12%);
+      border-radius: var(--studio-swatch-radius);
       cursor: pointer;
     }
 
@@ -137,8 +139,8 @@ export class GoveeColourPicker extends LitElement {
     .custom-colour.selected {
       border-color: var(--studio-blue);
       box-shadow:
-        inset 0 0 0 2px var(--studio-card),
-        0 0 0 2px var(--studio-blue);
+        inset 0 0 0 var(--studio-strong-border-width) var(--studio-card),
+        0 0 0 var(--studio-strong-border-width) var(--studio-blue);
     }
 
     .preset-grid button {
@@ -149,8 +151,9 @@ export class GoveeColourPicker extends LitElement {
       overflow: hidden;
       background: var(--custom-colour);
       box-shadow:
-        inset 0 0 0 3px var(--studio-card),
-        inset 0 0 0 5px rgb(0 0 0 / 32%);
+        inset 0 0 0 var(--custom-colour-inner-ring-width)
+          var(--studio-card),
+        inset 0 0 0 var(--custom-colour-ring-width) rgb(0 0 0 / 32%);
     }
 
     .custom-colour input {

@@ -70,7 +70,7 @@ export class GoveeSliderControl extends LitElement {
 
       .slider-field {
         display: grid;
-        gap: 10px;
+        gap: var(--studio-control-gap);
       }
 
       input {

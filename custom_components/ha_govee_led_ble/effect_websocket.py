@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, EFFECT_FAMILY_SCENES
+from .const import DOMAIN
 from .effect_backend import EffectBackend
 from .effect_catalogue import custom_effect_catalogue_payload
 from .effect_contracts import EditorApiInfo, device_effect_capabilities
@@ -42,7 +42,6 @@ from .effect_preview import (
     PreviewStatus,
 )
 from .effect_scenes import (
-    SceneUnavailableError,
     async_apply_scene,
     async_reset_scene_default,
     scene_catalogue_payload,
@@ -185,10 +184,7 @@ def ws_scene_catalogue_list(
         return
     coordinator = entry.runtime_data
     try:
-        catalogue = scene_catalogue_payload(
-            coordinator.model,
-            enabled=EFFECT_FAMILY_SCENES in coordinator.effect_families,
-        )
+        catalogue = scene_catalogue_payload(coordinator.model)
     except ValueError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
         return
@@ -273,9 +269,6 @@ async def ws_scene_apply(
             user_id=connection.user.id,
             scene_defaults=backend.scene_defaults,
         )
-    except SceneUnavailableError as exc:
-        connection.send_error(msg["id"], "scene_unavailable", str(exc))
-        return
     except ValueError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
@@ -333,9 +326,6 @@ async def ws_scene_reset(
             effect_id=msg["effect_id"],
             scene_defaults=backend.scene_defaults,
         )
-    except SceneUnavailableError as exc:
-        connection.send_error(msg["id"], "scene_unavailable", str(exc))
-        return
     except ValueError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return

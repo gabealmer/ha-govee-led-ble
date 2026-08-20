@@ -128,17 +128,17 @@ export class GoveePaintedSegmentEditor extends LitElement {
     .segments {
       display: grid;
       grid-template-columns: repeat(15, minmax(0, 1fr));
-      gap: 4px;
+      gap: var(--studio-micro-gap);
       touch-action: none;
     }
 
     button {
       min-width: 0;
-      min-height: 48px;
+      min-height: var(--studio-paint-segment-height);
       padding: 0;
-      border: 1px solid
+      border: var(--studio-border-width) solid
         color-mix(in srgb, var(--segment-colour) 70%, #000);
-      border-radius: 6px;
+      border-radius: var(--studio-swatch-radius);
       background: var(--segment-colour);
       cursor: crosshair;
     }
@@ -150,9 +150,11 @@ export class GoveePaintedSegmentEditor extends LitElement {
 
     button.off {
       border-color: color-mix(in srgb, #000 70%, var(--studio-border));
-      box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
+      box-shadow: inset 0 0 0 var(--studio-border-width)
+        rgb(255 255 255 / 12%);
     }
 
+    /* Three rows of five segments preserve paint targets on phones. */
     @media (max-width: 600px) {
       .segments {
         grid-template-columns: repeat(5, minmax(0, 1fr));

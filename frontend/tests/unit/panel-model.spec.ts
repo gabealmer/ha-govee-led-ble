@@ -1,6 +1,9 @@
 import { expect, test, vi } from "vitest";
 
-import { PanelController } from "../../src/panel-controller";
+import {
+  PanelController,
+  restoredCustomEffectCategory,
+} from "../../src/panel-controller";
 import { PanelEditorController } from "../../src/panel-editor-controller";
 import { PanelModalController } from "../../src/panel-modal-controller";
 import { PanelModel } from "../../src/panel-model";
@@ -108,6 +111,23 @@ test("administrator state follows late Home Assistant user updates", () => {
   } as unknown as HomeAssistant);
   expect(model.isAdmin).toBe(true);
   expect(changed).toHaveBeenCalledOnce();
+});
+
+test("remembered All category restores when it remains available", () => {
+  expect(
+    restoredCustomEffectCategory(
+      "all",
+      (category) => category === "all",
+      "music",
+    ),
+  ).toBe("all");
+  expect(
+    restoredCustomEffectCategory(
+      "special-diy",
+      () => false,
+      "music",
+    ),
+  ).toBe("music");
 });
 
 test("installs saved content as an isolated editable baseline", () => {

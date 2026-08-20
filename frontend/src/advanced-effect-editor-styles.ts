@@ -30,7 +30,7 @@ export const advancedEffectEditorStyles = [
     .layer-toolbar {
       display: flex;
       align-items: flex-start;
-      gap: 8px;
+      gap: var(--studio-compact-gap);
     }
 
     .layer-toolbar govee-reorderable-strip {
@@ -41,28 +41,29 @@ export const advancedEffectEditorStyles = [
     .layer-actions {
       display: flex;
       flex: 0 0 auto;
-      gap: 8px;
+      gap: var(--studio-compact-gap);
     }
 
     .card-heading,
     .patterns-heading {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--studio-compact-gap);
     }
 
     .add-button {
       flex: 0 0 auto;
-      padding: 8px 14px;
-      border: 1px solid var(--studio-border);
+      padding: var(--studio-spacing-sm) var(--studio-spacing-xl);
+      border: var(--studio-border-width) solid var(--studio-border);
       border-radius: var(--studio-control-radius);
       color: var(--studio-blue);
       background: var(--studio-card);
-      font-weight: 600;
+      font-weight: var(--studio-font-weight-semibold);
       border-style: dashed;
       cursor: pointer;
     }
 
+    /* Stacks layer actions when they no longer fit beside the layer strip. */
     @media (max-width: 600px) {
       .layer-toolbar {
         align-items: stretch;
@@ -77,23 +78,23 @@ export const advancedEffectEditorStyles = [
     .limit-note,
     .muted {
       color: var(--studio-muted);
-      font-size: 13px;
-      line-height: 1.45;
+      font-size: var(--studio-parameter-label-size);
+      line-height: var(--studio-muted-line-height);
     }
 
     .limit-note {
-      margin: 12px 0 0;
+      margin: var(--studio-spacing-lg) 0 0;
     }
 
     .empty-state .add-button {
-      margin-top: 12px;
+      margin-top: var(--studio-spacing-lg);
     }
 
     .control-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       align-items: start;
-      gap: 18px;
+      gap: var(--studio-section-gap);
     }
 
     .wide-card {
@@ -101,44 +102,44 @@ export const advancedEffectEditorStyles = [
     }
 
     .selection-controls {
-      margin-top: 8px;
-      padding-top: 18px;
-      border-top: 1px solid var(--studio-border);
+      margin-top: var(--studio-spacing-sm);
+      padding-top: var(--studio-section-gap);
+      border-top: var(--studio-border-width) solid var(--studio-border);
     }
 
     .selection-controls > .parameter-label {
       display: block;
-      margin-bottom: 4px;
+      margin-bottom: var(--studio-micro-gap);
     }
 
     .brightness-style {
-      margin-top: 16px;
+      margin-top: var(--studio-spacing-2xl);
     }
 
     .patterns-heading {
       justify-content: space-between;
-      margin-top: 20px;
+      margin-top: var(--studio-spacing-4xl);
     }
 
     .patterns-heading h4 {
       margin: 0;
-      font-size: 14px;
-      font-weight: 600;
+      font-size: var(--studio-subheading-size);
+      font-weight: var(--studio-font-weight-semibold);
     }
 
     .pattern-delete {
-      min-height: 36px;
-      padding: 6px 12px;
+      min-height: var(--studio-compact-control-height);
+      padding: var(--studio-spacing-xs) var(--studio-spacing-lg);
     }
 
     .pattern-strip {
-      margin-top: 10px;
+      margin-top: var(--studio-spacing-md);
     }
 
     .brightness-fields {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0 18px;
+      gap: 0 var(--studio-section-gap);
     }
 
     .brightness-fields .field:first-child {
@@ -154,13 +155,14 @@ export const advancedEffectEditorStyles = [
     }
 
     .movement-enter-exit {
-      margin-top: 12px;
+      margin-top: var(--studio-spacing-lg);
     }
 
     .priority-control {
-      margin-top: 16px;
+      margin-top: var(--studio-spacing-2xl);
     }
 
+    /* Advanced cards and pattern fields become single-column with horizontal navigation. */
     @media (max-width: 760px) {
       .control-grid,
       .brightness-fields {
@@ -177,9 +179,10 @@ export const advancedEffectEditorStyles = [
       }
     }
 
+    /* Recovers phone-width card space without reducing control hit targets. */
     @media (max-width: 480px) {
       .card {
-        padding: 16px;
+        padding: var(--studio-spacing-2xl);
       }
 
       .secondary {

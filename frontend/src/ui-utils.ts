@@ -76,6 +76,16 @@ export function moreInfoDetail(entityId: string): { entityId: string } {
   return { entityId };
 }
 
+export function integrationSettingsPath(
+  configurationPath: string,
+  configEntryId: string,
+): string {
+  const path = configurationPath.split("#", 1)[0];
+  return `${path}#${new URLSearchParams({
+    config_entry: configEntryId,
+  }).toString()}`;
+}
+
 export function relocatedIndex(
   current: number,
   from: number,

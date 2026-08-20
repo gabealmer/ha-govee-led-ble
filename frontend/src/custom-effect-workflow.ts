@@ -20,6 +20,39 @@ const CATEGORY_PRIORITY: readonly Exclude<
   "special-diy",
 ];
 
+const CATEGORY_LABELS: Readonly<
+  Record<CustomEffectCategory, string>
+> = {
+  all: "All",
+  "my-effects": "My Effects",
+  "multi-layer": "Multi Layer",
+  music: "Music",
+  "single-layer": "Single Layer",
+  "special-diy": "Special DIY",
+  advanced: "Advanced",
+};
+
+const CATEGORY_DISPLAY_ORDER: readonly CustomEffectCategory[] = [
+  "all",
+  "my-effects",
+  "multi-layer",
+  "music",
+  "single-layer",
+  "special-diy",
+  "advanced",
+];
+
+export function customEffectCategories(
+  context: CustomEffectListContext,
+): { category: CustomEffectCategory; label: string }[] {
+  return CATEGORY_DISPLAY_ORDER.filter((category) =>
+    customEffectCategoryAvailable(context, category),
+  ).map((category) => ({
+    category,
+    label: CATEGORY_LABELS[category],
+  }));
+}
+
 export function defaultCustomEffectCategory(
   context: CustomEffectListContext,
 ): CustomEffectCategory {

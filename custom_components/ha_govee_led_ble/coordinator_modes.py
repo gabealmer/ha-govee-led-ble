@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from .const import EFFECT_FAMILY_SCENES, MUSIC_MODE_SLUGS
+from .const import MUSIC_MODE_SLUGS
 from .coordinator_base import _CoordinatorBase
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import build_music_mode, build_power
@@ -145,8 +145,6 @@ class _ActiveModeMixin(_CoordinatorBase):
 
     @property
     def scene_name_set(self) -> frozenset[str]:
-        if EFFECT_FAMILY_SCENES not in self.effect_families:
-            return frozenset()
         return frozenset(MODEL_SCENES[self.model])
 
     @property
@@ -190,8 +188,6 @@ class _ActiveModeMixin(_CoordinatorBase):
         writer: Callable[[bytes], Awaitable[None]] | None = None,
         verify: bool,
     ) -> None:
-        if EFFECT_FAMILY_SCENES not in self.effect_families:
-            raise ValueError(f"native scenes are not enabled for {self.model}")
         scene = MODEL_SCENES[self.model].get(scene_name)
         if scene is None:
             raise ValueError(f"unknown native scene {scene_name!r}")

@@ -16,7 +16,7 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import async_setup
-from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENES
+from custom_components.ha_govee_led_ble.const import DOMAIN
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.editor import (
     _EDITOR_MANIFEST,
@@ -185,7 +185,7 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         "D0:35:34:AA:BB:CC",
         "H617A",
         configuration_url=editor_url("isolated-entry"),
-        effect_families=frozenset({EFFECT_FAMILY_SCENES}),
+        effect_families=frozenset(),
     )
     entry = SimpleNamespace(
         entry_id="isolated-entry",
@@ -241,6 +241,7 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
     assert device["active_state"]["active_effect"] is None
     assert catalogue["success"] is True
     assert catalogue["result"]["catalogue"]["sku"] == "H617A"
+    assert catalogue["result"]["catalogue"]["enabled"] is True
     assert len(catalogue["result"]["catalogue"]["scenes"]) == len(SCENE_ENTRIES["H617A"])
 
 

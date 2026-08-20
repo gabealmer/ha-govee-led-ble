@@ -9,7 +9,6 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import EFFECT_FAMILY_SCENES
 from .effect_domain import (
     BuiltinScene,
     CatalogueRef,
@@ -31,10 +30,6 @@ from .scenes import (
 CATALOGUE_SCHEMA_VERSION = 1
 
 
-class SceneUnavailableError(ValueError):
-    """Raised when a valid native scene cannot be used by the target entry."""
-
-
 @dataclass(frozen=True, slots=True)
 class ResolvedScene:
     key: str
@@ -42,7 +37,7 @@ class ResolvedScene:
     entry: SceneEntry
 
 
-def scene_catalogue_payload(model: str, *, enabled: bool) -> dict[str, JsonValue]:
+def scene_catalogue_payload(model: str) -> dict[str, JsonValue]:
     entries = SCENE_ENTRIES.get(model)
     if entries is None:
         raise ValueError(f"{model} has no native scene catalogue")
@@ -55,7 +50,7 @@ def scene_catalogue_payload(model: str, *, enabled: bool) -> dict[str, JsonValue
     return {
         "schema_version": CATALOGUE_SCHEMA_VERSION,
         "sku": model,
-        "enabled": enabled,
+        "enabled": True,
         "categories": categories,
         "scenes": [_scene_summary(model, entry) for entry in entries],
     }
@@ -137,8 +132,6 @@ async def async_apply_scene(
 ) -> tuple[ResolvedScene, int | None]:
     del hass, user_id
     coordinator = config_entry.runtime_data
-    if EFFECT_FAMILY_SCENES not in coordinator.effect_families:
-        raise SceneUnavailableError(f"native scenes are not enabled for {coordinator.model}")
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
     scene_default = scene_defaults.get(config_entry.entry_id, scene_id, effect_id) if scene_defaults else None
     canonical_body, resolved_speed = resolve_scene_application_body(
@@ -163,8 +156,6 @@ async def async_reset_scene_default(
     scene_defaults: NativeSceneDefaultRepository,
 ) -> ResolvedScene:
     coordinator = config_entry.runtime_data
-    if EFFECT_FAMILY_SCENES not in coordinator.effect_families:
-        raise SceneUnavailableError(f"native scenes are not enabled for {coordinator.model}")
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
     canonical_body, resolved_speed = resolve_native_scene_body(resolved.entry)
     await coordinator.async_apply_native_scene(

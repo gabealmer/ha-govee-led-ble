@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.ha_govee_led_ble.const import EFFECT_FAMILY_SCENES
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.effect_scenes import (
     async_apply_scene,
@@ -31,13 +30,15 @@ TIMESTAMP = "2026-08-17T00:00:00Z"
 
 def test_catalogue_and_identity_errors() -> None:
     with pytest.raises(ValueError, match="no native scene catalogue"):
-        scene_catalogue_payload("UNKNOWN", enabled=False)
+        scene_catalogue_payload("UNKNOWN")
 
     with pytest.raises(ValueError, match="no native scene catalogue"):
         resolve_scene("UNKNOWN", 0, 0)
 
     with pytest.raises(ValueError, match="was not found"):
         resolve_scene("H617A", -1, -1)
+
+    assert scene_catalogue_payload("H6199")["enabled"] is True
 
 
 def test_layered_scene_detail_decodes_strict_base64_template(monkeypatch) -> None:
@@ -130,7 +131,6 @@ async def test_scene_speed_request_is_validated_before_write(
     with_speed = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.speed is not None)
     coordinator = SimpleNamespace(
         model="H617A",
-        effect_families={EFFECT_FAMILY_SCENES},
     )
     entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
 
@@ -162,7 +162,6 @@ async def test_scene_without_speed_uses_coordinator_primitive(
     scene = next(item for item in SCENE_ENTRIES["H617A"] if item.speed is None)
     coordinator = SimpleNamespace(
         model="H617A",
-        effect_families={EFFECT_FAMILY_SCENES},
         async_apply_native_scene=AsyncMock(),
     )
     entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
@@ -204,7 +203,6 @@ async def test_scene_application_uses_the_stored_device_default(
     )
     coordinator = SimpleNamespace(
         model="H617A",
-        effect_families={EFFECT_FAMILY_SCENES},
         async_apply_native_scene=AsyncMock(),
     )
     entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
@@ -240,7 +238,6 @@ async def test_reset_applies_catalogue_before_deleting_default() -> None:
 
     coordinator = SimpleNamespace(
         model="H617A",
-        effect_families={EFFECT_FAMILY_SCENES},
         async_apply_native_scene=AsyncMock(side_effect=apply_scene),
     )
     repository = SimpleNamespace(async_delete=AsyncMock(side_effect=delete))

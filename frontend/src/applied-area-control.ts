@@ -377,17 +377,43 @@ export class GoveeAppliedAreaControl extends LitElement {
     studioActionStyles,
     css`
       :host {
+        --area-control-horizontal-padding: var(--studio-spacing-5xl);
+        --area-control-mobile-padding: var(--studio-spacing-3xl);
+        --area-track-height: 64px;
+        --area-segment-gap: var(--studio-spacing-xxs);
+        --area-segment-radius: var(--studio-swatch-radius);
+        --area-move-indicator-width: var(--studio-spacing-2xl);
+        --area-move-indicator-height: var(--studio-spacing-md);
+        --area-move-indicator-radius: 5px;
+        --area-move-dot-size: 1.5px;
+        --area-move-dot-fade-size: 1.8px;
+        --area-move-dot-period: var(--studio-spacing-xs);
+        --area-handle-hit-width: var(--studio-touch-target-size);
+        --area-handle-hit-height: 56px;
+        --area-handle-grip-width: var(--studio-compact-gap);
+        --area-handle-grip-height: var(--studio-spacing-6xl);
+        --area-handle-body-width: var(--studio-spacing-5xl);
+        --area-handle-body-height: 44px;
+        --area-handle-body-radius: 10px;
+        --area-tooltip-gap: 7px;
+        --area-tooltip-min-width: var(--studio-spacing-7xl);
+        --area-z-move-target: 1;
+        --area-z-window: 2;
+        --area-z-handle: 3;
+        --area-z-tooltip: 5;
+        --area-z-handle-background: -1;
         display: block;
       }
 
       .area-control {
-        margin-bottom: 16px;
-        padding: 4px 22px 0;
+        margin-bottom: var(--studio-spacing-2xl);
+        padding: var(--studio-micro-gap)
+          var(--area-control-horizontal-padding) 0;
       }
 
       .area-range {
         position: relative;
-        min-height: 64px;
+        min-height: var(--area-track-height);
         touch-action: pan-y;
       }
 
@@ -397,17 +423,17 @@ export class GoveeAppliedAreaControl extends LitElement {
           var(--area-segment-count),
           minmax(0, 1fr)
         );
-        gap: 4px;
-        min-height: 64px;
+        gap: var(--area-segment-gap);
+        min-height: var(--area-track-height);
         pointer-events: none;
       }
 
       .area-segments span {
         min-width: 0;
-        min-height: 64px;
-        border: 1px solid
+        min-height: var(--area-track-height);
+        border: var(--studio-border-width) solid
           color-mix(in srgb, var(--area-colour) 35%, var(--studio-border));
-        border-radius: 6px;
+        border-radius: var(--area-segment-radius);
         background: color-mix(
           in srgb,
           var(--area-colour) 14%,
@@ -430,11 +456,11 @@ export class GoveeAppliedAreaControl extends LitElement {
 
       .area-window {
         position: absolute;
-        z-index: 2;
+        z-index: var(--area-z-window);
         top: 0;
         bottom: 0;
-        min-width: 1px;
-        border-block: 2px solid
+        min-width: var(--studio-border-width);
+        border-block: var(--studio-strong-border-width) solid
           color-mix(in srgb, var(--area-colour) 48%, var(--studio-border));
         background: color-mix(in srgb, var(--area-colour) 5%, transparent);
       }
@@ -442,8 +468,8 @@ export class GoveeAppliedAreaControl extends LitElement {
       .area-move {
         position: absolute;
         inset: 0;
-        z-index: 1;
-        min-width: 44px;
+        z-index: var(--area-z-move-target);
+        min-width: var(--area-handle-hit-width);
         cursor: grab;
       }
 
@@ -451,16 +477,19 @@ export class GoveeAppliedAreaControl extends LitElement {
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 16px;
-        height: 10px;
-        border-radius: 5px;
+        width: var(--area-move-indicator-width);
+        height: var(--area-move-indicator-height);
+        border-radius: var(--area-move-indicator-radius);
         background-image: radial-gradient(
           circle,
-          color-mix(in srgb, var(--area-colour) 52%, #000) 1.5px,
-          transparent 1.8px
+          color-mix(in srgb, var(--area-colour) 52%, #000)
+            var(--area-move-dot-size),
+          transparent var(--area-move-dot-fade-size)
         );
         background-position: 0 0;
-        background-size: 6px 6px;
+        background-size:
+          var(--area-move-dot-period)
+          var(--area-move-dot-period);
         content: "";
         opacity: 0.72;
         transform: translate(-50%, -50%);
@@ -472,10 +501,10 @@ export class GoveeAppliedAreaControl extends LitElement {
 
       .area-handle {
         position: absolute;
-        z-index: 3;
+        z-index: var(--area-z-handle);
         top: 50%;
-        width: 44px;
-        min-height: 56px;
+        width: var(--area-handle-hit-width);
+        min-height: var(--area-handle-hit-height);
         border: 0;
         background: transparent;
         cursor: ew-resize;
@@ -486,9 +515,9 @@ export class GoveeAppliedAreaControl extends LitElement {
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 8px;
-        height: 24px;
-        border-inline: 2px solid
+        width: var(--area-handle-grip-width);
+        height: var(--area-handle-grip-height);
+        border-inline: var(--studio-strong-border-width) solid
           color-mix(in srgb, var(--area-colour) 72%, #000);
         content: "";
         transform: translate(-50%, -50%);
@@ -496,16 +525,17 @@ export class GoveeAppliedAreaControl extends LitElement {
 
       .area-handle::after {
         position: absolute;
-        z-index: -1;
+        z-index: var(--area-z-handle-background);
         top: 50%;
         left: 50%;
-        width: 22px;
-        height: 44px;
-        border: 2px solid
+        width: var(--area-handle-body-width);
+        height: var(--area-handle-body-height);
+        border: var(--studio-strong-border-width) solid
           color-mix(in srgb, var(--area-colour) 78%, #000);
-        border-radius: 10px;
+        border-radius: var(--area-handle-body-radius);
         background: var(--studio-card);
-        box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+        box-shadow: 0 var(--studio-strong-border-width)
+          var(--studio-compact-gap) rgb(0 0 0 / 18%);
         content: "";
         transform: translate(-50%, -50%);
       }
@@ -534,40 +564,41 @@ export class GoveeAppliedAreaControl extends LitElement {
 
       .area-drag-value {
         position: absolute;
-        z-index: 5;
-        bottom: calc(100% + 7px);
+        z-index: var(--area-z-tooltip);
+        bottom: calc(100% + var(--area-tooltip-gap));
         left: 50%;
-        min-width: 28px;
-        padding: 4px 7px;
-        border: 1px solid var(--studio-border);
-        border-radius: 8px;
+        min-width: var(--area-tooltip-min-width);
+        padding: var(--studio-micro-gap) var(--area-tooltip-gap);
+        border: var(--studio-border-width) solid var(--studio-border);
+        border-radius: var(--studio-control-radius);
         color: var(--primary-text-color);
         background: var(--studio-card);
         box-shadow: var(--studio-popover-shadow);
-        font-size: 12px;
-        font-weight: 650;
+        font-size: var(--studio-caption-size);
+        font-weight: var(--studio-font-weight-emphasis);
         font-variant-numeric: tabular-nums;
-        line-height: 1;
+        line-height: var(--studio-icon-line-height);
         text-align: center;
         transform: translateX(-50%);
       }
 
       .area-help {
-        margin: 12px 0 0;
+        margin: var(--studio-spacing-lg) 0 0;
         color: var(--studio-muted);
-        font-size: 13px;
+        font-size: var(--studio-parameter-label-size);
         text-align: center;
       }
 
       .muted {
         color: var(--studio-muted);
-        font-size: 13px;
-        line-height: 1.45;
+        font-size: var(--studio-parameter-label-size);
+        line-height: var(--studio-muted-line-height);
       }
 
+      /* Narrows side padding while retaining full handle hit targets. */
       @media (max-width: 760px) {
         .area-control {
-          padding-inline: 18px;
+          padding-inline: var(--area-control-mobile-padding);
         }
       }
     `,

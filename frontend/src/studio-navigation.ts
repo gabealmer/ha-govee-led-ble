@@ -7,6 +7,10 @@ import type {
 const PANEL_PATH = "/ha-govee-led-ble";
 const DEVICE_ROUTE = `${PANEL_PATH}/editor`;
 export type StudioSection = "video" | "scenes" | "custom";
+export interface StudioNavigationItem {
+  section: StudioSection;
+  label: string;
+}
 export type ActiveStudioContext =
   | { kind: "saved"; item: LibrarySummary }
   | { kind: "native-scene"; effect: string }
@@ -26,6 +30,28 @@ export function deviceIdFromEditorPath(pathname: string): string | undefined {
 
 export function editorDevicePath(deviceId: string): string {
   return `${DEVICE_ROUTE}/${encodeURIComponent(deviceId)}`;
+}
+
+export function studioNavigationItems(
+  videoAvailable: boolean,
+  customAvailable: boolean,
+): StudioNavigationItem[] {
+  return [
+    { section: "scenes", label: "Scene" },
+    ...(videoAvailable
+      ? [{ section: "video" as const, label: "Video" }]
+      : []),
+    ...(customAvailable
+      ? [{ section: "custom" as const, label: "Custom" }]
+      : []),
+  ];
+}
+
+export function shouldOpenVideoSelection(
+  section: StudioSection,
+  contentKind: string,
+): boolean {
+  return section === "video" && contentKind !== "video_profile";
 }
 
 export function initialDeviceId(

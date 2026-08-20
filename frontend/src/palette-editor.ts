@@ -340,7 +340,7 @@ export class GoveePaletteEditor extends LitElement {
     .persistent-picker {
       margin-top: var(--studio-section-gap);
       padding-top: var(--studio-section-gap);
-      border-top: 1px solid var(--studio-border);
+      border-top: var(--studio-border-width) solid var(--studio-border);
     }
   `];
 }

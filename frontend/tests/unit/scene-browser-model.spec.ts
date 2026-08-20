@@ -125,8 +125,8 @@ test("scene categories and entries are derived without DOM state", () => {
   const state = { ...initialSceneBrowserState(), catalogue };
 
   expect(sceneBrowserCategories(catalogue, [custom]).map((category) => category.label)).toEqual([
-    "All scenes",
-    "Custom",
+    "All",
+    "My Effects",
     "Natural",
   ]);
   expect(sceneBrowserEntries(state, [custom]).map((entry) => entry.label)).toEqual([
@@ -172,4 +172,20 @@ test("preview requests use the current selection identity and editable speed", (
     content: { ...content, speed_index: 1 },
   });
   expect(buildScenePreviewRequest(state, "builtin:other", true, true)).toBeUndefined();
+  expect(
+    buildScenePreviewRequest(
+      {
+        ...state,
+        catalogue: { ...state.catalogue, enabled: false },
+        editingCopy: false,
+      },
+      sceneKey(scene),
+      true,
+      true,
+    ),
+  ).toEqual({
+    kind: "scene",
+    scene,
+    speedIndex: 1,
+  });
 });

@@ -569,8 +569,8 @@ def test_display_replies_reject_stale_composite_values_atomically(h6199):
 
 
 def test_notify_callback_parses_full_frame_with_checksum(h6199):
-    """Full H6199 scene replies resolve through the model catalogue when enabled."""
-    h6199.effect_families = frozenset({"scenes"})
+    """Scene readback remains available when scenes are hidden from the HA effect list."""
+    h6199.effect_families = frozenset()
     cb = h6199._notify_callback
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x01, 0x00])))
     assert h6199.effect == "sunset"
@@ -1378,6 +1378,7 @@ async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
         assert lock.locked()
         packets.append(packet)
 
+    coord.effect_families = frozenset()
     await coord.async_apply_native_scene(
         "glacier",
         speed_index=0,
@@ -1787,16 +1788,8 @@ def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):
     assert coord.unknown_scene_code is None
 
 
-def test_h6199_scene_codes_are_named_only_when_scenes_are_enabled(h6199):
+def test_h6199_scene_codes_are_named_when_hidden_from_the_ha_effect_list(h6199):
     scene = MODEL_SCENES["H6199"]["forest"]
-    h6199._notify_callback(
-        None,
-        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *scene.code.to_bytes(2, "little")])),
-    )
-    assert h6199.effect is None
-    assert h6199.unknown_scene_code == scene.code
-
-    h6199.effect_families = frozenset({"scenes"})
     h6199._notify_callback(
         None,
         bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *scene.code.to_bytes(2, "little")])),

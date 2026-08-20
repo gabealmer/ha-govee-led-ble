@@ -5,6 +5,7 @@ import {
   type CustomEffectListContext,
 } from "../../src/custom-effect-list";
 import {
+  customEffectCategories,
   defaultCustomEffectCategory,
   showCustomEffectSelector,
   starterBaseline,
@@ -90,6 +91,19 @@ test("My Effects takes priority", () => {
 
   expect(defaultCustomEffectCategory(context([saved]))).toBe("my-effects");
   expect(entries.map((entry) => entry.label)).toEqual(["My Jump"]);
+});
+
+test("categories keep All and My Effects first and Advanced last", () => {
+  expect(
+    customEffectCategories(context([saved])).map(({ label }) => label),
+  ).toEqual([
+    "All",
+    "My Effects",
+    "Multi Layer",
+    "Music",
+    "Single Layer",
+    "Advanced",
+  ]);
 });
 
 test("starters stay clean until edited while intentional New shows its selector", () => {

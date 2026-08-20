@@ -76,6 +76,17 @@ def test_basic_and_color_props(light, mock_coordinator):
     assert light.rgb_color is None and light.color_temp_kelvin == 4000
 
 
+def test_hidden_scene_family_does_not_project_internal_scene_state(
+    light,
+    mock_coordinator,
+) -> None:
+    mock_coordinator.effect_families = frozenset()
+    mock_coordinator.effect = "rainbow"
+
+    assert light.effect_list == ["off"]
+    assert light.effect == "off"
+
+
 @pytest.mark.parametrize("on", [True, False])
 async def test_power(light, mock_coordinator, on):
     await (light.async_turn_on() if on else light.async_turn_off())

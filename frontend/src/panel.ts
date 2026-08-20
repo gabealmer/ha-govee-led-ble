@@ -34,7 +34,10 @@ import type {
 import "./scene-browser";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
-import type { StudioSection } from "./studio-navigation";
+import {
+  studioNavigationItems,
+  type StudioSection,
+} from "./studio-navigation";
 import "./video-profile-editor";
 import type {
   AdvancedContent,
@@ -54,6 +57,7 @@ import type {
 } from "./types";
 import {
   compareLabels,
+  integrationSettingsPath,
   lightControlEntityId,
   moreInfoDetail,
   showHomeAssistantHeader,
@@ -215,13 +219,10 @@ export class GoveeLedEffectStudio extends LitElement {
         ?inert=${this.modal.open}
       >
         <nav class="primary-nav" aria-label="Create">
-          ${this.model.videoAvailable
-            ? this.navButton("video", "Video")
-            : nothing}
-          ${this.navButton("scenes", "Scene")}
-          ${this.model.customEffectsAvailable
-            ? this.navButton("custom", "Custom")
-            : nothing}
+          ${studioNavigationItems(
+            this.model.videoAvailable,
+            this.model.customEffectsAvailable,
+          ).map((item) => this.navButton(item.section, item.label))}
         </nav>
 
         <govee-scene-browser
@@ -295,6 +296,12 @@ export class GoveeLedEffectStudio extends LitElement {
           ${device && lightEntityId
             ? this.renderLightControl(device.display_name, lightEntityId)
             : nothing}
+          ${device && this.isAdmin
+            ? this.renderIntegrationSettings(
+                device.display_name,
+                device.config_entry_id,
+              )
+            : nothing}
         </div>
       </div>
     `;
@@ -326,6 +333,29 @@ export class GoveeLedEffectStudio extends LitElement {
         detail: moreInfoDetail(entityId),
       }),
     );
+  }
+
+  private renderIntegrationSettings(
+    displayName: string,
+    configEntryId: string,
+  ) {
+    const configurationPath =
+      this.panel?.config?.configuration_path ??
+      "/config/integrations/integration/ha_govee_led_ble";
+    return html`
+      <a
+        class="light-control-button"
+        href=${integrationSettingsPath(configurationPath, configEntryId)}
+        aria-label=${`Configure visible effects for ${displayName}`}
+        title=${`Configure visible effects for ${displayName}`}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path
+            d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-1.92-3.32-2.39.96a7.2 7.2 0 0 0-1.62-.94L14.87 3h-3.84l-.36 3.18c-.59.24-1.13.56-1.62.94l-2.39-.96-1.92 3.32 2.03 1.58c-.05.31-.08.64-.08.94s.03.63.08.94l-2.03 1.58 1.92 3.32 2.39-.96c.49.38 1.03.7 1.62.94l.36 3.18h3.84l.36-3.18c.59-.24 1.13-.56 1.62-.94l2.39.96 1.92-3.32-2.02-1.58M13 15.5A3.5 3.5 0 1 1 13 8a3.5 3.5 0 0 1 0 7.5"
+          ></path>
+        </svg>
+      </a>
+    `;
   }
 
   private renderDeviceSelector() {

@@ -710,6 +710,12 @@ export class GoveeCustomEffectEditor extends LitElement {
     studioFormStyles,
     css`
     :host {
+      --effect-layer-drag-handle-width: 32px;
+      --effect-layer-drag-icon-size: 18px;
+      --effect-layer-drag-letter-spacing: -5px;
+      --effect-layer-order-min-width: 72px;
+      --effect-layer-menu-icon-size: 22px;
+      --effect-layer-menu-width: 120px;
       display: block;
     }
 
@@ -723,7 +729,7 @@ export class GoveeCustomEffectEditor extends LitElement {
 
     .sequence-table {
       --effect-layer-columns:
-        minmax(72px, 0.45fr)
+        minmax(var(--effect-layer-order-min-width), 0.45fr)
         minmax(0, 1fr)
         minmax(0, 1fr)
         var(--studio-control-height);
@@ -735,20 +741,20 @@ export class GoveeCustomEffectEditor extends LitElement {
       display: grid;
       grid-template-columns: var(--effect-layer-columns);
       align-items: center;
-      gap: 12px;
+      gap: var(--studio-spacing-lg);
     }
 
     .sequence-header {
-      margin-bottom: 8px;
+      margin-bottom: var(--studio-spacing-sm);
       color: var(--studio-muted);
-      font-size: 12px;
-      font-weight: 700;
+      font-size: var(--studio-caption-size);
+      font-weight: var(--studio-font-weight-bold);
     }
 
     .sequence {
       display: grid;
-      gap: 8px;
-      margin: 0 0 8px;
+      gap: var(--studio-compact-gap);
+      margin: 0 0 var(--studio-spacing-sm);
       padding: 0;
       list-style: none;
     }
@@ -756,9 +762,9 @@ export class GoveeCustomEffectEditor extends LitElement {
     .effect-row {
       position: relative;
       transition:
-        background-color 120ms ease,
-        box-shadow 120ms ease,
-        opacity 120ms ease;
+        background-color var(--studio-transition-duration) ease,
+        box-shadow var(--studio-transition-duration) ease,
+        opacity var(--studio-transition-duration) ease;
     }
 
     .effect-row.dragging {
@@ -768,21 +774,22 @@ export class GoveeCustomEffectEditor extends LitElement {
     .effect-row.drop-target {
       border-radius: var(--studio-control-radius);
       background: var(--studio-blue-soft);
-      box-shadow: inset 0 -2px var(--studio-blue);
+      box-shadow: inset 0 calc(0px - var(--studio-strong-border-width))
+        var(--studio-blue);
     }
 
     .order-cell {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--studio-compact-gap);
       min-width: 0;
     }
 
     .drag-handle {
       display: grid;
-      width: 32px;
+      width: var(--effect-layer-drag-handle-width);
       height: var(--studio-control-height);
-      flex: 0 0 32px;
+      flex: 0 0 var(--effect-layer-drag-handle-width);
       place-items: center;
       padding: 0;
       border: 0;
@@ -790,8 +797,8 @@ export class GoveeCustomEffectEditor extends LitElement {
       color: var(--studio-muted);
       background: transparent;
       cursor: grab;
-      font-size: 18px;
-      letter-spacing: -5px;
+      font-size: var(--effect-layer-drag-icon-size);
+      letter-spacing: var(--effect-layer-drag-letter-spacing);
       touch-action: none;
       user-select: none;
     }
@@ -808,8 +815,8 @@ export class GoveeCustomEffectEditor extends LitElement {
     .layer-heading {
       overflow: hidden;
       color: var(--primary-text-color);
-      font-size: 14px;
-      font-weight: 650;
+      font-size: var(--studio-subheading-size);
+      font-weight: var(--studio-font-weight-emphasis);
       text-overflow: ellipsis;
       white-space: nowrap;
     }
@@ -821,15 +828,15 @@ export class GoveeCustomEffectEditor extends LitElement {
 
     .field-label {
       display: none;
-      font-size: 12px;
-      font-weight: 650;
+      font-size: var(--studio-caption-size);
+      font-weight: var(--studio-font-weight-emphasis);
     }
 
     .effect-field select {
       width: 100%;
       min-height: var(--studio-control-height);
-      padding: 8px 10px;
-      border: 1px solid var(--studio-border);
+      padding: var(--studio-field-padding);
+      border: var(--studio-border-width) solid var(--studio-border);
       border-radius: var(--studio-control-radius);
       color: var(--primary-text-color);
       background: var(--secondary-background-color, #f5f6f8);
@@ -846,13 +853,13 @@ export class GoveeCustomEffectEditor extends LitElement {
       width: var(--studio-control-height);
       height: var(--studio-control-height);
       place-items: center;
-      border: 1px solid var(--studio-border);
-      border-radius: 50%;
+      border: var(--studio-border-width) solid var(--studio-border);
+      border-radius: var(--studio-round-radius);
       color: var(--studio-muted);
       background: var(--studio-card);
       cursor: pointer;
       list-style: none;
-      font-size: 22px;
+      font-size: var(--effect-layer-menu-icon-size);
     }
 
     .row-menu summary::-webkit-details-marker {
@@ -861,22 +868,22 @@ export class GoveeCustomEffectEditor extends LitElement {
 
     .row-menu-popover {
       position: absolute;
-      z-index: 20;
-      top: 50px;
+      z-index: var(--studio-z-popover);
+      top: calc(var(--studio-control-height) + var(--studio-tight-gap));
       right: 0;
       display: grid;
-      width: 120px;
-      padding: 6px;
-      border: 1px solid var(--studio-border);
+      width: var(--effect-layer-menu-width);
+      padding: var(--studio-tight-gap);
+      border: var(--studio-border-width) solid var(--studio-border);
       border-radius: var(--studio-popover-radius);
       background: var(--studio-card);
       box-shadow: var(--studio-popover-shadow);
     }
 
     .row-menu-popover button {
-      padding: 8px 10px;
+      padding: var(--studio-field-padding);
       border: 0;
-      border-radius: 6px;
+      border-radius: var(--studio-swatch-radius);
       color: var(--primary-text-color);
       background: transparent;
       text-align: start;
@@ -893,17 +900,18 @@ export class GoveeCustomEffectEditor extends LitElement {
       height: var(--studio-control-height);
       place-items: center;
       padding: 0;
-      border: 1px dashed var(--studio-border);
+      border: var(--studio-border-width) dashed var(--studio-border);
       border-radius: var(--studio-control-radius);
       color: var(--studio-blue);
       background: transparent;
       cursor: pointer;
-      font-size: 24px;
+      font-size: var(--studio-editor-heading-size);
     }
 
+    /* Converts the effect-layer table into labelled cards when its own column is narrow. */
     @container (max-width: 520px) {
       .sequence {
-        gap: 12px;
+        gap: var(--studio-spacing-lg);
       }
 
       .sequence-header {
@@ -914,9 +922,9 @@ export class GoveeCustomEffectEditor extends LitElement {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: start;
-        gap: 10px;
-        padding: 12px;
-        border: 1px solid var(--studio-border);
+        gap: var(--studio-control-gap);
+        padding: var(--studio-spacing-lg);
+        border: var(--studio-border-width) solid var(--studio-border);
         border-radius: var(--studio-control-radius);
         background: var(--secondary-background-color, #f5f6f8);
       }

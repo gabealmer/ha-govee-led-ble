@@ -3,29 +3,17 @@ import { property } from "lit/decorators.js";
 
 import {
   buildCustomEffectEntries,
-  customEffectCategoryAvailable,
   newEffectKindForCategory,
   type CustomEffectListContext,
   type CustomEffectListEntry,
 } from "./custom-effect-list";
+import { customEffectCategories } from "./custom-effect-workflow";
 import type { CustomEffectCategory } from "./effect-editor-model";
 import {
   studioBaseStyles,
   studioSelectorStyles,
   studioWorkspaceStyles,
 } from "./studio-styles";
-
-const CATEGORIES: readonly [
-  CustomEffectCategory,
-  string,
-][] = [
-  ["my-effects", "My Effects"],
-  ["music", "Music"],
-  ["single-layer", "Single Layer"],
-  ["multi-layer", "Multi Layer"],
-  ["advanced", "Advanced"],
-  ["special-diy", "Special DIY"],
-];
 
 export interface CustomEffectBrowserEntryRequest {
   entry: CustomEffectListEntry;
@@ -66,10 +54,8 @@ export class GoveeCustomEffectBrowser extends LitElement {
         class="sidebar category-sidebar effect-categories"
         aria-label="Effect categories"
       >
-        ${CATEGORIES.map(([category, label]) =>
-          customEffectCategoryAvailable(context, category)
-            ? this.categoryButton(category, label)
-            : nothing,
+        ${customEffectCategories(context).map(({ category, label }) =>
+          this.categoryButton(category, label),
         )}
       </aside>
 
@@ -170,15 +156,17 @@ export class GoveeCustomEffectBrowser extends LitElement {
     studioWorkspaceStyles,
     css`
       :host {
+        --new-effect-stroke-width: 1.5px;
+        --new-effect-sticky-shadow-height: 5px;
         display: contents;
       }
 
       .new-effect-action {
         position: sticky;
-        z-index: 1;
+        z-index: var(--studio-z-raised);
         top: 0;
-        margin-bottom: 6px;
-        border: 1px solid
+        margin-bottom: var(--studio-tight-gap);
+        border: var(--studio-border-width) solid
           color-mix(in srgb, var(--studio-blue) 24%, var(--studio-border));
         color: var(--primary-text-color);
         background: color-mix(
@@ -186,20 +174,21 @@ export class GoveeCustomEffectBrowser extends LitElement {
           var(--studio-blue) 5%,
           var(--primary-background-color, #fff)
         );
-        box-shadow: 0 5px 0 var(--primary-background-color, #fff);
-        font-weight: 600;
+        box-shadow: 0 var(--new-effect-sticky-shadow-height) 0
+          var(--primary-background-color, #fff);
+        font-weight: var(--studio-font-weight-semibold);
       }
 
       .new-effect-icon {
         display: inline-block;
-        width: 12px;
-        height: 12px;
-        margin-inline-end: 8px;
+        width: var(--studio-spacing-lg);
+        height: var(--studio-spacing-lg);
+        margin-inline-end: var(--studio-compact-gap);
         background:
           linear-gradient(var(--studio-blue), var(--studio-blue)) center /
-            12px 1.5px no-repeat,
+            var(--studio-spacing-lg) var(--new-effect-stroke-width) no-repeat,
           linear-gradient(var(--studio-blue), var(--studio-blue)) center /
-            1.5px 12px no-repeat;
+            var(--new-effect-stroke-width) var(--studio-spacing-lg) no-repeat;
       }
 
       .new-effect-action:hover {
@@ -219,9 +208,38 @@ export class GoveeCustomEffectBrowser extends LitElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: var(--studio-compact-gap);
       }
 
+      /* Places categories and effects in stacked rows beside HA's docked sidebar. */
+      @media (min-width: 901px) and (max-width: 1320px) {
+        .effect-categories {
+          display: flex;
+          grid-row: 1;
+          grid-column: 2;
+          gap: var(--studio-tight-gap);
+          overflow-x: auto;
+          padding: var(--studio-responsive-navigation-padding);
+          border-inline-end: 0;
+          border-bottom: var(--studio-border-width) solid var(--studio-border);
+        }
+
+        .effect-categories .selector {
+          width: auto;
+          flex: 0 0 auto;
+          white-space: nowrap;
+        }
+
+        .library {
+          grid-row: 2;
+          grid-column: 2;
+          max-height: var(--studio-stacked-list-max-height);
+          border-inline-end: 0;
+          border-bottom: var(--studio-border-width) solid var(--studio-border);
+        }
+      }
+
+      /* The panel owns document-flow placement below this width. */
       @media (max-width: 900px) {
         :host {
           display: block;

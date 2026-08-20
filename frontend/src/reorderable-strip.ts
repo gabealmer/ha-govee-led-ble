@@ -277,13 +277,16 @@ export class GoveeReorderableStrip extends LitElement {
 
   static styles = [studioBaseStyles, css`
     :host {
+      --strip-label-min-width: 76px;
+      --strip-popover-default-width: 280px;
+      --strip-remove-icon-size: 26px;
       display: block;
     }
 
     .item-list {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: var(--studio-control-gap);
       margin: 0;
       padding: 0;
       list-style: none;
@@ -307,7 +310,7 @@ export class GoveeReorderableStrip extends LitElement {
     }
 
     .item {
-      border: 1px solid rgb(0 0 0 / 14%);
+      border: var(--studio-border-width) solid rgb(0 0 0 / 14%);
     }
 
     .item.colour,
@@ -320,11 +323,11 @@ export class GoveeReorderableStrip extends LitElement {
     }
 
     .item.label {
-      min-width: 76px;
-      padding: 0 14px;
+      min-width: var(--strip-label-min-width);
+      padding: 0 var(--studio-spacing-xl);
       color: var(--primary-text-color);
       background: var(--studio-card);
-      font-weight: 600;
+      font-weight: var(--studio-font-weight-semibold);
     }
 
     .item.label.selected {
@@ -335,8 +338,9 @@ export class GoveeReorderableStrip extends LitElement {
 
     .item.remove-ready {
       position: relative;
-      outline: 2px solid rgb(255 255 255 / 95%);
-      outline-offset: -4px;
+      outline: var(--studio-strong-border-width) solid
+        rgb(255 255 255 / 95%);
+      outline-offset: calc(0px - var(--studio-micro-gap));
     }
 
     .item.remove-ready::after {
@@ -345,9 +349,10 @@ export class GoveeReorderableStrip extends LitElement {
       display: grid;
       place-items: center;
       color: #fff;
-      font-size: 26px;
-      font-weight: 500;
-      text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
+      font-size: var(--strip-remove-icon-size);
+      font-weight: var(--studio-font-weight-medium);
+      text-shadow: 0 var(--studio-border-width) var(--studio-micro-gap)
+        rgb(0 0 0 / 80%);
       content: "×";
       pointer-events: none;
     }
@@ -355,10 +360,10 @@ export class GoveeReorderableStrip extends LitElement {
     .add {
       display: grid;
       place-items: center;
-      border: 1px dashed var(--studio-border);
+      border: var(--studio-border-width) dashed var(--studio-border);
       color: var(--studio-blue);
       background: transparent;
-      font-size: 24px;
+      font-size: var(--studio-editor-heading-size);
     }
 
     .item:focus-visible,
@@ -369,17 +374,21 @@ export class GoveeReorderableStrip extends LitElement {
 
     ::slotted(.strip-popover) {
       position: absolute;
-      z-index: 25;
-      top: 52px;
+      z-index: var(--studio-z-popover);
+      top: calc(var(--studio-control-height) + var(--studio-compact-gap));
       left: 0;
-      width: min(var(--strip-popover-width, 280px), calc(100vw - 48px));
+      width: min(
+        var(--strip-popover-width, var(--strip-popover-default-width)),
+        calc(100vw - var(--studio-dialog-viewport-gutter))
+      );
       padding: var(--studio-popover-padding);
-      border: 1px solid var(--studio-border);
+      border: var(--studio-border-width) solid var(--studio-border);
       border-radius: var(--studio-popover-radius);
       background: var(--studio-card);
       box-shadow: var(--studio-popover-shadow);
     }
 
+    /* Promotes popovers to viewport overlays on phones to avoid clipping. */
     @media (max-width: 600px) {
       ::slotted(.strip-popover) {
         position: fixed;
@@ -387,7 +396,7 @@ export class GoveeReorderableStrip extends LitElement {
         right: var(--studio-mobile-gutter);
         left: var(--studio-mobile-gutter);
         width: auto;
-        max-height: calc(100vh - 48px);
+        max-height: calc(100vh - var(--studio-dialog-viewport-gutter));
         overflow: auto;
         transform: translateY(-50%);
       }

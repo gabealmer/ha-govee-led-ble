@@ -81,17 +81,17 @@ export function sceneBrowserCategories(
 ): { id: CategorySelection; label: string }[] {
   const categories: { id: CategorySelection; label: string }[] = [];
   if (catalogue?.scenes.length) {
-    categories.push({ id: "all", label: "All scenes" });
+    categories.push({ id: "all", label: "All" });
   }
   if (customScenes.length) {
-    categories.push({ id: "custom", label: "Custom" });
+    categories.push({ id: "custom", label: "My Effects" });
   }
-  categories.push(
-    ...(catalogue?.categories
+  const nativeCategories =
+    catalogue?.categories
       .filter((category) => catalogue.scenes.some((scene) => scene.category_id === category.id))
-      .map((category) => ({ id: category.id, label: category.name })) ?? []),
-  );
-  return categories.sort((left, right) => compareLabels(left.label, right.label));
+      .map((category) => ({ id: category.id, label: category.name }))
+      .sort((left, right) => compareLabels(left.label, right.label)) ?? [];
+  return [...categories, ...nativeCategories];
 }
 
 export function sceneBrowserEntries(
@@ -224,8 +224,7 @@ export function buildScenePreviewRequest(
     !state.selectedScene ||
     !state.content ||
     !hasCurrentSceneContent(state, activeSelectionIdentity) ||
-    !isAdmin ||
-    (!state.catalogue?.enabled && state.selectedItem === undefined && !state.editingCopy)
+    !isAdmin
   ) {
     return undefined;
   }

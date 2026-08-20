@@ -1,6 +1,6 @@
 import { css } from "lit";
 
-export const studioBaseStyles = css`
+export const studioTokenStyles = css`
   :host {
     --studio-blue: var(--primary-color, #03a9f4);
     --studio-blue-soft: color-mix(
@@ -9,21 +9,103 @@ export const studioBaseStyles = css`
       transparent
     );
     --studio-border: var(--divider-color, #d8dce2);
+    --studio-border-width: 1px;
+    --studio-strong-border-width: 2px;
     --studio-card: var(--card-background-color, #fff);
     --studio-muted: var(--secondary-text-color, #68707c);
     --studio-danger: var(--error-color, #db4437);
-    --studio-control-height: 44px;
+    --studio-spacing-xxs: 4px;
+    --studio-spacing-xs: 6px;
+    --studio-spacing-sm: 8px;
+    --studio-spacing-md: 10px;
+    --studio-spacing-lg: 12px;
+    --studio-spacing-xl: 14px;
+    --studio-spacing-2xl: 16px;
+    --studio-spacing-3xl: 18px;
+    --studio-spacing-4xl: 20px;
+    --studio-spacing-5xl: 22px;
+    --studio-spacing-6xl: 24px;
+    --studio-spacing-7xl: 28px;
+    --studio-touch-target-size: 44px;
+    --studio-control-height: var(--studio-touch-target-size);
+    --studio-compact-control-height: 36px;
+    --studio-app-header-height: 56px;
+    --studio-icon-size: 20px;
+    --studio-checkbox-size: 20px;
+    --studio-small-swatch-size: 16px;
+    --studio-swatch-size: 32px;
+    --studio-paint-segment-height: 48px;
     --studio-control-radius: 8px;
     --studio-button-radius: 9px;
     --studio-card-radius: 10px;
-    --studio-card-padding: 20px;
-    --studio-section-gap: 18px;
-    --studio-parameter-gap: 18px;
+    --studio-dialog-radius: 12px;
+    --studio-swatch-radius: 6px;
+    --studio-pill-radius: 999px;
+    --studio-round-radius: 50%;
+    --studio-card-padding: var(--studio-spacing-4xl);
+    --studio-section-gap: var(--studio-spacing-3xl);
+    --studio-parameter-gap: var(--studio-spacing-3xl);
+    --studio-section-title-gap: var(--studio-spacing-xl);
+    --studio-field-margin: var(--studio-spacing-xl);
+    --studio-heading-gap: var(--studio-spacing-4xl);
+    --studio-editor-heading-gap: var(--studio-spacing-5xl);
+    --studio-control-gap: var(--studio-spacing-md);
+    --studio-action-gap: var(--studio-spacing-md);
+    --studio-compact-gap: var(--studio-spacing-sm);
+    --studio-tight-gap: var(--studio-spacing-xs);
+    --studio-micro-gap: var(--studio-spacing-xxs);
+    --studio-caption-size: 12px;
     --studio-parameter-label-size: 13px;
-    --studio-parameter-label-weight: 600;
+    --studio-font-weight-medium: 500;
+    --studio-font-weight-semibold: 600;
+    --studio-font-weight-emphasis: 650;
+    --studio-font-weight-bold: 700;
+    --studio-font-weight-alert: 800;
+    --studio-parameter-label-weight: var(--studio-font-weight-semibold);
+    --studio-label-line-height: 1.35;
+    --studio-muted-line-height: 1.45;
+    --studio-body-line-height: 1.5;
+    --studio-reading-line-height: 1.55;
+    --studio-icon-line-height: 1;
+    --studio-subheading-size: 14px;
     --studio-section-title-size: 16px;
-    --studio-section-title-weight: 600;
-    --studio-action-padding: 8px 17px;
+    --studio-section-title-weight: var(--studio-font-weight-semibold);
+    --studio-heading-size: 20px;
+    --studio-editor-heading-size: 24px;
+    --studio-page-heading-size: 25px;
+    --studio-action-padding: var(--studio-spacing-sm)
+      var(--studio-spacing-2xl);
+    --studio-field-padding: var(--studio-spacing-sm)
+      var(--studio-spacing-md);
+    --studio-option-padding: var(--studio-spacing-sm)
+      var(--studio-spacing-lg);
+    --studio-sidebar-padding: var(--studio-spacing-5xl)
+      var(--studio-spacing-2xl);
+    --studio-responsive-navigation-padding: var(--studio-spacing-lg)
+      var(--studio-spacing-2xl);
+    --studio-editor-padding: var(--studio-spacing-7xl);
+    --studio-mobile-editor-bottom-padding: 32px;
+    --studio-mobile-editor-padding: var(--studio-spacing-4xl)
+      var(--studio-spacing-2xl)
+      var(--studio-mobile-editor-bottom-padding);
+    --studio-dialog-padding: var(--studio-spacing-6xl);
+    --studio-dialog-viewport-gutter: 48px;
+    --studio-message-block-padding: 48px;
+    --studio-message-inline-padding: 24px;
+    --studio-empty-state-block-padding: 56px;
+    --studio-chrome-gutter: var(--studio-spacing-2xl);
+    --studio-empty-state-max-width: 680px;
+    --studio-editor-name-max-width: 460px;
+    --studio-navigation-width: 190px;
+    --studio-list-width: 230px;
+    --studio-stacked-navigation-width: 170px;
+    --studio-stacked-list-max-height: 220px;
+    --studio-mobile-list-max-height: 340px;
+    --studio-transition-duration: 120ms;
+    --studio-z-raised: 1;
+    --studio-z-toolbar: 4;
+    --studio-z-popover: 20;
+    --studio-z-modal: 1000;
     --studio-disabled-opacity: 0.52;
     --studio-focus-width: 3px;
     --studio-focus-offset: 2px;
@@ -32,7 +114,9 @@ export const studioBaseStyles = css`
     --studio-popover-shadow: 0 8px 24px rgb(0 0 0 / 18%);
     --studio-mobile-gutter: 24px;
   }
+`;
 
+export const studioBaseStyles = css`
   * {
     box-sizing: border-box;
   }
@@ -59,16 +143,16 @@ export const studioCardStyles = css`
   .card {
     min-width: 0;
     padding: var(--studio-card-padding);
-    border: 1px solid var(--studio-border);
+    border: var(--studio-border-width) solid var(--studio-border);
     border-radius: var(--studio-card-radius);
     background: var(--studio-card);
   }
 
   .section-title {
-    margin: 0 0 14px;
+    margin: 0 0 var(--studio-section-title-gap);
     font-size: var(--studio-section-title-size);
     font-weight: var(--studio-section-title-weight);
-    line-height: 1.35;
+    line-height: var(--studio-label-line-height);
   }
 `;
 
@@ -79,24 +163,24 @@ export const studioActionStyles = css`
     min-height: var(--studio-control-height);
     padding: var(--studio-action-padding);
     border-radius: var(--studio-button-radius);
-    font-weight: 600;
+    font-weight: var(--studio-font-weight-semibold);
     cursor: pointer;
   }
 
   .primary {
-    border: 1px solid var(--studio-blue);
+    border: var(--studio-border-width) solid var(--studio-blue);
     color: var(--text-primary-color, #fff);
     background: var(--studio-blue);
   }
 
   .secondary {
-    border: 1px solid var(--studio-border);
+    border: var(--studio-border-width) solid var(--studio-border);
     color: var(--primary-text-color);
     background: var(--studio-card);
   }
 
   .danger {
-    border: 1px solid var(--studio-danger);
+    border: var(--studio-border-width) solid var(--studio-danger);
     color: var(--studio-danger);
     background: var(--studio-card);
   }
@@ -118,7 +202,7 @@ export const studioSelectorStyles = css`
   .selector {
     width: 100%;
     min-height: var(--studio-control-height);
-    padding: 9px 11px;
+    padding: var(--studio-field-padding);
     border: 0;
     border-radius: var(--studio-control-radius);
     color: var(--primary-text-color);
@@ -136,9 +220,9 @@ export const studioSelectorStyles = css`
   }
 
   .selector.selected {
+    /* Selection uses colour and fill so labels keep the same width and row height. */
     color: var(--studio-blue);
     background: var(--studio-blue-soft);
-    font-weight: 650;
   }
 `;
 
@@ -157,19 +241,19 @@ export const studioFormStyles = css`
 
   .parameter-group {
     display: grid;
-    gap: 10px;
+    gap: var(--studio-control-gap);
   }
 
   .check-field {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--studio-control-gap);
     min-height: var(--studio-control-height);
   }
 
   .check-field input[type="checkbox"] {
-    width: 20px;
-    height: 20px;
+    width: var(--studio-checkbox-size);
+    height: var(--studio-checkbox-size);
     margin: 0;
     accent-color: var(--studio-blue);
   }
@@ -181,20 +265,20 @@ export const studioFormStyles = css`
     color: var(--studio-muted);
     font-size: var(--studio-parameter-label-size);
     font-weight: var(--studio-parameter-label-weight);
-    line-height: 1.35;
+    line-height: var(--studio-label-line-height);
   }
 
   .parameter-options {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--studio-tight-gap);
   }
 
   .parameter-options button {
     min-width: 0;
     flex: 1;
-    padding: 8px 12px;
-    border: 1px solid var(--studio-border);
+    padding: var(--studio-option-padding);
+    border: var(--studio-border-width) solid var(--studio-border);
     border-radius: var(--studio-control-radius);
     color: var(--primary-text-color);
     background: var(--studio-card);
@@ -214,8 +298,8 @@ export const studioFormStyles = css`
   .range-field {
     display: grid;
     align-items: center;
-    gap: 10px;
-    margin-top: 14px;
+    gap: var(--studio-control-gap);
+    margin-top: var(--studio-field-margin);
   }
 
   .field input,
@@ -223,8 +307,8 @@ export const studioFormStyles = css`
     width: 100%;
     min-width: 0;
     min-height: var(--studio-control-height);
-    padding: 8px 10px;
-    border: 1px solid var(--studio-border);
+    padding: var(--studio-field-padding);
+    border: var(--studio-border-width) solid var(--studio-border);
     border-radius: var(--studio-control-radius);
     color: var(--primary-text-color);
     background: var(--studio-card);
@@ -244,55 +328,56 @@ export const studioEditorStyles = css`
     display: flex;
     align-items: end;
     justify-content: space-between;
-    gap: 20px;
-    margin-bottom: 22px;
+    gap: var(--studio-heading-gap);
+    margin-bottom: var(--studio-editor-heading-gap);
   }
 
   .editor-title {
     display: grid;
     min-width: 0;
-    gap: 5px;
+    gap: var(--studio-tight-gap);
   }
 
   .editable-title {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--studio-tight-gap);
     min-width: 0;
   }
 
   .dirty-marker {
     color: var(--studio-blue);
-    font-size: 20px;
-    font-weight: 700;
-    line-height: 1;
+    font-size: var(--studio-heading-size);
+    font-weight: var(--studio-font-weight-bold);
+    line-height: var(--studio-icon-line-height);
   }
 
   .origin-name {
     color: var(--studio-muted);
-    font-size: 12px;
-    line-height: 1.35;
+    font-size: var(--studio-caption-size);
+    line-height: var(--studio-label-line-height);
   }
 
   .editor-name {
-    width: min(460px, 100%);
-    min-height: 42px;
-    padding: 8px 0;
+    width: min(var(--studio-editor-name-max-width), 100%);
+    min-height: var(--studio-control-height);
+    padding: var(--studio-compact-gap) 0;
     border: 0;
-    border-bottom: 1px solid var(--studio-border);
+    border-bottom: var(--studio-border-width) solid var(--studio-border);
     border-radius: 0;
     color: var(--primary-text-color);
     background: transparent;
-    font-size: 24px;
-    font-weight: 600;
+    font-size: var(--studio-editor-heading-size);
+    font-weight: var(--studio-font-weight-semibold);
   }
 
   .actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 9px;
+    gap: var(--studio-action-gap);
   }
 
+  /* Gives editor actions full-row room on phone widths. */
   @media (max-width: 600px) {
     .editor-heading {
       align-items: stretch;
@@ -306,6 +391,7 @@ export const studioEditorStyles = css`
 `;
 
 export const studioVisuallyHiddenStyles = css`
+  /* Standard one-pixel accessibility box keeps content available to assistive technology. */
   .visually-hidden {
     position: absolute;
     width: 1px;
@@ -323,8 +409,8 @@ export const studioVisuallyHiddenStyles = css`
 export const studioWorkspaceStyles = css`
   .sidebar {
     overflow: auto;
-    padding: 22px 16px;
-    border-inline-end: 1px solid var(--studio-border);
+    padding: var(--studio-sidebar-padding);
+    border-inline-end: var(--studio-border-width) solid var(--studio-border);
   }
 
   .category-sidebar {
@@ -339,18 +425,19 @@ export const studioWorkspaceStyles = css`
     min-width: 0;
     min-height: 0;
     overflow: auto;
-    padding: 28px;
+    padding: var(--studio-editor-padding);
     background: var(--secondary-background-color, #f5f6f8);
   }
 
+  /* Matches the panel's narrow document-flow breakpoint. */
   @media (max-width: 900px) {
     .category-sidebar {
       display: flex;
-      gap: 6px;
+      gap: var(--studio-tight-gap);
       overflow-x: auto;
-      padding: 12px 16px;
+      padding: var(--studio-responsive-navigation-padding);
       border-inline-end: 0;
-      border-bottom: 1px solid var(--studio-border);
+      border-bottom: var(--studio-border-width) solid var(--studio-border);
     }
 
     .category-sidebar .selector {
@@ -360,15 +447,16 @@ export const studioWorkspaceStyles = css`
     }
 
     .item-sidebar {
-      max-height: 340px;
+      max-height: var(--studio-mobile-list-max-height);
       border-inline-end: 0;
-      border-bottom: 1px solid var(--studio-border);
+      border-bottom: var(--studio-border-width) solid var(--studio-border);
     }
   }
 
+  /* Reduces editor gutters once primary navigation becomes horizontal. */
   @media (max-width: 760px) {
     .editor-surface {
-      padding: 20px 16px 32px;
+      padding: var(--studio-mobile-editor-padding);
     }
   }
 `;

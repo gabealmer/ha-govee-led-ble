@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
 
-from .const import DOMAIN, EFFECT_FAMILY_SCENES
+from .const import DOMAIN
 from .effect_catalogue import H6199_PALETTE_DIY_APPLY_CODE, H6199_WORKSHOP_APPLY_CODE
 from .effect_compiler import (
     ActivationMode,
@@ -312,8 +312,6 @@ class EffectPreviewManager:
     ) -> PreviewAcceptance:
         self.require_owner(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
-        if EFFECT_FAMILY_SCENES not in coordinator.effect_families:
-            raise PreviewError(f"native scenes are not enabled for {coordinator.model}")
         resolved = resolve_scene(coordinator.model, scene_id, effect_id)
         scene_default = self._scene_defaults.get(
             config_entry_id,

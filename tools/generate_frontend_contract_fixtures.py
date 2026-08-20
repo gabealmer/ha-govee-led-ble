@@ -95,7 +95,7 @@ def _compact_custom_catalogue(catalogue: dict[str, Any]) -> dict[str, Any]:
 
 
 def _compact_scene_catalogue(model: str) -> dict[str, Any]:
-    catalogue = cast(dict[str, Any], scene_catalogue_payload(model, enabled=True))
+    catalogue = cast(dict[str, Any], scene_catalogue_payload(model))
     scenes = cast(list[dict[str, Any]], catalogue["scenes"])
     selected: list[dict[str, Any]] = []
     parameter_kinds: set[str] = set()

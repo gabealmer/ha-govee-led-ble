@@ -370,6 +370,7 @@ async def test_native_scene_preview_uses_scene_speed_primitive_and_reasserts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     coordinator = _coordinator()
+    coordinator.effect_families = set()
     applied = []
 
     async def apply_scene(scene_name, *, speed_index, canonical_body, writer, verify):
@@ -1013,26 +1014,12 @@ async def test_scene_preview_validation_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     coordinator = _coordinator()
-    coordinator.effect_families = set()
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
     session_id = _open(manager, owner, [])
     speed_scene = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.speed is not None)
     no_speed_scene = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.speed is None)
 
-    with pytest.raises(PreviewError, match="not enabled"):
-        await manager.async_queue_scene(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-08-17T00:00:00Z",
-            scene_id=speed_scene.scene_id,
-            effect_id=speed_scene.effect_id,
-            speed_index=None,
-        )
-
-    coordinator.effect_families = {EFFECT_FAMILY_SCENES}
     with pytest.raises(PreviewError, match="does not expose"):
         await manager.async_queue_scene(
             session_id=session_id,

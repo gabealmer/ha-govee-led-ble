@@ -47,18 +47,22 @@ export class GoveeSwitchControl extends LitElement {
     studioBaseStyles,
     css`
       :host {
+        --switch-track-width: 42px;
+        --switch-track-height: var(--studio-spacing-6xl);
+        --switch-thumb-size: var(--studio-spacing-3xl);
+        --switch-thumb-inset: 2px;
         display: inline-block;
         flex: 0 0 auto;
       }
 
       button {
         position: relative;
-        width: 42px;
-        min-height: 24px;
-        height: 24px;
+        width: var(--switch-track-width);
+        min-height: var(--switch-track-height);
+        height: var(--switch-track-height);
         padding: 0;
-        border: 1px solid var(--studio-border);
-        border-radius: 999px;
+        border: var(--studio-border-width) solid var(--studio-border);
+        border-radius: var(--studio-pill-radius);
         background: color-mix(
           in srgb,
           var(--studio-muted) 12%,
@@ -69,18 +73,19 @@ export class GoveeSwitchControl extends LitElement {
 
       button span {
         position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 18px;
-        height: 18px;
-        border-radius: 50%;
+        top: var(--switch-thumb-inset);
+        left: var(--switch-thumb-inset);
+        width: var(--switch-thumb-size);
+        height: var(--switch-thumb-size);
+        border-radius: var(--studio-round-radius);
         background: color-mix(
           in srgb,
           var(--studio-muted) 72%,
           var(--studio-card)
         );
-        box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
-        transition: transform 120ms ease;
+        box-shadow: 0 var(--studio-border-width)
+          var(--studio-strong-border-width) rgb(0 0 0 / 20%);
+        transition: transform var(--studio-transition-duration) ease;
       }
 
       button.on {
@@ -98,7 +103,7 @@ export class GoveeSwitchControl extends LitElement {
 
       button.on span {
         background: var(--text-primary-color, #fff);
-        transform: translateX(18px);
+        transform: translateX(var(--switch-thumb-size));
       }
 
       @media (prefers-reduced-motion: reduce) {

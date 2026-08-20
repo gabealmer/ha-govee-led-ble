@@ -310,7 +310,7 @@ export class GoveeSceneBrowser extends LitElement {
                 <button
                   class="secondary"
                   type="button"
-                  ?disabled=${!this.isAdmin || state.saving || !state.catalogue?.enabled}
+                  ?disabled=${!this.isAdmin || state.saving}
                   @click=${this.resetToCatalogue}
                 >
                   Defaults
@@ -319,14 +319,6 @@ export class GoveeSceneBrowser extends LitElement {
             : nothing}
         </div>
       </header>
-
-      ${!state.catalogue?.enabled
-        ? html`
-            <p class="limitation-note">
-              Native scenes are disabled for this device in the integration options. Browsing and saving copies remain available.
-            </p>
-          `
-        : nothing}
 
       ${speed || state.content?.kind === "scene_palette" ? this.renderParameters(speed, speedIndex) : nothing}
     `;
@@ -490,60 +482,109 @@ export class GoveeSceneBrowser extends LitElement {
     studioVisuallyHiddenStyles,
     studioWorkspaceStyles,
     css`
-      :host { display: contents; }
+      :host {
+        --scene-step-order-width: var(--studio-spacing-6xl);
+        display: contents;
+      }
       :host([hidden]) { display: none !important; }
       h2, p { margin-top: 0; }
-      h2 { margin-bottom: 0; font-size: 20px; }
+      h2 { margin-bottom: 0; font-size: var(--studio-heading-size); }
       .empty {
-        max-width: 680px;
-        padding: 28px;
-        border: 1px solid var(--studio-border);
-        border-radius: 10px;
+        max-width: var(--studio-empty-state-max-width);
+        padding: var(--studio-editor-padding);
+        border: var(--studio-border-width) solid var(--studio-border);
+        border-radius: var(--studio-card-radius);
         background: var(--studio-card);
-        line-height: 1.55;
+        line-height: var(--studio-reading-line-height);
       }
-      .scene-parameters { margin-top: 18px; }
+      .scene-parameters { margin-top: var(--studio-section-gap); }
       .parameter-summary {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 10px;
+        gap: var(--studio-control-gap);
         margin: 0;
       }
-      .parameter-summary div { padding: 10px; border: 1px solid var(--studio-border); border-radius: 8px; }
+      .parameter-summary div {
+        padding: var(--studio-control-gap);
+        border: var(--studio-border-width) solid var(--studio-border);
+        border-radius: var(--studio-control-radius);
+      }
       .parameter-summary dt, .parameter-summary dd { margin: 0; }
-      .parameter-summary dt { color: var(--studio-muted); font-size: 12px; }
-      .parameter-summary dd { margin-top: 4px; font-weight: 700; }
-      .parameter-list { display: grid; gap: 12px; }
+      .parameter-summary dt { color: var(--studio-muted); font-size: var(--studio-caption-size); }
+      .parameter-summary dd { margin-top: var(--studio-micro-gap);       font-weight: var(--studio-font-weight-bold); }
+      .parameter-list { display: grid; gap: var(--studio-spacing-lg); }
       .parameter-entry {
-        padding: 14px;
-        border: 1px solid var(--studio-border);
-        border-radius: 8px;
+        padding: var(--studio-spacing-xl);
+        border: var(--studio-border-width) solid var(--studio-border);
+        border-radius: var(--studio-control-radius);
         background: color-mix(in srgb, var(--primary-background-color) 58%, var(--studio-card));
       }
-      .visual-parameter { display: grid; gap: 12px; }
-      .scene-palette { display: flex; flex-wrap: wrap; gap: 8px; }
+      .visual-parameter { display: grid; gap: var(--studio-spacing-lg); }
+      .scene-palette { display: flex; flex-wrap: wrap; gap: var(--studio-compact-gap); }
       .scene-palette span, .step-colour {
         display: block;
-        width: 32px;
-        height: 32px;
-        border: 1px solid color-mix(in srgb, var(--scene-colour) 70%, #000);
-        border-radius: 6px;
+        width: var(--studio-swatch-size);
+        height: var(--studio-swatch-size);
+        border: var(--studio-border-width) solid color-mix(in srgb, var(--scene-colour) 70%, #000);
+        border-radius: var(--studio-swatch-radius);
         background: var(--scene-colour);
       }
-      .scene-steps { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+      .scene-steps { display: grid; gap: var(--studio-compact-gap); margin: 0; padding: 0; list-style: none; }
       .scene-steps li {
         display: grid;
         grid-template-columns: auto auto minmax(0, 1fr);
         align-items: center;
-        gap: 10px;
+        gap: var(--studio-control-gap);
       }
-      .step-order { width: 24px; color: var(--studio-muted); text-align: end; }
+      .step-order { width: var(--scene-step-order-width); color: var(--studio-muted); text-align: end; }
       .scene-steps small { display: block; color: var(--studio-muted); }
-      .action-error { margin: 0 0 14px; color: var(--error-color, #db4437); line-height: 1.45; }
-      .limitation-note { margin: 0 0 18px; color: var(--studio-muted); line-height: 1.5; }
-      .empty p { margin-bottom: 0; color: var(--studio-muted); line-height: 1.5; }
-      .status { grid-column: 2 / -1; padding: 48px 28px; }
+      .action-error {
+        margin: 0 0 var(--studio-section-title-gap);
+        color: var(--error-color, #db4437);
+        line-height: var(--studio-muted-line-height);
+      }
+      .empty p {
+        margin-bottom: 0;
+        color: var(--studio-muted);
+        line-height: var(--studio-body-line-height);
+      }
+      .status {
+        grid-column: 2 / -1;
+        padding: var(--studio-message-block-padding)
+          var(--studio-editor-padding);
+      }
+      /* Places categories, scenes, and detail in stacked rows beside HA's docked sidebar. */
+      @media (min-width: 901px) and (max-width: 1320px) {
+        .category-sidebar {
+          display: flex;
+          grid-row: 1;
+          grid-column: 2;
+          gap: var(--studio-tight-gap);
+          overflow-x: auto;
+          padding: var(--studio-responsive-navigation-padding);
+          border-inline-end: 0;
+          border-bottom: var(--studio-border-width) solid var(--studio-border);
+        }
+        .category-sidebar .selector {
+          width: auto;
+          flex: 0 0 auto;
+          white-space: nowrap;
+        }
+        .item-sidebar {
+          grid-row: 2;
+          grid-column: 2;
+          max-height: var(--studio-stacked-list-max-height);
+          border-inline-end: 0;
+          border-bottom: var(--studio-border-width) solid var(--studio-border);
+        }
+        .editor-surface {
+          grid-row: 3;
+          grid-column: 2;
+        }
+      }
+      /* The panel owns document-flow placement below this width. */
       @media (max-width: 900px) { :host { display: block; } }
+      /* Parameter summaries become single-column on phones. */
       @media (max-width: 600px) { .parameter-summary { grid-template-columns: 1fr; } }
     `,
   ];

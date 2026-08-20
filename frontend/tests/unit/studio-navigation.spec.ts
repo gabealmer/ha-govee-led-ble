@@ -6,6 +6,8 @@ import {
   editorDevicePath,
   initialDeviceId,
   rememberedStudioSection,
+  shouldOpenVideoSelection,
+  studioNavigationItems,
 } from "../../src/studio-navigation";
 import type {
   DeviceCapabilities,
@@ -57,6 +59,24 @@ test("remembered navigation restores only an available top-level section", () =>
       { custom: false, video: false },
     ),
   ).toBe("scenes");
+});
+
+test("primary navigation is alphabetical with Custom last", () => {
+  expect(studioNavigationItems(true, true)).toEqual([
+    { section: "scenes", label: "Scene" },
+    { section: "video", label: "Video" },
+    { section: "custom", label: "Custom" },
+  ]);
+  expect(studioNavigationItems(false, true).map((item) => item.label)).toEqual([
+    "Scene",
+    "Custom",
+  ]);
+});
+
+test("an empty active Video section opens its first profile", () => {
+  expect(shouldOpenVideoSelection("video", "h617a_painted")).toBe(true);
+  expect(shouldOpenVideoSelection("video", "video_profile")).toBe(false);
+  expect(shouldOpenVideoSelection("scenes", "h617a_painted")).toBe(false);
 });
 
 test("active context opens only exact current saved content or native scenes", () => {

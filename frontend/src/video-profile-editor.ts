@@ -413,6 +413,36 @@ export class GoveeVideoProfileEditor extends LitElement {
     studioFormStyles,
     css`
       :host {
+        --video-edge-control-width: 72px;
+        --video-screen-min-width: 260px;
+        --video-screen-max-width: 560px;
+        --video-screen-row-min-height: 220px;
+        --video-screen-padding: var(--studio-spacing-md);
+        --video-screen-radius: 14px;
+        --video-screen-image-radius: 7px;
+        --video-screen-shadow-offset: 18px;
+        --video-screen-shadow-blur: 34px;
+        --video-stand-offset: 18px;
+        --video-stand-width: 28%;
+        --video-stand-height: 14px;
+        --video-stand-stroke: 4px;
+        --video-edge-inset: var(--studio-spacing-2xl);
+        --video-edge-thickness: 5px;
+        --video-edge-border-inset: 3px;
+        --video-horizontal-label-width: 48px;
+        --video-horizontal-slider-min-width: 120px;
+        --video-range-label-min-width: 118px;
+        --video-vertical-slider-min-height: 130px;
+        --video-mobile-edge-control-width: 52px;
+        --video-mobile-screen-size: 160px;
+        --video-mobile-horizontal-label-width: 42px;
+        --video-mobile-vertical-slider-min-height: 90px;
+        --video-screen-label-letter-spacing: 0.08em;
+        --video-edge-near-glow-blur: 8px;
+        --video-edge-near-glow-spread: 2px;
+        --video-edge-far-glow-blur: 20px;
+        --video-edge-far-glow-spread: 5px;
+        --video-status-chip-inline-padding: 9px;
         display: block;
         color: var(--primary-text-color);
       }
@@ -434,25 +464,27 @@ export class GoveeVideoProfileEditor extends LitElement {
       .muted,
       .endpoint-labels {
         color: var(--studio-muted);
-        font-size: 13px;
-        line-height: 1.45;
+        font-size: var(--studio-parameter-label-size);
+        line-height: var(--studio-muted-line-height);
       }
 
       .section-note {
-        margin: -6px 0 0;
+        margin: calc(0px - var(--studio-tight-gap)) 0 0;
       }
 
       .screen-brightness {
         display: grid;
         grid-template:
           ". top ." auto
-          "left screen right" minmax(220px, 1fr)
+          "left screen right" minmax(var(--video-screen-row-min-height), 1fr)
           ". bottom ." auto
-          / 72px minmax(260px, 560px) 72px;
+          / var(--video-edge-control-width)
+          minmax(var(--video-screen-min-width), var(--video-screen-max-width))
+          var(--video-edge-control-width);
         align-items: center;
         justify-content: center;
-        gap: 12px;
-        padding: 12px 0 20px;
+        gap: var(--studio-spacing-lg);
+        padding: var(--studio-spacing-lg) 0 var(--studio-spacing-4xl);
       }
 
       .virtual-screen {
@@ -460,13 +492,15 @@ export class GoveeVideoProfileEditor extends LitElement {
         grid-area: screen;
         width: 100%;
         aspect-ratio: 16 / 10;
-        padding: 10px;
-        border: 1px solid color-mix(in srgb, var(--studio-muted) 55%, transparent);
-        border-radius: 14px;
+        padding: var(--video-screen-padding);
+        border: var(--studio-border-width) solid
+          color-mix(in srgb, var(--studio-muted) 55%, transparent);
+        border-radius: var(--video-screen-radius);
         background: #181b22;
         box-shadow:
-          0 18px 34px rgb(15 23 42 / 18%),
-          inset 0 0 0 1px rgb(255 255 255 / 6%);
+          0 var(--video-screen-shadow-offset) var(--video-screen-shadow-blur)
+            rgb(15 23 42 / 18%),
+          inset 0 0 0 var(--studio-border-width) rgb(255 255 255 / 6%);
       }
 
       .screen-image {
@@ -475,25 +509,25 @@ export class GoveeVideoProfileEditor extends LitElement {
         height: 100%;
         place-items: center;
         overflow: hidden;
-        border-radius: 7px;
+        border-radius: var(--video-screen-image-radius);
         color: rgb(255 255 255 / 62%);
         background:
           radial-gradient(circle at 72% 24%, rgb(64 186 255 / 42%), transparent 31%),
           radial-gradient(circle at 25% 72%, rgb(126 87 255 / 38%), transparent 36%),
           linear-gradient(145deg, #24334b, #101724 62%, #1e1633);
-        font-size: 13px;
-        font-weight: 650;
-        letter-spacing: 0.08em;
+        font-size: var(--studio-parameter-label-size);
+        font-weight: var(--studio-font-weight-emphasis);
+        letter-spacing: var(--video-screen-label-letter-spacing);
         text-transform: uppercase;
       }
 
       .screen-stand {
         position: absolute;
-        bottom: -18px;
+        bottom: calc(0px - var(--video-stand-offset));
         left: 50%;
-        width: 28%;
-        height: 14px;
-        border-bottom: 4px solid #353b47;
+        width: var(--video-stand-width);
+        height: var(--video-stand-height);
+        border-bottom: var(--video-stand-stroke) solid #353b47;
         transform: translateX(-50%);
       }
 
@@ -501,8 +535,8 @@ export class GoveeVideoProfileEditor extends LitElement {
         position: absolute;
         top: 0;
         left: 50%;
-        width: 4px;
-        height: 12px;
+        width: var(--video-stand-stroke);
+        height: var(--studio-spacing-lg);
         background: #353b47;
         content: "";
         transform: translateX(-50%);
@@ -510,50 +544,52 @@ export class GoveeVideoProfileEditor extends LitElement {
 
       .screen-edge {
         position: absolute;
-        z-index: 1;
-        border-radius: 999px;
+        z-index: var(--studio-z-raised);
+        border-radius: var(--studio-pill-radius);
         background: rgb(67 168 255);
         box-shadow:
-          0 0 8px 2px rgb(67 168 255 / 72%),
-          0 0 20px 5px rgb(67 168 255 / 34%);
+          0 0 var(--video-edge-near-glow-blur)
+            var(--video-edge-near-glow-spread) rgb(67 168 255 / 72%),
+          0 0 var(--video-edge-far-glow-blur)
+            var(--video-edge-far-glow-spread) rgb(67 168 255 / 34%);
         opacity: calc(0.12 + var(--edge-level) * 0.88);
         pointer-events: none;
       }
 
       .screen-edge-top,
       .screen-edge-bottom {
-        right: 16px;
-        left: 16px;
-        height: 5px;
+        right: var(--video-edge-inset);
+        left: var(--video-edge-inset);
+        height: var(--video-edge-thickness);
       }
 
       .screen-edge-top {
-        top: 3px;
+        top: var(--video-edge-border-inset);
       }
 
       .screen-edge-bottom {
-        bottom: 3px;
+        bottom: var(--video-edge-border-inset);
       }
 
       .screen-edge-left,
       .screen-edge-right {
-        top: 16px;
-        bottom: 16px;
-        width: 5px;
+        top: var(--video-edge-inset);
+        bottom: var(--video-edge-inset);
+        width: var(--video-edge-thickness);
       }
 
       .screen-edge-left {
-        left: 3px;
+        left: var(--video-edge-border-inset);
       }
 
       .screen-edge-right {
-        right: 3px;
+        right: var(--video-edge-border-inset);
       }
 
       .screen-edge-control {
         display: grid;
         align-items: center;
-        gap: 8px;
+        gap: var(--studio-compact-gap);
         min-width: 0;
       }
 
@@ -563,7 +599,9 @@ export class GoveeVideoProfileEditor extends LitElement {
 
       .edge-control-top,
       .edge-control-bottom {
-        grid-template-columns: 48px minmax(120px, 1fr);
+        grid-template-columns:
+          var(--video-horizontal-label-width)
+          minmax(var(--video-horizontal-slider-min-width), 1fr);
       }
 
       .edge-control-top input,
@@ -581,7 +619,9 @@ export class GoveeVideoProfileEditor extends LitElement {
 
       .edge-control-left,
       .edge-control-right {
-        grid-template-rows: auto minmax(130px, 1fr);
+        grid-template-rows:
+          auto
+          minmax(var(--video-vertical-slider-min-height), 1fr);
         justify-items: center;
         height: 100%;
       }
@@ -606,8 +646,8 @@ export class GoveeVideoProfileEditor extends LitElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 14px;
+        gap: var(--studio-spacing-lg);
+        margin-bottom: var(--studio-section-title-gap);
       }
 
       .card-heading h3 {
@@ -615,9 +655,11 @@ export class GoveeVideoProfileEditor extends LitElement {
       }
 
       .range-field {
-        grid-template-columns: minmax(118px, auto) minmax(0, 1fr);
+        grid-template-columns:
+          minmax(var(--video-range-label-min-width), auto)
+          minmax(0, 1fr);
         align-items: center;
-        gap: 10px;
+        gap: var(--studio-control-gap);
         margin-top: 0;
       }
 
@@ -632,24 +674,25 @@ export class GoveeVideoProfileEditor extends LitElement {
 
       .slider-with-endpoints {
         display: grid;
-        gap: 6px;
+        gap: var(--studio-tight-gap);
         min-width: 0;
       }
 
       .endpoint-labels {
         display: flex;
         justify-content: space-between;
-        font-size: 12px;
-        font-weight: 600;
+        font-size: var(--studio-caption-size);
+        font-weight: var(--studio-font-weight-semibold);
       }
 
       .status-chip {
-        padding: 4px 9px;
-        border-radius: 999px;
+        padding: var(--studio-micro-gap)
+          var(--video-status-chip-inline-padding);
+        border-radius: var(--studio-pill-radius);
         color: var(--studio-blue);
         background: var(--studio-blue-soft);
-        font-size: 12px;
-        font-weight: 650;
+        font-size: var(--studio-caption-size);
+        font-weight: var(--studio-font-weight-emphasis);
         white-space: nowrap;
       }
 
@@ -659,10 +702,11 @@ export class GoveeVideoProfileEditor extends LitElement {
       }
 
       .empty-state h3 {
-        margin-bottom: 8px;
+        margin-bottom: var(--studio-compact-gap);
       }
 
-      @media (max-width: 760px) {
+      /* Uses one card column when HA's docked sidebar reduces the editor workspace. */
+      @media (max-width: 1320px) {
         .editor-grid {
           grid-template-columns: 1fr;
         }
@@ -672,6 +716,7 @@ export class GoveeVideoProfileEditor extends LitElement {
         }
       }
 
+      /* Compresses the screen-edge visualisation to the minimum usable phone geometry. */
       @media (max-width: 560px) {
         .range-field {
           grid-template-columns: 1fr;
@@ -680,15 +725,19 @@ export class GoveeVideoProfileEditor extends LitElement {
         .screen-brightness {
           grid-template:
             ". top ." auto
-            "left screen right" minmax(160px, 1fr)
+            "left screen right" minmax(var(--video-mobile-screen-size), 1fr)
             ". bottom ." auto
-            / 52px minmax(160px, 1fr) 52px;
-          gap: 8px;
+            / var(--video-mobile-edge-control-width)
+            minmax(var(--video-mobile-screen-size), 1fr)
+            var(--video-mobile-edge-control-width);
+          gap: var(--studio-compact-gap);
         }
 
         .edge-control-top,
         .edge-control-bottom {
-          grid-template-columns: minmax(0, 1fr) 42px;
+          grid-template-columns:
+            minmax(0, 1fr)
+            var(--video-mobile-horizontal-label-width);
         }
 
         .edge-control-top .parameter-label,
@@ -698,7 +747,10 @@ export class GoveeVideoProfileEditor extends LitElement {
 
         .edge-control-left,
         .edge-control-right {
-          grid-template-rows: auto minmax(90px, 1fr) auto;
+          grid-template-rows:
+            auto
+            minmax(var(--video-mobile-vertical-slider-min-height), 1fr)
+            auto;
         }
       }
     `,

@@ -8,7 +8,14 @@ import { PanelEditorController } from "./panel-editor-controller";
 import { PanelModalController } from "./panel-modal-controller";
 import { PanelModel } from "./panel-model";
 import { PanelPreviewController } from "./panel-preview-controller";
-import { activeStudioContext, editorDevicePath, initialDeviceId, rememberedStudioSection, type StudioSection } from "./studio-navigation";
+import {
+  activeStudioContext,
+  editorDevicePath,
+  initialDeviceId,
+  rememberedStudioSection,
+  shouldOpenVideoSelection,
+  type StudioSection,
+} from "./studio-navigation";
 import type { HomeAssistant, LibraryItem, LibrarySnapshot, LibrarySummary } from "./types";
 import { compareLabels, errorCode, errorMessage } from "./ui-utils";
 import { isCompatibleEditorInfo } from "./validation";
@@ -107,6 +114,9 @@ export class PanelController {
     const transitionEpoch = this.editor.beginTransition();
     if (section === this.model.section) {
       if (section === "scenes" && this.model.sceneEditorOpen) this.model.patch({ sceneEditorOpen: false });
+      if (shouldOpenVideoSelection(section, this.model.content.kind)) {
+        await this.openVideoSelection(transitionEpoch);
+      }
       return;
     }
     if ((section === "custom" && !this.model.customEffectsAvailable) || (section === "video" && !this.model.videoAvailable)) return;
@@ -114,14 +124,7 @@ export class PanelController {
     this.remember();
     if (section === "scenes") return;
     if (section === "video") {
-      const item = this.model.library.items.find(
-        (candidate) => candidate.kind === "video_profile" && this.model.libraryItemAvailable(candidate),
-      );
-      if (item) await this.selectItem(item.id, transitionEpoch);
-      else {
-        const mode = this.model.modelCatalogue?.video_modes[0];
-        if (mode) this.editor.openVideoTemplate(mode.id, mode.label);
-      }
+      await this.openVideoSelection(transitionEpoch);
       return;
     }
     if (
@@ -334,9 +337,11 @@ export class PanelController {
     this.editor.reset();
     const navigation = this.model.userState?.navigation ?? {};
     const remembered = navigation.custom_category;
-    const customEffectCategory = isCustomEffectCategory(remembered) && remembered !== "all" && this.model.customEffectCategoryAvailable(remembered)
-      ? remembered
-      : this.model.defaultCustomEffectCategory();
+    const customEffectCategory = restoredCustomEffectCategory(
+      remembered,
+      (category) => this.model.customEffectCategoryAvailable(category),
+      this.model.defaultCustomEffectCategory(),
+    );
     this.model.patch({
       section: rememberedStudioSection(navigation, { custom: this.model.customEffectsAvailable, video: this.model.videoAvailable }),
       customEffectCategory,
@@ -366,6 +371,22 @@ export class PanelController {
       })[0];
   }
 
+  private async openVideoSelection(transitionEpoch: number): Promise<void> {
+    const item = this.model.library.items.find(
+      (candidate) =>
+        candidate.kind === "video_profile" &&
+        this.model.libraryItemAvailable(candidate),
+    );
+    if (item) {
+      await this.selectItem(item.id, transitionEpoch);
+      return;
+    }
+    const mode = this.model.modelCatalogue?.video_modes[0];
+    if (mode) {
+      this.editor.openVideoTemplate(mode.id, mode.label);
+    }
+  }
+
   private loadIsCurrent(request: LoadRequest): boolean {
     return this.options.connected() && this.api !== undefined && this.loadRequests.isCurrent(request, { api: this.api });
   }
@@ -388,4 +409,14 @@ export class PanelController {
 export function isCustomEffectCategory(value: unknown): value is CustomEffectCategory {
   return value === "all" || value === "music" || value === "single-layer" || value === "multi-layer" ||
     value === "advanced" || value === "special-diy" || value === "my-effects";
+}
+
+export function restoredCustomEffectCategory(
+  remembered: unknown,
+  available: (category: CustomEffectCategory) => boolean,
+  fallback: CustomEffectCategory,
+): CustomEffectCategory {
+  return isCustomEffectCategory(remembered) && available(remembered)
+    ? remembered
+    : fallback;
 }

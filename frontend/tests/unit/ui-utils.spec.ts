@@ -4,6 +4,7 @@ import {
   clamp,
   clampInteger,
   clonePalette,
+  integrationSettingsPath,
   lightControlEntityId,
   moreInfoDetail,
   relocatedIndex,
@@ -80,4 +81,12 @@ test("light controls follow the selected device without hiding the toolbar", () 
   expect(moreInfoDetail("light.cupboard")).toEqual({
     entityId: "light.cupboard",
   });
+  expect(
+    integrationSettingsPath(
+      "/config/integrations/integration/ha_govee_led_ble",
+      "entry a",
+    ),
+  ).toBe(
+    "/config/integrations/integration/ha_govee_led_ble#config_entry=entry+a",
+  );
 });

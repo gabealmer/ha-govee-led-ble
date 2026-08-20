@@ -7,11 +7,13 @@ import {
   studioEditorStyles,
   studioFormStyles,
   studioSelectorStyles,
+  studioTokenStyles,
   studioVisuallyHiddenStyles,
   studioWorkspaceStyles,
 } from "./studio-styles";
 
 export const effectStudioPanelStyles = [
+  studioTokenStyles,
   studioBaseStyles,
   studioCardStyles,
   studioActionStyles,
@@ -22,6 +24,22 @@ export const effectStudioPanelStyles = [
   studioWorkspaceStyles,
   css`
     :host {
+      --studio-device-selector-max-width: 340px;
+      --studio-device-selector-min-width: 180px;
+      --studio-dialog-max-width: 440px;
+      --studio-video-list-max-height: 150px;
+      --studio-live-track-width: 32px;
+      --studio-live-track-padding: 2px;
+      --studio-live-indicator-size: 18px;
+      --studio-live-thumb-size: var(--studio-spacing-xl);
+      --studio-live-thumb-travel: 14px;
+      --studio-live-status-line-height: 16px;
+      --studio-live-spin-duration: 700ms;
+      --studio-live-reduced-motion-duration: 1400ms;
+      --studio-backdrop-blur: 10px;
+      --studio-dialog-shadow-offset: 18px;
+      --studio-dialog-shadow-blur: 52px;
+      --studio-primary-nav-min-item-width: 90px;
       display: flex;
       height: calc(100dvh - env(safe-area-inset-bottom, 0px));
       min-height: 0;
@@ -34,9 +52,10 @@ export const effectStudioPanelStyles = [
 
     .centred,
     .fatal {
-      max-width: 680px;
+      max-width: var(--studio-empty-state-max-width);
       margin: 0 auto;
-      padding: 48px 24px;
+      padding: var(--studio-message-block-padding)
+        var(--studio-message-inline-padding);
     }
 
     .fatal h1 {
@@ -45,7 +64,7 @@ export const effectStudioPanelStyles = [
 
     .fatal a {
       color: var(--studio-blue);
-      font-weight: 600;
+      font-weight: var(--studio-font-weight-semibold);
     }
 
     h1,
@@ -57,25 +76,25 @@ export const effectStudioPanelStyles = [
 
     h1 {
       margin-bottom: 0;
-      font-size: 25px;
-      font-weight: 600;
+      font-size: var(--studio-page-heading-size);
+      font-weight: var(--studio-font-weight-semibold);
     }
 
     h2 {
       margin-bottom: 0;
-      font-size: 20px;
-      font-weight: 600;
+      font-size: var(--studio-heading-size);
+      font-weight: var(--studio-font-weight-semibold);
     }
 
     h3 {
-      margin-bottom: 18px;
-      font-size: 16px;
+      margin-bottom: var(--studio-section-gap);
+      font-size: var(--studio-section-title-size);
     }
 
     select {
-      min-height: 42px;
-      padding: 8px 12px;
-      border: 1px solid var(--studio-border);
+      min-height: var(--studio-control-height);
+      padding: var(--studio-option-padding);
+      border: var(--studio-border-width) solid var(--studio-border);
       border-radius: var(--studio-button-radius);
       color: var(--primary-text-color);
       background: var(--studio-card);
@@ -84,9 +103,9 @@ export const effectStudioPanelStyles = [
     .home-assistant-header {
       display: flex;
       align-items: center;
-      min-height: 40px;
-      padding: 0 16px;
-      flex: 0 0 40px;
+      min-height: var(--studio-app-header-height);
+      padding: 0 var(--studio-chrome-gutter);
+      flex: 0 0 var(--studio-app-header-height);
       box-sizing: border-box;
       border-bottom: var(--app-header-border-bottom, none);
       color: var(--app-header-text-color, #fff);
@@ -97,10 +116,11 @@ export const effectStudioPanelStyles = [
 
     .home-assistant-menu {
       display: inline-grid;
-      width: 40px;
-      height: 40px;
-      margin: 0 16px 0 -10px;
-      padding: 10px;
+      width: var(--studio-app-header-height);
+      height: var(--studio-app-header-height);
+      margin: 0 var(--studio-chrome-gutter) 0
+        calc(0px - var(--studio-control-gap));
+      padding: var(--studio-control-gap);
       border: 0;
       place-items: center;
       color: inherit;
@@ -109,75 +129,80 @@ export const effectStudioPanelStyles = [
     }
 
     .home-assistant-menu svg {
-      width: 20px;
-      height: 20px;
+      width: var(--studio-icon-size);
+      height: var(--studio-icon-size);
       fill: currentColor;
     }
 
     .home-assistant-menu:focus-visible {
-      border-radius: 50%;
-      outline: 2px solid currentColor;
-      outline-offset: -4px;
+      border-radius: var(--studio-round-radius);
+      outline: var(--studio-strong-border-width) solid currentColor;
+      outline-offset: calc(0px - var(--studio-micro-gap));
     }
 
     .studio-toolbar {
       position: sticky;
-      z-index: 4;
+      z-index: var(--studio-z-toolbar);
       top: 0;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 9px;
-      min-height: 48px;
-      padding: 6px 18px;
-      border-bottom: 1px solid var(--studio-border);
+      gap: var(--studio-action-gap);
+      height: var(--studio-app-header-height);
+      min-height: var(--studio-app-header-height);
+      padding: var(--studio-tight-gap) var(--studio-section-gap);
+      box-sizing: border-box;
+      border-bottom: var(--studio-border-width) solid var(--studio-border);
       background: color-mix(
         in srgb,
         var(--primary-background-color, #fff) 94%,
         transparent
       );
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(var(--studio-backdrop-blur));
     }
 
     .device-selector {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: var(--studio-control-gap);
       min-width: 0;
       color: var(--studio-muted);
-      font-size: 13px;
-      font-weight: 600;
+      font-size: var(--studio-parameter-label-size);
+      font-weight: var(--studio-font-weight-semibold);
     }
 
     .device-selector select {
-      width: min(340px, 50vw);
-      min-width: 180px;
+      width: min(var(--studio-device-selector-max-width), 50vw);
+      min-width: var(--studio-device-selector-min-width);
     }
 
     .live-apply-control {
       display: flex;
       align-items: center;
-      gap: 9px;
+      gap: var(--studio-action-gap);
     }
 
     .studio-toolbar-controls {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: var(--studio-micro-gap);
       margin-inline-start: auto;
     }
 
     .light-control-button {
       display: inline-grid;
-      width: 36px;
-      height: 36px;
-      padding: 8px;
+      width: var(--studio-compact-control-height);
+      height: var(--studio-compact-control-height);
+      min-height: var(--studio-compact-control-height);
+      padding: var(--studio-compact-gap);
+      box-sizing: border-box;
       border: 0;
-      border-radius: 50%;
+      border-radius: var(--studio-round-radius);
       place-items: center;
       color: var(--secondary-text-color);
       background: transparent;
       cursor: pointer;
+      text-decoration: none;
     }
 
     .light-control-button:hover {
@@ -191,48 +216,49 @@ export const effectStudioPanelStyles = [
 
     .light-control-button:focus-visible {
       color: var(--primary-text-color);
-      outline: 2px solid var(--studio-blue);
-      outline-offset: 1px;
+      outline: var(--studio-strong-border-width) solid var(--studio-blue);
+      outline-offset: var(--studio-border-width);
     }
 
     .light-control-button svg {
-      width: 20px;
-      height: 20px;
+      width: var(--studio-icon-size);
+      height: var(--studio-icon-size);
       fill: currentColor;
     }
 
     .live-apply-toggle {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      min-height: 36px;
-      padding: 4px 8px;
+      gap: var(--studio-compact-gap);
+      min-height: var(--studio-compact-control-height);
+      padding: var(--studio-micro-gap) var(--studio-compact-gap);
       border: 0;
       color: var(--primary-text-color);
       background: transparent;
       font: inherit;
-      font-weight: 600;
+      font-weight: var(--studio-font-weight-semibold);
       cursor: pointer;
     }
 
     .live-apply-track {
       display: inline-flex;
       align-items: center;
-      width: 32px;
-      height: 18px;
-      padding: 2px;
-      border-radius: 999px;
+      width: var(--studio-live-track-width);
+      height: var(--studio-live-indicator-size);
+      padding: var(--studio-live-track-padding);
+      border-radius: var(--studio-pill-radius);
       background: var(--disabled-color, #9e9e9e);
-      transition: background 120ms ease;
+      transition: background var(--studio-transition-duration) ease;
     }
 
     .live-apply-thumb {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
+      width: var(--studio-live-thumb-size);
+      height: var(--studio-live-thumb-size);
+      border-radius: var(--studio-round-radius);
       background: #fff;
-      box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
-      transition: transform 120ms ease;
+      box-shadow: 0 var(--studio-border-width)
+        var(--studio-strong-border-width) rgb(0 0 0 / 30%);
+      transition: transform var(--studio-transition-duration) ease;
     }
 
     .live-apply-toggle[aria-checked="true"] .live-apply-track {
@@ -240,18 +266,18 @@ export const effectStudioPanelStyles = [
     }
 
     .live-apply-toggle[aria-checked="true"] .live-apply-thumb {
-      transform: translateX(14px);
+      transform: translateX(var(--studio-live-thumb-travel));
     }
 
     .live-apply-status {
       position: relative;
       display: grid;
-      width: 18px;
-      height: 18px;
-      flex: 0 0 18px;
+      width: var(--studio-live-indicator-size);
+      height: var(--studio-live-indicator-size);
+      flex: 0 0 var(--studio-live-indicator-size);
       place-items: center;
-      border: 2px solid transparent;
-      border-radius: 50%;
+      border: var(--studio-strong-border-width) solid transparent;
+      border-radius: var(--studio-round-radius);
     }
 
     .live-apply-status.pending {
@@ -261,7 +287,8 @@ export const effectStudioPanelStyles = [
         transparent
       );
       border-top-color: var(--studio-blue);
-      animation: live-apply-spin 700ms linear infinite;
+      animation: live-apply-spin var(--studio-live-spin-duration) linear
+        infinite;
     }
 
     .live-apply-status.warning {
@@ -270,12 +297,12 @@ export const effectStudioPanelStyles = [
 
     .live-apply-status.warning::after {
       position: absolute;
-      inset: -1px 0 0;
+      inset: calc(0px - var(--studio-border-width)) 0 0;
       color: var(--error-color, #db4437);
       content: "!";
-      font-size: 12px;
-      font-weight: 800;
-      line-height: 16px;
+      font-size: var(--studio-caption-size);
+      font-weight: var(--studio-font-weight-alert);
+      line-height: var(--studio-live-status-line-height);
       text-align: center;
     }
 
@@ -290,23 +317,31 @@ export const effectStudioPanelStyles = [
       min-height: 0;
       overflow: hidden;
       flex: 1 1 auto;
-      grid-template-columns: 190px 230px minmax(0, 1fr);
+      grid-template-columns:
+        var(--studio-navigation-width)
+        var(--studio-list-width)
+        minmax(0, 1fr);
     }
 
     .empty-state {
-      max-width: 680px;
+      max-width: var(--studio-empty-state-max-width);
       margin: 0 auto;
-      padding: 56px 24px;
+      padding: var(--studio-empty-state-block-padding)
+        var(--studio-message-inline-padding);
     }
 
     .empty-state a {
       color: var(--studio-blue);
-      font-weight: 600;
+      font-weight: var(--studio-font-weight-semibold);
     }
 
     .studio.scenes-mode,
     .studio.custom-mode {
-      grid-template-columns: 190px 190px 230px minmax(0, 1fr);
+      grid-template-columns:
+        var(--studio-navigation-width)
+        var(--studio-navigation-width)
+        var(--studio-list-width)
+        minmax(0, 1fr);
     }
 
     .primary-nav {
@@ -314,54 +349,55 @@ export const effectStudioPanelStyles = [
       min-height: 0;
       overflow: auto;
       flex-direction: column;
-      gap: 6px;
-      padding: 22px 16px;
-      border-inline-end: 1px solid var(--studio-border);
+      gap: var(--studio-tight-gap);
+      padding: var(--studio-sidebar-padding);
+      border-inline-end: var(--studio-border-width) solid var(--studio-border);
       background: var(--secondary-background-color, #f5f6f8);
     }
 
     .button-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 9px;
+      gap: var(--studio-action-gap);
     }
 
     .actions > button {
-      min-height: 44px;
+      min-height: var(--studio-control-height);
     }
 
     .dialog-backdrop {
       position: fixed;
-      z-index: 1000;
+      z-index: var(--studio-z-modal);
       inset: 0;
       display: grid;
       place-items: center;
       overflow: auto;
       overscroll-behavior: contain;
-      padding: 24px;
+      padding: var(--studio-dialog-padding);
       background: rgb(0 0 0 / 45%);
     }
 
     .dialog-card {
-      width: min(440px, 100%);
-      max-height: calc(100vh - 48px);
+      width: min(var(--studio-dialog-max-width), 100%);
+      max-height: calc(100vh - var(--studio-dialog-viewport-gutter));
       overflow: auto;
-      padding: 24px;
-      border: 1px solid var(--studio-border);
-      border-radius: 12px;
+      padding: var(--studio-dialog-padding);
+      border: var(--studio-border-width) solid var(--studio-border);
+      border-radius: var(--studio-dialog-radius);
       color: var(--primary-text-color);
       background: var(--studio-card);
-      box-shadow: 0 18px 52px rgb(0 0 0 / 28%);
+      box-shadow: 0 var(--studio-dialog-shadow-offset)
+        var(--studio-dialog-shadow-blur) rgb(0 0 0 / 28%);
     }
 
     .dialog-card p {
-      margin-top: 16px;
+      margin-top: var(--studio-spacing-2xl);
       margin-bottom: 0;
-      line-height: 1.5;
+      line-height: var(--studio-body-line-height);
     }
 
     .save-dialog .field {
-      margin-top: 20px;
+      margin-top: var(--studio-spacing-4xl);
     }
 
     .dialog-error {
@@ -371,19 +407,19 @@ export const effectStudioPanelStyles = [
     .dialog-actions {
       display: flex;
       justify-content: flex-end;
-      gap: 9px;
-      margin-top: 24px;
+      gap: var(--studio-action-gap);
+      margin-top: var(--studio-dialog-padding);
     }
 
     .controls {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 18px;
-      margin-top: 18px;
+      gap: var(--studio-section-gap);
+      margin-top: var(--studio-section-gap);
     }
 
     .single-effect-settings {
-      margin-bottom: 18px;
+      margin-bottom: var(--studio-section-gap);
     }
 
     .single-effect-settings .field {
@@ -391,11 +427,11 @@ export const effectStudioPanelStyles = [
     }
 
     .opaque-content h3 {
-      margin: 0 0 8px;
+      margin: 0 0 var(--studio-compact-gap);
     }
 
     .opaque-content h3:not(:first-child) {
-      margin-top: 20px;
+      margin-top: var(--studio-spacing-4xl);
     }
 
     .opaque-content p {
@@ -405,12 +441,13 @@ export const effectStudioPanelStyles = [
     .opaque-content pre {
       max-width: 100%;
       margin: 0;
-      padding: 16px;
+      padding: var(--studio-spacing-2xl);
       overflow: auto;
-      border-radius: 8px;
+      border-radius: var(--studio-control-radius);
       background: var(--secondary-background-color, #f1f1f1);
       color: var(--primary-text-color);
-      font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+      font: var(--studio-caption-size) / var(--studio-body-line-height)
+        ui-monospace, SFMono-Regular, Consolas, monospace;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
@@ -419,17 +456,17 @@ export const effectStudioPanelStyles = [
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      margin-top: 14px;
+      gap: var(--studio-control-gap);
+      margin-top: var(--studio-field-margin);
     }
 
     .paint-off {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      min-height: 36px;
-      padding: 6px 10px;
-      border: 1px solid var(--studio-border);
+      gap: var(--studio-compact-gap);
+      min-height: var(--studio-compact-control-height);
+      padding: var(--studio-tight-gap) var(--studio-control-gap);
+      border: var(--studio-border-width) solid var(--studio-border);
       border-radius: var(--studio-button-radius);
       color: var(--primary-text-color);
       background: var(--studio-card);
@@ -442,22 +479,24 @@ export const effectStudioPanelStyles = [
         var(--studio-blue) 58%,
         var(--studio-border)
       );
-      box-shadow: inset 0 0 0 1px var(--studio-blue);
+      box-shadow: inset 0 0 0 var(--studio-border-width)
+        var(--studio-blue);
     }
 
     .paint-off-swatch {
-      width: 16px;
-      height: 16px;
-      border: 1px solid var(--studio-border);
-      border-radius: 50%;
+      width: var(--studio-small-swatch-size);
+      height: var(--studio-small-swatch-size);
+      border: var(--studio-border-width) solid var(--studio-border);
+      border-radius: var(--studio-round-radius);
       background: #000;
-      box-shadow: inset 0 0 0 1px rgb(255 255 255 / 14%);
+      box-shadow: inset 0 0 0 var(--studio-border-width)
+        rgb(255 255 255 / 14%);
     }
 
     .action-error,
     .read-only-copy {
       margin: 0 0 var(--studio-section-gap);
-      line-height: 1.45;
+      line-height: var(--studio-muted-line-height);
     }
 
     .action-error {
@@ -468,6 +507,55 @@ export const effectStudioPanelStyles = [
       color: var(--studio-muted);
     }
 
+    /* Accommodates Home Assistant's docked sidebar on common 1024px and 1280px desktops. */
+    @media (min-width: 901px) and (max-width: 1320px) {
+      .studio.scenes-mode,
+      .studio.custom-mode {
+        flex-basis: 0;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        grid-template-columns:
+          var(--studio-stacked-navigation-width)
+          minmax(0, 1fr);
+      }
+
+      .scenes-mode .primary-nav,
+      .custom-mode .primary-nav {
+        grid-row: 1 / span 3;
+      }
+
+      .scenes-mode > .editor,
+      .custom-mode > .editor {
+        grid-row: 3;
+        grid-column: 2;
+      }
+
+      .studio.video-mode {
+        flex-basis: 0;
+        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-columns:
+          var(--studio-stacked-navigation-width)
+          minmax(0, 1fr);
+      }
+
+      .video-mode .primary-nav {
+        grid-row: 1 / span 2;
+      }
+
+      .video-mode .library {
+        grid-row: 1;
+        grid-column: 2;
+        max-height: var(--studio-video-list-max-height);
+        border-inline-end: 0;
+        border-bottom: var(--studio-border-width) solid var(--studio-border);
+      }
+
+      .video-mode .editor {
+        grid-row: 2;
+        grid-column: 2;
+      }
+    }
+
+    /* Switches from bounded panel grids to document-flow layout on narrow screens. */
     @media (max-width: 900px) {
       :host {
         height: auto;
@@ -476,7 +564,9 @@ export const effectStudioPanelStyles = [
       }
 
       .studio {
-        grid-template-columns: 170px minmax(0, 1fr);
+        grid-template-columns:
+          var(--studio-stacked-navigation-width)
+          minmax(0, 1fr);
         min-height: 0;
         overflow: visible;
         flex: none;
@@ -484,7 +574,9 @@ export const effectStudioPanelStyles = [
 
       .studio.scenes-mode,
       .studio.custom-mode {
-        grid-template-columns: 170px minmax(0, 1fr);
+        grid-template-columns:
+          var(--studio-stacked-navigation-width)
+          minmax(0, 1fr);
       }
 
       .custom-mode .effect-categories,
@@ -505,6 +597,7 @@ export const effectStudioPanelStyles = [
       }
     }
 
+    /* Moves primary navigation into a horizontal row on phone and small tablet widths. */
     @media (max-width: 760px) {
       .studio {
         display: block;
@@ -512,10 +605,13 @@ export const effectStudioPanelStyles = [
 
       .primary-nav {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-        padding: 10px 16px;
+        grid-template-columns: repeat(
+          auto-fit,
+          minmax(var(--studio-primary-nav-min-item-width), 1fr)
+        );
+        padding: var(--studio-control-gap) var(--studio-chrome-gutter);
         border-inline-end: 0;
-        border-bottom: 1px solid var(--studio-border);
+        border-bottom: var(--studio-border-width) solid var(--studio-border);
       }
 
       .selector {
@@ -523,7 +619,7 @@ export const effectStudioPanelStyles = [
       }
 
       .library {
-        padding-block: 18px;
+        padding-block: var(--studio-section-gap);
       }
 
       .effect-categories .selector {
@@ -535,17 +631,19 @@ export const effectStudioPanelStyles = [
       }
     }
 
+    /* Stacks the toolbar only when its controls no longer fit on one phone row. */
     @media (max-width: 480px) {
       .studio-toolbar {
+        height: auto;
         align-items: stretch;
         flex-direction: column;
-        padding-block: 10px;
+        padding-block: var(--studio-control-gap);
       }
 
       .device-selector {
         align-items: stretch;
         flex-direction: column;
-        gap: 5px;
+        gap: var(--studio-tight-gap);
       }
 
       .device-selector select {
@@ -572,7 +670,7 @@ export const effectStudioPanelStyles = [
       }
 
       .live-apply-status.pending {
-        animation-duration: 1400ms;
+        animation-duration: var(--studio-live-reduced-motion-duration);
       }
 
       .live-apply-track,
