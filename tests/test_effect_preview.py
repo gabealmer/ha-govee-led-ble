@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -44,7 +44,7 @@ from custom_components.ha_govee_led_ble.effect_preview import (
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
-from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -64,6 +64,7 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         music_mode="off",
         video_mode="off",
         writes=[],
+        async_update_listeners=MagicMock(),
     )
     coordinator.async_preview_preflight = AsyncMock()
 
@@ -74,6 +75,12 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
     coordinator.async_preview_observe = AsyncMock(return_value=True)
     coordinator.send_command = AsyncMock(side_effect=AssertionError("preview verification must not call send_command"))
     return coordinator
+
+
+def _alternate_speed_index(scene: SceneEntry) -> int:
+    speed = scene.speed
+    assert speed is not None and speed.option_count > 1
+    return (speed.default_index + 1) % speed.option_count
 
 
 async def _manager(
@@ -412,9 +419,17 @@ async def test_committed_scene_snapshot_persists_the_written_canonical_body(
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
     session_id = _open(manager, owner, [])
-    scene = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.scene_type == 2)
+    scene = next(
+        entry
+        for entry in SCENE_ENTRIES["H617A"]
+        if entry.scene_type == 2 and entry.speed is not None and entry.speed.option_count > 1
+    )
     content = decode_catalogue_layered_scene("H617A", scene)
     assert content is not None
+    content = replace(
+        content,
+        speed_index=_alternate_speed_index(scene),
+    )
 
     await manager.async_queue_snapshot(
         session_id=session_id,
@@ -435,6 +450,53 @@ async def test_committed_scene_snapshot_persists_the_written_canonical_body(
     await manager.async_shutdown()
 
 
+async def test_committed_catalogue_default_removes_the_stored_override(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    scene = next(
+        entry
+        for entry in SCENE_ENTRIES["H617A"]
+        if entry.scene_type == 2 and entry.speed is not None and entry.speed.option_count > 1
+    )
+    content = decode_catalogue_layered_scene("H617A", scene)
+    assert content is not None
+    changed = replace(
+        content,
+        speed_index=_alternate_speed_index(scene),
+    )
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=LibraryItem.new("Edited scene", changed),
+        committed=True,
+    )
+    await manager.async_wait_idle("entry-a")
+    assert manager._scene_defaults.get("entry-a", scene.scene_id, scene.effect_id) is not None
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=2,
+        updated_at="2026-08-17T00:00:01Z",
+        item=LibraryItem.new("Catalogue scene", content),
+        committed=True,
+    )
+    await manager.async_wait_idle("entry-a")
+
+    assert manager._scene_defaults.get("entry-a", scene.scene_id, scene.effect_id) is None
+    await manager.async_shutdown()
+
+
 async def test_failed_committed_scene_snapshot_does_not_persist(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
@@ -444,9 +506,17 @@ async def test_failed_committed_scene_snapshot_does_not_persist(
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
     session_id = _open(manager, owner, [])
-    scene = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.scene_type == 2)
+    scene = next(
+        entry
+        for entry in SCENE_ENTRIES["H617A"]
+        if entry.scene_type == 2 and entry.speed is not None and entry.speed.option_count > 1
+    )
     content = decode_catalogue_layered_scene("H617A", scene)
     assert content is not None
+    content = replace(
+        content,
+        speed_index=_alternate_speed_index(scene),
+    )
 
     await manager.async_queue_snapshot(
         session_id=session_id,
@@ -477,9 +547,17 @@ async def test_scene_default_storage_failure_is_reported_after_transport(
     owner = object()
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
-    scene = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.scene_type == 2)
+    scene = next(
+        entry
+        for entry in SCENE_ENTRIES["H617A"]
+        if entry.scene_type == 2 and entry.speed is not None and entry.speed.option_count > 1
+    )
     content = decode_catalogue_layered_scene("H617A", scene)
     assert content is not None
+    content = replace(
+        content,
+        speed_index=_alternate_speed_index(scene),
+    )
 
     await manager.async_queue_snapshot(
         session_id=session_id,
@@ -856,6 +934,7 @@ async def test_successful_unsaved_preview_invalidates_persistent_observed_match(
     assert observed is not None
     assert observed.matched_operation_id is None
     assert observed.confidence is ObservationConfidence.UNKNOWN
+    coordinator.async_update_listeners.assert_called_once()
     await manager.async_shutdown()
 
 

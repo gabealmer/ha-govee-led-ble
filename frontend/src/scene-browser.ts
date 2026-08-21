@@ -49,6 +49,13 @@ export interface LibraryItemDeleteRequest {
   returnFocus: HTMLElement;
 }
 
+function categorySelection(value: string): CategorySelection {
+  if (value === "all" || value === "custom") {
+    return value;
+  }
+  return Number(value);
+}
+
 export class GoveeSceneBrowser extends LitElement {
   @property({ attribute: false })
   public api?: EffectStudioApi;
@@ -61,6 +68,9 @@ export class GoveeSceneBrowser extends LitElement {
 
   @property({ type: Boolean })
   public isAdmin = false;
+
+  @property({ type: Boolean })
+  public autoSaveEnabled = false;
 
   @property({ attribute: false })
   public savedSceneSelection?: LibraryItem;
@@ -100,6 +110,25 @@ export class GoveeSceneBrowser extends LitElement {
 
   public currentPreviewRequest(): ScenePreviewRequest | undefined {
     return this.workflow.previewRequest(this.isAdmin);
+  }
+
+  public invokeSaveShortcut(): boolean {
+    if (!this.isAdmin || this.viewState.saving) {
+      return false;
+    }
+    if (this.workflow.sceneDefaultDirty) {
+      void this.workflow.setCurrentDefault(true);
+      return true;
+    }
+    if (
+      this.viewState.selectedItem &&
+      this.workflow.sceneDirty &&
+      this.viewState.content?.kind !== "scene_layered"
+    ) {
+      void this.workflow.save(true);
+      return true;
+    }
+    return false;
   }
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
@@ -154,11 +183,31 @@ export class GoveeSceneBrowser extends LitElement {
       `;
     }
     return html`
-      <aside class="sidebar category-sidebar categories" aria-label="Scene categories">
-        ${this.sortedCategories.map((category) => this.categoryButton(category.id, category.label))}
-      </aside>
-
       <aside class="sidebar item-sidebar scenes" aria-label="Scenes">
+        <div class="field scene-category">
+          <select
+            aria-label="Scene category"
+            @change=${(event: Event) => {
+              this.dismissExternalEdit();
+              this.workflow.setCategory(
+                categorySelection(
+                  (event.target as HTMLSelectElement).value,
+                ),
+              );
+            }}
+          >
+            ${this.sortedCategories.map(
+              (category) => html`
+                <option
+                  value=${String(category.id)}
+                  .selected=${this.viewState.category === category.id}
+                >
+                  ${category.label}
+                </option>
+              `,
+            )}
+          </select>
+        </div>
         ${this.filteredSceneEntries.map((entry) =>
           entry.kind === "custom"
             ? this.sceneButton(`custom:${entry.item.id}`, entry.label, () => this.selectCustom(entry.item, true))
@@ -187,23 +236,6 @@ export class GoveeSceneBrowser extends LitElement {
       this.viewState,
       this.workflow.compatibleCustomScenes,
     );
-  }
-
-  private categoryButton(category: CategorySelection, label: string) {
-    const selected = this.viewState.category === category;
-    return html`
-      <button
-        class="selector ${selected ? "selected" : ""}"
-        type="button"
-        aria-current=${selected ? "page" : nothing}
-        @click=${() => {
-          this.dismissExternalEdit();
-          this.workflow.setCategory(category);
-        }}
-      >
-        ${label}
-      </button>
-    `;
   }
 
   private sceneButton(key: string, label: string, select: () => void) {
@@ -235,9 +267,10 @@ export class GoveeSceneBrowser extends LitElement {
     const saveDisabled = !state.name.trim() || (state.selectedItem !== undefined && !this.workflow.sceneDirty);
     return html`
       <header class="editor-heading">
-        <div class="editor-title">
+        <div class="editor-title ${custom ? "mobile-editable-heading" : ""}">
           ${custom
             ? html`
+                <span class="mobile-name-label">Name</span>
                 <div class="editable-title">
                   <input
                     class="editor-name"
@@ -254,7 +287,9 @@ export class GoveeSceneBrowser extends LitElement {
                     : nothing}
                 </div>
               `
-            : html`<h2>${scene.display_name}</h2>`}
+            : html`<div class="mobile-redundant-heading">
+                <h2>${scene.display_name}</h2>
+              </div>`}
           ${state.selectedItem
             ? html`<small class="origin-name">
                 ${effectOriginDescription(state.selectedItem.origin, scene.display_name)}
@@ -313,7 +348,22 @@ export class GoveeSceneBrowser extends LitElement {
                   ?disabled=${!this.isAdmin || state.saving}
                   @click=${this.resetToCatalogue}
                 >
-                  Defaults
+                  Reset to Defaults
+                </button>
+              `
+            : nothing}
+          ${nativeSelection &&
+          !this.autoSaveEnabled &&
+          this.workflow.sceneDefaultDirty
+            ? html`
+                <button
+                  class="primary"
+                  type="button"
+                  ?disabled=${!this.isAdmin || state.saving}
+                  @click=${() =>
+                    void this.workflow.setCurrentDefault(this.isAdmin)}
+                >
+                  ${state.saving ? "Saving..." : "Set as Default"}
                 </button>
               `
             : nothing}
@@ -338,7 +388,11 @@ export class GoveeSceneBrowser extends LitElement {
                   .disabled=${!this.isAdmin}
                   @value-changed=${(event: CustomEvent<SegmentedControlChange<number>>) => {
                     this.workflow.setSpeedIndex(event.detail.value);
-                    this.dispatchPreview();
+                    if (this.autoSaveEnabled) {
+                      void this.workflow.setCurrentDefault(this.isAdmin);
+                    } else {
+                      this.dispatchPreview();
+                    }
                   }}
                 ></govee-segmented-control>
               `
@@ -498,6 +552,15 @@ export class GoveeSceneBrowser extends LitElement {
         line-height: var(--studio-reading-line-height);
       }
       .scene-parameters { margin-top: var(--studio-section-gap); }
+      .scene-category {
+        position: sticky;
+        z-index: var(--studio-z-raised);
+        top: 0;
+        gap: 0;
+        margin: 0 0 var(--studio-compact-gap);
+        padding-bottom: var(--studio-micro-gap);
+        background: var(--primary-background-color);
+      }
       .parameter-summary {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -553,39 +616,53 @@ export class GoveeSceneBrowser extends LitElement {
         padding: var(--studio-message-block-padding)
           var(--studio-editor-padding);
       }
-      /* Places categories, scenes, and detail in stacked rows beside HA's docked sidebar. */
+      .mobile-name-label {
+        display: none;
+      }
+      /* Places scenes above detail beside HA's docked sidebar. */
       @media (min-width: 901px) and (max-width: 1320px) {
-        .category-sidebar {
-          display: flex;
-          grid-row: 1;
-          grid-column: 2;
-          gap: var(--studio-tight-gap);
-          overflow-x: auto;
-          padding: var(--studio-responsive-navigation-padding);
-          border-inline-end: 0;
-          border-bottom: var(--studio-border-width) solid var(--studio-border);
-        }
-        .category-sidebar .selector {
-          width: auto;
-          flex: 0 0 auto;
-          white-space: nowrap;
-        }
         .item-sidebar {
-          grid-row: 2;
+          grid-row: 1;
           grid-column: 2;
           max-height: var(--studio-stacked-list-max-height);
           border-inline-end: 0;
           border-bottom: var(--studio-border-width) solid var(--studio-border);
         }
         .editor-surface {
-          grid-row: 3;
+          grid-row: 2;
           grid-column: 2;
         }
       }
       /* The panel owns document-flow placement below this width. */
       @media (max-width: 900px) { :host { display: block; } }
       /* Parameter summaries become single-column on phones. */
-      @media (max-width: 600px) { .parameter-summary { grid-template-columns: 1fr; } }
+      @media (max-width: 600px) {
+        .parameter-summary { grid-template-columns: 1fr; }
+        .detail {
+          display: flex;
+          flex-direction: column;
+        }
+        .editor-heading {
+          display: contents;
+        }
+        .editor-heading .actions {
+          order: 100;
+          margin-top: var(--studio-section-gap);
+        }
+        .editor-heading .mobile-editable-heading {
+          order: 99;
+          margin-top: var(--studio-section-gap);
+        }
+        .mobile-name-label {
+          display: block;
+          color: var(--studio-muted);
+          font-size: var(--studio-parameter-label-size);
+          font-weight: var(--studio-parameter-label-weight);
+        }
+        .mobile-redundant-heading {
+          display: none;
+        }
+      }
     `,
   ];
 }

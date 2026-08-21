@@ -197,6 +197,33 @@ describe("SceneBrowserWorkflow", () => {
     expect(api.sceneDetail).toHaveBeenCalledTimes(2);
   });
 
+  test("setting a changed speed as default adopts the returned baseline", async () => {
+    const savedDetail = {
+      ...detail(firstScene, 2),
+      has_default: true,
+    };
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1)),
+      setSceneDefault: vi.fn().mockResolvedValue(savedDetail),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+    workflow.setSpeedIndex(2);
+
+    expect(workflow.sceneDefaultDirty).toBe(true);
+    await workflow.setCurrentDefault(true);
+
+    expect(api.setSceneDefault).toHaveBeenCalledWith(
+      device.config_entry_id,
+      firstScene,
+      2,
+    );
+    expect(workflow.sceneDefaultDirty).toBe(false);
+    expect(workflow.state.hasDefault).toBe(true);
+  });
+
   test("a completed stale save is announced without restoring its old selection", async () => {
     const pendingSave = deferred<LibraryItem>();
     const saved = libraryItem("saved-copy", firstScene, "Glacier copy");

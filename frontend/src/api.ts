@@ -107,6 +107,17 @@ export class EffectStudioApi {
     });
   }
 
+  public async applySavedEffect(
+    configEntryId: string,
+    itemId: string,
+  ): Promise<void> {
+    await this.call("apply", {
+      config_entry_id: configEntryId,
+      item_id: itemId,
+      updated_at: new Date().toISOString(),
+    });
+  }
+
   public async openPreviewSession(): Promise<string> {
     const result = await this.call("preview/session/open");
     const sessionId = resultField(result, "session_id");
@@ -207,6 +218,20 @@ export class EffectStudioApi {
       config_entry_id: configEntryId,
       scene_id: scene.scene_id,
       effect_id: scene.effect_id,
+    }).then(decodeSceneDetail);
+  }
+
+  public setSceneDefault(
+    configEntryId: string,
+    scene: SceneSummary,
+    speedIndex: number | null,
+  ): Promise<SceneDetail> {
+    return this.call("scene/default/set", {
+      config_entry_id: configEntryId,
+      scene_id: scene.scene_id,
+      effect_id: scene.effect_id,
+      ...(speedIndex === null ? {} : { speed_index: speedIndex }),
+      updated_at: new Date().toISOString(),
     }).then(decodeSceneDetail);
   }
 

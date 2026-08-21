@@ -47,10 +47,7 @@ export class GoveeSwitchControl extends LitElement {
     studioBaseStyles,
     css`
       :host {
-        --switch-track-width: 42px;
-        --switch-track-height: var(--studio-spacing-6xl);
-        --switch-thumb-size: var(--studio-spacing-3xl);
-        --switch-thumb-inset: 2px;
+        --switch-track-width: 48px;
         display: inline-block;
         flex: 0 0 auto;
       }
@@ -58,10 +55,10 @@ export class GoveeSwitchControl extends LitElement {
       button {
         position: relative;
         width: var(--switch-track-width);
-        min-height: var(--switch-track-height);
-        height: var(--switch-track-height);
+        min-height: var(--studio-switch-track-height);
+        height: var(--studio-switch-track-height);
         padding: 0;
-        border: var(--studio-border-width) solid var(--studio-border);
+        border: 0;
         border-radius: var(--studio-pill-radius);
         background: color-mix(
           in srgb,
@@ -69,14 +66,16 @@ export class GoveeSwitchControl extends LitElement {
           var(--studio-card)
         );
         cursor: pointer;
+        transition: background var(--studio-switch-transition-duration)
+          var(--studio-switch-transition-easing);
       }
 
       button span {
         position: absolute;
-        top: var(--switch-thumb-inset);
-        left: var(--switch-thumb-inset);
-        width: var(--switch-thumb-size);
-        height: var(--switch-thumb-size);
+        top: var(--studio-switch-thumb-inset);
+        left: var(--studio-switch-thumb-inset);
+        width: var(--studio-switch-thumb-size);
+        height: var(--studio-switch-thumb-size);
         border-radius: var(--studio-round-radius);
         background: color-mix(
           in srgb,
@@ -85,7 +84,11 @@ export class GoveeSwitchControl extends LitElement {
         );
         box-shadow: 0 var(--studio-border-width)
           var(--studio-strong-border-width) rgb(0 0 0 / 20%);
-        transition: transform var(--studio-transition-duration) ease;
+        transition:
+          transform var(--studio-switch-transition-duration)
+            var(--studio-switch-transition-easing),
+          background var(--studio-switch-transition-duration)
+            var(--studio-switch-transition-easing);
       }
 
       button.on {
@@ -103,10 +106,22 @@ export class GoveeSwitchControl extends LitElement {
 
       button.on span {
         background: var(--text-primary-color, #fff);
-        transform: translateX(var(--switch-thumb-size));
+        transform: translateX(
+          calc(
+            var(--switch-track-width) - var(--studio-switch-thumb-inset) -
+              var(--studio-switch-thumb-inset) -
+              var(--studio-switch-thumb-size)
+          )
+        );
+      }
+
+      button:focus-visible {
+        outline: var(--studio-focus-width) solid var(--studio-blue);
+        outline-offset: var(--studio-focus-offset);
       }
 
       @media (prefers-reduced-motion: reduce) {
+        button,
         button span {
           transition: none;
         }

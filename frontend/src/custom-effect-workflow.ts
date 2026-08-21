@@ -12,12 +12,11 @@ const CATEGORY_PRIORITY: readonly Exclude<
   CustomEffectCategory,
   "all"
 >[] = [
-  "my-effects",
   "single-layer",
   "multi-layer",
-  "advanced",
   "music",
   "special-diy",
+  "advanced",
 ];
 
 const CATEGORY_LABELS: Readonly<
@@ -25,19 +24,17 @@ const CATEGORY_LABELS: Readonly<
 > = {
   all: "All",
   "my-effects": "My Effects",
-  "multi-layer": "Multi Layer",
-  music: "Music",
-  "single-layer": "Single Layer",
+  "multi-layer": "Layered Effects",
+  music: "Reactive",
+  "single-layer": "Effects",
   "special-diy": "Special DIY",
   advanced: "Advanced",
 };
 
 const CATEGORY_DISPLAY_ORDER: readonly CustomEffectCategory[] = [
-  "all",
-  "my-effects",
+  "single-layer",
   "multi-layer",
   "music",
-  "single-layer",
   "special-diy",
   "advanced",
 ];
@@ -59,19 +56,7 @@ export function defaultCustomEffectCategory(
   return (
     CATEGORY_PRIORITY.find((category) =>
       customEffectCategoryAvailable(context, category),
-    ) ?? "all"
-  );
-}
-
-export function showCustomEffectSelector(
-  hasCurrentItem: boolean,
-  customCopyStarted: boolean,
-  templateSourceLabel: string | undefined,
-): boolean {
-  return (
-    !hasCurrentItem &&
-    !customCopyStarted &&
-    templateSourceLabel === undefined
+    ) ?? "single-layer"
   );
 }
 

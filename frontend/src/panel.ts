@@ -16,6 +16,7 @@ import {
   isAdvancedEditableContent,
   isCustomEffectContent,
 } from "./effect-editor-model";
+import { customEffectCategories } from "./custom-effect-workflow";
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import "./music-profile-editor";
 import "./palette-editor";
@@ -36,7 +37,7 @@ import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
 import {
   studioNavigationItems,
-  type StudioSection,
+  type StudioNavigationItem,
 } from "./studio-navigation";
 import "./video-profile-editor";
 import type {
@@ -98,6 +99,10 @@ export class GoveeLedEffectStudio extends LitElement {
       {
         apiReady: () => this.controller?.api !== undefined,
         selectItem: (itemId) => void this.controller.selectItem(itemId),
+        editorTransitionStarted: () =>
+          this.controller?.cancelPendingAutoSave(),
+        contentCommitted: (interaction) =>
+          this.controller?.contentCommitted(interaction),
       },
     );
     this.controller = new PanelController(
@@ -124,6 +129,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
   public connectedCallback(): void {
     super.connectedCallback();
+    this.addEventListener("keydown", this.keyDown);
     this.model.syncAdmin(this.hass);
     if (this.hass && !this.controller.api) {
       void this.controller.load(this.hass, this.isAdmin);
@@ -131,6 +137,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   public disconnectedCallback(): void {
+    this.removeEventListener("keydown", this.keyDown);
     this.modal.releaseScrollLock();
     super.disconnectedCallback();
     this.editor.beginTransition();
@@ -221,8 +228,10 @@ export class GoveeLedEffectStudio extends LitElement {
         <nav class="primary-nav" aria-label="Create">
           ${studioNavigationItems(
             this.model.videoAvailable,
-            this.model.customEffectsAvailable,
-          ).map((item) => this.navButton(item.section, item.label))}
+            this.model.customEffectsAvailable
+              ? customEffectCategories(this.model.customEffectListContext)
+              : [],
+          ).map((item) => this.navButton(item))}
         </nav>
 
         <govee-scene-browser
@@ -234,6 +243,7 @@ export class GoveeLedEffectStudio extends LitElement {
           .panelNotice=${this.model.notice}
           .previewStatus=${this.model.previewStatus}
           .isAdmin=${this.isAdmin}
+          .autoSaveEnabled=${this.model.autoSaveEnabled}
           .savedSceneSelection=${this.model.savedSceneSelection}
           .initialSelection=${this.model.sceneInitialSelection}
           @library-item-saved=${this.sceneLibraryItemSaved}
@@ -293,6 +303,7 @@ export class GoveeLedEffectStudio extends LitElement {
         ${this.renderDeviceSelector()}
         <div class="studio-toolbar-controls">
           ${liveApplyVisible ? this.renderLiveApplyControl() : nothing}
+          ${liveApplyVisible ? this.renderAutoSaveControl() : nothing}
           ${device && lightEntityId
             ? this.renderLightControl(device.display_name, lightEntityId)
             : nothing}
@@ -420,14 +431,15 @@ export class GoveeLedEffectStudio extends LitElement {
           class="live-apply-toggle"
           type="button"
           role="switch"
+          aria-label="Live"
           aria-checked=${this.model.liveApplyEnabled}
           @click=${() =>
             this.preview.toggle(this.currentScenePreviewRequest())}
         >
           <span class="live-apply-track" aria-hidden="true">
+            <span class="live-apply-label">Live</span>
             <span class="live-apply-thumb"></span>
           </span>
-          <span>Live</span>
         </button>
         <span
           class="live-apply-status ${pending
@@ -447,6 +459,30 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
+  private renderAutoSaveControl() {
+    return html`
+      <button
+        class="live-apply-toggle save-toggle"
+        type="button"
+        role="switch"
+        aria-label="Save automatically"
+        aria-checked=${this.model.autoSaveEnabled}
+        title="Automatically save committed changes"
+        @click=${() => this.controller.toggleAutoSave()}
+      >
+        <span class="live-apply-track" aria-hidden="true">
+          <span class="live-apply-label save-label">
+            <svg viewBox="0 0 24 24">
+              <path d="M17 3H5a2 2 0 0 0-2 2v14h18V7l-4-4m-5 14a3 3 0 1 1 0-6 3 3 0 0 1 0 6m3-8H5V5h10v4Z"></path>
+            </svg>
+            Save
+          </span>
+          <span class="live-apply-thumb"></span>
+        </span>
+      </button>
+    `;
+  }
+
   private renderFatalError() {
     return html`
       <main class="fatal">
@@ -460,15 +496,20 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
-  private navButton(section: StudioSection, label: string) {
+  private navButton(item: StudioNavigationItem) {
+    const selected =
+      this.section === item.section &&
+      (item.section !== "custom" ||
+        item.category === this.model.customEffectCategory);
     return html`
       <button
-        class="selector ${this.section === section ? "selected" : ""}"
+        class="selector ${selected ? "selected" : ""}"
         type="button"
-        aria-current=${this.section === section ? "page" : nothing}
-        @click=${() => void this.controller.selectSection(section)}
+        aria-current=${selected ? "page" : nothing}
+        @click=${() =>
+          void this.controller.selectSection(item.section, item.category)}
       >
-        ${label}
+        ${item.label}
       </button>
     `;
   }
@@ -481,11 +522,6 @@ export class GoveeLedEffectStudio extends LitElement {
         .currentItemId=${this.currentItem?.id}
         .templateSelection=${this.model.customTemplateSelection}
         .isAdmin=${this.isAdmin}
-        @custom-category-requested=${(
-          event: CustomEvent<CustomEffectBrowserCategoryRequest>,
-        ) => {
-          this.controller.categoryChanged(event.detail.category);
-        }}
         @custom-entry-requested=${(
           event: CustomEvent<CustomEffectBrowserEntryRequest>,
         ) => this.editor.selectCustomEffectEntry(event.detail.entry)}
@@ -712,11 +748,18 @@ export class GoveeLedEffectStudio extends LitElement {
           @submit=${(event: SubmitEvent) => {
             event.preventDefault();
             this.modal.confirmNamedSave(
-              () => void this.controller.save(),
+              (name, mode) =>
+                void (mode === "copy"
+                  ? this.controller.saveAs(name)
+                  : this.controller.save()),
             );
           }}
         >
-          <h2 id="save-effect-title">New Custom Effect</h2>
+          <h2 id="save-effect-title">
+            ${this.model.saveNameMode === "copy"
+              ? "Save Effect As"
+              : "New Custom Effect"}
+          </h2>
           <label class="field">
             <span>Name</span>
             <input
@@ -749,7 +792,9 @@ export class GoveeLedEffectStudio extends LitElement {
             >
               Cancel
             </button>
-            <button class="primary" type="submit">Save</button>
+            <button class="primary" type="submit">
+              ${this.model.saveNameMode === "copy" ? "Save As" : "Save"}
+            </button>
           </div>
         </form>
       </div>
@@ -787,7 +832,9 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading({
         save: false,
-        title: html`<h2>${this.model.name}</h2>`,
+        title: html`<div class="mobile-redundant-heading">
+          <h2>${this.model.name}</h2>
+        </div>`,
       })}
       <p class="read-only-copy">
         This effect definition can be inspected, but this editor cannot change,
@@ -813,9 +860,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading()}
 
-      ${this.showCustomEffectSelector
-        ? this.renderSingleEffectSelector()
-        : nothing}
+      ${this.renderSingleEffectSelector()}
 
       <govee-painted-segment-editor
         .segments=${this.content.segments}
@@ -901,9 +946,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
 
 
-      ${this.showCustomEffectSelector
-        ? this.renderSingleEffectSelector()
-        : nothing}
+      ${this.renderSingleEffectSelector()}
 
       <govee-custom-effect-editor
         .content=${content}
@@ -927,23 +970,13 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
-  private get showCustomEffectSelector(): boolean {
-    return this.model.showCustomEffectSelector;
-  }
-
   private renderSingleEffectSelector() {
     if (
       !this.model.customCatalogue ||
-      this.templateSourceLabel ||
+      !this.model.showSingleEffectSelector ||
       (this.content.kind !== "h617a_painted" &&
         this.content.kind !== "h617a_single" &&
         this.content.kind !== "palette_diy")
-    ) {
-      return nothing;
-    }
-    if (
-      this.currentItem?.content.kind === "h617a_painted" &&
-      this.content.kind === "h617a_painted"
     ) {
       return nothing;
     }
@@ -973,7 +1006,7 @@ export class GoveeLedEffectStudio extends LitElement {
           <select
             aria-label="Effect"
             .value=${selectedEffect}
-            ?disabled=${this.editorReadOnly}
+            ?disabled=${!this.isAdmin}
             @change=${(event: Event) =>
               this.editor.selectSingleEffect(
                 (event.target as HTMLSelectElement).value,
@@ -1073,7 +1106,7 @@ export class GoveeLedEffectStudio extends LitElement {
         : nothing;
     if (this.templateSourceLabel) {
       return html`
-        <div class="editor-title">
+        <div class="editor-title mobile-redundant-heading">
           <h2>${this.templateSourceLabel}</h2>
           ${origin ? html`<small class="origin-name">${origin}</small>` : nothing}
         </div>
@@ -1085,14 +1118,15 @@ export class GoveeLedEffectStudio extends LitElement {
           ? this.model.name
           : "New effect";
       return html`
-        <div class="editor-title">
+        <div class="editor-title mobile-redundant-heading">
           <div class="editable-title"><h2>${title}</h2>${marker}</div>
           ${origin ? html`<small class="origin-name">${origin}</small>` : nothing}
         </div>
       `;
     }
     return html`
-      <div class="editor-title">
+      <div class="editor-title mobile-editable-heading">
+        <span class="mobile-name-label">Name</span>
         <div class="editable-title">
           <input
             class="editor-name"
@@ -1104,6 +1138,8 @@ export class GoveeLedEffectStudio extends LitElement {
               this.model.patch({
                 name: (event.target as HTMLInputElement).value,
               })}
+            @change=${() =>
+              this.controller.contentCommitted("committed")}
           />
           ${marker}
         </div>
@@ -1117,7 +1153,9 @@ export class GoveeLedEffectStudio extends LitElement {
   ) {
     return html`
       <div class="editor-heading">
-        <div>${options.title ?? this.renderEffectName()}</div>
+        <div class="editor-heading-title">
+          ${options.title ?? this.renderEffectName()}
+        </div>
         <div class="actions">
           ${this.model.sceneEditorOpen || this.model.editorCancelAvailable
             ? html`
@@ -1134,6 +1172,7 @@ export class GoveeLedEffectStudio extends LitElement {
               `
             : nothing}
           ${options.save === false ? nothing : this.renderSaveAction()}
+          ${options.save === false ? nothing : this.renderSaveAsAction()}
           ${this.renderEditorDeleteButton()}
         </div>
       </div>
@@ -1155,6 +1194,14 @@ export class GoveeLedEffectStudio extends LitElement {
         </button>
       `;
     }
+    if (
+      this.currentItem &&
+      this.model.autoSaveEnabled &&
+      !this.model.autoSaveFailed &&
+      !this.model.sceneEditorOpen
+    ) {
+      return nothing;
+    }
     const saveLabel =
       !this.currentItem && this.model.customCopyStarted
         ? "Save As"
@@ -1164,7 +1211,7 @@ export class GoveeLedEffectStudio extends LitElement {
         class="primary"
         type="button"
         ?disabled=${!this.isAdmin ||
-        !this.model.dirty ||
+        !this.model.canSaveCurrentDraft ||
         this.model.saving ||
         this.model.deletingCurrentItem}
         @click=${(event: Event) =>
@@ -1177,6 +1224,93 @@ export class GoveeLedEffectStudio extends LitElement {
       </button>
     `;
   }
+
+  private renderSaveAsAction() {
+    if (!this.currentItem && !this.templateSourceLabel) {
+      return nothing;
+    }
+    const sourceName = this.model.name.trim() || this.templateSourceLabel || "Effect";
+    return html`
+      <button
+        class="primary"
+        type="button"
+        ?disabled=${!this.isAdmin ||
+        this.model.saving ||
+        this.model.deletingCurrentItem}
+        @click=${(event: Event) =>
+          this.modal.requestSaveAs(
+            event.currentTarget as HTMLElement,
+            `${sourceName} copy`,
+          )}
+      >
+        Save As
+      </button>
+    `;
+  }
+
+  private keyDown = (event: KeyboardEvent): void => {
+    if (
+      event.defaultPrevented ||
+      event.repeat ||
+      event.isComposing ||
+      event.key.toLocaleLowerCase() !== "s" ||
+      (!event.ctrlKey && !event.metaKey) ||
+      this.modal.open
+    ) {
+      return;
+    }
+    if (event.shiftKey) {
+      if (this.section === "scenes" && !this.model.sceneEditorOpen) {
+        return;
+      }
+      if (
+        !this.currentItem &&
+        !this.templateSourceLabel &&
+        !this.model.customCopyStarted
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const sourceName =
+        this.model.name.trim() || this.templateSourceLabel || "Effect";
+      this.modal.requestSaveAs(this, `${sourceName} copy`);
+      return;
+    }
+    if (this.section === "scenes") {
+      if (this.model.sceneEditorOpen) {
+        if (
+          !this.model.canSaveCurrentDraft ||
+          this.model.saving ||
+          this.model.deletingCurrentItem
+        ) {
+          return;
+        }
+        event.preventDefault();
+        this.controller.cancelPendingAutoSave();
+        this.modal.requestSave(this, () => void this.controller.save());
+        return;
+      }
+      const sceneBrowser =
+        this.shadowRoot?.querySelector<GoveeSceneBrowser>(
+          "govee-scene-browser",
+        );
+      if (sceneBrowser?.invokeSaveShortcut()) {
+        event.preventDefault();
+      }
+      return;
+    }
+    if (
+      this.templateSourceLabel ||
+      !this.model.canSaveCurrentDraft ||
+      this.model.saving ||
+      this.model.deletingCurrentItem
+    ) {
+      return;
+    }
+    event.preventDefault();
+    this.controller.cancelPendingAutoSave();
+    this.modal.requestSave(this, () => void this.controller.save());
+  };
 
   private get selectedSingleEffectFamily() {
     return this.model.selectedSingleEffectFamily;
@@ -1223,7 +1357,10 @@ export class GoveeLedEffectStudio extends LitElement {
         .maximum=${100}
         .disabled=${this.editorReadOnly}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
-          this.editor.updatePaintedContent({ [key]: event.detail.value })}
+          this.editor.updatePaintedContent(
+            { [key]: event.detail.value },
+            event.detail.interaction,
+          )}
       ></govee-slider-control>
     `;
   }

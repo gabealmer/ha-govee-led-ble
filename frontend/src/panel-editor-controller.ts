@@ -44,6 +44,8 @@ import type {
 interface PanelEditorOptions {
   apiReady(): boolean;
   selectItem(itemId: string): void;
+  editorTransitionStarted(): void;
+  contentCommitted(interaction: LivePreviewInteraction): void;
 }
 
 interface InitialEffect {
@@ -78,6 +80,7 @@ export class PanelEditorController {
   ) {}
 
   public beginTransition(): number {
+    this.options.editorTransitionStarted();
     this.modal.closeForEditorTransition();
     return this.preview.beginEditorTransition();
   }
@@ -468,6 +471,7 @@ export class PanelEditorController {
   ): void {
     this.model.patch({ content });
     this.preview.scheduleEdited(interaction, scene);
+    this.options.contentCommitted(interaction);
   }
 
   private updateGeneratedEffectName(model: PanelModel, label: string): void {

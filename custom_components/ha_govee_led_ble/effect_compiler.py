@@ -58,7 +58,7 @@ from .generated_protocol_adapter import (
 )
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
-from .native_scenes import apply_scene_speed
+from .native_scenes import apply_scene_speed, build_native_scene_packets
 from .palette_scene_decoder import encode_palette_scene
 from .scenes import MODEL_SCENES, SceneEntry
 from .transport import fragment_a3
@@ -197,10 +197,21 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
-        return CompatibilityResult(
-            CompatibilityState.INCOMPATIBLE,
-            ("native catalogue scenes must use direct scene selection",),
-        )
+        if content.template.sku != model:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"scene targets {content.template.sku}, not {model}",),
+            )
+        try:
+            _scene_key, entry = _resolve_scene(model, content.template)
+            build_native_scene_packets(
+                model,
+                entry,
+                speed_index=content.speed_index,
+            )
+        except ValueError as error:
+            return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
+        return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, PaletteDiyEffect):
         if model != "H6199":
             return CompatibilityResult(
@@ -266,7 +277,7 @@ def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None
             item,
             H6199_PALETTE_DIY_APPLY_CODE if diy_code is None else diy_code,
         )
-    if isinstance(item.content, PaletteScene | LayeredScene | LayeredEffect):
+    if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene | LayeredEffect):
         return compile_scene_effect(item, model)
     if isinstance(item.content, WorkshopEffect):
         expected_code = H6199_WORKSHOP_APPLY_CODE if model == "H6199" else H617A_WORKSHOP_APPLY_CODE
@@ -321,20 +332,44 @@ def compile_scene_effect(item: LibraryItem, model: str) -> CompiledEffect:
         raise ValueError("; ".join(result.reasons))
 
     content = item.content
-    evidence_codes = ["scene_payload_readback_unavailable"]
-    if isinstance(content, PaletteScene):
+    evidence_codes: list[str] = []
+    if isinstance(content, BuiltinScene):
+        content_kind = "scene_builtin"
+        scene_key, entry = _resolve_scene(model, content.template)
+        packets = tuple(
+            build_native_scene_packets(
+                model,
+                entry,
+                speed_index=content.speed_index,
+            )
+        )
+        upload = packets[:-1]
+        activation = packets[-1]
+        if upload:
+            evidence_codes.append("scene_payload_readback_unavailable")
+    elif isinstance(content, PaletteScene):
         content_kind = "scene_palette"
         scene_key, entry = _resolve_scene(model, content.template, expected_scene_type=1)
         if content.speed_index is not None:
             raise ValueError("type-1 palette scenes do not expose a documented Speed control")
         scene_type = 1
         payload = encode_palette_scene(content)
+        upload = tuple(fragment_a3(scene_type, payload))
+        activation = _scene_activation(model, entry)
+        evidence_codes.append("scene_payload_readback_unavailable")
     elif isinstance(content, LayeredScene):
         content_kind = "scene_layered"
         scene_key, entry = _resolve_scene(model, content.template, expected_scene_type=2)
         scene_type = 2
         payload = _apply_speed(encode_layered_scene(content), entry, content.speed_index)
-        evidence_codes.append("layered_field_semantics_uncalibrated")
+        upload = tuple(fragment_a3(scene_type, payload))
+        activation = _scene_activation(model, entry)
+        evidence_codes.extend(
+            (
+                "scene_payload_readback_unavailable",
+                "layered_field_semantics_uncalibrated",
+            )
+        )
     elif isinstance(content, LayeredEffect):
         content_kind = "advanced"
         scene_key, entry = _advanced_carrier(model)
@@ -347,15 +382,16 @@ def compile_scene_effect(item: LibraryItem, model: str) -> CompiledEffect:
         )
         evidence_codes.extend(
             (
+                "scene_payload_readback_unavailable",
                 "layered_field_semantics_uncalibrated",
                 "layered_activation_carrier_uncalibrated",
             )
         )
+        upload = tuple(fragment_a3(scene_type, payload))
+        activation = _scene_activation(model, entry)
     else:
         raise ValueError("unsupported scene effect content")
 
-    upload = tuple(fragment_a3(scene_type, payload))
-    activation = _scene_activation(model, entry)
     digest = sha256(b"".join((*upload, activation))).hexdigest()
     return CompiledEffect(
         item_id=str(item.id),

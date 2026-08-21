@@ -63,6 +63,29 @@ test("committed changes flush immediately and suppress duplicates", () => {
   expect(submitted.every((request) => request.committed)).toBe(true);
 });
 
+test("persistence intent is part of preview deduplication", () => {
+  const submitted: Request[] = [];
+  const controller = new LivePreviewController<Request>({
+    submit: (request) => submitted.push(request),
+    cancel: () => undefined,
+  });
+
+  controller.schedule(
+    { fingerprint: "same", value: 1, persistDefault: false },
+    "committed",
+  );
+  controller.schedule(
+    { fingerprint: "same", value: 1, persistDefault: true },
+    "committed",
+  );
+
+  expect(submitted).toHaveLength(2);
+  expect(submitted.map((request) => request.persistDefault)).toEqual([
+    false,
+    true,
+  ]);
+});
+
 test("a settled single changing value is resubmitted as committed", () => {
   let nextTimer = 1;
   const timers = new Map<number, () => void>();

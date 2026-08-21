@@ -136,7 +136,7 @@ export class EffectStudioPreviewSession {
           request.scene.scene,
           request.scene.speedIndex,
           request.force,
-          request.committed,
+          request.persistDefault,
         );
       } else {
         await this.api.previewSnapshot(
@@ -146,7 +146,7 @@ export class EffectStudioPreviewSession {
           request.name,
           request.content,
           request.force,
-          request.committed,
+          request.persistDefault,
         );
       }
     } catch (error) {

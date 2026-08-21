@@ -39,7 +39,7 @@ from .effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultReposit
 from .effect_scenes import ResolvedScene, resolve_scene, resolve_scene_application_body
 from .generated_protocol_adapter import build_power
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
-from .native_scenes import encode_authored_scene_body
+from .native_scenes import encode_authored_scene_body, resolve_native_scene_body
 
 PREVIEW_WRITE_CADENCE = 0.25
 PREVIEW_VERIFY_DELAY = 0.75
@@ -640,6 +640,9 @@ class EffectPreviewManager:
             self._publish(request, PreviewPhase.FAILED, error_code="transport_failed")
             return
 
+        self._invalidate_observed_match(request)
+        coordinator.async_update_listeners()
+
         if request.committed:
             try:
                 await self._async_persist_scene_default(request)
@@ -655,8 +658,6 @@ class EffectPreviewManager:
                 self._publish(request, PreviewPhase.FAILED, error_code="storage_failed")
                 return
 
-        if isinstance(compiled, CompiledEffect):
-            self._invalidate_observed_match(request)
         if await self._async_request_status_is_live(request):
             self._publish(
                 request,
@@ -713,6 +714,14 @@ class EffectPreviewManager:
                 item.content,
                 scene.entry,
             )
+        catalogue_body, catalogue_speed = resolve_native_scene_body(scene.entry)
+        if canonical_body == catalogue_body and speed_index == catalogue_speed:
+            await self._scene_defaults.async_delete(
+                request.config_entry_id,
+                scene.entry.scene_id,
+                scene.entry.effect_id,
+            )
+            return
         await self._scene_defaults.async_set(
             NativeSceneDefault(
                 config_entry_id=request.config_entry_id,

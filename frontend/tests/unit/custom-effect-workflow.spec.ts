@@ -7,7 +7,6 @@ import {
 import {
   customEffectCategories,
   defaultCustomEffectCategory,
-  showCustomEffectSelector,
   starterBaseline,
 } from "../../src/custom-effect-workflow";
 import { blankCustomEffect, serialiseEditable } from "../../src/effect-editor-model";
@@ -86,22 +85,45 @@ test("starter lists expose product choices but not protocol evidence fixtures", 
   ).toEqual(["Rhythm"]);
 });
 
-test("My Effects takes priority", () => {
-  const entries = buildCustomEffectEntries(context([saved]), "my-effects");
+test("saved effects remain available in their content category", () => {
+  const entries = buildCustomEffectEntries(context([saved]), "single-layer");
 
-  expect(defaultCustomEffectCategory(context([saved]))).toBe("my-effects");
-  expect(entries.map((entry) => entry.label)).toEqual(["My Jump"]);
+  expect(defaultCustomEffectCategory(context([saved]))).toBe("single-layer");
+  expect(entries.map((entry) => entry.label)).toEqual([
+    "Jumping",
+    "My Jump",
+    "Paint",
+  ]);
 });
 
-test("categories keep All and My Effects first and Advanced last", () => {
+test("Effects is the stable fallback when no custom category is available", () => {
+  expect(
+    defaultCustomEffectCategory({
+      model: "H617A",
+      catalogue: {
+        ...catalogue,
+        painted_effects: [],
+        effects: [],
+        music_modes: [],
+        supports: {
+          multi: "unsupported",
+          advanced: "unsupported",
+          workshop: "unsupported",
+          special_diy: "unsupported",
+        },
+      },
+      libraryItems: [],
+    }),
+  ).toBe("single-layer");
+});
+
+test("categories keep Effects first and Advanced last", () => {
   expect(
     customEffectCategories(context([saved])).map(({ label }) => label),
   ).toEqual([
-    "All",
-    "My Effects",
-    "Multi Layer",
-    "Music",
-    "Single Layer",
+    "Effects",
+    "Layered Effects",
+    "Reactive",
     "Advanced",
   ]);
 });
@@ -113,7 +135,4 @@ test("starters stay clean until edited while intentional New shows its selector"
     serialiseEditable("Jumping", content),
   );
   expect(starterBaseline("New Single effect", content, false)).toBeUndefined();
-  expect(showCustomEffectSelector(false, false, undefined)).toBe(true);
-  expect(showCustomEffectSelector(false, true, undefined)).toBe(false);
-  expect(showCustomEffectSelector(true, false, undefined)).toBe(false);
 });

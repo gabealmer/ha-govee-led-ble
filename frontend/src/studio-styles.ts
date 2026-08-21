@@ -81,8 +81,6 @@ export const studioTokenStyles = css`
       var(--studio-spacing-lg);
     --studio-sidebar-padding: var(--studio-spacing-5xl)
       var(--studio-spacing-2xl);
-    --studio-responsive-navigation-padding: var(--studio-spacing-lg)
-      var(--studio-spacing-2xl);
     --studio-editor-padding: var(--studio-spacing-7xl);
     --studio-mobile-editor-bottom-padding: 32px;
     --studio-mobile-editor-padding: var(--studio-spacing-4xl)
@@ -102,6 +100,11 @@ export const studioTokenStyles = css`
     --studio-stacked-list-max-height: 220px;
     --studio-mobile-list-max-height: 340px;
     --studio-transition-duration: 120ms;
+    --studio-switch-track-height: 24px;
+    --studio-switch-thumb-size: 18px;
+    --studio-switch-thumb-inset: 3px;
+    --studio-switch-transition-duration: 150ms;
+    --studio-switch-transition-easing: cubic-bezier(0.31, 0.94, 0.34, 1);
     --studio-z-raised: 1;
     --studio-z-toolbar: 4;
     --studio-z-popover: 20;
@@ -413,10 +416,6 @@ export const studioWorkspaceStyles = css`
     border-inline-end: var(--studio-border-width) solid var(--studio-border);
   }
 
-  .category-sidebar {
-    background: var(--secondary-background-color, #f5f6f8);
-  }
-
   .item-sidebar {
     background: var(--primary-background-color);
   }
@@ -431,21 +430,6 @@ export const studioWorkspaceStyles = css`
 
   /* Matches the panel's narrow document-flow breakpoint. */
   @media (max-width: 900px) {
-    .category-sidebar {
-      display: flex;
-      gap: var(--studio-tight-gap);
-      overflow-x: auto;
-      padding: var(--studio-responsive-navigation-padding);
-      border-inline-end: 0;
-      border-bottom: var(--studio-border-width) solid var(--studio-border);
-    }
-
-    .category-sidebar .selector {
-      flex: 0 0 auto;
-      width: auto;
-      white-space: nowrap;
-    }
-
     .item-sidebar {
       max-height: var(--studio-mobile-list-max-height);
       border-inline-end: 0;

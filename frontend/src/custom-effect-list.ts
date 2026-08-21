@@ -171,12 +171,7 @@ export function customEffectCategoryAvailable(
     case "special-diy":
       return customEffectKindAvailable(context, "special_diy");
     case "my-effects":
-      return context.libraryItems.some(
-        (item) =>
-          item.kind !== "video_profile" &&
-          isMyEffectKind(item.kind) &&
-          libraryItemAvailable(context, item),
-      );
+      return false;
   }
 }
 

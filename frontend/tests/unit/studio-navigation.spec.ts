@@ -61,15 +61,25 @@ test("remembered navigation restores only an available top-level section", () =>
   ).toBe("scenes");
 });
 
-test("primary navigation is alphabetical with Custom last", () => {
-  expect(studioNavigationItems(true, true)).toEqual([
-    { section: "scenes", label: "Scene" },
+test("primary navigation flattens custom categories", () => {
+  const categories = [
+    { category: "single-layer" as const, label: "Effects" },
+    { category: "multi-layer" as const, label: "Layered Effects" },
+  ];
+  expect(studioNavigationItems(true, categories)).toEqual([
+    { section: "scenes", label: "Scenes" },
     { section: "video", label: "Video" },
-    { section: "custom", label: "Custom" },
+    { section: "custom", category: "single-layer", label: "Effects" },
+    {
+      section: "custom",
+      category: "multi-layer",
+      label: "Layered Effects",
+    },
   ]);
-  expect(studioNavigationItems(false, true).map((item) => item.label)).toEqual([
-    "Scene",
-    "Custom",
+  expect(studioNavigationItems(false, categories).map((item) => item.label)).toEqual([
+    "Scenes",
+    "Effects",
+    "Layered Effects",
   ]);
 });
 

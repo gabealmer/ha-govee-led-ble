@@ -289,7 +289,10 @@ export class GoveeVideoProfileEditor extends LitElement {
         .describedBy=${describedBy}
         .disabled=${this.disabled}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
-          this.runInteraction("changing", () => changed(event.detail.value))}
+          this.runInteraction(
+            event.detail.interaction,
+            () => changed(event.detail.value),
+          )}
       ></govee-slider-control>
     `;
   }

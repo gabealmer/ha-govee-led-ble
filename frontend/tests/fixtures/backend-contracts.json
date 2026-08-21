@@ -1623,7 +1623,7 @@
       }
     ],
     "editor_info": {
-      "api_version": 5,
+      "api_version": 6,
       "compiler_version": 4,
       "effect_schema_version": 2,
       "limits": {

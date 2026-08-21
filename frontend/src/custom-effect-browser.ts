@@ -7,7 +7,6 @@ import {
   type CustomEffectListContext,
   type CustomEffectListEntry,
 } from "./custom-effect-list";
-import { customEffectCategories } from "./custom-effect-workflow";
 import type { CustomEffectCategory } from "./effect-editor-model";
 import {
   studioBaseStyles,
@@ -50,15 +49,6 @@ export class GoveeCustomEffectBrowser extends LitElement {
         Boolean(context.catalogue?.music_modes.length)) ||
       newEffectKindForCategory(context, this.category) !== undefined;
     return html`
-      <aside
-        class="sidebar category-sidebar effect-categories"
-        aria-label="Effect categories"
-      >
-        ${customEffectCategories(context).map(({ category, label }) =>
-          this.categoryButton(category, label),
-        )}
-      </aside>
-
       <aside class="sidebar item-sidebar library" aria-label="Effects">
         ${canCreate
           ? html`
@@ -77,34 +67,6 @@ export class GoveeCustomEffectBrowser extends LitElement {
           : nothing}
         ${entries.map((entry) => this.entryButton(entry))}
       </aside>
-    `;
-  }
-
-  private categoryButton(
-    category: CustomEffectCategory,
-    label: string,
-  ) {
-    const selected = this.category === category;
-    return html`
-      <button
-        class="selector ${selected ? "selected" : ""}"
-        type="button"
-        aria-current=${selected ? "page" : nothing}
-        @click=${() => {
-          this.dispatchEvent(
-            new CustomEvent<CustomEffectBrowserCategoryRequest>(
-              "custom-category-requested",
-              {
-                detail: { category },
-                bubbles: true,
-                composed: true,
-              },
-            ),
-          );
-        }}
-      >
-        ${label}
-      </button>
     `;
   }
 
@@ -133,6 +95,19 @@ export class GoveeCustomEffectBrowser extends LitElement {
         }}
       >
         <span>${entry.label}</span>
+        ${entry.kind === "saved"
+          ? html`
+              <span
+                class="user-effect-marker"
+                title="User-created effect"
+                aria-label="User-created effect"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8m0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4Z"></path>
+                </svg>
+              </span>
+            `
+          : nothing}
       </button>
     `;
   }
@@ -157,26 +132,11 @@ export class GoveeCustomEffectBrowser extends LitElement {
     css`
       :host {
         --new-effect-stroke-width: 1.5px;
-        --new-effect-sticky-shadow-height: 5px;
         display: contents;
       }
 
       .new-effect-action {
-        position: sticky;
-        z-index: var(--studio-z-raised);
-        top: 0;
-        margin-bottom: var(--studio-tight-gap);
-        border: var(--studio-border-width) solid
-          color-mix(in srgb, var(--studio-blue) 24%, var(--studio-border));
-        color: var(--primary-text-color);
-        background: color-mix(
-          in srgb,
-          var(--studio-blue) 5%,
-          var(--primary-background-color, #fff)
-        );
-        box-shadow: 0 var(--new-effect-sticky-shadow-height) 0
-          var(--primary-background-color, #fff);
-        font-weight: var(--studio-font-weight-semibold);
+        color: var(--studio-blue);
       }
 
       .new-effect-icon {
@@ -185,23 +145,10 @@ export class GoveeCustomEffectBrowser extends LitElement {
         height: var(--studio-spacing-lg);
         margin-inline-end: var(--studio-compact-gap);
         background:
-          linear-gradient(var(--studio-blue), var(--studio-blue)) center /
+          linear-gradient(currentColor, currentColor) center /
             var(--studio-spacing-lg) var(--new-effect-stroke-width) no-repeat,
-          linear-gradient(var(--studio-blue), var(--studio-blue)) center /
+          linear-gradient(currentColor, currentColor) center /
             var(--new-effect-stroke-width) var(--studio-spacing-lg) no-repeat;
-      }
-
-      .new-effect-action:hover {
-        border-color: color-mix(
-          in srgb,
-          var(--studio-blue) 34%,
-          var(--studio-border)
-        );
-        background: color-mix(
-          in srgb,
-          var(--studio-blue) 9%,
-          var(--primary-background-color, #fff)
-        );
       }
 
       .item {
@@ -211,27 +158,25 @@ export class GoveeCustomEffectBrowser extends LitElement {
         gap: var(--studio-compact-gap);
       }
 
-      /* Places categories and effects in stacked rows beside HA's docked sidebar. */
+      .user-effect-marker {
+        display: inline-grid;
+        width: var(--studio-icon-size);
+        height: var(--studio-icon-size);
+        flex: 0 0 var(--studio-icon-size);
+        place-items: center;
+        color: var(--studio-muted);
+      }
+
+      .user-effect-marker svg {
+        width: var(--studio-small-swatch-size);
+        height: var(--studio-small-swatch-size);
+        fill: currentColor;
+      }
+
+      /* Places effects above the editor beside HA's docked sidebar. */
       @media (min-width: 901px) and (max-width: 1320px) {
-        .effect-categories {
-          display: flex;
-          grid-row: 1;
-          grid-column: 2;
-          gap: var(--studio-tight-gap);
-          overflow-x: auto;
-          padding: var(--studio-responsive-navigation-padding);
-          border-inline-end: 0;
-          border-bottom: var(--studio-border-width) solid var(--studio-border);
-        }
-
-        .effect-categories .selector {
-          width: auto;
-          flex: 0 0 auto;
-          white-space: nowrap;
-        }
-
         .library {
-          grid-row: 2;
+          grid-row: 1;
           grid-column: 2;
           max-height: var(--studio-stacked-list-max-height);
           border-inline-end: 0;

@@ -3,6 +3,7 @@ import type {
   EffectUserState,
   LibrarySummary,
 } from "./types";
+import type { CustomEffectCategory } from "./effect-editor-model";
 
 const PANEL_PATH = "/ha-govee-led-ble";
 const DEVICE_ROUTE = `${PANEL_PATH}/editor`;
@@ -10,6 +11,7 @@ export type StudioSection = "video" | "scenes" | "custom";
 export interface StudioNavigationItem {
   section: StudioSection;
   label: string;
+  category?: CustomEffectCategory;
 }
 export type ActiveStudioContext =
   | { kind: "saved"; item: LibrarySummary }
@@ -34,16 +36,21 @@ export function editorDevicePath(deviceId: string): string {
 
 export function studioNavigationItems(
   videoAvailable: boolean,
-  customAvailable: boolean,
+  customCategories: readonly {
+    category: CustomEffectCategory;
+    label: string;
+  }[],
 ): StudioNavigationItem[] {
   return [
-    { section: "scenes", label: "Scene" },
+    { section: "scenes", label: "Scenes" },
     ...(videoAvailable
       ? [{ section: "video" as const, label: "Video" }]
       : []),
-    ...(customAvailable
-      ? [{ section: "custom" as const, label: "Custom" }]
-      : []),
+    ...customCategories.map(({ category, label }) => ({
+      section: "custom" as const,
+      category,
+      label,
+    })),
   ];
 }
 

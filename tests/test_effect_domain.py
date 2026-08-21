@@ -708,7 +708,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
 
     assert api == {
-        "api_version": 5,
+        "api_version": 6,
         "effect_schema_version": 2,
         "compiler_version": EFFECT_COMPILER_VERSION,
         "limits": {

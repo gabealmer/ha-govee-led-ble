@@ -1,13 +1,19 @@
 import { expect, test, vi } from "vitest";
 
+import type { EffectStudioApi } from "../../src/api";
 import {
   PanelController,
+  restoredAutoSave,
   restoredCustomEffectCategory,
 } from "../../src/panel-controller";
 import { PanelEditorController } from "../../src/panel-editor-controller";
 import { PanelModalController } from "../../src/panel-modal-controller";
 import { PanelModel } from "../../src/panel-model";
 import { PanelPreviewController } from "../../src/panel-preview-controller";
+import {
+  blankVideoProfile,
+  serialiseEditable,
+} from "../../src/effect-editor-model";
 import type {
   DeviceCapabilities,
   HomeAssistant,
@@ -80,6 +86,8 @@ function editor(model: PanelModel): PanelEditorController {
   return new PanelEditorController(model, preview, modal, {
     apiReady: () => true,
     selectItem: () => undefined,
+    editorTransitionStarted: () => undefined,
+    contentCommitted: () => undefined,
   });
 }
 
@@ -113,14 +121,21 @@ test("administrator state follows late Home Assistant user updates", () => {
   expect(changed).toHaveBeenCalledOnce();
 });
 
-test("remembered All category restores when it remains available", () => {
+test("remembered All category migrates to the available fallback", () => {
   expect(
     restoredCustomEffectCategory(
       "all",
       (category) => category === "all",
       "music",
     ),
-  ).toBe("all");
+  ).toBe("music");
+  expect(
+    restoredCustomEffectCategory(
+      "my-effects",
+      () => false,
+      "single-layer",
+    ),
+  ).toBe("single-layer");
   expect(
     restoredCustomEffectCategory(
       "special-diy",
@@ -128,6 +143,55 @@ test("remembered All category restores when it remains available", () => {
       "music",
     ),
   ).toBe("music");
+});
+
+test("save and effect-family controls distinguish starters, New drafts, and saved effects", () => {
+  const model = new PanelModel(() => undefined);
+  model.name = "Jumping";
+  model.content = painted();
+  model.savedBaseline = serialiseEditable(model.name, model.content);
+  model.customCopyStarted = true;
+
+  expect(model.dirty).toBe(false);
+  expect(model.canSaveCurrentDraft).toBe(true);
+  expect(model.showSingleEffectSelector).toBe(false);
+
+  model.customCopyStarted = false;
+  model.customTemplateSelection = "template:paint";
+  expect(model.showSingleEffectSelector).toBe(true);
+
+  model.currentItem = item(painted());
+  expect(model.showSingleEffectSelector).toBe(true);
+  expect(model.canSaveCurrentDraft).toBe(false);
+});
+
+test("unchanged starters open the Save As naming flow", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.name = "Jumping";
+  model.content = painted();
+  model.savedBaseline = serialiseEditable(model.name, model.content);
+  model.customCopyStarted = true;
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const save = vi.fn();
+
+  modal.requestSave({} as HTMLElement, save);
+
+  expect(save).not.toHaveBeenCalled();
+  expect(model.saveNameDialogOpen).toBe(true);
+  expect(model.saveNameMode).toBe("copy");
+  expect(model.saveNameValue).toBe("Jumping");
+});
+
+test("auto-save restores only an explicit true preference", () => {
+  expect(restoredAutoSave(true)).toBe(true);
+  expect(restoredAutoSave(false)).toBe(false);
+  expect(restoredAutoSave("true")).toBe(false);
+  expect(restoredAutoSave(undefined)).toBe(false);
 });
 
 test("installs saved content as an isolated editable baseline", () => {
@@ -267,6 +331,8 @@ test("initial navigation preserves unavailable deep links without a feedback ban
   const editorController = new PanelEditorController(model, preview, modal, {
     apiReady: () => true,
     selectItem: (itemId) => void controller.selectItem(itemId),
+    editorTransitionStarted: () => undefined,
+    contentCommitted: () => undefined,
   });
   controller = new PanelController(
     model,
@@ -283,4 +349,232 @@ test("initial navigation preserves unavailable deep links without a feedback ban
   expect(await controller.initialiseSelectedDevice()).toBeUndefined();
   expect(model.selectedDeviceId).toBe("unavailable");
   expect(model.notice).toBeUndefined();
+});
+
+test("auto-save coalesces committed edits onto the returned item version", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.autoSaveEnabled = true;
+  model.liveApplyEnabled = false;
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: (interaction) =>
+      controller.contentCommitted(interaction),
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  const sourceContent = painted();
+  const source = item(sourceContent);
+  editorController.applyLibraryItem(source);
+  let resolveFirst!: (value: LibraryItem) => void;
+  const first = new Promise<LibraryItem>((resolve) => {
+    resolveFirst = resolve;
+  });
+  const updateItem = vi
+    .fn()
+    .mockReturnValueOnce(first)
+    .mockImplementationOnce(
+      async (
+        current: LibraryItem,
+        name: string,
+        content: PaintedContent,
+      ) => ({
+        ...current,
+        version: current.version + 1,
+        updated_at: "2026-08-18T00:00:02Z",
+        name,
+        content,
+      }),
+    );
+  controller.api = { updateItem } as unknown as EffectStudioApi;
+
+  editorController.updatePaintedContent({ speed: 60 }, "committed");
+  editorController.updatePaintedContent({ speed: 70 }, "committed");
+  resolveFirst({
+    ...source,
+    version: 3,
+    updated_at: "2026-08-18T00:00:01Z",
+    content: { ...sourceContent, speed: 60 },
+  });
+
+  await vi.waitFor(() => expect(updateItem).toHaveBeenCalledTimes(2));
+
+  expect(updateItem.mock.calls[1][0]).toMatchObject({ version: 3 });
+  expect(updateItem.mock.calls[1][2]).toMatchObject({ speed: 70 });
+  expect(model.currentItem).toMatchObject({ version: 4 });
+  expect(model.notice).toBeUndefined();
+});
+
+test("saved item selection applies identity only while Live is enabled", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [device("entry-a", "H617A")];
+  model.selectedDeviceId = "entry-a";
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: (interaction) =>
+      controller.contentCommitted(interaction),
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  const saved = item(painted());
+  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+  controller.api = {
+    item: vi.fn().mockResolvedValue(saved),
+    applySavedEffect,
+  } as unknown as EffectStudioApi;
+
+  model.liveApplyEnabled = false;
+  await expect(controller.selectItem(saved.id)).resolves.toBe(true);
+  expect(applySavedEffect).not.toHaveBeenCalled();
+
+  model.liveApplyEnabled = true;
+  await expect(controller.selectItem(saved.id)).resolves.toBe(true);
+  expect(applySavedEffect).toHaveBeenCalledWith("entry-a", saved.id);
+});
+
+test("Save As rebinds a copy to its content category", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const source = item(painted());
+  model.currentItem = source;
+  model.name = source.name;
+  model.content = painted();
+  model.savedBaseline = serialiseEditable(model.name, model.content);
+  model.customEffectCategory = "my-effects";
+  vi.spyOn(model, "customEffectCategoryAvailable").mockImplementation(
+    (category) => category === "single-layer",
+  );
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  controller.api = {
+    createItem: vi.fn().mockResolvedValue({
+      ...source,
+      id: "item-copy",
+      version: 1,
+      name: "Saved paint copy",
+    }),
+  } as unknown as EffectStudioApi;
+
+  await controller.saveAs("Saved paint copy");
+
+  expect(model.currentItem?.id).toBe("item-copy");
+  expect(model.customEffectCategory).toBe("single-layer");
+});
+
+test("Save As keeps video profile copies in the Video section", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.section = "video";
+  const source: LibraryItem = {
+    schema_version: 1,
+    id: "video-source",
+    version: 2,
+    updated_at: "2026-08-18T00:00:00Z",
+    name: "Cinema",
+    content: blankVideoProfile("movie"),
+    content_hash: "video-hash",
+    origin: { kind: "authored", source_id: null },
+    extensions: {},
+  };
+  model.currentItem = source;
+  model.name = source.name;
+  model.content = source.content;
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  controller.api = {
+    createItem: vi.fn().mockResolvedValue({
+      ...source,
+      id: "video-copy",
+      version: 1,
+      name: "Cinema copy",
+    }),
+  } as unknown as EffectStudioApi;
+
+  await controller.saveAs("Cinema copy");
+
+  expect(model.currentItem?.id).toBe("video-copy");
+  expect(model.section).toBe("video");
 });

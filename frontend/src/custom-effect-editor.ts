@@ -156,7 +156,7 @@ export class GoveeCustomEffectEditor extends LitElement {
               this.emitContent({
                 ...this.content!,
                 speed: event.detail.value,
-              }, "changing")}
+              }, event.detail.interaction)}
           ></govee-slider-control>
         </div>
       </section>

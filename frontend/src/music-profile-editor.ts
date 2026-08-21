@@ -65,7 +65,6 @@ export class GoveeMusicProfileEditor extends LitElement {
 
   private lastFixedColour?: RGB;
   private interaction: LivePreviewInteraction = "committed";
-
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (changed.has("content") && this.content?.colour != null) {
       this.lastFixedColour = cloneRgb(this.content.colour);
@@ -102,15 +101,27 @@ export class GoveeMusicProfileEditor extends LitElement {
               }),
           )}
 
-          ${this.renderSegmentedField(
-            "Colour mode",
-            colourMode,
-            [
-              { value: "automatic", label: "Automatic" },
-              { value: "fixed", label: "Fixed" },
-            ] as const,
-            (value) => this.colourModeChanged(value === "fixed"),
-          )}
+          <label class="field">
+            <span>Colour mode</span>
+            <select
+              aria-label="Colour mode"
+              ?disabled=${this.disabled}
+              @change=${(event: Event) =>
+                this.colourModeChanged(
+                  (event.target as HTMLSelectElement).value === "fixed",
+                )}
+            >
+              <option
+                value="automatic"
+                .selected=${colourMode === "automatic"}
+              >
+                Automatic
+              </option>
+              <option value="fixed" .selected=${colourMode === "fixed"}>
+                Fixed
+              </option>
+            </select>
+          </label>
 
           ${colourMode === "fixed"
             ? html`
@@ -180,7 +191,7 @@ export class GoveeMusicProfileEditor extends LitElement {
         .maximum=${max}
         .disabled=${this.disabled}
         @value-changed=${(event: CustomEvent<SliderControlChange>) => {
-          this.interaction = "changing";
+          this.interaction = event.detail.interaction;
           try {
             commit(event.detail.value);
           } finally {

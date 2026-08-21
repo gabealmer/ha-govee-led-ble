@@ -14,6 +14,7 @@ from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeScene
 from custom_components.ha_govee_led_ble.effect_scenes import (
     async_apply_scene,
     async_reset_scene_default,
+    async_set_scene_default,
     resolve_scene,
     scene_catalogue_payload,
     scene_detail_payload,
@@ -262,3 +263,53 @@ async def test_reset_applies_catalogue_before_deleting_default() -> None:
             scene_defaults=repository,
         )
     repository.async_delete.assert_not_awaited()
+
+
+async def test_set_scene_default_persists_only_after_apply() -> None:
+    scene = next(item for item in SCENE_ENTRIES["H617A"] if item.scene_type == 2 and item.speed is not None)
+    coordinator = SimpleNamespace(
+        model="H617A",
+        async_apply_native_scene=AsyncMock(),
+    )
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
+    speed = scene.speed
+    assert speed is not None
+    changed_speed = (speed.default_index + 1) % speed.option_count
+
+    await async_set_scene_default(
+        entry,
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        speed_index=changed_speed,
+        updated_at=TIMESTAMP,
+        scene_defaults=repository,
+    )
+
+    persisted = repository.get("entry-a", scene.scene_id, scene.effect_id)
+    assert persisted is not None
+    assert persisted.speed_index == changed_speed
+
+    await async_set_scene_default(
+        entry,
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        speed_index=speed.default_index,
+        updated_at=TIMESTAMP,
+        scene_defaults=repository,
+    )
+
+    assert repository.get("entry-a", scene.scene_id, scene.effect_id) is None
+
+    coordinator.async_apply_native_scene.side_effect = RuntimeError("write failed")
+    with pytest.raises(RuntimeError, match="write failed"):
+        await async_set_scene_default(
+            entry,
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            speed_index=changed_speed,
+            updated_at=TIMESTAMP,
+            scene_defaults=repository,
+        )
+    assert repository.get("entry-a", scene.scene_id, scene.effect_id) is None

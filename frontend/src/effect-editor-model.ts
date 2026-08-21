@@ -516,7 +516,7 @@ export function libraryKindPriority(
 
 export function customEffectCategoryForKind(
   kind: string,
-): Exclude<CustomEffectCategory, "all"> {
+): Exclude<CustomEffectCategory, "all" | "my-effects"> {
   if (kind === "h617a_multi") {
     return "multi-layer";
   }

@@ -28,18 +28,15 @@ export const effectStudioPanelStyles = [
       --studio-device-selector-min-width: 180px;
       --studio-dialog-max-width: 440px;
       --studio-video-list-max-height: 150px;
-      --studio-live-track-width: 32px;
-      --studio-live-track-padding: 2px;
-      --studio-live-indicator-size: 18px;
-      --studio-live-thumb-size: var(--studio-spacing-xl);
-      --studio-live-thumb-travel: 14px;
+      --studio-live-track-width: 76px;
+      --studio-save-track-width: 92px;
+      --studio-live-status-size: 18px;
       --studio-live-status-line-height: 16px;
       --studio-live-spin-duration: 700ms;
       --studio-live-reduced-motion-duration: 1400ms;
       --studio-backdrop-blur: 10px;
       --studio-dialog-shadow-offset: 18px;
       --studio-dialog-shadow-blur: 52px;
-      --studio-primary-nav-min-item-width: 90px;
       display: flex;
       height: calc(100dvh - env(safe-area-inset-bottom, 0px));
       min-height: 0;
@@ -229,9 +226,8 @@ export const effectStudioPanelStyles = [
     .live-apply-toggle {
       display: inline-flex;
       align-items: center;
-      gap: var(--studio-compact-gap);
-      min-height: var(--studio-compact-control-height);
-      padding: var(--studio-micro-gap) var(--studio-compact-gap);
+      min-height: var(--studio-control-height);
+      padding: 0 var(--studio-micro-gap);
       border: 0;
       color: var(--primary-text-color);
       background: transparent;
@@ -241,40 +237,112 @@ export const effectStudioPanelStyles = [
     }
 
     .live-apply-track {
-      display: inline-flex;
-      align-items: center;
-      width: var(--studio-live-track-width);
-      height: var(--studio-live-indicator-size);
-      padding: var(--studio-live-track-padding);
+      --studio-toolbar-switch-width: var(--studio-live-track-width);
+      position: relative;
+      display: block;
+      width: var(--studio-toolbar-switch-width);
+      height: var(--studio-switch-track-height);
       border-radius: var(--studio-pill-radius);
       background: var(--disabled-color, #9e9e9e);
-      transition: background var(--studio-transition-duration) ease;
+      transition: background var(--studio-switch-transition-duration)
+        var(--studio-switch-transition-easing);
     }
 
     .live-apply-thumb {
-      width: var(--studio-live-thumb-size);
-      height: var(--studio-live-thumb-size);
+      position: absolute;
+      z-index: 1;
+      top: var(--studio-switch-thumb-inset);
+      left: var(--studio-switch-thumb-inset);
+      width: var(--studio-switch-thumb-size);
+      height: var(--studio-switch-thumb-size);
       border-radius: var(--studio-round-radius);
       background: #fff;
       box-shadow: 0 var(--studio-border-width)
         var(--studio-strong-border-width) rgb(0 0 0 / 30%);
-      transition: transform var(--studio-transition-duration) ease;
+      transition: transform var(--studio-switch-transition-duration)
+        var(--studio-switch-transition-easing);
     }
 
     .live-apply-toggle[aria-checked="true"] .live-apply-track {
       background: var(--studio-blue);
     }
 
+    .live-apply-toggle:focus-visible {
+      outline: 0;
+    }
+
+    .live-apply-toggle:focus-visible .live-apply-track {
+      outline: var(--studio-focus-width) solid var(--studio-blue);
+      outline-offset: var(--studio-focus-offset);
+    }
+
     .live-apply-toggle[aria-checked="true"] .live-apply-thumb {
-      transform: translateX(var(--studio-live-thumb-travel));
+      transform: translateX(
+        calc(
+          var(--studio-toolbar-switch-width) -
+            var(--studio-switch-thumb-inset) -
+            var(--studio-switch-thumb-inset) -
+            var(--studio-switch-thumb-size)
+        )
+      );
+    }
+
+    .live-apply-label {
+      position: absolute;
+      top: 0;
+      left: var(--studio-switch-thumb-inset);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: calc(
+        var(--studio-toolbar-switch-width) -
+          var(--studio-switch-thumb-size) -
+          var(--studio-switch-thumb-inset) -
+          var(--studio-switch-thumb-inset) -
+          var(--studio-switch-thumb-inset)
+      );
+      height: var(--studio-switch-track-height);
+      color: #fff;
+      font-size: var(--studio-caption-size);
+      font-weight: var(--studio-font-weight-semibold);
+      line-height: var(--studio-icon-line-height);
+      pointer-events: none;
+      transform: translateX(
+        calc(
+          var(--studio-switch-thumb-size) +
+            var(--studio-switch-thumb-inset)
+        )
+      );
+      transition: transform var(--studio-switch-transition-duration)
+        var(--studio-switch-transition-easing);
+    }
+
+    .live-apply-toggle[aria-checked="true"] .live-apply-label {
+      transform: translateX(0);
+    }
+
+    .save-toggle .live-apply-track {
+      --studio-toolbar-switch-width: var(--studio-save-track-width);
+    }
+
+    .save-label {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--studio-micro-gap);
+    }
+
+    .save-label svg {
+      width: var(--studio-small-swatch-size);
+      height: var(--studio-small-swatch-size);
+      fill: currentColor;
     }
 
     .live-apply-status {
       position: relative;
       display: grid;
-      width: var(--studio-live-indicator-size);
-      height: var(--studio-live-indicator-size);
-      flex: 0 0 var(--studio-live-indicator-size);
+      width: var(--studio-live-status-size);
+      height: var(--studio-live-status-size);
+      flex: 0 0 var(--studio-live-status-size);
       place-items: center;
       border: var(--studio-strong-border-width) solid transparent;
       border-radius: var(--studio-round-radius);
@@ -335,10 +403,8 @@ export const effectStudioPanelStyles = [
       font-weight: var(--studio-font-weight-semibold);
     }
 
-    .studio.scenes-mode,
-    .studio.custom-mode {
+    .studio.scenes-mode {
       grid-template-columns:
-        var(--studio-navigation-width)
         var(--studio-navigation-width)
         var(--studio-list-width)
         minmax(0, 1fr);
@@ -359,6 +425,10 @@ export const effectStudioPanelStyles = [
       display: flex;
       flex-wrap: wrap;
       gap: var(--studio-action-gap);
+    }
+
+    .mobile-name-label {
+      display: none;
     }
 
     .actions > button {
@@ -509,23 +579,37 @@ export const effectStudioPanelStyles = [
 
     /* Accommodates Home Assistant's docked sidebar on common 1024px and 1280px desktops. */
     @media (min-width: 901px) and (max-width: 1320px) {
-      .studio.scenes-mode,
-      .studio.custom-mode {
+      .studio.scenes-mode {
         flex-basis: 0;
-        grid-template-rows: auto auto minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
         grid-template-columns:
           var(--studio-stacked-navigation-width)
           minmax(0, 1fr);
       }
 
-      .scenes-mode .primary-nav,
-      .custom-mode .primary-nav {
-        grid-row: 1 / span 3;
+      .studio.custom-mode {
+        flex-basis: 0;
+        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-columns:
+          var(--studio-stacked-navigation-width)
+          minmax(0, 1fr);
       }
 
-      .scenes-mode > .editor,
+      .scenes-mode .primary-nav {
+        grid-row: 1 / span 2;
+      }
+
+      .custom-mode .primary-nav {
+        grid-row: 1 / span 2;
+      }
+
+      .scenes-mode > .editor {
+        grid-row: 2;
+        grid-column: 2;
+      }
+
       .custom-mode > .editor {
-        grid-row: 3;
+        grid-row: 2;
         grid-column: 2;
       }
 
@@ -579,7 +663,6 @@ export const effectStudioPanelStyles = [
           minmax(0, 1fr);
       }
 
-      .custom-mode .effect-categories,
       .custom-mode .library {
         grid-column: 2;
       }
@@ -604,26 +687,30 @@ export const effectStudioPanelStyles = [
       }
 
       .primary-nav {
-        display: grid;
-        grid-template-columns: repeat(
-          auto-fit,
-          minmax(var(--studio-primary-nav-min-item-width), 1fr)
-        );
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: var(--studio-tight-gap);
+        overflow-x: auto;
         padding: var(--studio-control-gap) var(--studio-chrome-gutter);
         border-inline-end: 0;
         border-bottom: var(--studio-border-width) solid var(--studio-border);
+        scrollbar-width: none;
+      }
+
+      .primary-nav::-webkit-scrollbar {
+        display: none;
       }
 
       .selector {
+        width: auto;
+        flex: 0 0 auto;
         text-align: center;
+        white-space: nowrap;
       }
 
       .library {
         padding-block: var(--studio-section-gap);
-      }
-
-      .effect-categories .selector {
-        text-align: start;
       }
 
       .library .selector {
@@ -631,27 +718,96 @@ export const effectStudioPanelStyles = [
       }
     }
 
-    /* Stacks the toolbar only when its controls no longer fit on one phone row. */
+    /* Keeps device and entity controls on one phone row. */
     @media (max-width: 480px) {
       .studio-toolbar {
-        height: auto;
-        align-items: stretch;
-        flex-direction: column;
-        padding-block: var(--studio-control-gap);
+        height: var(--studio-app-header-height);
+        min-height: var(--studio-app-header-height);
+        align-items: center;
+        flex-direction: row;
+        gap: var(--studio-micro-gap);
+        padding: var(--studio-tight-gap) var(--studio-compact-gap);
       }
 
       .device-selector {
-        align-items: stretch;
-        flex-direction: column;
-        gap: var(--studio-tight-gap);
+        min-width: 0;
+        flex: 1 1 auto;
       }
 
       .device-selector select {
         width: 100%;
+        min-width: 0;
+        min-height: var(--studio-control-height);
+        padding-inline: var(--studio-compact-gap);
       }
 
       .studio-toolbar-controls {
-        align-self: flex-end;
+        min-width: 0;
+        flex: 0 0 auto;
+        align-self: center;
+      }
+
+      .live-apply-toggle,
+      .light-control-button {
+        min-height: var(--studio-control-height);
+        height: var(--studio-control-height);
+      }
+
+      .light-control-button {
+        width: var(--studio-control-height);
+      }
+
+      .live-apply-toggle {
+        padding-inline: var(--studio-tight-gap);
+      }
+
+      .save-toggle .live-apply-track {
+        --studio-toolbar-switch-width: var(--studio-live-track-width);
+      }
+
+      .save-label svg {
+        display: none;
+      }
+
+      .live-apply-control {
+        gap: var(--studio-micro-gap);
+      }
+
+      .live-apply-status.idle {
+        display: none;
+      }
+
+      .editor {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .editor > .editor-heading {
+        display: contents;
+      }
+
+      .editor > .editor-heading > .actions {
+        order: 100;
+        margin-top: var(--studio-section-gap);
+      }
+
+      .editor > .editor-heading > .editor-heading-title {
+        order: 99;
+      }
+
+      .editor .mobile-editable-heading {
+        margin-top: var(--studio-section-gap);
+      }
+
+      .editor .mobile-name-label {
+        display: block;
+        color: var(--studio-muted);
+        font-size: var(--studio-parameter-label-size);
+        font-weight: var(--studio-parameter-label-weight);
+      }
+
+      .mobile-redundant-heading {
+        display: none;
       }
 
       .button-row {
@@ -674,7 +830,8 @@ export const effectStudioPanelStyles = [
       }
 
       .live-apply-track,
-      .live-apply-thumb {
+      .live-apply-thumb,
+      .live-apply-label {
         transition: none;
       }
     }

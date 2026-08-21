@@ -138,13 +138,12 @@ def test_edited_palette_scene_compiles_authored_definition_not_catalogue_bytes()
     assert compiled.activation_packet == build_h617a_scene(entry.code)
 
 
-def test_native_scene_identity_remains_outside_the_authored_compiler() -> None:
+def test_saved_native_scene_uses_the_catalogue_application_path() -> None:
     entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 1)
     item = LibraryItem.new("Native scene", BuiltinScene(CatalogueRef("H617A", entry.scene_id, entry.effect_id)))
 
-    assert compatibility(item, "H617A").state is CompatibilityState.INCOMPATIBLE
-    with pytest.raises(ValueError, match="direct scene selection"):
-        compile_effect(item, "H617A")
+    assert compatibility(item, "H617A").state is CompatibilityState.COMPATIBLE
+    assert compile_effect(item, "H617A").packets == tuple(build_native_scene_packets("H617A", entry))
 
 
 def test_palette_scene_rejects_a_layered_scene_identity_and_speed() -> None:

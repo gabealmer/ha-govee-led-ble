@@ -82,6 +82,18 @@ export class SceneBrowserWorkflow {
     return sceneIsDirty(this.stateValue);
   }
 
+  public get sceneDefaultDirty(): boolean {
+    const { content, editingCopy, selectedItem, selectedScene, speedIndex } =
+      this.stateValue;
+    return Boolean(
+      selectedScene?.speed &&
+        content &&
+        selectedItem === undefined &&
+        !editingCopy &&
+        speedIndex !== content.speed_index,
+    );
+  }
+
   public hasCurrentSceneContent(): boolean {
     return hasCurrentSceneContent(this.stateValue, this.activeSelectionIdentity);
   }
@@ -394,6 +406,7 @@ export class SceneBrowserWorkflow {
     ) {
       return;
     }
+
     const request = this.captureRequest();
     this.patch({ saving: true, notice: undefined });
     try {
@@ -411,6 +424,48 @@ export class SceneBrowserWorkflow {
     } catch (error) {
       if (this.requestIsCurrent(request)) {
         this.patch({ notice: `Reset failed: ${errorMessage(error)}` });
+      }
+    } finally {
+      this.patch({ saving: false });
+    }
+  }
+
+  public async setCurrentDefault(isAdmin: boolean): Promise<void> {
+    const selectedScene = this.stateValue.selectedScene;
+    if (
+      !this.api ||
+      !this.device ||
+      !selectedScene ||
+      !this.sceneDefaultDirty ||
+      !isAdmin ||
+      this.stateValue.saving
+    ) {
+      return;
+    }
+    const request = this.captureRequest();
+    this.patch({ saving: true, notice: undefined });
+    try {
+      const detail = await request.api.setSceneDefault(
+        request.deviceId,
+        selectedScene,
+        this.stateValue.speedIndex,
+      );
+      if (
+        !this.requestIsCurrent(request) ||
+        sceneKey(detail.scene) !== sceneKey(selectedScene)
+      ) {
+        return;
+      }
+      this.patch({
+        selectedScene: detail.scene,
+        content: detail.content,
+        speedIndex: detail.content.speed_index,
+        hasDefault: detail.has_default,
+        notice: undefined,
+      });
+    } catch (error) {
+      if (this.requestIsCurrent(request)) {
+        this.patch({ notice: `Save failed: ${errorMessage(error)}` });
       }
     } finally {
       this.patch({ saving: false });

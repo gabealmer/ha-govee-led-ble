@@ -44,6 +44,7 @@ from .effect_preview import (
 from .effect_scenes import (
     async_apply_scene,
     async_reset_scene_default,
+    async_set_scene_default,
     scene_catalogue_payload,
     scene_detail_payload,
 )
@@ -90,6 +91,7 @@ from .effect_websocket_schema import (
     WS_SCENE_APPLY,
     WS_SCENE_CATALOGUE_GET,
     WS_SCENE_CATALOGUE_LIST,
+    WS_SCENE_DEFAULT_SET,
     WS_SCENE_RESET,
     WS_USER_STATE_GET,
     WS_USER_STATE_RECORD_COLOUR,
@@ -343,6 +345,64 @@ async def ws_scene_reset(
             entry.runtime_data.model,
             resolved.entry.scene_id,
             resolved.entry.effect_id,
+        ),
+    )
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_SCENE_DEFAULT_SET,
+        vol.Required("config_entry_id"): IDENTIFIER,
+        vol.Required("scene_id"): SCENE_ID,
+        vol.Required("effect_id"): SCENE_ID,
+        vol.Optional("speed_index"): SPEED_INDEX,
+        vol.Required("updated_at"): TIMESTAMP,
+    }
+)
+@require_admin
+@async_response
+async def ws_scene_default_set(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
+    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
+        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        return
+    backend = _backend(hass)
+    try:
+        resolved = await async_set_scene_default(
+            entry,
+            scene_id=msg["scene_id"],
+            effect_id=msg["effect_id"],
+            speed_index=msg.get("speed_index"),
+            updated_at=msg["updated_at"],
+            scene_defaults=backend.scene_defaults,
+        )
+    except ValueError as exc:
+        connection.send_error(msg["id"], "invalid_format", str(exc))
+        return
+    except (EffectStorageError, HomeAssistantError, RuntimeError) as exc:
+        connection.send_error(msg["id"], "save_failed", str(exc))
+        return
+    await backend.engine.async_reconcile(
+        entry.runtime_data,
+        config_entry_id=entry.entry_id,
+        observed_at=msg["updated_at"],
+    )
+    entry.runtime_data.async_update_listeners()
+    connection.send_result(
+        msg["id"],
+        scene_detail_payload(
+            entry.runtime_data.model,
+            resolved.entry.scene_id,
+            resolved.entry.effect_id,
+            scene_default=backend.scene_defaults.get(
+                entry.entry_id,
+                resolved.entry.scene_id,
+                resolved.entry.effect_id,
+            ),
         ),
     )
 
@@ -846,6 +906,7 @@ async def ws_apply(
     except Exception as exc:
         connection.send_error(msg["id"], "apply_failed", str(exc))
         return
+    entry.runtime_data.async_update_listeners()
     connection.send_result(msg["id"], {"deployment": result.to_public_dict()})
 
 
@@ -907,6 +968,7 @@ def async_register_effect_websocket(
     websocket_api.async_register_command(hass, ws_scene_catalogue_list)
     websocket_api.async_register_command(hass, ws_scene_catalogue_get)
     websocket_api.async_register_command(hass, ws_scene_apply)
+    websocket_api.async_register_command(hass, ws_scene_default_set)
     websocket_api.async_register_command(hass, ws_scene_reset)
     websocket_api.async_register_command(hass, ws_preview_open)
     websocket_api.async_register_command(hass, ws_preview_close)

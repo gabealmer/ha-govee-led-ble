@@ -333,7 +333,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       <section class="card wide-card">
         <h3 class="section-title">Brightness</h3>
         <label class="field brightness-style">
-          <span>Brightness style</span>
+          <span>Style</span>
           <select
             .value=${layer.brightness_gradient ? "gradient" : "unified"}
             ?disabled=${this.disabled}
@@ -349,7 +349,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         </label>
 
         <div class="patterns-heading">
-          <h4>Brightness patterns</h4>
+          <h4>Patterns</h4>
           <button
             class="secondary pattern-delete"
             type="button"
@@ -364,13 +364,13 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           class="pattern-strip"
           .items=${layer.brightness_patterns.map((_item, index) => ({
             key: `pattern-${index}`,
-            label: `Pattern ${index + 1}`,
+            label: String(index + 1),
             ariaLabel: `Pattern ${index + 1}`,
             id: `advanced-pattern-tab-${index}`,
             ariaControls: "advanced-pattern-panel",
           }))}
           .activeIndex=${activeIndex}
-          ariaLabel="Brightness patterns"
+          ariaLabel="Patterns"
           itemRole="tab"
           addLabel="Add brightness pattern"
           .addDisabled=${this.disabled}
@@ -614,7 +614,10 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       source instanceof HTMLElement &&
       source.tagName === "GOVEE-SLIDER-CONTROL"
     ) {
-      this.previewInteraction = "changing";
+      const interaction = (
+        event as CustomEvent<{ interaction?: LivePreviewInteraction }>
+      ).detail.interaction;
+      this.previewInteraction = interaction ?? "committed";
       return;
     }
     if (event.type === "palette-changed") {

@@ -2,10 +2,12 @@ import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
 import { studioBaseStyles, studioFormStyles } from "./studio-styles";
+import type { LivePreviewInteraction } from "./live-preview-controller";
 import { clamp } from "./ui-utils";
 
 export interface SliderControlChange {
   value: number;
+  interaction: LivePreviewInteraction;
 }
 
 export class GoveeSliderControl extends LitElement {
@@ -44,16 +46,25 @@ export class GoveeSliderControl extends LitElement {
           aria-label=${this.label}
           aria-describedby=${this.describedBy ?? nothing}
           ?disabled=${this.disabled}
-          @input=${this.inputChanged}
+          @input=${(event: Event) =>
+            this.valueChanged(event, "changing")}
+          @change=${(event: Event) =>
+            this.valueChanged(event, "committed")}
         />
       </label>
     `;
   }
 
-  private inputChanged(event: Event): void {
+  private valueChanged(
+    event: Event,
+    interaction: LivePreviewInteraction,
+  ): void {
     this.dispatchEvent(
       new CustomEvent<SliderControlChange>("value-changed", {
-        detail: { value: Number((event.target as HTMLInputElement).value) },
+        detail: {
+          value: Number((event.target as HTMLInputElement).value),
+          interaction,
+        },
         bubbles: true,
         composed: true,
       }),

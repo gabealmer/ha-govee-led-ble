@@ -234,6 +234,11 @@ async def test_saved_effects_are_compatible_reactive_and_lock_safe(
     assert mock_coordinator.is_on is True
 
     assert listener is None
+    late_saved = LibraryItem.new(
+        "Late Effect",
+        SingleEffect(0, 0, 50, ((0, 255, 0),)),
+    )
+    application.library_snapshot.return_value = LibrarySnapshot((saved, incompatible, late_saved))
     entity._async_restore_static_color = AsyncMock()
     entity._async_restore_segments = AsyncMock()
     entity.async_on_remove = MagicMock()
@@ -243,6 +248,7 @@ async def test_saved_effects_are_compatible_reactive_and_lock_safe(
     ):
         await entity.async_added_to_hass()
     assert listener is not None
+    assert "Late Effect" in entity.effect_list
 
     listener(LibrarySnapshot(()))
 

@@ -1,5 +1,5 @@
 import { customEffectCategoryAvailable, customEffectKindAvailable, libraryItemAvailable, type CustomEffectListContext } from "./custom-effect-list";
-import { defaultCustomEffectCategory, showCustomEffectSelector } from "./custom-effect-workflow";
+import { defaultCustomEffectCategory } from "./custom-effect-workflow";
 import {
   blankPainted,
   isEditableEffectContent,
@@ -27,7 +27,7 @@ export class PanelModel {
   public userState?: EffectUserState;
   public sceneInitialSelection?: SceneInitialSelection;
   public section: StudioSection = "custom";
-  public customEffectCategory: CustomEffectCategory = "all";
+  public customEffectCategory: CustomEffectCategory = "single-layer";
   public sceneEditorOpen = false;
   public customTemplateSelection?: string;
   public templateSourceLabel?: string;
@@ -43,11 +43,14 @@ export class PanelModel {
   public paintBrushOff = false;
   public saving = false;
   public saveNameDialogOpen = false;
+  public saveNameMode: "save" | "copy" = "save";
   public saveNameValue = "";
   public saveNameError?: string;
   public deleteCandidate?: DeleteCandidate;
   public deletingItemId?: string;
   public liveApplyEnabled = true;
+  public autoSaveEnabled = false;
+  public autoSaveFailed = false;
   public previewStatus?: PreviewStatus;
   public previewProgressVisible = false;
   public savedBaseline?: string;
@@ -133,6 +136,17 @@ export class PanelModel {
     );
   }
 
+  public get canSaveCurrentDraft(): boolean {
+    return this.dirty || (this.currentItem === undefined && this.customCopyStarted);
+  }
+
+  public get showSingleEffectSelector(): boolean {
+    return (
+      this.currentItem !== undefined ||
+      (!this.customCopyStarted && this.templateSourceLabel === undefined)
+    );
+  }
+
   public get previewCapability() {
     if (!isEditableEffectContent(this.content)) {
       return undefined;
@@ -168,14 +182,6 @@ export class PanelModel {
     return (
       this.deletingItemId !== undefined &&
       this.currentItem?.id === this.deletingItemId
-    );
-  }
-
-  public get showCustomEffectSelector(): boolean {
-    return showCustomEffectSelector(
-      this.currentItem !== undefined,
-      this.customCopyStarted,
-      this.templateSourceLabel,
     );
   }
 

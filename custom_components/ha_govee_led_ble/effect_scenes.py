@@ -167,6 +167,43 @@ async def async_reset_scene_default(
     return resolved
 
 
+async def async_set_scene_default(
+    config_entry: ConfigEntry[Any],
+    *,
+    scene_id: int,
+    effect_id: int,
+    speed_index: int | None,
+    updated_at: str,
+    scene_defaults: NativeSceneDefaultRepository,
+) -> ResolvedScene:
+    coordinator = config_entry.runtime_data
+    resolved = resolve_scene(coordinator.model, scene_id, effect_id)
+    canonical_body, resolved_speed = resolve_native_scene_body(
+        resolved.entry,
+        speed_index=speed_index,
+    )
+    await coordinator.async_apply_native_scene(
+        resolved.key,
+        speed_index=resolved_speed,
+        canonical_body=canonical_body or None,
+    )
+    catalogue_body, catalogue_speed = resolve_native_scene_body(resolved.entry)
+    if canonical_body == catalogue_body and resolved_speed == catalogue_speed:
+        await scene_defaults.async_delete(config_entry.entry_id, scene_id, effect_id)
+    elif canonical_body:
+        await scene_defaults.async_set(
+            NativeSceneDefault(
+                config_entry_id=config_entry.entry_id,
+                scene_id=scene_id,
+                effect_id=effect_id,
+                updated_at=updated_at,
+                canonical_body=canonical_body,
+                speed_index=resolved_speed,
+            )
+        )
+    return resolved
+
+
 def resolve_scene_application_body(
     scene: SceneEntry,
     *,

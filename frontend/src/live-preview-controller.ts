@@ -6,6 +6,7 @@ export interface LivePreviewRequest {
   fingerprint: string;
   force?: boolean;
   committed?: boolean;
+  persistDefault?: boolean;
 }
 
 interface LivePreviewControllerOptions<T extends LivePreviewRequest> {
@@ -254,7 +255,7 @@ export class LivePreviewController<T extends LivePreviewRequest> {
     if (!request) {
       return;
     }
-    const requestKey = `${request.fingerprint}:${request.committed === true ? "committed" : "changing"}`;
+    const requestKey = `${request.fingerprint}:${request.committed === true ? "committed" : "changing"}:${request.persistDefault === true ? "persist" : "preview"}`;
     if (!request.force && requestKey === this.lastSubmittedKey) {
       this.pending = undefined;
       return;

@@ -16,6 +16,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_effect,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
+    BuiltinScene,
     CatalogueRef,
     LayeredScene,
     LibraryItem,
@@ -204,6 +205,23 @@ def test_decoded_layered_scenes_compile_to_byte_exact_model_frames() -> None:
             "scene_payload_readback_unavailable",
             "layered_field_semantics_uncalibrated",
         )
+
+
+def test_saved_builtin_scenes_compile_to_native_scene_packets() -> None:
+    for model in ("H617A", "H6199"):
+        entry = next(scene for scene in SCENE_ENTRIES[model] if scene.scene_type == 0)
+        item = LibraryItem.new(
+            "Scene copy",
+            BuiltinScene(_reference(model, entry)),
+        )
+
+        assert compatibility(item, model).state is CompatibilityState.COMPATIBLE
+        compiled = compile_effect(item, model)
+
+        assert compiled.activation_mode is ActivationMode.SCENE
+        assert compiled.packets == tuple(build_native_scene_packets(model, entry))
+        assert compiled.content_kind == "scene_builtin"
+        assert compiled.upload_packets == ()
 
 
 def test_empty_imported_layers_compile_without_reusing_source_only_bytes() -> None:

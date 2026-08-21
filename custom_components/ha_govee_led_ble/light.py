@@ -248,11 +248,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         if self._effect_backend is not None:
+            application = self._effect_backend.application
             self.async_on_remove(
-                self._effect_backend.application.subscribe_library(
+                application.subscribe_library(
                     self._library_updated,
                 )
             )
+            self._library_updated(application.library_snapshot())
         await self._async_restore_static_color()
         await self._async_restore_segments()
 

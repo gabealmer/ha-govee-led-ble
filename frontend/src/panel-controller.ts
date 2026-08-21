@@ -1,9 +1,11 @@
 import { EffectStudioApi } from "./api";
 import { AsyncRequestController, type AsyncRequestToken } from "./async-request-controller";
 import {
-  cloneEditableEffect, isAdvancedEditableContent, isCustomEffectContent, isEditableEffectContent, isMyEffectKind,
+  cloneEditableEffect, customEffectCategoryForKind, isAdvancedEditableContent, isCustomEffectContent, isEditableEffectContent, isMyEffectKind,
   libraryItemSyncResult, libraryKindPriority, sameLibraryItemVersion, serialiseEditable, upsertSummary, type CustomEffectCategory,
+  type EditableEffectContent,
 } from "./effect-editor-model";
+import type { LivePreviewInteraction } from "./live-preview-controller";
 import { PanelEditorController } from "./panel-editor-controller";
 import { PanelModalController } from "./panel-modal-controller";
 import { PanelModel } from "./panel-model";
@@ -16,11 +18,23 @@ import {
   shouldOpenVideoSelection,
   type StudioSection,
 } from "./studio-navigation";
-import type { HomeAssistant, LibraryItem, LibrarySnapshot, LibrarySummary } from "./types";
+import type {
+  EffectUserState,
+  HomeAssistant,
+  LibraryItem,
+  LibrarySnapshot,
+  LibrarySummary,
+} from "./types";
 import { compareLabels, errorCode, errorMessage } from "./ui-utils";
 import { isCompatibleEditorInfo } from "./validation";
 
 type LoadRequest = AsyncRequestToken<{ api: EffectStudioApi }>;
+interface AutoSaveTarget {
+  epoch: number;
+  item: LibraryItem;
+  name: string;
+  content: EditableEffectContent;
+}
 
 interface PanelControllerOptions {
   connected(): boolean;
@@ -32,6 +46,9 @@ export class PanelController {
   public api?: EffectStudioApi;
 
   private unsubscribeLibrary?: () => void;
+  private autoSavePending?: AutoSaveTarget;
+  private autoSaveRunning = false;
+  private readonly latestSavedItems = new Map<string, LibraryItem>();
   private readonly loadRequests = new AsyncRequestController<{ api: EffectStudioApi }>(
     (left, right) => left.api === right.api,
   );
@@ -57,7 +74,13 @@ export class PanelController {
       if (!isCompatibleEditorInfo(info)) {
         throw new Error("This editor bundle is not compatible with the installed backend.");
       }
-      this.model.patch({ devices, library, customCatalogue, userState });
+      this.model.patch({
+        devices,
+        library,
+        customCatalogue,
+        userState,
+        autoSaveEnabled: restoredAutoSave(userState.navigation.auto_save),
+      });
       await this.initialiseSelectedDevice();
       if (!this.model.customEffectsAvailable) this.model.patch({ section: "scenes" });
       const unsubscribeLibrary = await api.subscribeLibrary(
@@ -88,6 +111,7 @@ export class PanelController {
   }
 
   public disconnect(): void {
+    this.cancelPendingAutoSave();
     this.loadRequests.invalidate();
     this.stopSubscriptions();
     this.api = undefined;
@@ -102,7 +126,10 @@ export class PanelController {
     this.model.patch({ selectedDeviceId, previewStatus: undefined, notice: undefined });
     this.options.replacePath(editorDevicePath(selectedDeviceId));
     try {
-      const userState = await this.api?.updateUserState(selectedDeviceId, this.model.userState?.navigation ?? {});
+      const userState = await this.api?.updateUserState(
+        selectedDeviceId,
+        this.navigationPreferences,
+      );
       if (userState) this.model.patch({ userState });
     } catch (error) {
       console.warn("Could not remember the selected light", error);
@@ -110,17 +137,49 @@ export class PanelController {
     await this.openInitialContext();
   }
 
-  public async selectSection(section: StudioSection): Promise<void> {
+  public async selectSection(
+    section: StudioSection,
+    customEffectCategory?: CustomEffectCategory,
+  ): Promise<void> {
+    const categoryChanged =
+      section === "custom" &&
+      customEffectCategory !== undefined &&
+      customEffectCategory !== this.model.customEffectCategory;
+    if (section === this.model.section && categoryChanged) {
+      if (!this.model.customEffectCategoryAvailable(customEffectCategory)) {
+        return;
+      }
+      this.model.patch({
+        customEffectCategory,
+        notice: undefined,
+      });
+      this.remember();
+      return;
+    }
     const transitionEpoch = this.editor.beginTransition();
-    if (section === this.model.section) {
+    if (section === this.model.section && !categoryChanged) {
       if (section === "scenes" && this.model.sceneEditorOpen) this.model.patch({ sceneEditorOpen: false });
       if (shouldOpenVideoSelection(section, this.model.content.kind)) {
         await this.openVideoSelection(transitionEpoch);
       }
       return;
     }
-    if ((section === "custom" && !this.model.customEffectsAvailable) || (section === "video" && !this.model.videoAvailable)) return;
-    this.model.patch({ sceneEditorOpen: false, section, notice: undefined });
+    if (
+      (section === "custom" &&
+        (!this.model.customEffectsAvailable ||
+          (customEffectCategory !== undefined &&
+            !this.model.customEffectCategoryAvailable(customEffectCategory)))) ||
+      (section === "video" && !this.model.videoAvailable)
+    ) return;
+    this.model.patch({
+      sceneEditorOpen: false,
+      section,
+      customEffectCategory:
+        section === "custom" && customEffectCategory !== undefined
+          ? customEffectCategory
+          : this.model.customEffectCategory,
+      notice: undefined,
+    });
     this.remember();
     if (section === "scenes") return;
     if (section === "video") {
@@ -159,8 +218,16 @@ export class PanelController {
       this.model.patch({ sceneInitialSelection: { kind: "saved", itemId: item.id } });
       return;
     }
-    this.model.patch({ section: item.kind === "video_profile" ? "video" : "custom" });
-    if (!(await this.selectItem(item.id))) this.openRootCreateView();
+    this.model.patch({
+      section: item.kind === "video_profile" ? "video" : "custom",
+      customEffectCategory:
+        item.kind === "video_profile"
+          ? this.model.customEffectCategory
+          : this.categoryForKind(item.kind),
+    });
+    if (!(await this.selectItem(item.id, undefined, false))) {
+      this.openRootCreateView();
+    }
   }
 
   public sceneInitialSelectionOpened(): void {
@@ -172,17 +239,64 @@ export class PanelController {
     this.openRootCreateView();
   }
 
-  public categoryChanged(customEffectCategory: CustomEffectCategory): void {
-    this.model.patch({ customEffectCategory });
-    this.remember();
-  }
-
   public remember(): void {
     void this.rememberNavigation();
   }
 
+  public toggleAutoSave(): void {
+    const autoSaveEnabled = !this.model.autoSaveEnabled;
+    this.model.patch({
+      autoSaveEnabled,
+      autoSaveFailed: false,
+    });
+    if (autoSaveEnabled) {
+      this.contentCommitted("committed");
+    } else {
+      this.cancelPendingAutoSave();
+    }
+    this.remember();
+  }
+
+  public contentCommitted(interaction: LivePreviewInteraction): void {
+    if (
+      interaction !== "committed" ||
+      !this.model.isAdmin ||
+      !this.model.autoSaveEnabled ||
+      this.model.sceneEditorOpen ||
+      !this.model.currentItem ||
+      !isEditableEffectContent(this.model.content) ||
+      !this.model.dirty
+    ) {
+      return;
+    }
+    this.autoSavePending = {
+      epoch: this.model.editorTransitionEpoch,
+      item: this.model.currentItem,
+      name: this.model.name.trim(),
+      content: cloneEditableEffect(this.model.content),
+    };
+    if (!this.autoSaveRunning) {
+      void this.drainAutoSave();
+    }
+  }
+
+  public cancelPendingAutoSave(): void {
+    this.autoSavePending = undefined;
+  }
+
   public async libraryChanged(snapshot: LibrarySnapshot): Promise<void> {
     this.model.patch({ library: snapshot });
+    if (
+      this.model.saving &&
+      this.model.currentItem &&
+      snapshot.items.some(
+        (item) =>
+          item.id === this.model.currentItem!.id &&
+          item.version > this.model.currentItem!.version,
+      )
+    ) {
+      return;
+    }
     const sync = libraryItemSyncResult(this.model.currentItem, snapshot.items, this.model.dirty, this.model.deletingItemId);
     if (sync.action === "none") return;
     if (sync.action === "removed") {
@@ -194,7 +308,11 @@ export class PanelController {
       return;
     }
     const transitionEpoch = this.editor.beginTransition();
-    const selected = await this.selectItem(sync.summary.id, transitionEpoch);
+    const selected = await this.selectItem(
+      sync.summary.id,
+      transitionEpoch,
+      false,
+    );
     if (selected && transitionEpoch === this.model.editorTransitionEpoch) {
       this.model.patch({ notice: undefined });
     }
@@ -204,12 +322,25 @@ export class PanelController {
     this.model.patch({ library: { items: upsertSummary(this.model.library.items, item) } });
   }
 
-  public async selectItem(itemId: string, existingTransitionEpoch?: number): Promise<boolean> {
+  public async selectItem(
+    itemId: string,
+    existingTransitionEpoch?: number,
+    applyLive = true,
+  ): Promise<boolean> {
     const transitionEpoch = existingTransitionEpoch ?? this.editor.beginTransition();
     if (!this.api) return false;
     try {
       const item = await this.api.item(itemId);
-      return transitionEpoch === this.model.editorTransitionEpoch && this.editor.applyLibraryItem(item);
+      if (
+        transitionEpoch !== this.model.editorTransitionEpoch ||
+        !this.editor.applyLibraryItem(item)
+      ) {
+        return false;
+      }
+      if (applyLive && this.model.liveApplyEnabled) {
+        await this.applySavedIdentity(item, transitionEpoch);
+      }
+      return transitionEpoch === this.model.editorTransitionEpoch;
     } catch (error) {
       if (transitionEpoch === this.model.editorTransitionEpoch) this.model.patch({ notice: errorMessage(error) });
       return false;
@@ -258,6 +389,7 @@ export class PanelController {
       this.model.patch({ notice: "Give this effect a name before saving." });
       return;
     }
+
     const transitionEpoch = this.model.editorTransitionEpoch;
     const originatingItem = this.model.currentItem;
     const content = cloneEditableEffect(this.model.content);
@@ -285,11 +417,18 @@ export class PanelController {
           savedBaseline: serialiseEditable(result.name, savedContent),
           sceneEditorOpen: savingSceneEditor && savedContent.kind === "scene_layered" ? false : this.model.sceneEditorOpen,
           section: savingSceneEditor && savedContent.kind === "scene_layered" ? "custom" : this.model.section,
-          customEffectCategory: savingSceneEditor && savedContent.kind === "scene_layered" ? "my-effects" : this.model.customEffectCategory,
+          customEffectCategory: savingSceneEditor && savedContent.kind === "scene_layered"
+            ? this.categoryForKind(result.content.kind)
+            : this.model.customEffectCategory,
           savedSceneSelection: originatingItem && savedContent.kind === "scene_layered" ? result : this.model.savedSceneSelection,
+          autoSaveFailed: false,
         });
         if (savingSceneEditor && savedContent.kind === "scene_layered") this.remember();
+        if (this.model.liveApplyEnabled) {
+          await this.applySavedIdentity(result, transitionEpoch);
+        }
       }
+
       const savedResultIsCurrent =
         transitionEpoch === this.model.editorTransitionEpoch &&
         sameLibraryItemVersion(this.model.currentItem, result) &&
@@ -315,6 +454,60 @@ export class PanelController {
     }
   }
 
+  public async saveAs(name: string): Promise<void> {
+    if (
+      !this.api ||
+      !this.model.isAdmin ||
+      this.model.saving ||
+      this.model.deletingCurrentItem ||
+      !isEditableEffectContent(this.model.content)
+    ) {
+      return;
+    }
+    const content = cloneEditableEffect(this.model.content);
+    const transitionEpoch = this.model.editorTransitionEpoch;
+    const sourceItemId = this.model.currentItem?.id;
+    this.cancelPendingAutoSave();
+    this.model.patch({ saving: true, notice: undefined });
+    try {
+      const result = await this.api.createItem(name, content);
+      this.model.patch({
+        library: {
+          items: upsertSummary(this.model.library.items, result),
+        },
+      });
+      if (
+        transitionEpoch === this.model.editorTransitionEpoch &&
+        this.model.currentItem?.id === sourceItemId
+      ) {
+        this.editor.applyLibraryItem(result);
+        this.model.patch({
+          ...(result.content.kind === "video_profile"
+            ? {}
+            : {
+                section: "custom" as const,
+                customEffectCategory: this.categoryForKind(
+                  result.content.kind,
+                ),
+              }),
+          autoSaveFailed: false,
+        });
+        this.remember();
+        if (this.model.liveApplyEnabled) {
+          await this.applySavedIdentity(result, transitionEpoch);
+        }
+      }
+    } catch (error) {
+      if (transitionEpoch === this.model.editorTransitionEpoch) {
+        this.model.patch({
+          notice: `Save As failed: ${errorMessage(error)}`,
+        });
+      }
+    } finally {
+      this.model.patch({ saving: false });
+    }
+  }
+
   public async initialiseSelectedDevice(): Promise<string | undefined> {
     const userState = this.model.userState;
     const selectedDeviceId = initialDeviceId(this.options.pathname(), this.model.devices, userState?.selected_config_entry_id);
@@ -324,7 +517,13 @@ export class PanelController {
     });
     if (!userState || !this.model.selectedDevice || selectedDeviceId === userState.selected_config_entry_id) return undefined;
     try {
-      const updated = await this.api?.updateUserState(selectedDeviceId, userState.navigation);
+      const updated = await this.api?.updateUserState(
+        selectedDeviceId,
+        {
+          ...userState.navigation,
+          auto_save: this.model.autoSaveEnabled,
+        },
+      );
       if (updated) this.model.patch({ userState: updated });
       return undefined;
     } catch (error) {
@@ -345,6 +544,7 @@ export class PanelController {
     this.model.patch({
       section: rememberedStudioSection(navigation, { custom: this.model.customEffectsAvailable, video: this.model.videoAvailable }),
       customEffectCategory,
+      autoSaveEnabled: restoredAutoSave(navigation.auto_save),
       notice: undefined,
     });
   }
@@ -353,8 +553,7 @@ export class PanelController {
     if (!this.api || !this.model.userState) return;
     try {
       const userState = await this.api.updateUserState(this.model.selectedDeviceId, {
-        section: this.model.section,
-        custom_category: this.model.customEffectCategory,
+        ...this.navigationPreferences,
       });
       this.model.patch({ userState });
     } catch (error) {
@@ -369,6 +568,121 @@ export class PanelController {
         const priority = libraryKindPriority(left.kind, this.model.selectedModel) - libraryKindPriority(right.kind, this.model.selectedModel);
         return priority || compareLabels(left.name, right.name);
       })[0];
+  }
+
+  private async drainAutoSave(): Promise<void> {
+    this.autoSaveRunning = true;
+    try {
+      while (this.autoSavePending) {
+        const target = this.autoSavePending;
+        this.autoSavePending = undefined;
+        await this.persistAutoSave(target);
+      }
+    } finally {
+      this.autoSaveRunning = false;
+    }
+  }
+
+  private async persistAutoSave(target: AutoSaveTarget): Promise<void> {
+    if (!this.api || !target.name) {
+      return;
+    }
+    const base = this.latestSavedItems.get(target.item.id) ?? target.item;
+    this.model.patch({
+      saving: true,
+      autoSaveFailed: false,
+      notice: undefined,
+    });
+    try {
+      const result = await this.api.updateItem(
+        base,
+        target.name,
+        target.content,
+      );
+      if (!isEditableEffectContent(result.content)) {
+        throw new Error("The saved effect returned an unsupported definition.");
+      }
+      const savedContent = result.content;
+      this.latestSavedItems.set(result.id, result);
+      this.model.patch({
+        library: {
+          items: upsertSummary(this.model.library.items, result),
+        },
+      });
+      if (
+        target.epoch === this.model.editorTransitionEpoch &&
+        this.model.currentItem?.id === result.id
+      ) {
+        const savedBaseline = serialiseEditable(
+          result.name,
+          savedContent,
+        );
+        this.model.patch({
+          currentItem: result,
+          savedBaseline,
+          autoSaveFailed: false,
+          notice: undefined,
+        });
+        if (
+          this.model.liveApplyEnabled &&
+          isEditableEffectContent(this.model.content) &&
+          serialiseEditable(this.model.name, this.model.content) ===
+            savedBaseline
+        ) {
+          await this.applySavedIdentity(result, target.epoch);
+        }
+      }
+    } catch (error) {
+      if (
+        target.epoch === this.model.editorTransitionEpoch &&
+        this.model.currentItem?.id === target.item.id
+      ) {
+        this.model.patch({
+          autoSaveFailed: true,
+          notice:
+            errorCode(error) === "conflict"
+              ? "This effect changed elsewhere. Reload it before saving."
+              : `Save failed: ${errorMessage(error)}`,
+        });
+      }
+      this.autoSavePending = undefined;
+    } finally {
+      this.model.patch({ saving: false });
+    }
+  }
+
+  private get navigationPreferences(): EffectUserState["navigation"] {
+    return {
+      section: this.model.section,
+      custom_category: this.model.customEffectCategory,
+      auto_save: this.model.autoSaveEnabled,
+    };
+  }
+
+  private categoryForKind(kind: string): CustomEffectCategory {
+    const category = customEffectCategoryForKind(kind);
+    return this.model.customEffectCategoryAvailable(category)
+      ? category
+      : this.model.defaultCustomEffectCategory();
+  }
+
+  private async applySavedIdentity(
+    item: LibraryItem,
+    transitionEpoch: number,
+  ): Promise<void> {
+    const configEntryId = this.model.selectedDeviceId;
+    if (!this.api || !configEntryId) {
+      return;
+    }
+    try {
+      await this.api.applySavedEffect(configEntryId, item.id);
+    } catch (error) {
+      if (transitionEpoch === this.model.editorTransitionEpoch) {
+        this.model.patch({
+          notice: `Apply failed: ${errorMessage(error)}`,
+        });
+      }
+    }
   }
 
   private async openVideoSelection(transitionEpoch: number): Promise<void> {
@@ -416,7 +730,14 @@ export function restoredCustomEffectCategory(
   available: (category: CustomEffectCategory) => boolean,
   fallback: CustomEffectCategory,
 ): CustomEffectCategory {
+  if (remembered === "all") {
+    return fallback;
+  }
   return isCustomEffectCategory(remembered) && available(remembered)
     ? remembered
     : fallback;
+}
+
+export function restoredAutoSave(value: unknown): boolean {
+  return value === true;
 }
