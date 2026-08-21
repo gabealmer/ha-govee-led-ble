@@ -1,4 +1,4 @@
-export const EDITOR_ASSET_VERSION = 7;
-export const EDITOR_API_VERSION = 6;
+export const EDITOR_ASSET_VERSION = 8;
+export const EDITOR_API_VERSION = 7;
 export const EFFECT_SCHEMA_VERSION = 2;
 export const EFFECT_COMPILER_VERSION = 4;

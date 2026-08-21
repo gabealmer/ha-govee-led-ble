@@ -47,24 +47,25 @@ export class GoveeSwitchControl extends LitElement {
     studioBaseStyles,
     css`
       :host {
-        --switch-track-width: 48px;
         display: inline-block;
         flex: 0 0 auto;
       }
 
       button {
+        --studio-switch-track-width: var(--studio-compact-switch-track-width);
+        --studio-switch-thumb-travel: calc(
+          var(--studio-switch-track-width) - var(--studio-switch-thumb-inset) -
+            var(--studio-switch-thumb-inset) -
+            var(--studio-switch-thumb-size)
+        );
         position: relative;
-        width: var(--switch-track-width);
+        width: var(--studio-switch-track-width);
         min-height: var(--studio-switch-track-height);
         height: var(--studio-switch-track-height);
         padding: 0;
         border: 0;
         border-radius: var(--studio-pill-radius);
-        background: color-mix(
-          in srgb,
-          var(--studio-muted) 12%,
-          var(--studio-card)
-        );
+        background: var(--studio-switch-track-off);
         cursor: pointer;
         transition: background var(--studio-switch-transition-duration)
           var(--studio-switch-transition-easing);
@@ -77,11 +78,7 @@ export class GoveeSwitchControl extends LitElement {
         width: var(--studio-switch-thumb-size);
         height: var(--studio-switch-thumb-size);
         border-radius: var(--studio-round-radius);
-        background: color-mix(
-          in srgb,
-          var(--studio-muted) 72%,
-          var(--studio-card)
-        );
+        background: var(--studio-switch-thumb-off);
         box-shadow: 0 var(--studio-border-width)
           var(--studio-strong-border-width) rgb(0 0 0 / 20%);
         transition:
@@ -92,27 +89,12 @@ export class GoveeSwitchControl extends LitElement {
       }
 
       button.on {
-        border-color: color-mix(
-          in srgb,
-          var(--studio-blue) 62%,
-          var(--studio-border)
-        );
-        background: color-mix(
-          in srgb,
-          var(--studio-blue) 72%,
-          var(--studio-card)
-        );
+        background: var(--studio-switch-track-on);
       }
 
       button.on span {
-        background: var(--text-primary-color, #fff);
-        transform: translateX(
-          calc(
-            var(--switch-track-width) - var(--studio-switch-thumb-inset) -
-              var(--studio-switch-thumb-inset) -
-              var(--studio-switch-thumb-size)
-          )
-        );
+        background: var(--studio-switch-thumb-on);
+        transform: translateX(var(--studio-switch-thumb-travel));
       }
 
       button:focus-visible {

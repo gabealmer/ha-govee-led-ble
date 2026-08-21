@@ -155,7 +155,7 @@ Bash ownership and restoration branches are covered through subprocess-based stu
 | Deterministic package | The final `6.5.0rc16` source produces SHA-256 `286b3440e61a933de2a50a7333eff0d4d4cda2c83930d87bc1744bf1d6a08da7`; the post-commit gate repeats the clean-build comparison. |
 | Package paths | The only cleanup-baseline path removed is dead `effect_scene_codec.py`. |
 | H617A production-package UX | Sidebar/deep link, one-device selector rule, off-state root opening, active scene opening, dirty marker, scene-copy cancel, save/overwrite/stale conflict/delete, All scenes, native reset, standard Home Assistant replay, Advanced and Music surfaces, live-apply status, read-only presentation, desktop pane bounds, and mobile zero-overflow navigation passed. |
-| H6199 production-package UX | Video Movie/Game profiles, saturation, white balance, relative brightness, blank screen, sound effects, Special DIY, Advanced, and read-only presentation passed. |
+| H6199 production-package UX | Video Movie/Game profiles, saturation, white balance, relative brightness, blank screen, sound effects, Advanced, and read-only presentation passed. |
 | Household restoration | Cupboard off.  Dream TV off with captured Video settings intact.  Zac's current state was not changed. |
 
 ## `7.0.0` quality addendum

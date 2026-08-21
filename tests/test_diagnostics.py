@@ -75,11 +75,6 @@ async def test_surfaces_release_capability_evidence_without_hiding_planned_workf
         "physical_validation_state": "capture_validated",
         "evidence_classification": "structural",
     }
-    assert capabilities["special_diy"]["frontend_visibility"] == "visible"
-    assert capabilities["special_diy"]["application_route"] == "studio_custom_apply"
-    assert capabilities["special_diy"]["compiler_deployer_strategy"] == "h6199_custom_engine"
-    assert capabilities["special_diy"]["verification_confidence"] == "selection_only"
-    assert capabilities["special_diy"]["evidence_classification"] == "structural"
     assert capabilities["workshop"]["verification_confidence"] == "selection_only"
 
 
@@ -241,7 +236,7 @@ async def test_surfaces_only_bounded_deployment_diagnostics_for_this_entry(
     history.record_evidence_gap(
         "unsupported_capability",
         config_entry_id="other-entry",
-        details={"capability": "special_diy"},
+        details={"capability": "workshop"},
     )
     hass = SimpleNamespace(
         data={

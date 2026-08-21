@@ -29,8 +29,13 @@ export const studioTokenStyles = css`
     --studio-touch-target-size: 44px;
     --studio-control-height: var(--studio-touch-target-size);
     --studio-compact-control-height: 36px;
+    --studio-compact-action-size: var(--studio-control-height);
     --studio-app-header-height: 56px;
     --studio-icon-size: 20px;
+    --studio-action-glyph-size: var(--studio-icon-size);
+    --studio-info-control-size: var(--studio-spacing-6xl);
+    --studio-info-control-font-size: var(--studio-caption-size);
+    --studio-info-popover-width: 320px;
     --studio-checkbox-size: 20px;
     --studio-small-swatch-size: 16px;
     --studio-swatch-size: 32px;
@@ -103,6 +108,32 @@ export const studioTokenStyles = css`
     --studio-switch-track-height: 24px;
     --studio-switch-thumb-size: 18px;
     --studio-switch-thumb-inset: 3px;
+    --studio-compact-switch-track-width: 48px;
+    --studio-labelled-switch-zone-gap: var(--studio-spacing-xxs);
+    --studio-labelled-switch-label-width: 30px;
+    --studio-labelled-switch-track-width: calc(
+      var(--studio-switch-thumb-inset) + var(--studio-switch-thumb-size) +
+        var(--studio-labelled-switch-zone-gap) +
+        var(--studio-labelled-switch-label-width) +
+        var(--studio-labelled-switch-zone-gap) +
+        var(--studio-switch-thumb-size) + var(--studio-switch-thumb-inset)
+    );
+    --studio-switch-track-off: color-mix(
+      in srgb,
+      var(--studio-muted) 42%,
+      var(--studio-card)
+    );
+    --studio-switch-track-on: color-mix(
+      in srgb,
+      var(--studio-blue) 72%,
+      var(--studio-card)
+    );
+    --studio-switch-thumb-off: color-mix(
+      in srgb,
+      var(--studio-muted) 72%,
+      var(--studio-card)
+    );
+    --studio-switch-thumb-on: var(--text-primary-color, #fff);
     --studio-switch-transition-duration: 150ms;
     --studio-switch-transition-easing: cubic-bezier(0.31, 0.94, 0.34, 1);
     --studio-z-raised: 1;

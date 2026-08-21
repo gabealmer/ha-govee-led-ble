@@ -67,9 +67,13 @@ export class PanelPreviewController {
     return true;
   }
 
-  public beginEditorTransition(): number {
+  public beginEditorTransition(cancelBackend = true): number {
     const editorTransitionEpoch = this.model.editorTransitionEpoch + 1;
-    this.scheduler.reset();
+    if (cancelBackend) {
+      this.scheduler.reset();
+    } else {
+      this.scheduler.transition();
+    }
     this.progress.clear();
     this.model.patch({
       editorTransitionEpoch,
@@ -86,6 +90,13 @@ export class PanelPreviewController {
     const request = this.currentRequest(false, scene);
     if (request) {
       this.scheduler.schedule(request, interaction);
+    }
+  }
+
+  public scheduleTemplateSelection(): void {
+    const request = this.currentRequest(false);
+    if (request) {
+      this.scheduler.scheduleSelection(request);
     }
   }
 
@@ -158,6 +169,7 @@ export class PanelPreviewController {
     }
     if (
       !this.canPreview ||
+      !this.model.editorOwnedByActiveView ||
       !isEditableEffectContent(this.model.content)
     ) {
       return undefined;

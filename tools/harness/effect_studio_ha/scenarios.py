@@ -91,7 +91,7 @@ class EffectStudioValidator:
             raise ValidationError("Effect Studio panel does not use the stable loader module")
 
         info = object_value(await self.client.call({"type": WS_INFO}), "editor info")
-        if info.get("api_version") != 6 or info.get("effect_schema_version") != 2:
+        if info.get("api_version") != 7 or info.get("effect_schema_version") != 2:
             raise ValidationError("Effect Studio editor API versions are not supported")
         limits = object_value(info.get("limits"), "editor limits")
         if not isinstance(limits.get("deployment_records"), int) or not isinstance(limits.get("library_items"), int):
@@ -137,7 +137,7 @@ class EffectStudioValidator:
 
         catalogue_payload = object_value(await self.client.call({"type": WS_CUSTOM_CATALOGUE}), "custom catalogue")
         self.catalogue = object_value(catalogue_payload.get("catalogue"), "custom catalogue")
-        if self.catalogue.get("schema_version") != 6:
+        if self.catalogue.get("schema_version") != 7:
             raise ValidationError("Effect Studio custom catalogue schema is not supported")
         models = object_value(self.catalogue.get("models"), "model catalogues")
         model_catalogue = object_value(models.get(EXPECTED_MODEL), "H617A catalogue")

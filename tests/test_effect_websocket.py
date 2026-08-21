@@ -95,7 +95,7 @@ async def test_authenticated_users_can_read_contracts(
     await client.send_json_auto_id({"type": WS_CUSTOM_CATALOGUE})
     catalogue = await client.receive_json()
 
-    assert info["result"]["api_version"] == 6
+    assert info["result"]["api_version"] == 7
     assert "drafts_per_owner" not in info["result"]["limits"]
     assert library["result"] == {"items": []}
     assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H617A", "H6199"]

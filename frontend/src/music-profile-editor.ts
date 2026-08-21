@@ -5,19 +5,15 @@ import { live } from "lit/directives/live.js";
 import type { CheckboxControlChange } from "./checkbox-control";
 import "./checkbox-control";
 import { recentColour } from "./colour-picker";
-import "./colour-picker";
 import type { LivePreviewInteraction } from "./live-preview-controller";
-import type {
-  SegmentedControlChange,
-  SegmentedControlOption,
-  SegmentedControlValue,
-} from "./segmented-control";
-import "./segmented-control";
+import "./single-colour-field";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
 import {
   cloneJsonObject,
   cloneMusicProfileContent,
+  musicStyleCalm,
+  musicStyleValue,
 } from "./profile-model";
 import {
   studioBaseStyles,
@@ -125,54 +121,57 @@ export class GoveeMusicProfileEditor extends LitElement {
 
           ${colourMode === "fixed"
             ? html`
-                <div class="parameter-group fixed-colour">
-                  <span class="parameter-label">Fixed colour</span>
-                  <govee-colour-picker
-                    .colour=${fixedColour}
-                    .disabled=${this.disabled}
-                    @colour-changing=${(event: CustomEvent<{ colour: RGB }>) =>
-                      this.fixedColourChanged(event.detail.colour, "changing")}
-                    @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
-                      this.fixedColourChanged(event.detail.colour, "committed")}
-                  ></govee-colour-picker>
-                </div>
+                <govee-single-colour-field
+                  label="Fixed colour"
+                  .visibleLabel=${false}
+                  .colour=${fixedColour}
+                  .disabled=${this.disabled}
+                  .selectionActive=${true}
+                  .rememberOnCommit=${true}
+                  @colour-changing=${(event: CustomEvent<{ colour: RGB }>) =>
+                    this.fixedColourChanged(event.detail.colour, "changing")}
+                  @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
+                    this.fixedColourChanged(event.detail.colour, "committed")}
+                ></govee-single-colour-field>
               `
             : nothing}
 
           ${isStyleMode(this.content.mode)
-            ? this.renderSegmentedField(
-                "Style",
-                Boolean(this.content.calm),
-                [
-                  { value: false, label: "Dynamic" },
-                  { value: true, label: "Calm" },
-                ] as const,
-                (value) => this.styleChanged(value),
-              )
+            ? html`
+                <label class="field">
+                  <span>Style</span>
+                  <select
+                    aria-label="Style"
+                    ?disabled=${this.disabled}
+                    @change=${(event: Event) =>
+                      this.styleChanged(
+                        musicStyleCalm(
+                          (event.target as HTMLSelectElement).value,
+                        ),
+                      )}
+                  >
+                    <option
+                      value="dynamic"
+                      .selected=${musicStyleValue(this.content.calm) ===
+                      "dynamic"}
+                    >
+                      Dynamic
+                    </option>
+                    <option
+                      value="calm"
+                      .selected=${musicStyleValue(this.content.calm) ===
+                      "calm"}
+                    >
+                      Calm
+                    </option>
+                  </select>
+                </label>
+              `
             : nothing}
 
           ${this.renderModeParameters(this.content)}
         </div>
       </section>
-    `;
-  }
-
-  private renderSegmentedField<T extends SegmentedControlValue>(
-    label: string,
-    value: T,
-    options: readonly SegmentedControlOption<T>[],
-    changed: (value: T) => void,
-  ) {
-    return html`
-      <govee-segmented-control
-        .label=${label}
-        .value=${value}
-        .options=${options}
-        .disabled=${this.disabled}
-        @value-changed=${(
-          event: CustomEvent<SegmentedControlChange<T>>,
-        ) => changed(event.detail.value)}
-      ></govee-segmented-control>
     `;
   }
 

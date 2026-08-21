@@ -31,7 +31,6 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     PaletteDiyEffect,
     RelativeBrightness,
     SingleEffect,
-    SpecialDiyEffect,
     TargetHint,
     VideoProfile,
     WorkshopEffect,
@@ -60,7 +59,6 @@ CONTENT_FAMILIES = {
     "video_profile",
     "advanced",
     "workshop",
-    "special_diy",
     "scene_builtin",
     "scene_palette",
     "scene_layered",
@@ -83,7 +81,6 @@ def _compact_custom_catalogue(catalogue: dict[str, Any]) -> dict[str, Any]:
             "music_modes",
             "video_modes",
             "workshop_templates",
-            "special_diy_templates",
         ):
             compact[field] = cast(list[Any], compact[field])[:1]
         compact_models[model] = compact
@@ -134,15 +131,11 @@ def _content_samples(
     scene_details: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     h617a_catalogue = cast(dict[str, Any], cast(dict[str, Any], catalogue["models"])["H617A"])
-    h6199_catalogue = cast(dict[str, Any], cast(dict[str, Any], catalogue["models"])["H6199"])
     workshop_templates = cast(list[dict[str, Any]], h617a_catalogue["workshop_templates"])
-    special_diy_templates = cast(list[dict[str, Any]], h6199_catalogue["special_diy_templates"])
     workshop_payload = cast(dict[str, Any], workshop_templates[0]["content"])
-    special_diy_payload = cast(dict[str, Any], special_diy_templates[0]["content"])
     workshop = effect_content_from_dict(workshop_payload)
-    special_diy = effect_content_from_dict(special_diy_payload)
-    if not isinstance(workshop, WorkshopEffect) or not isinstance(special_diy, SpecialDiyEffect):
-        raise RuntimeError("Catalogue templates do not expose the expected frontend content families")
+    if not isinstance(workshop, WorkshopEffect):
+        raise RuntimeError("Catalogue templates do not expose the expected frontend content family")
 
     samples = {
         "h617a_painted": effect_content_to_dict(
@@ -180,7 +173,6 @@ def _content_samples(
         ),
         "advanced": effect_content_to_dict(workshop.effect),
         "workshop": workshop_payload,
-        "special_diy": special_diy_payload,
         "scene_builtin": cast(dict[str, Any], scene_details["scene_builtin"]["content"]),
         "scene_palette": cast(dict[str, Any], scene_details["scene_palette"]["content"]),
         "scene_layered": cast(dict[str, Any], scene_details["scene_layered"]["content"]),

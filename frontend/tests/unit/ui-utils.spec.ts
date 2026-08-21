@@ -1,16 +1,19 @@
 import { expect, test } from "vitest";
 
 import {
+  classifyLightEntityState,
   clamp,
   clampInteger,
   clonePalette,
   integrationSettingsPath,
+  labelledSwitchModel,
+  lightControlPresentation,
   lightControlEntityId,
   moreInfoDetail,
   relocatedIndex,
   sameRgb,
   showHomeAssistantHeader,
-  showStudioToolbar,
+  studioToolbarLayoutState,
 } from "../../src/ui-utils";
 import type { DeviceCapabilities, RGB } from "../../src/types";
 
@@ -28,7 +31,6 @@ function device(lightEntityId: string | null): DeviceCapabilities {
       palette_diy: "supported",
       advanced: "supported",
       workshop: "supported",
-      special_diy: "supported",
     },
     profiles: {
       music: "supported",
@@ -74,10 +76,29 @@ test("light controls follow the selected device without hiding the toolbar", () 
   expect(lightControlEntityId(device("light.cupboard"))).toBe("light.cupboard");
   expect(lightControlEntityId(device(null))).toBeUndefined();
   expect(lightControlEntityId(undefined)).toBeUndefined();
-  expect(showStudioToolbar(false, false, "light.cupboard")).toBe(true);
-  expect(showStudioToolbar(false, true, undefined)).toBe(true);
-  expect(showStudioToolbar(true, false, undefined)).toBe(true);
-  expect(showStudioToolbar(false, false, undefined)).toBe(false);
+  expect(
+    studioToolbarLayoutState(true, true, true, "light.cupboard"),
+  ).toEqual({
+    visible: true,
+    deviceSelector: true,
+    labelledSwitches: true,
+    lightControl: true,
+    settings: true,
+  });
+  expect(studioToolbarLayoutState(false, false, true, undefined)).toEqual({
+    visible: false,
+    deviceSelector: false,
+    labelledSwitches: false,
+    lightControl: false,
+    settings: false,
+  });
+  expect(studioToolbarLayoutState(false, false, true, "light.cupboard")).toEqual({
+    visible: true,
+    deviceSelector: false,
+    labelledSwitches: false,
+    lightControl: true,
+    settings: false,
+  });
   expect(moreInfoDetail("light.cupboard")).toEqual({
     entityId: "light.cupboard",
   });
@@ -89,4 +110,36 @@ test("light controls follow the selected device without hiding the toolbar", () 
   ).toBe(
     "/config/integrations/integration/ha_govee_led_ble#config_entry=entry+a",
   );
+});
+
+test("labelled switch models keep text and accessible names stationary", () => {
+  const off = labelledSwitchModel("Save", false, "Save automatically");
+  const on = labelledSwitchModel("Save", true, "Save automatically");
+
+  expect(off).toEqual({
+    role: "switch",
+    label: "Save",
+    accessibleName: "Save automatically",
+    checked: false,
+  });
+  expect(on).toEqual({ ...off, checked: true });
+});
+
+test("native light presentation follows reactive Home Assistant state", () => {
+  const states = { "light.cupboard": { state: "on" } };
+
+  expect(classifyLightEntityState(states, "light.cupboard")).toBe("on");
+  expect(lightControlPresentation("Cupboard", "on")).toEqual({
+    accessibleName: "Control Cupboard (on)",
+    className: "light-state-on",
+  });
+
+  states["light.cupboard"] = { state: "off" };
+  expect(classifyLightEntityState(states, "light.cupboard")).toBe("off");
+
+  states["light.cupboard"] = { state: "unavailable" };
+  expect(classifyLightEntityState(states, "light.cupboard")).toBe(
+    "unavailable",
+  );
+  expect(classifyLightEntityState({}, "light.cupboard")).toBe("unavailable");
 });

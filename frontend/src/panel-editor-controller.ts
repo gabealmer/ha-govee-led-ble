@@ -1,6 +1,6 @@
 import { blankAdvancedContent, cloneLayeredSceneContent } from "./advanced-effect-model";
 import { newEffectKindForCategory, type CustomEffectListEntry } from "./custom-effect-list";
-import { starterBaseline } from "./custom-effect-workflow";
+import type { EditorOwner, EditorSource } from "./editor-state";
 import {
   blankCustomEffect,
   blankPainted,
@@ -10,8 +10,8 @@ import {
   cloneEditableEffect,
   cloneOpaqueContent,
   clonePaletteDiy,
-  cloneSpecialDiy,
   customKindLabel,
+  customEffectCategoryForKind,
   isAdvancedEditableContent,
   isCustomEffectContent,
   isEditableEffectContent,
@@ -37,7 +37,6 @@ import type {
   PaintedContent,
   PaletteDiyEffectContent,
   RGB,
-  SpecialDiyContent,
   VideoProfileContent,
 } from "./types";
 
@@ -51,22 +50,18 @@ interface PanelEditorOptions {
 interface InitialEffect {
   name: string;
   content: EditableEffectContent;
-  selectionIdentity?: string;
-  templateLabel?: string;
-  customCopyStarted?: boolean;
 }
 
 interface EditorReturnState {
   currentItem?: LibraryItem;
   savedSceneSelection?: LibraryItem;
-  templateSourceLabel?: string;
-  customCopyStarted: boolean;
-  customTemplateSelection?: string;
+  editorSource: EditorSource;
   name: string;
   content: PanelModel["content"];
   paintColour: RGB;
   paintBrushOff: boolean;
   savedBaseline?: string;
+  resetBaseline?: EditableEffectContent;
 }
 
 export class PanelEditorController {
@@ -79,49 +74,75 @@ export class PanelEditorController {
     private readonly options: PanelEditorOptions,
   ) {}
 
-  public beginTransition(): number {
+  public beginTransition(cancelPreview = true): number {
     this.options.editorTransitionStarted();
     this.modal.closeForEditorTransition();
-    return this.preview.beginEditorTransition();
+    return this.preview.beginEditorTransition(cancelPreview);
   }
 
-  public reset(): void {
-    this.beginTransition();
+  public beginSelectionTransition(): number {
+    return this.beginTransition(false);
+  }
+
+  public reset(cancelPreview = true): void {
+    this.beginTransition(cancelPreview);
     this.clearReturnTarget();
     this.model.patch({
       sceneEditorOpen: false, sceneInitialSelection: undefined, currentItem: undefined, savedSceneSelection: undefined,
-      templateSourceLabel: undefined, customCopyStarted: false, customTemplateSelection: undefined, name: "",
-      content: blankPainted(), savedBaseline: undefined,
+      editorSource: { kind: "none" }, name: "", content: blankPainted(),
+      savedBaseline: undefined, resetBaseline: undefined,
     });
   }
 
   public selectCustomEffectEntry(entry: CustomEffectListEntry): void {
     if (entry.kind === "saved") {
       this.options.selectItem(entry.item.id);
-    } else if (entry.kind === "special_diy") {
-      this.openEditableTemplate(entry.label, entry.content, entry.key);
     } else if (entry.kind === "music") {
-      this.openMusicTemplate(entry.mode, entry.label);
+      this.openMusicTemplate(entry.mode, entry.label, true);
     } else if (entry.kind === "paint") {
-      this.newEffect("h617a_painted", undefined, {
-        name: entry.label, content: blankPainted(), selectionIdentity: entry.key, customCopyStarted: true,
-      });
+      this.openEditableTemplate(
+        entry.label,
+        blankPainted(),
+        entry.key,
+        { section: "custom", category: entry.category },
+        true,
+      );
+    } else if (entry.kind === "advanced") {
+      this.openEditableTemplate(
+        entry.label,
+        blankAdvancedContent(),
+        entry.key,
+        { section: "custom", category: entry.category },
+        true,
+      );
+    } else if (entry.kind === "workshop") {
+      this.openEditableTemplate(
+        entry.label,
+        entry.content,
+        entry.key,
+        { section: "custom", category: entry.category },
+        true,
+      );
     } else {
       const catalogue = this.model.modelCatalogue;
       if (!catalogue) return;
       if (this.model.selectedModel === "H617A") {
         const content = blankCustomEffect("h617a_single", catalogue);
-        this.newEffect("h617a_single", undefined, {
-          name: entry.label, content: { ...content, family: entry.family, variant: entry.variant },
-          selectionIdentity: entry.key, customCopyStarted: true,
-        });
+        this.openEditableTemplate(
+          entry.label,
+          { ...content, family: entry.family, variant: entry.variant },
+          entry.key,
+          { section: "custom", category: entry.category },
+          true,
+        );
       } else {
-        this.newEffect("palette_diy", undefined, {
-          name: entry.label,
-          content: blankPaletteDiy(catalogue, this.model.selectedModel!, entry.family, entry.variant),
-          selectionIdentity: entry.key,
-          customCopyStarted: true,
-        });
+        this.openEditableTemplate(
+          entry.label,
+          blankPaletteDiy(catalogue, this.model.selectedModel!, entry.family, entry.variant),
+          entry.key,
+          { section: "custom", category: entry.category },
+          true,
+        );
       }
     }
   }
@@ -129,82 +150,192 @@ export class PanelEditorController {
   public newCustomEffect(category: CustomEffectCategory): void {
     if (category === "music") {
       const mode = this.model.modelCatalogue?.music_modes[0];
-      if (mode) this.openMusicTemplate(mode.id, mode.label);
+      const content = mode
+        ? this.musicTemplateContent(mode.id)
+        : undefined;
+      if (mode && content) {
+        this.newEffect("music_profile", undefined, {
+          name: `New ${mode.label} effect`,
+          content,
+        });
+      }
       return;
     }
     const kind = newEffectKindForCategory(this.model.customEffectListContext, category);
     if (kind) this.newEffect(kind);
   }
 
-  public openVideoTemplate(mode: string, label: string): void {
+  public openVideoTemplate(
+    mode: string,
+    label: string,
+    explicit = true,
+    existingTransitionEpoch?: number,
+  ): void {
     if (this.model.selectedModel === "H6199") {
-      this.openEditableTemplate(label, blankVideoProfile(mode), `template:video:${mode}`);
+      this.openEditableTemplate(
+        label,
+        blankVideoProfile(mode),
+        `template:video:${mode}`,
+        { section: "video" },
+        explicit,
+        existingTransitionEpoch,
+      );
     }
   }
 
-  public openEditableTemplate(label: string, content: EditableEffectContent, selectionIdentity: string): void {
-    this.beginTransition();
-    this.model.patch({
-      currentItem: undefined, templateSourceLabel: label, customCopyStarted: false,
-      customTemplateSelection: selectionIdentity, name: label, content: cloneEditableEffect(content),
-      savedBaseline: undefined, notice: undefined,
-    });
-  }
-
-  public openMusicTemplate(mode: string, label: string): void {
-    const selectedModel = this.model.selectedModel;
-    if (selectedModel !== "H617A" && selectedModel !== "H6199") return;
-    this.captureReturnTarget();
-    this.beginTransition();
-    const content: MusicProfileContent = {
-      kind: "music_profile", model: selectedModel, mode, sensitivity: selectedModel === "H6199" ? 100 : 99,
-      colour: null, calm: ["rhythm", "bloom", "shiny"].includes(mode) ? false : null, parameters: {},
-    };
-    this.model.patch({
-      currentItem: undefined, templateSourceLabel: undefined, customCopyStarted: true,
-      customTemplateSelection: `template:music:${mode}`, name: label, content,
-      savedBaseline: starterBaseline(label, content, true), notice: undefined,
-    });
-  }
-
-  public openDefaultAvailableTemplate(existingTransitionEpoch?: number): void {
-    const catalogue = this.model.modelCatalogue;
-    if (this.model.customEffectKindAvailable("h617a_painted")) {
-      this.newEffect("h617a_painted", existingTransitionEpoch, {
-        name: "Paint", content: blankPainted(), selectionIdentity: "template:paint", templateLabel: "Paint",
-      });
+  public openEditableTemplate(
+    label: string,
+    content: EditableEffectContent,
+    selectionIdentity: string,
+    owner: EditorOwner,
+    explicit = true,
+    existingTransitionEpoch?: number,
+  ): void {
+    if (
+      existingTransitionEpoch !== undefined &&
+      existingTransitionEpoch !== this.model.editorTransitionEpoch
+    ) {
       return;
     }
-    const family = catalogue?.effects.find((effect) => effect.category === "single_layer") ?? catalogue?.effects[0];
-    if (this.model.customEffectKindAvailable("h617a_single") && catalogue && family) {
+    if (existingTransitionEpoch === undefined) {
+      this.beginSelectionTransition();
+    }
+    const installed = cloneEditableEffect(content);
+    this.clearReturnTarget();
+    this.model.patch({
+      currentItem: undefined,
+      editorSource: {
+        kind: "catalogue",
+        owner,
+        selectionIdentity,
+        label,
+      },
+      name: label,
+      content: installed,
+      savedBaseline: undefined,
+      resetBaseline: cloneEditableEffect(content),
+      notice: undefined,
+    });
+    if (explicit) {
+      this.preview.scheduleTemplateSelection();
+    }
+  }
+
+  public openMusicTemplate(
+    mode: string,
+    label: string,
+    explicit = true,
+    existingTransitionEpoch?: number,
+  ): void {
+    const content = this.musicTemplateContent(mode);
+    if (!content) return;
+    this.openEditableTemplate(
+      label,
+      content,
+      `template:music:${mode}`,
+      { section: "custom", category: "music" },
+      explicit,
+      existingTransitionEpoch,
+    );
+  }
+
+  public openDefaultAvailableTemplate(
+    category: CustomEffectCategory,
+    existingTransitionEpoch: number,
+  ): void {
+    const catalogue = this.model.modelCatalogue;
+    if (category === "music" || category === "multi-layer") {
+      this.clearSelection(existingTransitionEpoch);
+      return;
+    }
+    if (category === "advanced") {
+      const workshop = catalogue?.workshop_templates[0];
+      if (this.model.customEffectKindAvailable("advanced")) {
+        this.openEditableTemplate(
+          "Layered",
+          blankAdvancedContent(),
+          "template:advanced",
+          { section: "custom", category },
+          false,
+          existingTransitionEpoch,
+        );
+      } else if (workshop && this.model.customEffectKindAvailable("workshop")) {
+        this.openEditableTemplate(
+          workshop.label,
+          workshop.content,
+          `template:workshop:${workshop.id}`,
+          { section: "custom", category },
+          false,
+          existingTransitionEpoch,
+        );
+      } else {
+        this.clearSelection(existingTransitionEpoch);
+      }
+      return;
+    }
+    if (category !== "single-layer") {
+      this.clearSelection(existingTransitionEpoch);
+      return;
+    }
+    if (this.model.customEffectKindAvailable("h617a_painted")) {
+      this.openEditableTemplate(
+        "Paint",
+        blankPainted(),
+        "template:paint",
+        { section: "custom", category },
+        false,
+        existingTransitionEpoch,
+      );
+      return;
+    }
+    const family =
+      catalogue?.effects.find((effect) => effect.category === "single_layer") ??
+      catalogue?.effects[0];
+    if (
+      this.model.customEffectKindAvailable("h617a_single") &&
+      catalogue &&
+      family
+    ) {
       const variation = family.variations[0];
       const content = blankCustomEffect("h617a_single", catalogue);
-      this.newEffect("h617a_single", existingTransitionEpoch, {
-        name: family.label, content: { ...content, family: family.family, variant: variation.variant },
-        selectionIdentity: `template:single:${family.family}:${variation.variant}`, templateLabel: family.label,
-      });
-    } else if (this.model.customEffectKindAvailable("palette_diy") && catalogue && family) {
+      this.openEditableTemplate(
+        family.label,
+        {
+          ...content,
+          family: family.family,
+          variant: variation.variant,
+        },
+        `template:single:${family.family}:${variation.variant}`,
+        { section: "custom", category },
+        false,
+        existingTransitionEpoch,
+      );
+    } else if (
+      this.model.customEffectKindAvailable("palette_diy") &&
+      catalogue &&
+      family
+    ) {
       const variation = family.variations[0];
       this.openEditableTemplate(
         family.label,
         blankPaletteDiy(catalogue, this.model.selectedModel!, family.family, variation.variant),
         `template:single:${family.family}:${variation.variant}`,
+        { section: "custom", category },
+        false,
+        existingTransitionEpoch,
       );
-    } else if (this.model.customEffectKindAvailable("h617a_multi") && catalogue) {
-      this.newEffect("h617a_multi", existingTransitionEpoch, {
-        name: "Mix", content: blankCustomEffect("h617a_multi", catalogue),
-        selectionIdentity: "template:mix", templateLabel: "Mix",
-      });
-    } else if (this.model.customEffectKindAvailable("advanced")) {
-      this.newEffect("advanced", existingTransitionEpoch, {
-        name: "Layered", content: blankAdvancedContent(), selectionIdentity: "template:advanced", templateLabel: "Layered",
-      });
     } else {
-      this.model.patch({ currentItem: undefined, name: "" });
+      this.clearSelection(existingTransitionEpoch);
     }
   }
 
   public newEffect(kind: NewEffectKind, existingTransitionEpoch?: number, initial?: InitialEffect): void {
+    if (
+      existingTransitionEpoch !== undefined &&
+      existingTransitionEpoch !== this.model.editorTransitionEpoch
+    ) {
+      return;
+    }
     if (existingTransitionEpoch === undefined) this.beginTransition();
     if (
       !this.options.apiReady() || !this.model.isAdmin || !this.model.customEffectKindAvailable(kind) ||
@@ -216,31 +347,60 @@ export class PanelEditorController {
     const content = initial?.content ?? (
       kind === "advanced"
         ? blankAdvancedContent()
+        : kind === "music_profile"
+          ? this.musicTemplateContent(this.model.modelCatalogue!.music_modes[0]?.id ?? "")
         : kind === "palette_diy"
           ? blankPaletteDiy(this.model.modelCatalogue!, this.model.selectedModel!)
           : blankCustomEffect(kind, this.model.modelCatalogue!)
     );
+    if (!content) return;
     const name = initial?.name ?? `New ${customKindLabel(kind)} effect`;
-    const customCopyStarted = initial?.customCopyStarted ?? false;
+    const owner: EditorOwner = {
+      section: "custom",
+      category:
+        kind === "music_profile"
+          ? "music"
+          : kind === "h617a_multi"
+            ? "multi-layer"
+            : kind === "advanced"
+              ? "advanced"
+              : "single-layer",
+    };
     this.model.patch({
-      currentItem: undefined, templateSourceLabel: initial?.templateLabel, customCopyStarted,
-      customTemplateSelection: kind === "advanced" ? undefined : initial?.selectionIdentity ?? (kind === "h617a_painted" ? "template:paint" : undefined),
-      name, content,
+      currentItem: undefined,
+      editorSource: { kind: "new", owner },
+      name,
+      content: cloneEditableEffect(content),
       paintBrushOff: kind === "h617a_painted" ? false : this.model.paintBrushOff,
-      savedBaseline: starterBaseline(name, content, customCopyStarted), notice: undefined,
+      savedBaseline: serialiseEditable(name, content),
+      resetBaseline: cloneEditableEffect(content),
+      notice: undefined,
     });
   }
 
   public applyLibraryItem(item: LibraryItem): boolean {
     this.clearReturnTarget();
+    const owner: EditorOwner =
+      item.content.kind === "video_profile"
+        ? { section: "video" }
+        : {
+            section: "custom",
+            category: customEffectCategoryForKind(item.content.kind),
+          };
     const selection = {
-      currentItem: item, templateSourceLabel: undefined, customCopyStarted: false,
-      customTemplateSelection: undefined, name: item.name,
+      currentItem: item,
+      sceneEditorOpen: false,
+      editorSource: {
+        kind: "saved" as const,
+        owner,
+        itemId: item.id,
+      },
+      name: item.name,
     };
     if (item.content.kind === "opaque") {
       this.model.patch({
         ...selection, content: cloneOpaqueContent(item.content), savedBaseline: undefined,
-        notice: undefined,
+        resetBaseline: undefined, notice: undefined,
       });
       return true;
     }
@@ -251,6 +411,7 @@ export class PanelEditorController {
     const content = item.content;
     this.model.patch({
       ...selection, content: cloneEditableEffect(content), savedBaseline: serialiseEditable(item.name, content),
+      resetBaseline: cloneEditableEffect(content),
       paintBrushOff: content.kind === "h617a_painted" ? false : this.model.paintBrushOff,
       notice: undefined,
     });
@@ -261,9 +422,10 @@ export class PanelEditorController {
     this.beginTransition();
     this.clearReturnTarget();
     this.model.patch({
-      currentItem: undefined, templateSourceLabel: undefined, customCopyStarted: false,
-      customTemplateSelection: undefined, name: "", content: blankPainted(),
-      savedBaseline: undefined,
+      currentItem: undefined, editorSource: { kind: "none" },
+      sceneEditorOpen: false,
+      name: "", content: blankPainted(), savedBaseline: undefined,
+      resetBaseline: undefined,
     });
   }
 
@@ -276,10 +438,16 @@ export class PanelEditorController {
     if (!this.model.isAdmin || detail.config_entry_id !== this.model.selectedDeviceId) return;
     this.beginTransition();
     this.model.patch({
-      currentItem: detail.item, templateSourceLabel: undefined, customCopyStarted: detail.item === undefined,
+      currentItem: detail.item,
+      editorSource: {
+        kind: "scene",
+        owner: { section: "scenes" },
+        ...(detail.item ? { itemId: detail.item.id } : {}),
+      },
       name: detail.name.trim() || "Layered scene template", content: cloneLayeredSceneContent(detail.content),
       savedBaseline: detail.item?.content.kind === "scene_layered" ? serialiseEditable(detail.item.name, detail.item.content) : undefined,
-      sceneEditorOpen: true, customTemplateSelection: undefined, notice: undefined,
+      resetBaseline: cloneLayeredSceneContent(detail.content),
+      sceneEditorOpen: true, notice: undefined,
     });
   }
 
@@ -298,7 +466,6 @@ export class PanelEditorController {
     this.model.patch({
       ...returnState,
       paintColour: [...returnState.paintColour],
-      editorCancelAvailable: false,
       notice: undefined,
     });
   }
@@ -307,31 +474,18 @@ export class PanelEditorController {
     this.clearReturnTarget();
   }
 
-  public prepareTemplateEdit(): boolean {
-    const source = this.model.templateSourceLabel;
-    if (!source) return true;
-    if (!this.model.isAdmin || this.model.saving || this.model.deletingCurrentItem) return false;
-    this.captureReturnTarget();
-    this.beginTransition();
-    this.model.patch({
-      templateSourceLabel: undefined, customTemplateSelection: undefined,
-      customCopyStarted: true, name: `Custom ${source}`, savedBaseline: undefined,
-    });
-    return true;
-  }
-
   public advancedContentChanged(content: AdvancedContent, interaction?: LivePreviewInteraction, scene?: ScenePreviewRequest): void {
-    if (!isAdvancedEditableContent(this.model.content) || !this.prepareTemplateEdit()) return;
+    if (!isAdvancedEditableContent(this.model.content)) return;
     this.installEditedContent(updateAdvancedEditorContent(this.model.content, content), interaction, scene);
   }
 
   public customContentChanged(
-    content: CustomEffectContent | PaletteDiyEffectContent | SpecialDiyContent,
+    content: CustomEffectContent | PaletteDiyEffectContent,
     interaction?: LivePreviewInteraction,
   ): void {
     const clone = content.kind === "palette_diy"
       ? clonePaletteDiy(content)
-      : content.kind === "special_diy" ? cloneSpecialDiy(content) : cloneCustomEffect(content);
+      : cloneCustomEffect(content);
     this.installEditedContent(clone, interaction);
   }
 
@@ -361,11 +515,47 @@ export class PanelEditorController {
       this.model.currentItem &&
       ((content.kind === "h617a_painted" && selected !== "paint") || (content.kind === "h617a_single" && selected === "paint"))
     ) return;
-    const selectingTemplate = this.model.templateSourceLabel !== undefined || this.model.customTemplateSelection !== undefined;
+    const source = this.model.editorSource;
+    if (source.kind === "catalogue") {
+      if (selected === "paint") {
+        this.openEditableTemplate(
+          "Paint",
+          blankPainted(),
+          "template:paint",
+          source.owner,
+          true,
+        );
+        return;
+      }
+      const catalogue = this.model.modelCatalogue;
+      const family = catalogue?.effects.find((effect) => effect.id === selected);
+      const variation = family?.variations[0];
+      if (!catalogue || !family || !variation) return;
+      const selectedContent =
+        this.model.selectedModel === "H617A"
+          ? {
+              ...blankCustomEffect("h617a_single", catalogue),
+              family: family.family,
+              variant: variation.variant,
+            }
+          : blankPaletteDiy(
+              catalogue,
+              this.model.selectedModel!,
+              family.family,
+              variation.variant,
+            );
+      this.openEditableTemplate(
+        family.label,
+        selectedContent,
+        `template:single:${family.family}:${variation.variant}`,
+        source.owner,
+        true,
+      );
+      return;
+    }
     if (selected === "paint") {
       if (content.kind !== "h617a_painted") this.switchCustomMode("h617a_painted");
       this.model.update((model) => {
-        if (selectingTemplate) model.customTemplateSelection = "template:paint";
         this.updateGeneratedEffectName(model, "Paint");
       });
       return;
@@ -375,9 +565,13 @@ export class PanelEditorController {
     if (!family || !variation) return;
     if (this.model.content.kind === "h617a_painted") this.switchCustomMode("h617a_single", false);
     if (this.model.content.kind !== "h617a_single" && this.model.content.kind !== "palette_diy") return;
-    this.installEditedContent({ ...this.model.content, family: family.family, variant: variation.variant });
+    const selectedContent = {
+      ...this.model.content,
+      family: family.family,
+      variant: variation.variant,
+    };
+    this.installEditedContent(selectedContent);
     this.model.update((model) => {
-      if (selectingTemplate) model.customTemplateSelection = `template:single:${family.family}:${variation.variant}`;
       this.updateGeneratedEffectName(model, family.label);
     });
   }
@@ -404,11 +598,15 @@ export class PanelEditorController {
     return true;
   }
 
-  public resetPaint(): void {
-    if (this.model.content.kind === "h617a_painted") {
-      this.model.patch({ paintBrushOff: false });
-      this.installEditedContent(blankPainted());
+  public resetContent(): void {
+    const baseline = this.model.resetBaseline;
+    if (!baseline || !this.model.resetDirty) {
+      return;
     }
+    if (baseline.kind === "h617a_painted") {
+      this.model.patch({ paintBrushOff: false });
+    }
+    this.installEditedContent(cloneEditableEffect(baseline), "committed");
   }
 
   public updatePaintedContent(update: Partial<PaintedContent>, interaction: LivePreviewInteraction = "changing"): void {
@@ -475,10 +673,13 @@ export class PanelEditorController {
   }
 
   private updateGeneratedEffectName(model: PanelModel, label: string): void {
-    if (model.templateSourceLabel) {
-      model.templateSourceLabel = label;
+    if (model.editorSource.kind === "catalogue") {
+      model.editorSource = { ...model.editorSource, label };
       model.name = label;
-    } else if (!model.currentItem && /^New .+ effect$/.test(model.name)) {
+    } else if (
+      model.editorSource.kind === "new" &&
+      /^New .+ effect$/.test(model.name)
+    ) {
       model.name = `New ${label} effect`;
     }
   }
@@ -490,20 +691,62 @@ export class PanelEditorController {
     this.returnState = {
       currentItem: this.model.currentItem,
       savedSceneSelection: this.model.savedSceneSelection,
-      templateSourceLabel: this.model.templateSourceLabel,
-      customCopyStarted: this.model.customCopyStarted,
-      customTemplateSelection: this.model.customTemplateSelection,
+      editorSource: this.model.editorSource,
       name: this.model.name,
-      content: this.model.content,
+      content: isEditableEffectContent(this.model.content)
+        ? cloneEditableEffect(this.model.content)
+        : this.model.content,
       paintColour: [...this.model.paintColour],
       paintBrushOff: this.model.paintBrushOff,
       savedBaseline: this.model.savedBaseline,
+      resetBaseline: this.model.resetBaseline
+        ? cloneEditableEffect(this.model.resetBaseline)
+        : undefined,
     };
-    this.model.patch({ editorCancelAvailable: true });
   }
 
   private clearReturnTarget(): void {
     this.returnState = undefined;
-    this.model.editorCancelAvailable = false;
+  }
+
+  public clearSelection(existingTransitionEpoch?: number): void {
+    if (
+      existingTransitionEpoch !== undefined &&
+      existingTransitionEpoch !== this.model.editorTransitionEpoch
+    ) {
+      return;
+    }
+    if (existingTransitionEpoch === undefined) {
+      this.beginTransition();
+    }
+    this.clearReturnTarget();
+    this.model.patch({
+      currentItem: undefined,
+      editorSource: { kind: "none" },
+      name: "",
+      content: blankPainted(),
+      savedBaseline: undefined,
+      resetBaseline: undefined,
+      notice: undefined,
+    });
+  }
+
+  private musicTemplateContent(mode: string): MusicProfileContent | undefined {
+    const selectedModel = this.model.selectedModel;
+    if (
+      (selectedModel !== "H617A" && selectedModel !== "H6199") ||
+      !mode
+    ) {
+      return undefined;
+    }
+    return {
+      kind: "music_profile",
+      model: selectedModel,
+      mode,
+      sensitivity: selectedModel === "H6199" ? 100 : 99,
+      colour: null,
+      calm: ["rhythm", "bloom", "shiny"].includes(mode) ? false : null,
+      parameters: {},
+    };
   }
 }

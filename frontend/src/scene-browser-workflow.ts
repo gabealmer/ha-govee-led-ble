@@ -27,6 +27,7 @@ import type {
   LibraryItem,
   LibrarySnapshot,
   LibrarySummary,
+  SceneDetail,
   SceneSummary,
 } from "./types";
 import { errorCode, errorMessage } from "./ui-utils";
@@ -38,6 +39,90 @@ type SceneRequestState = {
   selectionIdentity?: string;
 };
 type SceneRequestContext = AsyncRequestToken<SceneRequestState>;
+
+type SceneDefaultAction =
+  | { kind: "set"; speedIndex: number | null }
+  | { kind: "reset"; speedIndex: number | null };
+
+type SceneDefaultSnapshot = {
+  scene: SceneSummary;
+  content: SceneContent;
+  speedIndex: number | null;
+  hasDefault: boolean;
+};
+
+type SceneDefaultWrite = {
+  action: SceneDefaultAction;
+  api: EffectStudioApi;
+  deviceId: string;
+  scene: SceneSummary;
+  selectionIdentity: string;
+  selectionRevision: number;
+  speedRevision: number;
+};
+
+type SerialWrite<T> = {
+  generation: number;
+  payload: T;
+  resolve: () => void;
+};
+
+class SerialLatestWriter<T> {
+  private generation = 0;
+  private active = false;
+  private pending?: SerialWrite<T>;
+
+  public constructor(
+    private readonly execute: (write: Readonly<SerialWrite<T>>) => Promise<void>,
+  ) {}
+
+  public get currentGeneration(): number {
+    return this.generation;
+  }
+
+  public get busy(): boolean {
+    return this.active || this.pending !== undefined;
+  }
+
+  public enqueue(payload: T): Promise<void> {
+    this.generation += 1;
+    this.pending?.resolve();
+    return new Promise((resolve) => {
+      this.pending = { generation: this.generation, payload, resolve };
+      void this.drain();
+    });
+  }
+
+  public invalidate(): void {
+    this.generation += 1;
+    this.pending?.resolve();
+    this.pending = undefined;
+  }
+
+  public isLatest(generation: number): boolean {
+    return generation === this.generation;
+  }
+
+  private async drain(): Promise<void> {
+    if (this.active) {
+      return;
+    }
+    this.active = true;
+    try {
+      while (this.pending) {
+        const write = this.pending;
+        this.pending = undefined;
+        try {
+          await this.execute(write);
+        } finally {
+          write.resolve();
+        }
+      }
+    } finally {
+      this.active = false;
+    }
+  }
+}
 
 export interface SceneEditSelection {
   content: LayeredSceneContent;
@@ -60,6 +145,13 @@ export class SceneBrowserWorkflow {
   private initialSelection?: SceneInitialSelection;
   private activeSelectionIdentity?: string;
   private openedInitialSelection?: string;
+  private defaultSelectionRevision = 0;
+  private speedRevision = 0;
+  private defaultRefreshGeneration = 0;
+  private defaultBaseline?: SceneDefaultSnapshot;
+  private readonly defaultWriter = new SerialLatestWriter<SceneDefaultWrite>((write) =>
+    this.performDefaultWrite(write),
+  );
   private readonly requests = new AsyncRequestController<SceneRequestState>(
     (left, right) =>
       left.api === right.api &&
@@ -193,6 +285,7 @@ export class SceneBrowserWorkflow {
   }
 
   public setSpeedIndex(speedIndex: number): void {
+    this.speedRevision += 1;
     this.patch({ speedIndex });
   }
 
@@ -248,6 +341,7 @@ export class SceneBrowserWorkflow {
       if (!this.requestIsCurrent(request) || sceneKey(detail.scene) !== identity) {
         return false;
       }
+      this.defaultBaseline = this.snapshotFromDetail(detail);
       this.patch({
         selectedScene: detail.scene,
         content: detail.content,
@@ -395,89 +489,75 @@ export class SceneBrowserWorkflow {
   }
 
   public async resetToCatalogue(isAdmin: boolean): Promise<void> {
-    const selectedScene = this.stateValue.selectedScene;
+    const { content, selectedItem, selectedScene } = this.stateValue;
     if (
       !this.api ||
       !this.device ||
       !selectedScene ||
+      !content ||
+      selectedItem !== undefined ||
+      this.stateValue.editingCopy ||
       !this.stateValue.hasDefault ||
       !isAdmin ||
-      this.stateValue.saving
+      !this.hasCurrentSceneContent()
     ) {
       return;
     }
-
-    const request = this.captureRequest();
-    this.patch({ saving: true, notice: undefined });
-    try {
-      const detail = await request.api.resetScene(request.deviceId, selectedScene);
-      if (!this.requestIsCurrent(request) || sceneKey(detail.scene) !== sceneKey(selectedScene)) {
-        return;
-      }
-      this.patch({
-        selectedScene: detail.scene,
-        content: detail.content,
-        speedIndex: detail.content.speed_index,
-        hasDefault: detail.has_default,
-        notice: undefined,
-      });
-    } catch (error) {
-      if (this.requestIsCurrent(request)) {
-        this.patch({ notice: `Reset failed: ${errorMessage(error)}` });
-      }
-    } finally {
-      this.patch({ saving: false });
-    }
+    const speedIndex = selectedScene.speed?.default_index ?? null;
+    this.speedRevision += 1;
+    this.defaultRefreshGeneration += 1;
+    this.patch({
+      content: sceneContentAtSpeed(content, speedIndex),
+      speedIndex,
+      hasDefault: false,
+      notice: undefined,
+    });
+    await this.defaultWriter.enqueue(
+      this.defaultWrite({
+        kind: "reset",
+        speedIndex,
+      }),
+    );
   }
 
   public async setCurrentDefault(isAdmin: boolean): Promise<void> {
-    const selectedScene = this.stateValue.selectedScene;
+    const { content, selectedItem, selectedScene, speedIndex } = this.stateValue;
     if (
       !this.api ||
       !this.device ||
       !selectedScene ||
+      !content ||
+      selectedItem !== undefined ||
+      this.stateValue.editingCopy ||
       !this.sceneDefaultDirty ||
       !isAdmin ||
-      this.stateValue.saving
+      !this.hasCurrentSceneContent()
     ) {
       return;
     }
-    const request = this.captureRequest();
-    this.patch({ saving: true, notice: undefined });
-    try {
-      const detail = await request.api.setSceneDefault(
-        request.deviceId,
-        selectedScene,
-        this.stateValue.speedIndex,
-      );
-      if (
-        !this.requestIsCurrent(request) ||
-        sceneKey(detail.scene) !== sceneKey(selectedScene)
-      ) {
-        return;
-      }
-      this.patch({
-        selectedScene: detail.scene,
-        content: detail.content,
-        speedIndex: detail.content.speed_index,
-        hasDefault: detail.has_default,
-        notice: undefined,
-      });
-    } catch (error) {
-      if (this.requestIsCurrent(request)) {
-        this.patch({ notice: `Save failed: ${errorMessage(error)}` });
-      }
-    } finally {
-      this.patch({ saving: false });
-    }
+    this.defaultRefreshGeneration += 1;
+    this.patch({
+      content: sceneContentAtSpeed(content, speedIndex),
+      hasDefault: true,
+      notice: undefined,
+    });
+    await this.defaultWriter.enqueue(
+      this.defaultWrite({
+        kind: "set",
+        speedIndex,
+      }),
+    );
   }
 
   public async refreshSelectedDefault(): Promise<void> {
     const selected = this.stateValue.selectedScene;
-    if (!this.api || !this.device || !selected) {
+    if (!this.api || !this.device || !selected || this.defaultWriter.busy) {
       return;
     }
     const request = this.captureRequest();
+    const selectionRevision = this.defaultSelectionRevision;
+    const writerGeneration = this.defaultWriter.currentGeneration;
+    const refreshGeneration = ++this.defaultRefreshGeneration;
     try {
       const detail = await request.api.sceneDetail(
         request.deviceId,
@@ -486,14 +566,25 @@ export class SceneBrowserWorkflow {
       );
       if (
         this.requestIsCurrent(request) &&
+        selectionRevision === this.defaultSelectionRevision &&
+        writerGeneration === this.defaultWriter.currentGeneration &&
+        refreshGeneration === this.defaultRefreshGeneration &&
+        !this.defaultWriter.busy &&
         this.stateValue.selectedScene &&
         sceneKey(this.stateValue.selectedScene) === sceneKey(selected) &&
         sceneKey(detail.scene) === sceneKey(selected)
       ) {
+        this.defaultBaseline = this.snapshotFromDetail(detail);
         this.patch({ hasDefault: detail.has_default });
       }
     } catch (error) {
-      if (this.requestIsCurrent(request)) {
+      if (
+        this.requestIsCurrent(request) &&
+        selectionRevision === this.defaultSelectionRevision &&
+        writerGeneration === this.defaultWriter.currentGeneration &&
+        refreshGeneration === this.defaultRefreshGeneration &&
+        !this.defaultWriter.busy
+      ) {
         this.patch({ notice: `Could not refresh the scene default: ${errorMessage(error)}` });
       }
     }
@@ -503,6 +594,9 @@ export class SceneBrowserWorkflow {
     const { content, selectedItem, selectedScene } = this.stateValue;
     if (!isAdmin || !selectedScene || !this.hasCurrentSceneContent()) {
       return undefined;
+    }
+    if (!selectedItem) {
+      this.invalidateDefaultWrites();
     }
     if (selectedScene.scene_type === 2 && content?.kind === "scene_layered") {
       return {
@@ -523,6 +617,117 @@ export class SceneBrowserWorkflow {
   public async cancelCopy(): Promise<boolean> {
     const scene = this.stateValue.selectedScene;
     return this.stateValue.editingCopy && scene ? this.selectBuiltin(scene) : false;
+  }
+
+  private defaultWrite(action: SceneDefaultAction): SceneDefaultWrite {
+    const scene = this.stateValue.selectedScene!;
+    return {
+      action,
+      api: this.api!,
+      deviceId: this.device!.config_entry_id,
+      scene,
+      selectionIdentity: sceneKey(scene),
+      selectionRevision: this.defaultSelectionRevision,
+      speedRevision: this.speedRevision,
+    };
+  }
+
+  private async performDefaultWrite(write: Readonly<SerialWrite<SceneDefaultWrite>>): Promise<void> {
+    const operation = write.payload;
+    const rollback = this.defaultSnapshotFor(operation);
+    try {
+      const detail =
+        operation.action.kind === "reset"
+          ? await operation.api.resetScene(operation.deviceId, operation.scene)
+          : await operation.api.setSceneDefault(
+              operation.deviceId,
+              operation.scene,
+              operation.action.speedIndex,
+            );
+      if (sceneKey(detail.scene) !== operation.selectionIdentity) {
+        throw new Error("The scene default response did not match the selected scene.");
+      }
+      if (!this.defaultWriteBelongsToCurrentSelection(operation)) {
+        return;
+      }
+      this.defaultBaseline = this.snapshotFromDetail(detail);
+      if (!this.defaultWriter.isLatest(write.generation)) {
+        return;
+      }
+      const speedIndex =
+        this.speedRevision === operation.speedRevision
+          ? detail.content.speed_index
+          : this.stateValue.speedIndex;
+      this.patch({
+        selectedScene: detail.scene,
+        content: cloneSceneContent(detail.content),
+        speedIndex,
+        hasDefault: detail.has_default,
+        notice: undefined,
+      });
+    } catch (error) {
+      if (
+        !this.defaultWriter.isLatest(write.generation) ||
+        !this.defaultWriteBelongsToCurrentSelection(operation)
+      ) {
+        return;
+      }
+      const rollbackValues: Partial<SceneBrowserViewState> = rollback
+        ? {
+            content: cloneSceneContent(rollback.content),
+            hasDefault: rollback.hasDefault,
+            ...(operation.action.kind === "reset" &&
+            this.speedRevision === operation.speedRevision
+              ? { speedIndex: rollback.speedIndex }
+              : {}),
+          }
+        : {};
+      this.patch({
+        ...rollbackValues,
+        notice: `${operation.action.kind === "reset" ? "Reset" : "Set as Default"} failed: ${errorMessage(error)}`,
+      });
+    }
+  }
+
+  private defaultSnapshotFor(operation: SceneDefaultWrite): SceneDefaultSnapshot | undefined {
+    const baseline = this.defaultBaseline;
+    return baseline &&
+      operation.selectionRevision === this.defaultSelectionRevision &&
+      sceneKey(baseline.scene) === operation.selectionIdentity
+      ? {
+          ...baseline,
+          scene: { ...baseline.scene },
+          content: cloneSceneContent(baseline.content),
+        }
+      : undefined;
+  }
+
+  private snapshotFromDetail(detail: SceneDetail): SceneDefaultSnapshot {
+    return {
+      scene: { ...detail.scene },
+      content: cloneSceneContent(detail.content),
+      speedIndex: detail.content.speed_index,
+      hasDefault: detail.has_default,
+    };
+  }
+
+  private defaultWriteBelongsToCurrentSelection(operation: SceneDefaultWrite): boolean {
+    return Boolean(
+      operation.selectionRevision === this.defaultSelectionRevision &&
+        this.activeSelectionIdentity === operation.selectionIdentity &&
+        this.stateValue.selectedItem === undefined &&
+        !this.stateValue.editingCopy &&
+        this.stateValue.selectedScene &&
+        sceneKey(this.stateValue.selectedScene) === operation.selectionIdentity,
+    );
+  }
+
+  private invalidateDefaultWrites(): void {
+    this.defaultSelectionRevision += 1;
+    this.speedRevision = 0;
+    this.defaultRefreshGeneration += 1;
+    this.defaultBaseline = undefined;
+    this.defaultWriter.invalidate();
   }
 
   private async openInitialSavedScene(itemId: string): Promise<boolean> {
@@ -550,6 +755,7 @@ export class SceneBrowserWorkflow {
   }
 
   private beginRequest(selectionIdentity?: string): SceneRequestContext {
+    this.invalidateDefaultWrites();
     this.activeSelectionIdentity = selectionIdentity;
     return this.requests.begin(this.requestState());
   }
@@ -559,6 +765,7 @@ export class SceneBrowserWorkflow {
   }
 
   private invalidateRequests(): void {
+    this.invalidateDefaultWrites();
     this.requests.invalidate();
     this.activeSelectionIdentity = undefined;
   }

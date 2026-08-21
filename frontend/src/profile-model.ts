@@ -5,6 +5,27 @@ import type {
 } from "./types";
 import { cloneRgb } from "./ui-utils";
 
+export type MusicStyleValue = "dynamic" | "calm";
+export type VideoCaptureAreaValue = "full" | "part";
+
+export function musicStyleValue(calm: boolean | null): MusicStyleValue {
+  return calm === true ? "calm" : "dynamic";
+}
+
+export function musicStyleCalm(value: string): boolean {
+  return value === "calm";
+}
+
+export function videoCaptureAreaValue(
+  fullScreen: boolean,
+): VideoCaptureAreaValue {
+  return fullScreen ? "full" : "part";
+}
+
+export function videoCaptureAreaFullScreen(value: string): boolean {
+  return value === "full";
+}
+
 export function cloneVideoProfileContent(
   content: VideoProfileContent,
 ): VideoProfileContent {

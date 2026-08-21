@@ -555,53 +555,6 @@
       },
       "trailing_padding": 0
     },
-    "special_diy": {
-      "family": 0,
-      "kind": "special_diy",
-      "model": "H6199",
-      "palette": [
-        [
-          255,
-          0,
-          0
-        ],
-        [
-          255,
-          125,
-          0
-        ],
-        [
-          255,
-          255,
-          0
-        ],
-        [
-          0,
-          255,
-          0
-        ],
-        [
-          0,
-          0,
-          255
-        ],
-        [
-          0,
-          255,
-          255
-        ],
-        [
-          139,
-          0,
-          255
-        ]
-      ],
-      "raw_payload": "01020400005c15ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000",
-      "speed": 92,
-      "template": "fade",
-      "trailing_padding": 6,
-      "variant": 0
-    },
     "video_profile": {
       "blank_screen": false,
       "full_screen": true,
@@ -751,7 +704,6 @@
         "painted": "supported",
         "palette_diy": "unsupported",
         "single": "supported",
-        "special_diy": "unsupported",
         "workshop": "supported"
       },
       "effects": [
@@ -795,7 +747,6 @@
             "painted": "supported",
             "palette_diy": "unsupported",
             "single": "supported",
-            "special_diy": "unsupported",
             "workshop": "supported"
           },
           "effects": [
@@ -845,11 +796,9 @@
             }
           ],
           "sku": "H617A",
-          "special_diy_templates": [],
           "supports": {
             "advanced": "supported",
             "multi": "supported",
-            "special_diy": "evidence_gap",
             "workshop": "supported"
           },
           "video_modes": [],
@@ -907,12 +856,6 @@
               "content_kind": "workshop",
               "id": "workshop",
               "label": "Workshop"
-            },
-            {
-              "application": "planned",
-              "content_kind": "special_diy",
-              "id": "special_diy",
-              "label": "Special DIY"
             }
           ],
           "workshop_templates": [
@@ -1052,7 +995,6 @@
             "painted": "unsupported",
             "palette_diy": "supported",
             "single": "unsupported",
-            "special_diy": "supported",
             "workshop": "supported"
           },
           "effects": [
@@ -1087,63 +1029,9 @@
           ],
           "painted_effects": [],
           "sku": "H6199",
-          "special_diy_templates": [
-            {
-              "content": {
-                "family": 0,
-                "kind": "special_diy",
-                "model": "H6199",
-                "palette": [
-                  [
-                    255,
-                    0,
-                    0
-                  ],
-                  [
-                    255,
-                    125,
-                    0
-                  ],
-                  [
-                    255,
-                    255,
-                    0
-                  ],
-                  [
-                    0,
-                    255,
-                    0
-                  ],
-                  [
-                    0,
-                    0,
-                    255
-                  ],
-                  [
-                    0,
-                    255,
-                    255
-                  ],
-                  [
-                    139,
-                    0,
-                    255
-                  ]
-                ],
-                "raw_payload": "01020400005c15ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000",
-                "speed": 92,
-                "template": "fade",
-                "trailing_padding": 6,
-                "variant": 0
-              },
-              "id": "fade",
-              "label": "Fade"
-            }
-          ],
           "supports": {
             "advanced": "supported",
             "multi": "unsupported",
-            "special_diy": "supported",
             "workshop": "supported"
           },
           "video_modes": [
@@ -1200,12 +1088,6 @@
               "content_kind": "workshop",
               "id": "workshop",
               "label": "Workshop"
-            },
-            {
-              "application": "studio",
-              "content_kind": "special_diy",
-              "id": "special_diy",
-              "label": "Special DIY"
             }
           ],
           "workshop_templates": [
@@ -1352,13 +1234,11 @@
           "label": "Cycle"
         }
       ],
-      "schema_version": 6,
+      "schema_version": 7,
       "sku": "H617A",
-      "special_diy_templates": [],
       "supports": {
         "advanced": "supported",
         "multi": "supported",
-        "special_diy": "evidence_gap",
         "workshop": "supported"
       },
       "video_modes": [],
@@ -1416,12 +1296,6 @@
           "content_kind": "workshop",
           "id": "workshop",
           "label": "Workshop"
-        },
-        {
-          "application": "planned",
-          "content_kind": "special_diy",
-          "id": "special_diy",
-          "label": "Special DIY"
         }
       ],
       "workshop_templates": [
@@ -1586,7 +1460,6 @@
           "painted": "supported",
           "palette_diy": "unsupported",
           "single": "supported",
-          "special_diy": "unsupported",
           "workshop": "supported"
         },
         "display_name": "H617A LED Strip",
@@ -1608,7 +1481,6 @@
           "painted": "unsupported",
           "palette_diy": "supported",
           "single": "unsupported",
-          "special_diy": "supported",
           "workshop": "supported"
         },
         "display_name": "H6199 DreamView T1",
@@ -1623,7 +1495,7 @@
       }
     ],
     "editor_info": {
-      "api_version": 6,
+      "api_version": 7,
       "compiler_version": 4,
       "effect_schema_version": 2,
       "limits": {

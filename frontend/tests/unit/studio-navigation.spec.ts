@@ -30,7 +30,6 @@ const device = (
     palette_diy: "unsupported",
     advanced: "supported",
     workshop: "supported",
-    special_diy: "unsupported",
   },
   profiles: {
     music: "supported",

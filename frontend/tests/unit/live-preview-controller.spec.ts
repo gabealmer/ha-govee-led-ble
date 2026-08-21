@@ -151,6 +151,75 @@ test("reset disengages without changing the enabled preference", () => {
   expect(cancellations).toBe(1);
 });
 
+test("selection transitions clear trailing work and dedupe without backend cancellation", () => {
+  let now = 0;
+  let nextTimer = 1;
+  const timers = new Map<number, () => void>();
+  const submitted: Request[] = [];
+  let cancellations = 0;
+  const controller = new LivePreviewController<Request>({
+    submit: (request) => submitted.push(request),
+    cancel: () => {
+      cancellations += 1;
+    },
+    now: () => now,
+    setTimer: (callback) => {
+      const id = nextTimer++;
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimer: (id) => {
+      timers.delete(id);
+    },
+  });
+
+  controller.schedule({ fingerprint: "old", value: 1 }, "changing");
+  controller.transition();
+  expect(timers.size).toBe(0);
+  expect(cancellations).toBe(0);
+
+  now = 200;
+  controller.scheduleSelection({ fingerprint: "same", value: 2 });
+  controller.transition();
+  now = 400;
+  controller.scheduleSelection({ fingerprint: "same", value: 2 });
+
+  expect(submitted.map((request) => request.value)).toEqual([1, 2, 2]);
+  expect(cancellations).toBe(0);
+});
+
+test("rapid explicit selections coalesce to the final committed request", () => {
+  let now = 0;
+  let nextTimer = 1;
+  const timers = new Map<number, () => void>();
+  const submitted: Request[] = [];
+  const controller = new LivePreviewController<Request>({
+    submit: (request) => submitted.push(request),
+    cancel: () => undefined,
+    now: () => now,
+    setTimer: (callback) => {
+      const id = nextTimer++;
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimer: (id) => {
+      timers.delete(id);
+    },
+  });
+
+  controller.scheduleSelection({ fingerprint: "first", value: 1 });
+  now = 25;
+  controller.scheduleSelection({ fingerprint: "second", value: 2 });
+  now = 50;
+  controller.scheduleSelection({ fingerprint: "third", value: 3 });
+
+  expect(submitted.map((request) => request.value)).toEqual([1]);
+  expect(timers.size).toBe(1);
+  [...timers.values()][0]();
+  expect(submitted.map((request) => request.value)).toEqual([1, 3]);
+  expect(submitted.every((request) => request.committed)).toBe(true);
+});
+
 test("toggle-on without a current target still enables later edits", () => {
   const submitted: Request[] = [];
   const controller = new LivePreviewController<Request>({

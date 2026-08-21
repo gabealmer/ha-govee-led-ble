@@ -28,12 +28,14 @@ export const effectStudioPanelStyles = [
       --studio-device-selector-min-width: 180px;
       --studio-dialog-max-width: 440px;
       --studio-video-list-max-height: 150px;
-      --studio-live-track-width: 76px;
-      --studio-save-track-width: 92px;
       --studio-live-status-size: 18px;
       --studio-live-status-line-height: 16px;
       --studio-live-spin-duration: 700ms;
       --studio-live-reduced-motion-duration: 1400ms;
+      --studio-light-on-ring-strength: 44%;
+      --studio-light-on-hover-strength: 18%;
+      --studio-light-off-foreground-strength: 72%;
+      --studio-light-off-background-strength: 4%;
       --studio-backdrop-blur: 10px;
       --studio-dialog-shadow-offset: 18px;
       --studio-dialog-shadow-blur: 52px;
@@ -163,6 +165,7 @@ export const effectStudioPanelStyles = [
       align-items: center;
       gap: var(--studio-control-gap);
       min-width: 0;
+      flex: 1 1 auto;
       color: var(--studio-muted);
       font-size: var(--studio-parameter-label-size);
       font-weight: var(--studio-font-weight-semibold);
@@ -170,7 +173,8 @@ export const effectStudioPanelStyles = [
 
     .device-selector select {
       width: min(var(--studio-device-selector-max-width), 50vw);
-      min-width: var(--studio-device-selector-min-width);
+      max-width: 100%;
+      min-width: min(var(--studio-device-selector-min-width), 100%);
     }
 
     .live-apply-control {
@@ -183,14 +187,15 @@ export const effectStudioPanelStyles = [
       display: flex;
       align-items: center;
       gap: var(--studio-micro-gap);
+      flex: 0 0 auto;
       margin-inline-start: auto;
     }
 
     .light-control-button {
       display: inline-grid;
-      width: var(--studio-compact-control-height);
-      height: var(--studio-compact-control-height);
-      min-height: var(--studio-compact-control-height);
+      width: var(--studio-touch-target-size);
+      height: var(--studio-touch-target-size);
+      min-height: var(--studio-touch-target-size);
       padding: var(--studio-compact-gap);
       box-sizing: border-box;
       border: 0;
@@ -223,118 +228,44 @@ export const effectStudioPanelStyles = [
       fill: currentColor;
     }
 
-    .live-apply-toggle {
-      display: inline-flex;
-      align-items: center;
-      min-height: var(--studio-control-height);
-      padding: 0 var(--studio-micro-gap);
-      border: 0;
-      color: var(--primary-text-color);
-      background: transparent;
-      font: inherit;
-      font-weight: var(--studio-font-weight-semibold);
-      cursor: pointer;
+    .native-light-control.light-state-on {
+      color: var(--studio-blue);
+      background: var(--studio-blue-soft);
+      box-shadow: inset 0 0 0 var(--studio-border-width)
+        color-mix(
+          in srgb,
+          var(--studio-blue) var(--studio-light-on-ring-strength),
+          transparent
+        );
     }
 
-    .live-apply-track {
-      --studio-toolbar-switch-width: var(--studio-live-track-width);
-      position: relative;
-      display: block;
-      width: var(--studio-toolbar-switch-width);
-      height: var(--studio-switch-track-height);
-      border-radius: var(--studio-pill-radius);
-      background: var(--disabled-color, #9e9e9e);
-      transition: background var(--studio-switch-transition-duration)
-        var(--studio-switch-transition-easing);
-    }
-
-    .live-apply-thumb {
-      position: absolute;
-      z-index: 1;
-      top: var(--studio-switch-thumb-inset);
-      left: var(--studio-switch-thumb-inset);
-      width: var(--studio-switch-thumb-size);
-      height: var(--studio-switch-thumb-size);
-      border-radius: var(--studio-round-radius);
-      background: #fff;
-      box-shadow: 0 var(--studio-border-width)
-        var(--studio-strong-border-width) rgb(0 0 0 / 30%);
-      transition: transform var(--studio-switch-transition-duration)
-        var(--studio-switch-transition-easing);
-    }
-
-    .live-apply-toggle[aria-checked="true"] .live-apply-track {
-      background: var(--studio-blue);
-    }
-
-    .live-apply-toggle:focus-visible {
-      outline: 0;
-    }
-
-    .live-apply-toggle:focus-visible .live-apply-track {
-      outline: var(--studio-focus-width) solid var(--studio-blue);
-      outline-offset: var(--studio-focus-offset);
-    }
-
-    .live-apply-toggle[aria-checked="true"] .live-apply-thumb {
-      transform: translateX(
-        calc(
-          var(--studio-toolbar-switch-width) -
-            var(--studio-switch-thumb-inset) -
-            var(--studio-switch-thumb-inset) -
-            var(--studio-switch-thumb-size)
-        )
+    .native-light-control.light-state-on:hover,
+    .native-light-control.light-state-on:focus-visible {
+      color: var(--studio-blue);
+      background: color-mix(
+        in srgb,
+        var(--studio-blue) var(--studio-light-on-hover-strength),
+        transparent
       );
     }
 
-    .live-apply-label {
-      position: absolute;
-      top: 0;
-      left: var(--studio-switch-thumb-inset);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: calc(
-        var(--studio-toolbar-switch-width) -
-          var(--studio-switch-thumb-size) -
-          var(--studio-switch-thumb-inset) -
-          var(--studio-switch-thumb-inset) -
-          var(--studio-switch-thumb-inset)
+    .native-light-control.light-state-off {
+      color: color-mix(
+        in srgb,
+        var(--studio-muted) var(--studio-light-off-foreground-strength),
+        transparent
       );
-      height: var(--studio-switch-track-height);
-      color: #fff;
-      font-size: var(--studio-caption-size);
-      font-weight: var(--studio-font-weight-semibold);
-      line-height: var(--studio-icon-line-height);
-      pointer-events: none;
-      transform: translateX(
-        calc(
-          var(--studio-switch-thumb-size) +
-            var(--studio-switch-thumb-inset)
-        )
+      background: color-mix(
+        in srgb,
+        var(--primary-text-color, #212121)
+          var(--studio-light-off-background-strength),
+        transparent
       );
-      transition: transform var(--studio-switch-transition-duration)
-        var(--studio-switch-transition-easing);
     }
 
-    .live-apply-toggle[aria-checked="true"] .live-apply-label {
-      transform: translateX(0);
-    }
-
-    .save-toggle .live-apply-track {
-      --studio-toolbar-switch-width: var(--studio-save-track-width);
-    }
-
-    .save-label {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--studio-micro-gap);
-    }
-
-    .save-label svg {
-      width: var(--studio-small-swatch-size);
-      height: var(--studio-small-swatch-size);
-      fill: currentColor;
+    .native-light-control.light-state-unavailable {
+      color: var(--studio-muted);
+      opacity: var(--studio-disabled-opacity);
     }
 
     .live-apply-status {
@@ -346,6 +277,10 @@ export const effectStudioPanelStyles = [
       place-items: center;
       border: var(--studio-strong-border-width) solid transparent;
       border-radius: var(--studio-round-radius);
+    }
+
+    .live-apply-status.idle {
+      display: none;
     }
 
     .live-apply-status.pending {
@@ -747,34 +682,8 @@ export const effectStudioPanelStyles = [
         align-self: center;
       }
 
-      .live-apply-toggle,
-      .light-control-button {
-        min-height: var(--studio-control-height);
-        height: var(--studio-control-height);
-      }
-
-      .light-control-button {
-        width: var(--studio-control-height);
-      }
-
-      .live-apply-toggle {
-        padding-inline: var(--studio-tight-gap);
-      }
-
-      .save-toggle .live-apply-track {
-        --studio-toolbar-switch-width: var(--studio-live-track-width);
-      }
-
-      .save-label svg {
-        display: none;
-      }
-
       .live-apply-control {
         gap: var(--studio-micro-gap);
-      }
-
-      .live-apply-status.idle {
-        display: none;
       }
 
       .editor {
@@ -829,11 +738,6 @@ export const effectStudioPanelStyles = [
         animation-duration: var(--studio-live-reduced-motion-duration);
       }
 
-      .live-apply-track,
-      .live-apply-thumb,
-      .live-apply-label {
-        transition: none;
-      }
     }
   `,
 ];

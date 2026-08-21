@@ -1,0 +1,103 @@
+import { expect, test } from "vitest";
+
+import {
+  advancedBrightnessPatternItems,
+  advancedLayerActions,
+  advancedLayerItems,
+  FILL_PATTERN_LABELS,
+  fillPatternParameters,
+} from "../../src/advanced-effect-editor-model";
+
+test("fill pattern labels retain the wire selection mappings", () => {
+  expect(FILL_PATTERN_LABELS).toEqual({
+    0: "Segment",
+    1: "Continuous",
+    2: "Random",
+    3: "Custom",
+  });
+  expect(fillPatternParameters(0)).toEqual([
+    ["param_2", "Segment count"],
+  ]);
+  expect(fillPatternParameters(1)).toEqual([
+    ["param_2", "LED count"],
+  ]);
+  expect(fillPatternParameters(2)).toEqual([
+    ["param_2", "Minimum LED count"],
+    ["param_1", "Maximum LED count"],
+  ]);
+  expect(fillPatternParameters(3)).toEqual([
+    ["param_1", "Lit length"],
+    ["param_2", "Gap"],
+  ]);
+});
+
+test("unknown fill pattern values remain unsupported rather than remapped", () => {
+  expect(fillPatternParameters(255)).toEqual([]);
+});
+
+test("layer and brightness pattern items use numeric labels and exact accessible names", () => {
+  expect(advancedLayerItems(2)).toEqual([
+    {
+      key: "layer-0",
+      label: "1",
+      ariaLabel: "Layer 1",
+      ariaDescription:
+        "Drag to reorder or use the Left and Right Arrow keys.",
+      id: "advanced-layer-tab-0",
+      ariaControls: "advanced-layer-panel",
+    },
+    {
+      key: "layer-1",
+      label: "2",
+      ariaLabel: "Layer 2",
+      ariaDescription:
+        "Drag to reorder or use the Left and Right Arrow keys.",
+      id: "advanced-layer-tab-1",
+      ariaControls: "advanced-layer-panel",
+    },
+  ]);
+  expect(advancedBrightnessPatternItems(2)).toEqual([
+    {
+      key: "pattern-0",
+      label: "1",
+      ariaLabel: "Pattern 1",
+      ariaDescription: undefined,
+      id: "advanced-pattern-tab-0",
+      ariaControls: "advanced-pattern-panel",
+    },
+    {
+      key: "pattern-1",
+      label: "2",
+      ariaLabel: "Pattern 2",
+      ariaDescription: undefined,
+      id: "advanced-pattern-tab-1",
+      ariaControls: "advanced-pattern-panel",
+    },
+  ]);
+});
+
+test("compact layer actions retain labels, tone, and authoring limits", () => {
+  expect(advancedLayerActions(1)).toEqual([
+    {
+      kind: "copy",
+      label: "Copy current layer",
+      glyph: "⧉",
+      danger: false,
+      disabled: false,
+    },
+    {
+      kind: "delete",
+      label: "Delete current layer",
+      glyph: "×",
+      danger: true,
+      disabled: true,
+    },
+  ]);
+  expect(advancedLayerActions(5).map(({ kind, disabled }) => ({
+    kind,
+    disabled,
+  }))).toEqual([
+    { kind: "copy", disabled: true },
+    { kind: "delete", disabled: false },
+  ]);
+});

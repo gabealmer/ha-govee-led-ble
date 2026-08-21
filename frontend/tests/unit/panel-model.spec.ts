@@ -14,10 +14,13 @@ import {
   blankVideoProfile,
   serialiseEditable,
 } from "../../src/effect-editor-model";
+import { blankAdvancedContent } from "../../src/advanced-effect-model";
 import type {
+  CustomEffectCatalogue,
   DeviceCapabilities,
   HomeAssistant,
   LibraryItem,
+  ModelEffectCatalogue,
   PaintedContent,
 } from "../../src/types";
 
@@ -38,7 +41,6 @@ function device(
       palette_diy: "unsupported",
       advanced: "unsupported",
       workshop: "unsupported",
-      special_diy: "unsupported",
     },
     profiles: {
       music: "unsupported",
@@ -60,6 +62,66 @@ function painted(): PaintedContent {
       ...Array.from({ length: 14 }, () => null),
     ],
   };
+}
+
+function h6199Catalogue(): ModelEffectCatalogue {
+  return {
+    sku: "H6199",
+    painted_effects: [],
+    effects: [
+      {
+        id: "fade",
+        label: "Fade",
+        family: 1,
+        variations: [{ id: "base", label: "Base", variant: 0 }],
+        supports_multi: false,
+        rate: "speed",
+        category: "single_layer",
+      },
+    ],
+    music_modes: [
+      { id: "energetic", label: "Energetic" },
+      { id: "rhythm", label: "Rhythm" },
+    ],
+    video_modes: [
+      { id: "movie", label: "Movie" },
+      { id: "game", label: "Game" },
+    ],
+    workshop_templates: [],
+    workflows: [],
+    supports: {
+      multi: "unsupported",
+      advanced: "supported",
+      workshop: "unsupported",
+    },
+    limits: {
+      palette_min: 1,
+      palette_max: 8,
+      multi_max: 5,
+      music_sensitivity_min: 0,
+      music_sensitivity_max: 100,
+    },
+    apply: {
+      painted: "unsupported",
+      single: "unsupported",
+      multi: "unsupported",
+      palette_diy: "supported",
+      workshop: "unsupported",
+    },
+  };
+}
+
+function installH6199Catalogue(model: PanelModel): void {
+  const catalogue = h6199Catalogue();
+  model.customCatalogue = {
+    ...catalogue,
+    schema_version: 7,
+    sku: "H617A",
+    models: {
+      H617A: { ...catalogue, sku: "H617A" },
+      H6199: catalogue,
+    },
+  } as CustomEffectCatalogue;
 }
 
 function item(content: PaintedContent): LibraryItem {
@@ -136,13 +198,6 @@ test("remembered All category migrates to the available fallback", () => {
       "single-layer",
     ),
   ).toBe("single-layer");
-  expect(
-    restoredCustomEffectCategory(
-      "special-diy",
-      () => false,
-      "music",
-    ),
-  ).toBe("music");
 });
 
 test("save and effect-family controls distinguish starters, New drafts, and saved effects", () => {
@@ -150,28 +205,43 @@ test("save and effect-family controls distinguish starters, New drafts, and save
   model.name = "Jumping";
   model.content = painted();
   model.savedBaseline = serialiseEditable(model.name, model.content);
-  model.customCopyStarted = true;
+  model.editorSource = {
+    kind: "catalogue",
+    owner: { section: "custom", category: "single-layer" },
+    selectionIdentity: "template:paint",
+    label: "Paint",
+  };
 
   expect(model.dirty).toBe(false);
-  expect(model.canSaveCurrentDraft).toBe(true);
+  expect(model.canSaveCurrentDraft).toBe(false);
   expect(model.showSingleEffectSelector).toBe(false);
 
-  model.customCopyStarted = false;
-  model.customTemplateSelection = "template:paint";
+  model.editorSource = {
+    kind: "new",
+    owner: { section: "custom", category: "single-layer" },
+  };
   expect(model.showSingleEffectSelector).toBe(true);
 
   model.currentItem = item(painted());
+  model.editorSource = {
+    kind: "saved",
+    owner: { section: "custom", category: "single-layer" },
+    itemId: model.currentItem.id,
+  };
   expect(model.showSingleEffectSelector).toBe(true);
   expect(model.canSaveCurrentDraft).toBe(false);
 });
 
-test("unchanged starters open the Save As naming flow", () => {
+test("unchanged explicit New drafts open the Save naming flow", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.name = "Jumping";
   model.content = painted();
   model.savedBaseline = serialiseEditable(model.name, model.content);
-  model.customCopyStarted = true;
+  model.editorSource = {
+    kind: "new",
+    owner: { section: "custom", category: "single-layer" },
+  };
   const modal = new PanelModalController(model, {
     updateComplete: async () => undefined,
     root: () => null,
@@ -183,7 +253,7 @@ test("unchanged starters open the Save As naming flow", () => {
 
   expect(save).not.toHaveBeenCalled();
   expect(model.saveNameDialogOpen).toBe(true);
-  expect(model.saveNameMode).toBe("copy");
+  expect(model.saveNameMode).toBe("save");
   expect(model.saveNameValue).toBe("Jumping");
 });
 
@@ -198,9 +268,11 @@ test("installs saved content as an isolated editable baseline", () => {
   const model = new PanelModel(() => undefined);
   const controller = editor(model);
   const source = painted();
+  model.sceneEditorOpen = true;
 
   expect(controller.applyLibraryItem(item(source))).toBe(true);
   expect(model.dirty).toBe(false);
+  expect(model.sceneEditorOpen).toBe(false);
 
   if (model.content.kind !== "h617a_painted") {
     throw new Error("saved painted content changed kind");
@@ -232,42 +304,102 @@ test("paint editing applies colour and off as distinct draft states", () => {
 
   controller.paintColourChanged([90, 80, 70]);
   controller.setSegmentColour(4, "committed");
-  controller.resetPaint();
+  model.resetBaseline = {
+    ...painted(),
+    segments: Array.from({ length: 15 }, () => null),
+  };
+  controller.resetContent();
   if (model.content.kind !== "h617a_painted") {
     throw new Error("paint content changed kind");
   }
   expect(model.content.segments.every((segment) => segment === null)).toBe(true);
   expect(model.content).toMatchObject({
     kind: "h617a_painted",
-    effect: "clockwise",
+    effect: "cycle",
     speed: 50,
     brightness: 100,
     segments: Array.from({ length: 15 }, () => null),
   });
 });
 
-test("template editing creates a custom copy and invalidates prior transitions", () => {
+test("catalogue templates edit directly without creating a Cancel breadcrumb", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   const controller = editor(model);
 
-  controller.openEditableTemplate("Paint", painted(), "template:paint");
+  controller.openEditableTemplate(
+    "Paint",
+    painted(),
+    "template:paint",
+    { section: "custom", category: "single-layer" },
+  );
   const templateEpoch = model.editorTransitionEpoch;
-  expect(model.templateSourceLabel).toBe("Paint");
-  expect(model.dirty).toBe(true);
+  expect(model.editorSource.kind).toBe("catalogue");
+  expect(model.dirty).toBe(false);
+  expect(model.editorActions).toMatchObject({
+    cancel: false,
+    save: false,
+    saveAs: true,
+  });
 
-  expect(controller.prepareTemplateEdit()).toBe(true);
-  expect(model.editorTransitionEpoch).toBeGreaterThan(templateEpoch);
-  expect(model.templateSourceLabel).toBeUndefined();
-  expect(model.customCopyStarted).toBe(true);
-  expect(model.editorCancelAvailable).toBe(true);
-  expect(model.name).toBe("Custom Paint");
-  expect(model.dirty).toBe(true);
+  controller.updatePaintedContent({ speed: 75 }, "committed");
+  expect(model.editorTransitionEpoch).toBe(templateEpoch);
+  expect(model.name).toBe("Paint");
+  expect(model.resetDirty).toBe(true);
+  expect(model.editorActions.cancel).toBe(false);
 
-  controller.cancelCreation();
-  expect(model.templateSourceLabel).toBe("Paint");
-  expect(model.customCopyStarted).toBe(false);
-  expect(model.editorCancelAvailable).toBe(false);
+  controller.resetContent();
+  expect(model.content).toEqual(painted());
+  expect(model.name).toBe("Paint");
+  expect(model.resetDirty).toBe(false);
+});
+
+test("explicit template selection previews once while automatic opening only populates the editor", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const preview = new PanelPreviewController(model);
+  const schedule = vi.spyOn(preview, "scheduleTemplateSelection");
+  const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
+  const committed = vi.fn();
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const controller = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => undefined,
+    contentCommitted: committed,
+  });
+
+  controller.openEditableTemplate(
+    "Paint",
+    painted(),
+    "template:paint",
+    { section: "custom", category: "single-layer" },
+    true,
+  );
+  expect(schedule).toHaveBeenCalledOnce();
+
+  schedule.mockClear();
+  const transitionEpoch = controller.beginSelectionTransition();
+  controller.openEditableTemplate(
+    "Paint",
+    painted(),
+    "template:paint",
+    { section: "custom", category: "single-layer" },
+    false,
+    transitionEpoch,
+  );
+  expect(schedule).not.toHaveBeenCalled();
+
+  controller.updatePaintedContent({ speed: 80 }, "committed");
+  scheduleEdited.mockClear();
+  committed.mockClear();
+  controller.resetContent();
+  expect(scheduleEdited).toHaveBeenCalledWith("committed", undefined);
+  expect(committed).toHaveBeenCalledWith("committed");
 });
 
 test("cancelling a new effect restores the prior editor state", () => {
@@ -281,23 +413,24 @@ test("cancelling a new effect restores the prior editor state", () => {
   const controller = editor(model);
 
   controller.newEffect("advanced");
-  expect(model.editorCancelAvailable).toBe(true);
+  expect(model.editorSource.kind).toBe("new");
+  expect(model.editorActions.cancel).toBe(true);
   expect(model.name).toBe("New Layered effect");
 
   controller.cancelCreation();
-  expect(model.editorCancelAvailable).toBe(false);
+  expect(model.editorActions.cancel).toBe(false);
   expect(model.name).toBe("Prior");
   expect(model.content).toEqual(painted());
 
   controller.newEffect("advanced");
-  expect(model.editorCancelAvailable).toBe(true);
+  expect(model.editorActions.cancel).toBe(true);
   controller.cancelCreation();
   controller.cancelCreation();
-  expect(model.editorCancelAvailable).toBe(false);
+  expect(model.editorActions.cancel).toBe(false);
   expect(model.name).toBe("Prior");
 });
 
-test("automatic default templates do not expose Cancel", () => {
+test("automatic default templates are catalogue sources without Cancel", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.devices = [device("entry-a", "H617A")];
@@ -306,10 +439,131 @@ test("automatic default templates do not expose Cancel", () => {
   const controller = editor(model);
   const transitionEpoch = controller.beginTransition();
 
-  controller.newEffect("advanced", transitionEpoch);
+  controller.openDefaultAvailableTemplate("advanced", transitionEpoch);
 
-  expect(model.name).toBe("New Layered effect");
-  expect(model.editorCancelAvailable).toBe(false);
+  expect(model.name).toBe("Layered");
+  expect(model.editorSource.kind).toBe("catalogue");
+  expect(model.editorActions.cancel).toBe(false);
+});
+
+test("explicit New and layered scene Reset restore content without changing names", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [device("entry-a", "H617A")];
+  model.devices[0].custom_effects.advanced = "supported";
+  model.selectedDeviceId = "entry-a";
+  const controller = editor(model);
+
+  controller.newEffect("advanced");
+  const newName = model.name;
+  const editedNew = blankAdvancedContent();
+  editedNew.layers[0].priority = 4;
+  controller.advancedContentChanged(editedNew, "committed");
+  expect(model.resetDirty).toBe(true);
+  controller.resetContent();
+  expect(model.name).toBe(newName);
+  expect(model.content).toEqual(blankAdvancedContent());
+
+  const scene = {
+    kind: "scene_layered" as const,
+    template: {
+      sku: "H617A",
+      scene_id: 1,
+      effect_id: 2,
+      catalogue_schema_version: 1,
+    },
+    effect: { layers: blankAdvancedContent().layers },
+    speed_index: null,
+    raw_param: "",
+  };
+  controller.openSceneEditor({
+    content: scene,
+    config_entry_id: "entry-a",
+    name: "Scene heading",
+  });
+  const editedScene = blankAdvancedContent();
+  editedScene.layers[0].priority = 5;
+  controller.advancedContentChanged(editedScene, "committed");
+  controller.resetContent();
+
+  expect(model.name).toBe("Scene heading");
+  expect(model.content).toEqual(scene);
+});
+
+test("category transitions own their editor and Reactive opens blank", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const selected = device("entry-a", "H6199");
+  selected.custom_effects = {
+    painted: "unsupported",
+    single: "unsupported",
+    multi: "unsupported",
+    palette_diy: "supported",
+    advanced: "supported",
+    workshop: "unsupported",
+  };
+  selected.profiles = { music: "supported", video: "supported" };
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.section = "video";
+  installH6199Catalogue(model);
+  const preview = new PanelPreviewController(model);
+  const templatePreview = vi.spyOn(preview, "scheduleTemplateSelection");
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+
+  const videoEpoch = editorController.beginSelectionTransition();
+  editorController.openVideoTemplate("movie", "Movie", false, videoEpoch);
+  expect(model.editorOwnedByActiveView).toBe(true);
+  expect(templatePreview).not.toHaveBeenCalled();
+
+  await controller.selectSection("custom", "single-layer");
+  expect(model.name).toBe("Fade");
+  expect(model.editorSource).toMatchObject({
+    kind: "catalogue",
+    owner: { section: "custom", category: "single-layer" },
+  });
+  expect(templatePreview).not.toHaveBeenCalled();
+
+  await controller.selectSection("custom", "music");
+  expect(model.editorSource.kind).toBe("none");
+  expect(model.name).toBe("");
+  expect(model.content.kind).not.toBe("palette_diy");
+
+  editorController.openMusicTemplate("energetic", "Energetic");
+  expect(model.editorActions.cancel).toBe(false);
+  editorController.openMusicTemplate("rhythm", "Rhythm");
+  expect(model.editorActions.cancel).toBe(false);
+
+  await controller.selectSection("video");
+  expect(model.name).toBe("Movie");
+  await controller.selectSection("custom", "music");
+  expect(model.editorSource.kind).toBe("none");
+  await controller.selectSection("custom", "single-layer");
+  expect(model.name).toBe("Fade");
+  await controller.selectSection("video");
+  expect(model.name).toBe("Movie");
 });
 
 test("initial navigation preserves unavailable deep links without a feedback banner", async () => {
@@ -391,7 +645,7 @@ test("auto-save coalesces committed edits onto the returned item version", async
   const updateItem = vi
     .fn()
     .mockReturnValueOnce(first)
-    .mockImplementationOnce(
+    .mockImplementation(
       async (
         current: LibraryItem,
         name: string,
@@ -420,7 +674,13 @@ test("auto-save coalesces committed edits onto the returned item version", async
   expect(updateItem.mock.calls[1][0]).toMatchObject({ version: 3 });
   expect(updateItem.mock.calls[1][2]).toMatchObject({ speed: 70 });
   expect(model.currentItem).toMatchObject({ version: 4 });
+  expect(model.resetDirty).toBe(true);
   expect(model.notice).toBeUndefined();
+
+  editorController.resetContent();
+  await vi.waitFor(() => expect(updateItem).toHaveBeenCalledTimes(3));
+  expect(updateItem.mock.calls[2][2]).toMatchObject({ speed: 50 });
+  expect(model.resetDirty).toBe(false);
 });
 
 test("saved item selection applies identity only while Live is enabled", async () => {
@@ -467,6 +727,52 @@ test("saved item selection applies identity only while Live is enabled", async (
   model.liveApplyEnabled = true;
   await expect(controller.selectItem(saved.id)).resolves.toBe(true);
   expect(applySavedEffect).toHaveBeenCalledWith("entry-a", saved.id);
+});
+
+test("manual Save adopts the saved content as the next Reset baseline", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  const source = item(painted());
+  editorController.applyLibraryItem(source);
+  editorController.updatePaintedContent({ speed: 65 }, "committed");
+  controller.api = {
+    updateItem: vi.fn().mockResolvedValue({
+      ...source,
+      version: 3,
+      content: { ...painted(), speed: 65 },
+    }),
+  } as unknown as EffectStudioApi;
+
+  expect(model.resetDirty).toBe(true);
+  await controller.save();
+
+  expect(model.resetDirty).toBe(false);
+  expect(model.resetBaseline).toMatchObject({ speed: 65 });
 });
 
 test("Save As rebinds a copy to its content category", async () => {
@@ -519,6 +825,11 @@ test("Save As rebinds a copy to its content category", async () => {
 
   expect(model.currentItem?.id).toBe("item-copy");
   expect(model.customEffectCategory).toBe("single-layer");
+  expect(model.editorSource).toMatchObject({
+    kind: "saved",
+    itemId: "item-copy",
+  });
+  expect(model.resetDirty).toBe(false);
 });
 
 test("Save As keeps video profile copies in the Video section", async () => {

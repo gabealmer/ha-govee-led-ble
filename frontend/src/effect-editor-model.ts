@@ -22,7 +22,6 @@ import type {
   PaletteDiyEffectContent,
   PaintedContent,
   RGB,
-  SpecialDiyContent,
   VideoProfileContent,
   WorkshopContent,
 } from "./types";
@@ -35,8 +34,7 @@ type AdvancedEditableContent =
 type ProfileContent =
   | PaletteDiyEffectContent
   | MusicProfileContent
-  | VideoProfileContent
-  | SpecialDiyContent;
+  | VideoProfileContent;
 export type EditableEffectContent =
   | CustomEffectContent
   | ProfileContent
@@ -44,6 +42,7 @@ export type EditableEffectContent =
 export type NewEffectKind =
   | CustomEffectContent["kind"]
   | PaletteDiyEffectContent["kind"]
+  | MusicProfileContent["kind"]
   | AdvancedContent["kind"];
 export type CustomEffectCategory =
   | "all"
@@ -51,7 +50,6 @@ export type CustomEffectCategory =
   | "single-layer"
   | "multi-layer"
   | "advanced"
-  | "special-diy"
   | "my-effects";
 export type LibraryItemSyncResult =
   | { action: "none" }
@@ -249,15 +247,6 @@ export function clonePaletteDiy(
   };
 }
 
-export function cloneSpecialDiy(
-  content: SpecialDiyContent,
-): SpecialDiyContent {
-  return {
-    ...content,
-    palette: clonePalette(content.palette),
-  };
-}
-
 function cloneWorkshop(content: WorkshopContent): WorkshopContent {
   return {
     ...content,
@@ -284,9 +273,6 @@ export function cloneEditableEffect(
   }
   if (content.kind === "palette_diy") {
     return clonePaletteDiy(content);
-  }
-  if (content.kind === "special_diy") {
-    return cloneSpecialDiy(content);
   }
   if (content.kind === "music_profile") {
     return cloneMusicProfileContent(content);
@@ -420,7 +406,6 @@ export function isEditableEffectContent(
       "kind" in content &&
       (isAdvancedEditableKind(content.kind) ||
         content.kind === "palette_diy" ||
-        content.kind === "special_diy" ||
         content.kind === "music_profile" ||
         content.kind === "video_profile"))
   );
@@ -447,7 +432,6 @@ function isKnownEffectKind(kind: string): boolean {
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
     kind === "palette_diy" ||
-    kind === "special_diy" ||
     kind === "music_profile" ||
     kind === "video_profile" ||
     kind === "scene_builtin" ||
@@ -467,8 +451,6 @@ export function customKindLabel(kind: unknown): string {
       return "Layered";
     case "palette_diy":
       return "Single";
-    case "special_diy":
-      return "Special DIY";
     case "workshop":
       return "Workshop";
     default:
@@ -481,7 +463,6 @@ export function isMyEffectKind(kind: string): boolean {
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
     kind === "palette_diy" ||
-    kind === "special_diy" ||
     kind === "music_profile" ||
     !isKnownEffectKind(kind)
   );
@@ -494,7 +475,6 @@ export function libraryKindPriority(
   const order =
     model === "H6199"
       ? [
-          "special_diy",
           "palette_diy",
           "workshop",
           "music_profile",
@@ -526,10 +506,9 @@ export function customEffectCategoryForKind(
   if (
     kind === "h617a_painted" ||
     kind === "h617a_single" ||
-    kind === "palette_diy" ||
-    kind === "special_diy"
+    kind === "palette_diy"
   ) {
-    return kind === "special_diy" ? "special-diy" : "single-layer";
+    return "single-layer";
   }
   return "advanced";
 }
@@ -596,7 +575,6 @@ function libraryItemModel(item: LibraryItem): ModelSku | undefined {
   const content = item.content;
   if (
     content.kind === "palette_diy" ||
-    content.kind === "special_diy" ||
     content.kind === "workshop" ||
     content.kind === "music_profile" ||
     content.kind === "video_profile"

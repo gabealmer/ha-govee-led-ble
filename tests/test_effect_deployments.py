@@ -643,6 +643,39 @@ async def test_recent_colours_are_owner_scoped_deduplicated_and_bounded(
     assert reloaded.get("user-a") == updated
 
 
+async def test_user_state_migration_removes_retired_special_diy_navigation(
+    hass: HomeAssistant,
+) -> None:
+    await Store[dict[str, Any]](
+        hass,
+        USER_STATE_STORE_VERSION,
+        USER_STATE_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=USER_STATE_STORE_MINOR_VERSION - 1,
+    ).async_save(
+        {
+            "users": {
+                "user-a": EffectUserState(
+                    "user-a",
+                    navigation={
+                        "section": "custom",
+                        "custom_category": "special-diy",
+                        "auto_save": True,
+                    },
+                ).to_dict()
+            }
+        }
+    )
+
+    (migrated,) = await EffectUserStateRepository(hass).async_load()
+
+    assert migrated.navigation == {
+        "section": "custom",
+        "auto_save": True,
+    }
+
+
 @pytest.mark.parametrize(
     "state",
     [

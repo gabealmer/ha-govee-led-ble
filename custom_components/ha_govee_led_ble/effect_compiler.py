@@ -46,7 +46,6 @@ from .effect_domain import (
     PaletteDiyEffect,
     PaletteScene,
     SingleEffect,
-    SpecialDiyEffect,
     VideoProfile,
     WorkshopEffect,
 )
@@ -181,20 +180,12 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 (f"{model} video-profile application is not supported",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
-    if isinstance(content, WorkshopEffect | SpecialDiyEffect):
+    if isinstance(content, WorkshopEffect):
         if content.model != model:
-            label = "Workshop" if isinstance(content, WorkshopEffect) else "Special DIY"
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
-                (f"{label} effect targets {content.model}, not {model}",),
+                (f"Workshop effect targets {content.model}, not {model}",),
             )
-        if isinstance(content, SpecialDiyEffect):
-            supported = {(effect.family, effect.variant) for effect in H6199_DIY_EFFECTS}
-            if (content.family, content.variant) not in supported:
-                return CompatibilityResult(
-                    CompatibilityState.INCOMPATIBLE,
-                    (f"H6199 Special DIY family {content.family} variation {content.variant} is not supported",),
-                )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
         if content.template.sku != model:
@@ -272,7 +263,7 @@ def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None
         if diy_code is None:
             raise ValueError("H617A custom-effect compilation requires a DIY code")
         return compile_h617a(item, diy_code)
-    if isinstance(item.content, PaletteDiyEffect | SpecialDiyEffect):
+    if isinstance(item.content, PaletteDiyEffect):
         return compile_h6199(
             item,
             H6199_PALETTE_DIY_APPLY_CODE if diy_code is None else diy_code,
@@ -479,7 +470,7 @@ def compile_h6199(
         raise ValueError(f"H6199 DIY activation is only evidenced for slot {H6199_PALETTE_DIY_APPLY_CODE}")
 
     content = item.content
-    if not isinstance(content, PaletteDiyEffect | SpecialDiyEffect):
+    if not isinstance(content, PaletteDiyEffect):
         raise ValueError("unsupported H6199 DIY content")
     upload = build_h6199_palette_diy(
         content.family,
@@ -496,7 +487,7 @@ def compile_h6199(
         item_id=str(item.id),
         item_version=item.version,
         model="H6199",
-        content_kind="special_diy" if isinstance(content, SpecialDiyEffect) else "palette_diy",
+        content_kind="palette_diy",
         diy_code=H6199_PALETTE_DIY_APPLY_CODE,
         activation_mode=ActivationMode.CUSTOM,
         expected_effect=None,

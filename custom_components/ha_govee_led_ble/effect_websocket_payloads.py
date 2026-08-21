@@ -36,7 +36,6 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
             "music_profile",
             "video_profile",
             "workshop",
-            "special_diy",
         }
         else None
     )

@@ -129,14 +129,6 @@ export class GoveeAppliedAreaControl extends LitElement {
               `
             : nothing}
         </div>
-        ${areaIsEditable
-          ? html`
-              <p class="area-help">
-                Drag either edge to resize. Drag the highlighted middle to move
-                the area.
-              </p>
-            `
-          : nothing}
       </div>
       ${!areaIsEditable
         ? html`
@@ -580,13 +572,6 @@ export class GoveeAppliedAreaControl extends LitElement {
         line-height: var(--studio-icon-line-height);
         text-align: center;
         transform: translateX(-50%);
-      }
-
-      .area-help {
-        margin: var(--studio-spacing-lg) 0 0;
-        color: var(--studio-muted);
-        font-size: var(--studio-parameter-label-size);
-        text-align: center;
       }
 
       .muted {

@@ -15,7 +15,6 @@ from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     H6199_PALETTE_DIY_APPLY_CODE,
-    H6199_SPECIAL_DIY_TEMPLATES,
     H6199_WORKSHOP_APPLY_CODE,
     WORKSHOP_TEMPLATES,
 )
@@ -901,33 +900,6 @@ async def test_workshop_uses_evidenced_model_application(
     assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
     assert cache.get("entry-a").mode == "custom"
     assert cache.get("entry-a").diy_code == workshop_code
-
-
-async def test_special_diy_uses_shared_slot_activation_and_confirms_selector(
-    hass: HomeAssistant,
-) -> None:
-    backend = await EffectBackend.async_create(hass)
-    coordinator = _coordinator()
-    coordinator.model = "H6199"
-    coordinator.unknown_scene_code = None
-    item = LibraryItem.new("Special DIY", H6199_SPECIAL_DIY_TEMPLATES[0].content())
-    compiled = compile_effect(item, "H6199")
-    _confirm_scene_code_on_call(coordinator, 2, H6199_PALETTE_DIY_APPLY_CODE)
-
-    result = await backend.engine.async_apply_saved(
-        coordinator,
-        item,
-        config_entry_id="entry-a",
-        updated_at="2026-08-11T00:00:00Z",
-    )
-    assert result.phase is DeploymentPhase.CONFIRMED
-    assert result.diy_code == H6199_PALETTE_DIY_APPLY_CODE
-    assert result.error_code is None
-    assert result.verification_confidence is ObservationConfidence.ACTIVATION_MATCH
-    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
-    events = backend.diagnostics.snapshot(config_entry_id="entry-a")["events"]
-    assert any(event["code"] == "effect_content_readback_unavailable" for event in events)
-    assert events[-1]["code"] == "device_verification_succeeded"
 
 
 async def test_cross_model_workshop_is_rejected_before_any_write(

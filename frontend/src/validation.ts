@@ -21,7 +21,6 @@ import type {
   SceneCatalogue,
   SceneDetail,
   SceneSummary,
-  SpecialDiyContent,
   VideoProfileContent,
   WorkshopContent,
 } from "./types";
@@ -184,10 +183,6 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         ),
         advanced: capabilityValue(effects.advanced, "advanced capability"),
         workshop: capabilityValue(effects.workshop, "Workshop capability"),
-        special_diy: capabilityValue(
-          effects.special_diy,
-          "Special DIY capability",
-        ),
       },
       profiles: {
         music: capabilityValue(profiles.music, "music profile capability"),
@@ -725,34 +720,6 @@ export function decodeEffectContent(value: unknown): EffectContent {
         ),
       } satisfies WorkshopContent;
     }
-    case "special_diy":
-      return {
-        kind,
-        model: enumString(
-          content.model,
-          ["H6199"],
-          "Special DIY model",
-        ),
-        template: boundedString(
-          content.template,
-          "Special DIY template",
-          MAX_IDENTIFIER_LENGTH,
-        ),
-        family: integerValue(content.family, "Special DIY family", 0, 255),
-        variant: integerValue(content.variant, "Special DIY variant", 0, 255),
-        speed: integerValue(content.speed, "Special DIY speed", 0, 100),
-        palette: paletteValue(content.palette, "Special DIY palette", 8),
-        raw_payload: hexString(
-          content.raw_payload,
-          "Special DIY source payload",
-        ),
-        trailing_padding: integerValue(
-          content.trailing_padding,
-          "Special DIY trailing padding",
-          0,
-          SCENE_TRAILING_PADDING_MAX,
-        ),
-      } satisfies SpecialDiyContent;
     case "scene_builtin":
       return {
         kind,

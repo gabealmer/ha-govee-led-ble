@@ -22,7 +22,7 @@ from .effect_limits import (
     validate_revision,
     validate_timestamp,
 )
-from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES, h6199_diy_padding_len
+from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES
 from .layered_scene import AppliedArea as AppliedArea
 from .layered_scene import BrightnessOrder as BrightnessOrder
 from .layered_scene import BrightnessPattern as BrightnessPattern
@@ -303,38 +303,6 @@ class WorkshopEffect:
 
 
 @dataclass(frozen=True, slots=True)
-class SpecialDiyEffect:
-    model: str
-    template: str
-    family: int
-    variant: int
-    speed: int
-    palette: tuple[RGB, ...]
-    raw_payload: bytes = b""
-    trailing_padding: int = 0
-
-    def __post_init__(self) -> None:
-        if self.model != "H6199":
-            raise EffectValidationError("Special DIY is supported only for H6199")
-        _validate_identifier(self.template, "Special DIY template")
-        _validate_byte(self.family, "family")
-        _validate_byte(self.variant, "variant")
-        _validate_percent(self.speed, "speed")
-        _validate_palette(self.palette)
-        if not isinstance(self.raw_payload, bytes):
-            raise EffectValidationError("Special DIY source payload must be bytes")
-        if (
-            not isinstance(self.trailing_padding, int)
-            or isinstance(self.trailing_padding, bool)
-            or not 0 <= self.trailing_padding <= MAX_SCENE_PARAM_BYTES
-        ):
-            raise EffectValidationError(
-                f"Special DIY trailing padding must be an integer from 0 to {MAX_SCENE_PARAM_BYTES}"
-            )
-        object.__setattr__(self, "trailing_padding", h6199_diy_padding_len(len(self.palette)))
-
-
-@dataclass(frozen=True, slots=True)
 class BuiltinScene:
     template: CatalogueRef
     speed_index: int | None = None
@@ -424,7 +392,6 @@ type EffectContent = (
     | MultiEffect
     | LayeredEffect
     | WorkshopEffect
-    | SpecialDiyEffect
     | BuiltinScene
     | PaletteScene
     | LayeredScene
@@ -679,18 +646,6 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "raw_param": content.raw_param.hex(),
             "trailing_padding": content.trailing_padding,
         }
-    if isinstance(content, SpecialDiyEffect):
-        return {
-            "kind": "special_diy",
-            "model": content.model,
-            "template": content.template,
-            "family": content.family,
-            "variant": content.variant,
-            "speed": content.speed,
-            "palette": [list(colour) for colour in content.palette],
-            "raw_payload": content.raw_payload.hex(),
-            "trailing_padding": content.trailing_padding,
-        }
     if isinstance(content, LayeredEffect):
         return {"kind": "advanced", **layered_effect_to_value(content)}
     if isinstance(content, BuiltinScene):
@@ -786,17 +741,6 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             template=_required_str(raw, "template"),
             effect=layered_effect_from_value(_required_mapping(raw, "effect")),
             raw_param=_hex_bytes(raw.get("raw_param", ""), "Workshop source parameter"),
-            trailing_padding=_optional_int(raw, "trailing_padding") or 0,
-        )
-    if kind == "special_diy":
-        return SpecialDiyEffect(
-            model=_required_str(raw, "model"),
-            template=_required_str(raw, "template"),
-            family=_required_int(raw, "family"),
-            variant=_required_int(raw, "variant"),
-            speed=_required_int(raw, "speed"),
-            palette=_palette_from_value(raw.get("palette")),
-            raw_payload=_hex_bytes(raw.get("raw_payload", ""), "Special DIY source payload"),
             trailing_padding=_optional_int(raw, "trailing_padding") or 0,
         )
     if kind == "advanced":

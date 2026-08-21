@@ -76,9 +76,13 @@ test("focused layer updates clone nested content without installing it", () => {
   expect(selection.layers[0]).not.toBe(content.layers[0]);
 });
 
-test("visual edits preserve hidden wire values", () => {
+test("visual edits preserve hidden and unsupported wire values", () => {
   const controller = new AdvancedEffectEditorController();
   const content = blankAdvancedContent();
+  content.layers[0].selection.type = 255;
+  content.layers[0].distribution.method = 255;
+  content.layers[0].brightness_patterns[0].order = 255;
+  content.layers[0].priority = 255;
   content.layers[0].unknown_flags = 0x80;
   content.layers[0].selected_movement.unknown_flags = 0x20;
   content.layers[0].overall_movement.enter_exit = true;
@@ -86,10 +90,14 @@ test("visual edits preserve hidden wire values", () => {
   content.layers[0].excess = "aabb";
   controller.sync(content, false);
 
-  const updated = controller.updateLayer({ priority: 3 })!;
+  const updated = controller.updateLayer({ colour_speed: 3 })!;
 
   expect(updated.layers[0]).toMatchObject({
-    priority: 3,
+    colour_speed: 3,
+    selection: { type: 255 },
+    distribution: { method: 255 },
+    brightness_patterns: [{ order: 255 }],
+    priority: 255,
     unknown_flags: 0x80,
     excess: "aabb",
     selected_movement: { unknown_flags: 0x20 },

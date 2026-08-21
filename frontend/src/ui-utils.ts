@@ -1,4 +1,18 @@
-import type { DeviceCapabilities, RGB } from "./types";
+import type {
+  DeviceCapabilities,
+  HomeAssistantEntityState,
+  RGB,
+} from "./types";
+
+export type NativeLightState = "on" | "off" | "unavailable";
+
+export interface StudioToolbarLayoutState {
+  visible: boolean;
+  deviceSelector: boolean;
+  labelledSwitches: boolean;
+  lightControl: boolean;
+  settings: boolean;
+}
 
 export function clamp(
   value: number,
@@ -64,12 +78,58 @@ export function lightControlEntityId(
   return device?.light_entity_id ?? undefined;
 }
 
-export function showStudioToolbar(
+export function studioToolbarLayoutState(
   showDeviceSelector: boolean,
-  liveApplyVisible: boolean,
+  isAdmin: boolean,
+  deviceAvailable: boolean,
   lightEntityId: string | undefined,
-): boolean {
-  return showDeviceSelector || liveApplyVisible || lightEntityId !== undefined;
+): StudioToolbarLayoutState {
+  const labelledSwitches = isAdmin && deviceAvailable;
+  const lightControl = deviceAvailable && lightEntityId !== undefined;
+  const settings = isAdmin && deviceAvailable;
+  return {
+    visible:
+      showDeviceSelector || labelledSwitches || lightControl || settings,
+    deviceSelector: showDeviceSelector,
+    labelledSwitches,
+    lightControl,
+    settings,
+  };
+}
+
+export function labelledSwitchModel(
+  label: string,
+  checked: boolean,
+  accessibleName = label,
+) {
+  return {
+    role: "switch" as const,
+    label,
+    accessibleName,
+    checked,
+  };
+}
+
+export function classifyLightEntityState(
+  states: Record<string, HomeAssistantEntityState> | undefined,
+  entityId: string,
+): NativeLightState {
+  const state = states?.[entityId]?.state;
+  if (state === "on" || state === "off") {
+    return state;
+  }
+  return "unavailable";
+}
+
+export function lightControlPresentation(
+  displayName: string,
+  state: NativeLightState,
+) {
+  const accessibleName = `Control ${displayName} (${state})`;
+  return {
+    accessibleName,
+    className: `light-state-${state}`,
+  };
 }
 
 export function moreInfoDetail(entityId: string): { entityId: string } {

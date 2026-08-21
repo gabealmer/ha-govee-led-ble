@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-import io
 from dataclasses import replace
 from typing import Any, cast
 from uuid import UUID
 
 import pytest
-from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import effect_commands
 from custom_components.ha_govee_led_ble import layered_scene as layered_scene_module
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     H617A_WORKSHOP_SCENE_TYPE,
-    H6199_SPECIAL_DIY_TEMPLATES,
     H6199_WORKSHOP_APPLY_CODE,
     WORKSHOP_TEMPLATES,
 )
@@ -78,7 +75,6 @@ from custom_components.ha_govee_led_ble.effect_limits import (
     MAX_PREVIEW_SEQUENCE,
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
-from custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload import H6199EffectUpload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 
@@ -224,10 +220,9 @@ def test_saved_effect_profile_content_round_trips(content) -> None:
     [
         WORKSHOP_TEMPLATES[0].content("H617A"),
         WORKSHOP_TEMPLATES[0].content("H6199"),
-        H6199_SPECIAL_DIY_TEMPLATES[0].content(),
     ],
 )
-def test_workshop_and_special_diy_content_round_trips(content) -> None:
+def test_workshop_content_round_trips(content) -> None:
     assert effect_content_from_dict(effect_content_to_dict(content)) == content
     assert LibraryItem.from_dict(LibraryItem.new("Template", content).to_dict()).content == content
 
@@ -604,53 +599,6 @@ def test_workshop_compiler_reproduces_fixture_body_with_evidenced_model_activati
     )
 
 
-@pytest.mark.parametrize("template", H6199_SPECIAL_DIY_TEMPLATES, ids=lambda template: template.id)
-def test_special_diy_compiler_reproduces_fixture_body_and_uses_the_shared_activation(template) -> None:
-    content = template.content()
-    item = LibraryItem.new("Special DIY", content)
-
-    compiled = compile_effect(item, "H6199")
-
-    assert compiled.activation_packet == effect_commands.build_h6199_palette_diy_activation(401, 2)
-    assert compiled.diy_code == 401
-    assert b"".join(packet[2:19] for packet in compiled.upload_packets) == content.raw_payload
-
-
-def test_special_diy_maximum_palette_derives_padding_for_the_fixed_envelope() -> None:
-    template = H6199_SPECIAL_DIY_TEMPLATES[0].content()
-    content = replace(
-        template,
-        palette=tuple((index, index + 1, index + 2) for index in range(8)),
-    )
-
-    compiled = compile_effect(LibraryItem.new("Maximum palette", content), "H6199")
-    envelope = b"".join(packet[2:19] for packet in compiled.upload_packets)
-    parsed = H6199EffectUpload(KaitaiStream(io.BytesIO(envelope)))
-    parsed._read()
-
-    assert len(envelope) == 34
-    assert len(parsed.content.palette) == 8
-    assert len(parsed.content.padding) == 3
-    assert content.trailing_padding == 3
-    assert content.raw_payload == template.raw_payload
-    assert envelope != content.raw_payload
-
-
-def test_special_diy_rejects_palette_overflow_before_compilation() -> None:
-    with pytest.raises(EffectValidationError, match="palette must contain 1 to 8 colours"):
-        replace(
-            H6199_SPECIAL_DIY_TEMPLATES[0].content(),
-            palette=tuple((index, index + 1, index + 2) for index in range(9)),
-        )
-
-
-def test_special_diy_rejects_a_slot_other_than_the_shared_palette_diy_slot() -> None:
-    item = LibraryItem.new("Special DIY", H6199_SPECIAL_DIY_TEMPLATES[0].content())
-
-    with pytest.raises(ValueError, match="only evidenced for slot 401"):
-        compile_effect(item, "H6199", diy_code=800)
-
-
 @pytest.mark.parametrize("model", ["H617A", "H6199"])
 def test_workshop_edit_preserves_reserved_layer_data(model: str) -> None:
     content = WORKSHOP_TEMPLATES[0].content(model)
@@ -694,12 +642,9 @@ def test_upload_only_compilers_reject_invented_activation(item: LibraryItem, mod
 
 def test_model_mismatch_fails_before_a_packet_can_be_compiled() -> None:
     workshop = LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content("H617A"))
-    special = LibraryItem.new("Special DIY", H6199_SPECIAL_DIY_TEMPLATES[0].content())
 
     with pytest.raises(ValueError, match="targets H617A"):
         compile_effect(workshop, "H6199")
-    with pytest.raises(ValueError, match="targets H6199"):
-        compile_effect(special, "H617A")
 
 
 def test_editor_contract_reports_first_slice_boundaries() -> None:
@@ -708,7 +653,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
 
     assert api == {
-        "api_version": 6,
+        "api_version": 7,
         "effect_schema_version": 2,
         "compiler_version": EFFECT_COMPILER_VERSION,
         "limits": {

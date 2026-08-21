@@ -126,7 +126,7 @@ def _device(model="H617A"):
 
 def _catalogue():
     return {
-        "schema_version": 6,
+        "schema_version": 7,
         "models": {
             "H617A": {
                 "painted_effects": [{"id": "clockwise"}],
@@ -165,7 +165,7 @@ def _surface_client(model="H617A"):
                 }
             },
             harness.WS_INFO: {
-                "api_version": 6,
+                "api_version": 7,
                 "effect_schema_version": 2,
                 "limits": {"deployment_records": 16, "library_items": 16},
             },

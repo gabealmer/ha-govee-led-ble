@@ -41,7 +41,7 @@ test("model catalogues require every release workflow", () => {
     backendContracts.responses.custom_catalogue,
   );
   payload.models.H6199.workflows = payload.models.H6199.workflows.filter(
-    (workflow) => workflow.id !== "special_diy",
+    (workflow) => workflow.id !== "workshop",
   );
   expect(() => decodeCatalogue(payload)).toThrow(
     "release workflows does not match H6199",

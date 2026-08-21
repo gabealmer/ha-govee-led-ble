@@ -23,6 +23,13 @@ export type SceneInitialSelection =
 export type ScenePreviewRequest =
   | { kind: "scene"; scene: SceneSummary; speedIndex: number | null }
   | { kind: "snapshot"; name: string; content: SceneContent };
+export type NativeSceneActionId = "set-default" | "reset-default" | "edit";
+
+export interface NativeSceneAction {
+  id: NativeSceneActionId;
+  label: string;
+  style: "primary" | "secondary";
+}
 
 export interface SceneBrowserViewState {
   catalogue?: SceneCatalogue;
@@ -150,6 +157,26 @@ export function sceneSpeedOptions(optionCount: number, defaultIndex: number): Se
     label: "▸".repeat(index + 1),
     ariaLabel: sceneSpeedAriaLabel(index, defaultIndex, optionCount),
   }));
+}
+
+export function nativeSceneActions(
+  hasDefault: boolean,
+  defaultDirty: boolean,
+  autoSaveEnabled: boolean,
+): NativeSceneAction[] {
+  const actions: NativeSceneAction[] = [];
+  if (!autoSaveEnabled && defaultDirty) {
+    actions.push({ id: "set-default", label: "Set as Default", style: "primary" });
+  }
+  if (hasDefault) {
+    actions.push({ id: "reset-default", label: "Reset to Defaults", style: "secondary" });
+  }
+  actions.push({ id: "edit", label: "Edit", style: "secondary" });
+  return actions;
+}
+
+export function sceneHasParameterSurface(scene: SceneSummary): boolean {
+  return scene.speed !== null;
 }
 
 function sceneSpeedAriaLabel(index: number, defaultIndex: number, optionCount: number): string {

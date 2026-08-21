@@ -6,13 +6,16 @@ import { effectOriginDescription } from "./effect-editor-model";
 import type { SegmentedControlChange } from "./segmented-control";
 import "./segmented-control";
 import {
+  nativeSceneActions,
   previewMayChangeSceneDefault,
   sceneBrowserCategories,
   sceneBrowserEntries,
+  sceneHasParameterSurface,
   sceneKey,
   sceneSelectionKey,
   sceneSpeedOptions,
   type CategorySelection,
+  type NativeSceneAction,
   type SceneBrowserViewState,
   type SceneInitialSelection,
   type ScenePreviewRequest,
@@ -32,11 +35,9 @@ import type {
   DeviceCapabilities,
   LibraryItem,
   LibrarySnapshot,
-  PaletteSceneContent,
   PreviewStatus,
   SceneSummary,
 } from "./types";
-import { rgbToHex } from "./ui-utils";
 
 export type { SceneInitialSelection, ScenePreviewRequest } from "./scene-browser-model";
 
@@ -113,12 +114,15 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   public invokeSaveShortcut(): boolean {
-    if (!this.isAdmin || this.viewState.saving) {
+    if (!this.isAdmin) {
       return false;
     }
     if (this.workflow.sceneDefaultDirty) {
       void this.workflow.setCurrentDefault(true);
       return true;
+    }
+    if (this.viewState.saving) {
+      return false;
     }
     if (
       this.viewState.selectedItem &&
@@ -184,35 +188,39 @@ export class GoveeSceneBrowser extends LitElement {
     }
     return html`
       <aside class="sidebar item-sidebar scenes" aria-label="Scenes">
-        <div class="field scene-category">
-          <select
-            aria-label="Scene category"
-            @change=${(event: Event) => {
-              this.dismissExternalEdit();
-              this.workflow.setCategory(
-                categorySelection(
-                  (event.target as HTMLSelectElement).value,
-                ),
-              );
-            }}
-          >
-            ${this.sortedCategories.map(
-              (category) => html`
-                <option
-                  value=${String(category.id)}
-                  .selected=${this.viewState.category === category.id}
-                >
-                  ${category.label}
-                </option>
-              `,
-            )}
-          </select>
+        <div class="scene-category-panel">
+          <div class="field scene-category">
+            <select
+              aria-label="Scene category"
+              @change=${(event: Event) => {
+                this.dismissExternalEdit();
+                this.workflow.setCategory(
+                  categorySelection(
+                    (event.target as HTMLSelectElement).value,
+                  ),
+                );
+              }}
+            >
+              ${this.sortedCategories.map(
+                (category) => html`
+                  <option
+                    value=${String(category.id)}
+                    .selected=${this.viewState.category === category.id}
+                  >
+                    ${category.label}
+                  </option>
+                `,
+              )}
+            </select>
+          </div>
         </div>
-        ${this.filteredSceneEntries.map((entry) =>
-          entry.kind === "custom"
-            ? this.sceneButton(`custom:${entry.item.id}`, entry.label, () => this.selectCustom(entry.item, true))
-            : this.sceneButton(sceneKey(entry.scene), entry.label, () => this.selectBuiltin(entry.scene, true)),
-        )}
+        <div class="scene-list">
+          ${this.filteredSceneEntries.map((entry) =>
+            entry.kind === "custom"
+              ? this.sceneButton(`custom:${entry.item.id}`, entry.label, () => this.selectCustom(entry.item, true))
+              : this.sceneButton(sceneKey(entry.scene), entry.label, () => this.selectBuiltin(entry.scene, true)),
+          )}
+        </div>
       </aside>
 
       ${this.externalEditActive
@@ -309,149 +317,89 @@ export class GoveeSceneBrowser extends LitElement {
                 </button>
               `
             : nothing}
-          <button
-            class=${layered || nativeSelection ? "secondary" : "primary"}
-            type="button"
-            ?disabled=${!this.isAdmin ||
-            state.saving ||
-            !this.workflow.hasCurrentSceneContent() ||
-            (!layered && custom && saveDisabled)}
-            @click=${layered || nativeSelection ? this.edit : this.save}
-          >
-            ${state.saving
-              ? "Saving..."
-              : layered
-                ? "Edit"
-                : nativeSelection
-                  ? "Edit"
-                  : savingCopy
-                    ? "Save As"
-                    : "Save"}
-          </button>
-          ${state.selectedItem
-            ? html`
+          ${nativeSelection
+            ? nativeSceneActions(
+                state.hasDefault,
+                this.workflow.sceneDefaultDirty,
+                this.autoSaveEnabled,
+              ).map((action) => this.renderNativeAction(action))
+            : html`
                 <button
-                  class="danger"
+                  class=${layered ? "secondary" : "primary"}
                   type="button"
-                  ?disabled=${!this.isAdmin || state.saving}
-                  @click=${this.requestDelete}
+                  ?disabled=${!this.isAdmin ||
+                  state.saving ||
+                  !this.workflow.hasCurrentSceneContent() ||
+                  (!layered && saveDisabled)}
+                  @click=${layered ? this.edit : this.save}
                 >
-                  Delete
+                  ${state.saving
+                    ? "Saving..."
+                    : layered
+                      ? "Edit"
+                      : savingCopy
+                        ? "Save As"
+                        : "Save"}
                 </button>
-              `
-            : nothing}
-          ${nativeSelection && state.hasDefault
-            ? html`
-                <button
-                  class="secondary"
-                  type="button"
-                  ?disabled=${!this.isAdmin || state.saving}
-                  @click=${this.resetToCatalogue}
-                >
-                  Reset to Defaults
-                </button>
-              `
-            : nothing}
-          ${nativeSelection &&
-          !this.autoSaveEnabled &&
-          this.workflow.sceneDefaultDirty
-            ? html`
-                <button
-                  class="primary"
-                  type="button"
-                  ?disabled=${!this.isAdmin || state.saving}
-                  @click=${() =>
-                    void this.workflow.setCurrentDefault(this.isAdmin)}
-                >
-                  ${state.saving ? "Saving..." : "Set as Default"}
-                </button>
-              `
-            : nothing}
+                ${state.selectedItem
+                  ? html`
+                      <button
+                        class="danger"
+                        type="button"
+                        ?disabled=${!this.isAdmin || state.saving}
+                        @click=${this.requestDelete}
+                      >
+                        Delete
+                      </button>
+                    `
+                  : nothing}
+              `}
         </div>
       </header>
 
-      ${speed || state.content?.kind === "scene_palette" ? this.renderParameters(speed, speedIndex) : nothing}
+      ${sceneHasParameterSurface(scene) ? this.renderParameters(speed!, speedIndex) : nothing}
     `;
   }
 
-  private renderParameters(speed: SceneSummary["speed"], speedIndex: number) {
-    const palette = this.viewState.content?.kind === "scene_palette" ? this.viewState.content : undefined;
+  private renderNativeAction(action: NativeSceneAction) {
+    const click =
+      action.id === "set-default"
+        ? () => void this.workflow.setCurrentDefault(this.isAdmin)
+        : action.id === "reset-default"
+          ? this.resetToCatalogue
+          : this.edit;
+    return html`
+      <button
+        class=${action.style}
+        type="button"
+        ?disabled=${!this.isAdmin || !this.workflow.hasCurrentSceneContent()}
+        @click=${click}
+      >
+        ${action.label}
+      </button>
+    `;
+  }
+
+  private renderParameters(speed: NonNullable<SceneSummary["speed"]>, speedIndex: number) {
     return html`
       <div class="card scene-parameters">
         <div class="parameter-list">
-          ${speed
-            ? html`
-                <govee-segmented-control
-                  .label=${"Speed"}
-                  .value=${speedIndex}
-                  .options=${sceneSpeedOptions(speed.option_count, speed.default_index)}
-                  .disabled=${!this.isAdmin}
-                  @value-changed=${(event: CustomEvent<SegmentedControlChange<number>>) => {
-                    this.workflow.setSpeedIndex(event.detail.value);
-                    if (this.autoSaveEnabled) {
-                      void this.workflow.setCurrentDefault(this.isAdmin);
-                    } else {
-                      this.dispatchPreview();
-                    }
-                  }}
-                ></govee-segmented-control>
-              `
-            : nothing}
-          ${palette ? this.renderPaletteParameters(palette) : nothing}
+          <govee-segmented-control
+            .label=${"Speed"}
+            .value=${speedIndex}
+            .options=${sceneSpeedOptions(speed.option_count, speed.default_index)}
+            .disabled=${!this.isAdmin}
+            @value-changed=${(event: CustomEvent<SegmentedControlChange<number>>) => {
+              this.workflow.setSpeedIndex(event.detail.value);
+              if (this.autoSaveEnabled) {
+                void this.workflow.setCurrentDefault(this.isAdmin);
+              } else {
+                this.dispatchPreview();
+              }
+            }}
+          ></govee-segmented-control>
         </div>
       </div>
-    `;
-  }
-
-  private renderPaletteParameters(content: PaletteSceneContent) {
-    return html`
-      <dl class="parameter-summary">
-        <div><dt>Layout</dt><dd>${content.layout}</dd></div>
-        <div><dt>Brightness flag</dt><dd>${content.brightness_flag ? "Set" : "Clear"}</dd></div>
-        <div><dt>Steps</dt><dd>${content.steps.length}</dd></div>
-      </dl>
-      ${content.palette.length > 0
-        ? html`
-            <section class="parameter-entry visual-parameter">
-              <span class="parameter-label">Palette</span>
-              <div class="scene-palette" role="list" aria-label="Scene palette">
-                ${content.palette.map(
-                  (colour, index) => html`
-                    <span
-                      role="listitem"
-                      style="--scene-colour: ${rgbToHex(colour)}"
-                      aria-label="Colour ${index + 1}, ${rgbToHex(colour)}"
-                    ></span>
-                  `,
-                )}
-              </div>
-            </section>
-          `
-        : nothing}
-      <section class="parameter-entry visual-parameter">
-        <span class="parameter-label">Sequence</span>
-        <ol class="scene-steps" aria-label="Ordered scene steps">
-          ${content.steps.map(
-            (step, index) => html`
-              <li>
-                <span class="step-order">${index + 1}</span>
-                <span
-                  class="step-colour"
-                  style="--scene-colour: ${rgbToHex(step.colour)}"
-                  aria-label="Step colour ${rgbToHex(step.colour)}"
-                ></span>
-                <span>
-                  <strong>Raw value ${step.value}</strong>
-                  <small>Step colour ${rgbToHex(step.colour)}</small>
-                  ${step.inline_colour
-                    ? html`<small>Inline colour ${rgbToHex(step.inline_colour)}</small>`
-                    : nothing}
-                </span>
-              </li>
-            `,
-          )}
-        </ol>
-      </section>
     `;
   }
 
@@ -537,7 +485,6 @@ export class GoveeSceneBrowser extends LitElement {
     studioWorkspaceStyles,
     css`
       :host {
-        --scene-step-order-width: var(--studio-spacing-6xl);
         display: contents;
       }
       :host([hidden]) { display: none !important; }
@@ -552,55 +499,29 @@ export class GoveeSceneBrowser extends LitElement {
         line-height: var(--studio-reading-line-height);
       }
       .scene-parameters { margin-top: var(--studio-section-gap); }
-      .scene-category {
-        position: sticky;
-        z-index: var(--studio-z-raised);
-        top: 0;
-        gap: 0;
-        margin: 0 0 var(--studio-compact-gap);
-        padding-bottom: var(--studio-micro-gap);
+      .scenes {
+        display: grid;
+        min-height: 0;
+        overflow: hidden;
+        padding: 0;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+      .scene-category-panel {
+        padding: var(--studio-sidebar-padding);
+        border-bottom: var(--studio-border-width) solid var(--studio-border);
         background: var(--primary-background-color);
       }
-      .parameter-summary {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: var(--studio-control-gap);
+      .scene-category {
+        gap: 0;
         margin: 0;
       }
-      .parameter-summary div {
-        padding: var(--studio-control-gap);
-        border: var(--studio-border-width) solid var(--studio-border);
-        border-radius: var(--studio-control-radius);
+      .scene-list {
+        min-height: 0;
+        overflow-y: auto;
+        padding: var(--studio-sidebar-padding);
+        background: var(--primary-background-color);
       }
-      .parameter-summary dt, .parameter-summary dd { margin: 0; }
-      .parameter-summary dt { color: var(--studio-muted); font-size: var(--studio-caption-size); }
-      .parameter-summary dd { margin-top: var(--studio-micro-gap);       font-weight: var(--studio-font-weight-bold); }
       .parameter-list { display: grid; gap: var(--studio-spacing-lg); }
-      .parameter-entry {
-        padding: var(--studio-spacing-xl);
-        border: var(--studio-border-width) solid var(--studio-border);
-        border-radius: var(--studio-control-radius);
-        background: color-mix(in srgb, var(--primary-background-color) 58%, var(--studio-card));
-      }
-      .visual-parameter { display: grid; gap: var(--studio-spacing-lg); }
-      .scene-palette { display: flex; flex-wrap: wrap; gap: var(--studio-compact-gap); }
-      .scene-palette span, .step-colour {
-        display: block;
-        width: var(--studio-swatch-size);
-        height: var(--studio-swatch-size);
-        border: var(--studio-border-width) solid color-mix(in srgb, var(--scene-colour) 70%, #000);
-        border-radius: var(--studio-swatch-radius);
-        background: var(--scene-colour);
-      }
-      .scene-steps { display: grid; gap: var(--studio-compact-gap); margin: 0; padding: 0; list-style: none; }
-      .scene-steps li {
-        display: grid;
-        grid-template-columns: auto auto minmax(0, 1fr);
-        align-items: center;
-        gap: var(--studio-control-gap);
-      }
-      .step-order { width: var(--scene-step-order-width); color: var(--studio-muted); text-align: end; }
-      .scene-steps small { display: block; color: var(--studio-muted); }
       .action-error {
         margin: 0 0 var(--studio-section-title-gap);
         color: var(--error-color, #db4437);
@@ -635,9 +556,7 @@ export class GoveeSceneBrowser extends LitElement {
       }
       /* The panel owns document-flow placement below this width. */
       @media (max-width: 900px) { :host { display: block; } }
-      /* Parameter summaries become single-column on phones. */
       @media (max-width: 600px) {
-        .parameter-summary { grid-template-columns: 1fr; }
         .detail {
           display: flex;
           flex-direction: column;

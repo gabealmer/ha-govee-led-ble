@@ -3,6 +3,10 @@ import { expect, test } from "vitest";
 import {
   cloneMusicProfileContent,
   cloneVideoProfileContent,
+  musicStyleCalm,
+  musicStyleValue,
+  videoCaptureAreaFullScreen,
+  videoCaptureAreaValue,
 } from "../../src/profile-model";
 
 test("profile clones isolate nested colour, parameter, and brightness state", () => {
@@ -50,4 +54,15 @@ test("profile clones isolate nested colour, parameter, and brightness state", ()
   expect(music.colour).toEqual([1, 2, 3]);
   expect(music.parameters).toEqual({ nested: { value: 1 } });
   expect(video.relative_brightness.left).toBe(100);
+});
+
+test("binary profile controls use stable select values", () => {
+  expect(musicStyleValue(false)).toBe("dynamic");
+  expect(musicStyleValue(true)).toBe("calm");
+  expect(musicStyleCalm("dynamic")).toBe(false);
+  expect(musicStyleCalm("calm")).toBe(true);
+  expect(videoCaptureAreaValue(true)).toBe("full");
+  expect(videoCaptureAreaValue(false)).toBe("part");
+  expect(videoCaptureAreaFullScreen("full")).toBe(true);
+  expect(videoCaptureAreaFullScreen("part")).toBe(false);
 });

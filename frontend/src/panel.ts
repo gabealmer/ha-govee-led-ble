@@ -2,7 +2,6 @@ import { LitElement, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import "./advanced-effect-editor";
-import "./colour-picker";
 import { rememberRecentColour } from "./colour-picker";
 import "./custom-effect-editor";
 import type {
@@ -18,6 +17,8 @@ import {
 } from "./effect-editor-model";
 import { customEffectCategories } from "./custom-effect-workflow";
 import type { LivePreviewInteraction } from "./live-preview-controller";
+import type { LabelledSwitchChange } from "./labelled-switch";
+import "./labelled-switch";
 import "./music-profile-editor";
 import "./palette-editor";
 import "./painted-segment-editor";
@@ -35,6 +36,7 @@ import type {
 import "./scene-browser";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
+import "./single-colour-field";
 import {
   studioNavigationItems,
   type StudioNavigationItem,
@@ -53,16 +55,17 @@ import type {
   PaletteDiyEffectContent,
   PanelConfig,
   RGB,
-  SpecialDiyContent,
   VideoProfileContent,
 } from "./types";
 import {
+  classifyLightEntityState,
   compareLabels,
   integrationSettingsPath,
   lightControlEntityId,
+  lightControlPresentation,
   moreInfoDetail,
   showHomeAssistantHeader,
-  showStudioToolbar,
+  studioToolbarLayoutState,
 } from "./ui-utils";
 
 export class GoveeLedEffectStudio extends LitElement {
@@ -121,7 +124,8 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private get section() { return this.model.section; }
-  private get templateSourceLabel() { return this.model.templateSourceLabel; }
+  private get catalogueSourceLabel() { return this.model.catalogueSourceLabel; }
+  private get editorSource() { return this.model.editorSource; }
   private get currentItem() { return this.model.currentItem; }
   private get content() { return this.model.content; }
   private get isAdmin() { return this.hass?.user?.is_admin === true; }
@@ -289,25 +293,26 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderStudioToolbar() {
     const device = this.model.selectedDevice;
-    const liveApplyVisible = this.isAdmin && device !== undefined;
     const lightEntityId = lightControlEntityId(device);
-    if (!showStudioToolbar(
+    const layout = studioToolbarLayoutState(
       this.model.showDeviceSelector,
-      liveApplyVisible,
+      this.isAdmin,
+      device !== undefined,
       lightEntityId,
-    )) {
+    );
+    if (!layout.visible) {
       return nothing;
     }
     return html`
       <div class="studio-toolbar">
-        ${this.renderDeviceSelector()}
+        ${layout.deviceSelector ? this.renderDeviceSelector() : nothing}
         <div class="studio-toolbar-controls">
-          ${liveApplyVisible ? this.renderLiveApplyControl() : nothing}
-          ${liveApplyVisible ? this.renderAutoSaveControl() : nothing}
-          ${device && lightEntityId
+          ${layout.labelledSwitches ? this.renderLiveApplyControl() : nothing}
+          ${layout.labelledSwitches ? this.renderAutoSaveControl() : nothing}
+          ${layout.lightControl && device && lightEntityId
             ? this.renderLightControl(device.display_name, lightEntityId)
             : nothing}
-          ${device && this.isAdmin
+          ${layout.settings && device
             ? this.renderIntegrationSettings(
                 device.display_name,
                 device.config_entry_id,
@@ -319,12 +324,14 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderLightControl(displayName: string, entityId: string) {
+    const state = classifyLightEntityState(this.hass?.states, entityId);
+    const presentation = lightControlPresentation(displayName, state);
     return html`
       <button
-        class="light-control-button"
+        class="light-control-button native-light-control ${presentation.className}"
         type="button"
-        aria-label=${`Control ${displayName}`}
-        title=${`Control ${displayName}`}
+        aria-label=${presentation.accessibleName}
+        title=${presentation.accessibleName}
         @click=${() => this.showLightControls(entityId)}
       >
         <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -427,20 +434,15 @@ export class GoveeLedEffectStudio extends LitElement {
         : undefined;
     return html`
       <div class="live-apply-control">
-        <button
-          class="live-apply-toggle"
-          type="button"
-          role="switch"
-          aria-label="Live"
-          aria-checked=${this.model.liveApplyEnabled}
-          @click=${() =>
-            this.preview.toggle(this.currentScenePreviewRequest())}
-        >
-          <span class="live-apply-track" aria-hidden="true">
-            <span class="live-apply-label">Live</span>
-            <span class="live-apply-thumb"></span>
-          </span>
-        </button>
+        <govee-labelled-switch
+          label="Live"
+          .checked=${this.model.liveApplyEnabled}
+          @checked-changed=${(event: CustomEvent<LabelledSwitchChange>) => {
+            if (event.detail.checked !== this.model.liveApplyEnabled) {
+              this.preview.toggle(this.currentScenePreviewRequest());
+            }
+          }}
+        ></govee-labelled-switch>
         <span
           class="live-apply-status ${pending
             ? "pending"
@@ -461,25 +463,17 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderAutoSaveControl() {
     return html`
-      <button
-        class="live-apply-toggle save-toggle"
-        type="button"
-        role="switch"
-        aria-label="Save automatically"
-        aria-checked=${this.model.autoSaveEnabled}
-        title="Automatically save committed changes"
-        @click=${() => this.controller.toggleAutoSave()}
-      >
-        <span class="live-apply-track" aria-hidden="true">
-          <span class="live-apply-label save-label">
-            <svg viewBox="0 0 24 24">
-              <path d="M17 3H5a2 2 0 0 0-2 2v14h18V7l-4-4m-5 14a3 3 0 1 1 0-6 3 3 0 0 1 0 6m3-8H5V5h10v4Z"></path>
-            </svg>
-            Save
-          </span>
-          <span class="live-apply-thumb"></span>
-        </span>
-      </button>
+      <govee-labelled-switch
+        label="Save"
+        accessible-name="Save automatically"
+        description="Automatically save committed changes"
+        .checked=${this.model.autoSaveEnabled}
+        @checked-changed=${(event: CustomEvent<LabelledSwitchChange>) => {
+          if (event.detail.checked !== this.model.autoSaveEnabled) {
+            this.controller.toggleAutoSave();
+          }
+        }}
+      ></govee-labelled-switch>
     `;
   }
 
@@ -520,7 +514,7 @@ export class GoveeLedEffectStudio extends LitElement {
         .context=${this.model.customEffectListContext}
         .category=${this.model.customEffectCategory}
         .currentItemId=${this.currentItem?.id}
-        .templateSelection=${this.model.customTemplateSelection}
+        .templateSelection=${this.model.templateSelection}
         .isAdmin=${this.isAdmin}
         @custom-entry-requested=${(
           event: CustomEvent<CustomEffectBrowserEntryRequest>,
@@ -532,7 +526,8 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <section class="editor-surface editor">
         ${this.renderPanelNotice()}
-        ${this.model.name || this.currentItem
+        ${this.model.editorOwnedByActiveView &&
+        (this.model.name || this.currentItem)
           ? this.renderCurrentCustomEditor()
           : nothing}
       </section>
@@ -545,10 +540,7 @@ export class GoveeLedEffectStudio extends LitElement {
         ? this.renderPaintedEditor()
         : this.renderPaletteEffectEditor();
     }
-    if (
-      this.content.kind === "palette_diy" ||
-      this.content.kind === "special_diy"
-    ) {
+    if (this.content.kind === "palette_diy") {
       return this.renderPaletteEffectEditor();
     }
     if (this.content.kind === "music_profile") {
@@ -593,7 +585,8 @@ export class GoveeLedEffectStudio extends LitElement {
       </aside>
       <section class="editor-surface editor">
         ${this.renderPanelNotice()}
-        ${this.content.kind === "video_profile"
+        ${this.model.editorOwnedByActiveView &&
+        this.content.kind === "video_profile"
           ? this.renderVideoProfileEditor()
           : nothing}
       </section>
@@ -608,7 +601,7 @@ export class GoveeLedEffectStudio extends LitElement {
   ) {
     const selected = item
       ? this.currentItem?.id === item.id
-      : !this.currentItem && this.model.customTemplateSelection === key;
+      : !this.currentItem && this.model.templateSelection === key;
     return html`
       <button
         class="selector item ${selected ? "selected" : ""}"
@@ -883,8 +876,8 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <div class="controls">
         <section class="card">
-          <h3 class="section-title">Paint colour</h3>
-          <govee-colour-picker
+          <govee-single-colour-field
+            label="Paint colour"
             .colour=${this.model.paintColour}
             .disabled=${this.editorReadOnly}
             .selectionActive=${!this.model.paintBrushOff}
@@ -893,7 +886,7 @@ export class GoveeLedEffectStudio extends LitElement {
               this.editor.paintColourChanged(event.detail.colour)}
             @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
               this.editor.paintColourChanged(event.detail.colour)}
-          ></govee-colour-picker>
+          ></govee-single-colour-field>
           <div class="paint-actions">
             <button
               class="paint-off ${this.model.paintBrushOff ? "active" : ""}"
@@ -904,14 +897,6 @@ export class GoveeLedEffectStudio extends LitElement {
             >
               <span class="paint-off-swatch" aria-hidden="true"></span>
               Off
-            </button>
-            <button
-              class="secondary"
-              type="button"
-              ?disabled=${this.editorReadOnly}
-              @click=${() => this.editor.resetPaint()}
-            >
-              Reset
             </button>
           </div>
         </section>
@@ -935,8 +920,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (
       this.content.kind !== "h617a_single" &&
       this.content.kind !== "h617a_multi" &&
-      this.content.kind !== "palette_diy" &&
-      this.content.kind !== "special_diy"
+      this.content.kind !== "palette_diy"
     ) {
       return nothing;
     }
@@ -956,8 +940,7 @@ export class GoveeLedEffectStudio extends LitElement {
           event: CustomEvent<{
             content:
               | CustomEffectContent
-              | PaletteDiyEffectContent
-              | SpecialDiyContent;
+              | PaletteDiyEffectContent;
             interaction?: LivePreviewInteraction;
           }>,
         ) => {
@@ -1101,22 +1084,23 @@ export class GoveeLedEffectStudio extends LitElement {
       ? effectOriginDescription(this.currentItem.origin)
       : undefined;
     const marker =
-      this.model.dirty && !this.templateSourceLabel
+      this.model.dirty && this.editorSource.kind !== "catalogue"
         ? html`<span class="dirty-marker" aria-label="Unsaved changes">*</span>`
         : nothing;
-    if (this.templateSourceLabel) {
+    if (this.editorSource.kind === "catalogue") {
       return html`
         <div class="editor-title mobile-redundant-heading">
-          <h2>${this.templateSourceLabel}</h2>
+          <h2>${this.editorSource.label}</h2>
           ${origin ? html`<small class="origin-name">${origin}</small>` : nothing}
         </div>
       `;
     }
-    if (!this.currentItem) {
-      const title =
-        this.model.customCopyStarted && this.model.name.trim()
-          ? this.model.name
-          : "New effect";
+    if (
+      this.editorSource.kind === "new" ||
+      (this.editorSource.kind === "scene" &&
+        this.editorSource.itemId === undefined)
+    ) {
+      const title = this.model.name.trim() || "New effect";
       return html`
         <div class="editor-title mobile-redundant-heading">
           <div class="editable-title"><h2>${title}</h2>${marker}</div>
@@ -1157,7 +1141,19 @@ export class GoveeLedEffectStudio extends LitElement {
           ${options.title ?? this.renderEffectName()}
         </div>
         <div class="actions">
-          ${this.model.sceneEditorOpen || this.model.editorCancelAvailable
+          ${this.model.editorActions.reset
+            ? html`
+                <button
+                  class="secondary"
+                  type="button"
+                  ?disabled=${this.model.saving}
+                  @click=${() => this.editor.resetContent()}
+                >
+                  Reset
+                </button>
+              `
+            : nothing}
+          ${this.model.editorActions.cancel
             ? html`
                 <button
                   class="secondary"
@@ -1180,30 +1176,12 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderSaveAction() {
-    if (this.templateSourceLabel) {
-      return html`
-        <button
-          class="secondary"
-          type="button"
-          ?disabled=${!this.isAdmin ||
-          this.model.saving ||
-          this.model.deletingCurrentItem}
-          @click=${() => this.editor.prepareTemplateEdit()}
-        >
-          Edit
-        </button>
-      `;
-    }
-    if (
-      this.currentItem &&
-      this.model.autoSaveEnabled &&
-      !this.model.autoSaveFailed &&
-      !this.model.sceneEditorOpen
-    ) {
+    if (!this.model.editorActions.save) {
       return nothing;
     }
     const saveLabel =
-      !this.currentItem && this.model.customCopyStarted
+      this.editorSource.kind === "scene" &&
+      this.editorSource.itemId === undefined
         ? "Save As"
         : "Save";
     return html`
@@ -1226,10 +1204,10 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderSaveAsAction() {
-    if (!this.currentItem && !this.templateSourceLabel) {
+    if (!this.model.editorActions.saveAs) {
       return nothing;
     }
-    const sourceName = this.model.name.trim() || this.templateSourceLabel || "Effect";
+    const sourceName = this.model.name.trim() || this.catalogueSourceLabel || "Effect";
     return html`
       <button
         class="primary"
@@ -1264,15 +1242,13 @@ export class GoveeLedEffectStudio extends LitElement {
         return;
       }
       if (
-        !this.currentItem &&
-        !this.templateSourceLabel &&
-        !this.model.customCopyStarted
+        !this.model.editorActions.saveAs
       ) {
         return;
       }
       event.preventDefault();
       const sourceName =
-        this.model.name.trim() || this.templateSourceLabel || "Effect";
+        this.model.name.trim() || this.catalogueSourceLabel || "Effect";
       this.modal.requestSaveAs(this, `${sourceName} copy`);
       return;
     }
@@ -1300,7 +1276,7 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     if (
-      this.templateSourceLabel ||
+      !this.model.editorActions.save ||
       !this.model.canSaveCurrentDraft ||
       this.model.saving ||
       this.model.deletingCurrentItem
@@ -1408,7 +1384,11 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderEditorDeleteButton() {
-    if (!this.isAdmin || !this.currentItem) {
+    if (
+      !this.isAdmin ||
+      !this.currentItem ||
+      !this.model.editorActions.delete
+    ) {
       return nothing;
     }
     return html`

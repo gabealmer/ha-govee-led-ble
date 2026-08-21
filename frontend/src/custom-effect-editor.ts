@@ -18,15 +18,13 @@ import type {
   PaletteDiyEffectContent,
   RGB,
   SingleContent,
-  SpecialDiyContent,
 } from "./types";
 import { clonePalette } from "./ui-utils";
 
 type PaletteContent =
   | SingleContent
   | MultiContent
-  | PaletteDiyEffectContent
-  | SpecialDiyContent;
+  | PaletteDiyEffectContent;
 
 export class GoveeCustomEffectEditor extends LitElement {
   @property({ attribute: false })
@@ -89,8 +87,7 @@ export class GoveeCustomEffectEditor extends LitElement {
     }
     if (
       this.content.kind === "h617a_single" ||
-      this.content.kind === "palette_diy" ||
-      this.content.kind === "special_diy"
+      this.content.kind === "palette_diy"
     ) {
       const variation = this.shadowRoot?.querySelector<HTMLSelectElement>(
         "select[data-single-variation]",
@@ -123,8 +120,7 @@ export class GoveeCustomEffectEditor extends LitElement {
     }
     const rateLabel =
       (this.content.kind === "h617a_single" ||
-        this.content.kind === "palette_diy" ||
-        this.content.kind === "special_diy") &&
+        this.content.kind === "palette_diy") &&
       this.effectFamily(this.content)?.rate === "sensitivity"
         ? "Sensitivity"
         : "Speed";
@@ -167,8 +163,7 @@ export class GoveeCustomEffectEditor extends LitElement {
     if (
       !this.content ||
       (this.content.kind !== "h617a_single" &&
-        this.content.kind !== "palette_diy" &&
-        this.content.kind !== "special_diy")
+        this.content.kind !== "palette_diy")
     ) {
       return nothing;
     }

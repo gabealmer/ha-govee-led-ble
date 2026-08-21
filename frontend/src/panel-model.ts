@@ -1,10 +1,18 @@
 import { customEffectCategoryAvailable, customEffectKindAvailable, libraryItemAvailable, type CustomEffectListContext } from "./custom-effect-list";
 import { defaultCustomEffectCategory } from "./custom-effect-workflow";
 import {
+  editorActionVisibility,
+  editorOwnerMatches,
+  NO_EDITOR_SOURCE,
+  serialiseEditableContent,
+  type EditorSource,
+} from "./editor-state";
+import {
   blankPainted,
   isEditableEffectContent,
   serialiseEditable,
   type CustomEffectCategory,
+  type EditableEffectContent,
   type PaintedSegmentDraft,
 } from "./effect-editor-model";
 import type { SceneInitialSelection } from "./scene-browser";
@@ -29,10 +37,7 @@ export class PanelModel {
   public section: StudioSection = "custom";
   public customEffectCategory: CustomEffectCategory = "single-layer";
   public sceneEditorOpen = false;
-  public customTemplateSelection?: string;
-  public templateSourceLabel?: string;
-  public customCopyStarted = false;
-  public editorCancelAvailable = false;
+  public editorSource: EditorSource = NO_EDITOR_SOURCE;
   public library: LibrarySnapshot = { items: [] };
   public customCatalogue?: CustomEffectCatalogue;
   public currentItem?: LibraryItem;
@@ -54,6 +59,7 @@ export class PanelModel {
   public previewStatus?: PreviewStatus;
   public previewProgressVisible = false;
   public savedBaseline?: string;
+  public resetBaseline?: EditableEffectContent;
   public editorTransitionEpoch = 0;
   public isAdmin = false;
 
@@ -98,7 +104,27 @@ export class PanelModel {
   }
 
   public get editorReadOnly(): boolean {
-    return !this.isAdmin || this.templateSourceLabel !== undefined;
+    return !this.isAdmin;
+  }
+
+  public get editorOwnedByActiveView(): boolean {
+    return editorOwnerMatches(
+      this.editorSource,
+      this.section,
+      this.customEffectCategory,
+    );
+  }
+
+  public get templateSelection(): string | undefined {
+    return this.editorSource.kind === "catalogue"
+      ? this.editorSource.selectionIdentity
+      : undefined;
+  }
+
+  public get catalogueSourceLabel(): string | undefined {
+    return this.editorSource.kind === "catalogue"
+      ? this.editorSource.label
+      : undefined;
   }
 
   public get modelCatalogue(): ModelEffectCatalogue | undefined {
@@ -131,19 +157,44 @@ export class PanelModel {
 
   public get dirty(): boolean {
     return (
+      this.editorSource.kind !== "none" &&
+      this.editorSource.kind !== "catalogue" &&
       isEditableEffectContent(this.content) &&
       this.savedBaseline !== serialiseEditable(this.name, this.content)
     );
   }
 
   public get canSaveCurrentDraft(): boolean {
-    return this.dirty || (this.currentItem === undefined && this.customCopyStarted);
+    return (
+      this.dirty ||
+      this.editorSource.kind === "new" ||
+      (this.editorSource.kind === "scene" &&
+        this.editorSource.itemId === undefined)
+    );
+  }
+
+  public get resetDirty(): boolean {
+    return (
+      isEditableEffectContent(this.content) &&
+      this.resetBaseline !== undefined &&
+      serialiseEditableContent(this.content) !==
+        serialiseEditableContent(this.resetBaseline)
+    );
+  }
+
+  public get editorActions() {
+    return editorActionVisibility(
+      this.editorSource,
+      this.resetDirty,
+      this.autoSaveEnabled,
+      this.autoSaveFailed,
+    );
   }
 
   public get showSingleEffectSelector(): boolean {
     return (
-      this.currentItem !== undefined ||
-      (!this.customCopyStarted && this.templateSourceLabel === undefined)
+      this.editorSource.kind === "new" ||
+      this.editorSource.kind === "saved"
     );
   }
 
@@ -173,8 +224,6 @@ export class PanelModel {
         return device.profiles.video;
       case "workshop":
         return device.custom_effects.workshop;
-      case "special_diy":
-        return device.custom_effects.special_diy;
     }
   }
 

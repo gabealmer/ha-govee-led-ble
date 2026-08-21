@@ -30,7 +30,6 @@ const knownContentFamilies = [
   "video_profile",
   "advanced",
   "workshop",
-  "special_diy",
   "scene_builtin",
   "scene_palette",
   "scene_layered",

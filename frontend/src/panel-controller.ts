@@ -1,8 +1,8 @@
 import { EffectStudioApi } from "./api";
 import { AsyncRequestController, type AsyncRequestToken } from "./async-request-controller";
 import {
-  cloneEditableEffect, customEffectCategoryForKind, isAdvancedEditableContent, isCustomEffectContent, isEditableEffectContent, isMyEffectKind,
-  libraryItemSyncResult, libraryKindPriority, sameLibraryItemVersion, serialiseEditable, upsertSummary, type CustomEffectCategory,
+  cloneEditableEffect, customEffectCategoryForKind, isEditableEffectContent,
+  libraryItemSyncResult, sameLibraryItemVersion, serialiseEditable, upsertSummary, type CustomEffectCategory,
   type EditableEffectContent,
 } from "./effect-editor-model";
 import type { LivePreviewInteraction } from "./live-preview-controller";
@@ -15,7 +15,6 @@ import {
   editorDevicePath,
   initialDeviceId,
   rememberedStudioSection,
-  shouldOpenVideoSelection,
   type StudioSection,
 } from "./studio-navigation";
 import type {
@@ -23,9 +22,8 @@ import type {
   HomeAssistant,
   LibraryItem,
   LibrarySnapshot,
-  LibrarySummary,
 } from "./types";
-import { compareLabels, errorCode, errorMessage } from "./ui-utils";
+import { errorCode, errorMessage } from "./ui-utils";
 import { isCompatibleEditorInfo } from "./validation";
 
 type LoadRequest = AsyncRequestToken<{ api: EffectStudioApi }>;
@@ -141,29 +139,6 @@ export class PanelController {
     section: StudioSection,
     customEffectCategory?: CustomEffectCategory,
   ): Promise<void> {
-    const categoryChanged =
-      section === "custom" &&
-      customEffectCategory !== undefined &&
-      customEffectCategory !== this.model.customEffectCategory;
-    if (section === this.model.section && categoryChanged) {
-      if (!this.model.customEffectCategoryAvailable(customEffectCategory)) {
-        return;
-      }
-      this.model.patch({
-        customEffectCategory,
-        notice: undefined,
-      });
-      this.remember();
-      return;
-    }
-    const transitionEpoch = this.editor.beginTransition();
-    if (section === this.model.section && !categoryChanged) {
-      if (section === "scenes" && this.model.sceneEditorOpen) this.model.patch({ sceneEditorOpen: false });
-      if (shouldOpenVideoSelection(section, this.model.content.kind)) {
-        await this.openVideoSelection(transitionEpoch);
-      }
-      return;
-    }
     if (
       (section === "custom" &&
         (!this.model.customEffectsAvailable ||
@@ -171,31 +146,52 @@ export class PanelController {
             !this.model.customEffectCategoryAvailable(customEffectCategory)))) ||
       (section === "video" && !this.model.videoAvailable)
     ) return;
+    const nextCategory =
+      section === "custom" && customEffectCategory !== undefined
+        ? customEffectCategory
+        : this.model.customEffectCategory;
+    const navigationChanged =
+      section !== this.model.section ||
+      (section === "custom" &&
+        nextCategory !== this.model.customEffectCategory);
+    const selectionOwned =
+      this.model.editorOwnedByActiveView &&
+      section === this.model.section &&
+      (section !== "custom" ||
+        nextCategory === this.model.customEffectCategory);
+    if (!navigationChanged && selectionOwned) {
+      if (section === "scenes" && this.model.sceneEditorOpen) {
+        this.editor.cancelSceneEdit();
+      }
+      return;
+    }
+    const blankTarget =
+      section === "scenes" ||
+      (section === "custom" &&
+        (nextCategory === "music" || nextCategory === "multi-layer"));
+    const transitionEpoch = blankTarget
+      ? this.editor.beginTransition()
+      : this.editor.beginSelectionTransition();
     this.model.patch({
       sceneEditorOpen: false,
       section,
-      customEffectCategory:
-        section === "custom" && customEffectCategory !== undefined
-          ? customEffectCategory
-          : this.model.customEffectCategory,
+      customEffectCategory: nextCategory,
       notice: undefined,
     });
     this.remember();
-    if (section === "scenes") return;
+    if (section === "scenes") {
+      this.editor.clearSelection(transitionEpoch);
+      return;
+    }
     if (section === "video") {
       await this.openVideoSelection(transitionEpoch);
       return;
     }
-    if (
-      (isCustomEffectContent(this.model.content) || this.model.content.kind === "palette_diy" ||
-        this.model.content.kind === "music_profile" || isAdvancedEditableContent(this.model.content) ||
-        this.model.content.kind === "opaque") &&
-      this.model.customEffectKindAvailable(this.model.content.kind)
-    ) return;
-    const item = this.preferredLibraryEffect();
-    if (item) await this.selectItem(item.id, transitionEpoch);
-    else if (this.model.isAdmin) this.editor.openDefaultAvailableTemplate(transitionEpoch);
-    else this.model.patch({ currentItem: undefined, name: "" });
+    if (this.model.isAdmin) {
+      this.editor.openDefaultAvailableTemplate(nextCategory, transitionEpoch);
+    } else {
+      this.editor.clearSelection(transitionEpoch);
+    }
   }
 
   public async openInitialContext(): Promise<void> {
@@ -212,7 +208,10 @@ export class PanelController {
       this.model.patch({ sceneInitialSelection: { kind: "native", effect: context.effect } });
       return;
     }
-    if (context.kind === "root") return;
+    if (context.kind === "root") {
+      await this.openDefaultForActiveSection();
+      return;
+    }
     const item = context.item;
     if (item.kind === "scene_builtin" || item.kind === "scene_palette" || item.kind === "scene_layered") {
       this.model.patch({ sceneInitialSelection: { kind: "saved", itemId: item.id } });
@@ -327,7 +326,8 @@ export class PanelController {
     existingTransitionEpoch?: number,
     applyLive = true,
   ): Promise<boolean> {
-    const transitionEpoch = existingTransitionEpoch ?? this.editor.beginTransition();
+    const transitionEpoch =
+      existingTransitionEpoch ?? this.editor.beginSelectionTransition();
     if (!this.api) return false;
     try {
       const item = await this.api.item(itemId);
@@ -381,7 +381,7 @@ export class PanelController {
 
   public async save(): Promise<void> {
     if (
-      !this.api || !this.model.isAdmin || !this.model.dirty || this.model.saving ||
+      !this.api || !this.model.isAdmin || !this.model.canSaveCurrentDraft || this.model.saving ||
       this.model.deletingCurrentItem || !isEditableEffectContent(this.model.content)
     ) return;
     const name = this.model.name.trim();
@@ -412,9 +412,21 @@ export class PanelController {
       if (originIsCurrent) {
         this.editor.commitCreation();
         this.model.patch({
-          currentItem: result, customCopyStarted: false, customTemplateSelection: undefined,
+          currentItem: result,
+          editorSource: {
+            kind: "saved",
+            owner:
+              result.content.kind === "video_profile"
+                ? { section: "video" }
+                : {
+                    section: "custom",
+                    category: this.categoryForKind(result.content.kind),
+                  },
+            itemId: result.id,
+          },
           name: result.name, content: cloneEditableEffect(savedContent),
           savedBaseline: serialiseEditable(result.name, savedContent),
+          resetBaseline: cloneEditableEffect(savedContent),
           sceneEditorOpen: savingSceneEditor && savedContent.kind === "scene_layered" ? false : this.model.sceneEditorOpen,
           section: savingSceneEditor && savedContent.kind === "scene_layered" ? "custom" : this.model.section,
           customEffectCategory: savingSceneEditor && savedContent.kind === "scene_layered"
@@ -561,15 +573,6 @@ export class PanelController {
     }
   }
 
-  private preferredLibraryEffect(items: LibrarySummary[] = this.model.library.items): LibrarySummary | undefined {
-    return items
-      .filter((item) => item.kind !== "video_profile" && isMyEffectKind(item.kind) && this.model.libraryItemAvailable(item))
-      .sort((left, right) => {
-        const priority = libraryKindPriority(left.kind, this.model.selectedModel) - libraryKindPriority(right.kind, this.model.selectedModel);
-        return priority || compareLabels(left.name, right.name);
-      })[0];
-  }
-
   private async drainAutoSave(): Promise<void> {
     this.autoSaveRunning = true;
     try {
@@ -686,19 +689,34 @@ export class PanelController {
   }
 
   private async openVideoSelection(transitionEpoch: number): Promise<void> {
-    const item = this.model.library.items.find(
-      (candidate) =>
-        candidate.kind === "video_profile" &&
-        this.model.libraryItemAvailable(candidate),
-    );
-    if (item) {
-      await this.selectItem(item.id, transitionEpoch);
+    const modes = this.model.modelCatalogue?.video_modes ?? [];
+    const mode =
+      modes.find((candidate) => candidate.id === "movie") ?? modes[0];
+    if (mode) {
+      this.editor.openVideoTemplate(
+        mode.id,
+        mode.label,
+        false,
+        transitionEpoch,
+      );
+    } else {
+      this.editor.clearSelection(transitionEpoch);
+    }
+  }
+
+  private async openDefaultForActiveSection(): Promise<void> {
+    if (!this.model.isAdmin || this.model.section === "scenes") {
       return;
     }
-    const mode = this.model.modelCatalogue?.video_modes[0];
-    if (mode) {
-      this.editor.openVideoTemplate(mode.id, mode.label);
+    const transitionEpoch = this.editor.beginSelectionTransition();
+    if (this.model.section === "video") {
+      await this.openVideoSelection(transitionEpoch);
+      return;
     }
+    this.editor.openDefaultAvailableTemplate(
+      this.model.customEffectCategory,
+      transitionEpoch,
+    );
   }
 
   private loadIsCurrent(request: LoadRequest): boolean {
@@ -722,7 +740,7 @@ export class PanelController {
 
 export function isCustomEffectCategory(value: unknown): value is CustomEffectCategory {
   return value === "all" || value === "music" || value === "single-layer" || value === "multi-layer" ||
-    value === "advanced" || value === "special-diy" || value === "my-effects";
+    value === "advanced" || value === "my-effects";
 }
 
 export function restoredCustomEffectCategory(

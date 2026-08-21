@@ -4,12 +4,6 @@ import { property } from "lit/decorators.js";
 import type { CheckboxControlChange } from "./checkbox-control";
 import "./checkbox-control";
 import type { LivePreviewInteraction } from "./live-preview-controller";
-import type {
-  SegmentedControlChange,
-  SegmentedControlOption,
-  SegmentedControlValue,
-} from "./segmented-control";
-import "./segmented-control";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
 import {
@@ -17,14 +11,13 @@ import {
   studioCardStyles,
   studioFormStyles,
 } from "./studio-styles";
-import { cloneVideoProfileContent } from "./profile-model";
+import {
+  cloneVideoProfileContent,
+  videoCaptureAreaFullScreen,
+  videoCaptureAreaValue,
+} from "./profile-model";
 import type { RelativeBrightness, VideoProfileContent } from "./types";
 import { clampInteger } from "./ui-utils";
-
-const CAPTURE_AREA_OPTIONS = [
-  { value: true, label: "Full screen" },
-  { value: false, label: "Part screen" },
-] as const;
 
 const BRIGHTNESS_EDGE_OPTIONS = [
   { key: "left", label: "Left" },
@@ -110,15 +103,37 @@ export class GoveeVideoProfileEditor extends LitElement {
       <div class="editor-grid">
         <section class="card">
           <div class="parameter-stack">
-            ${this.renderSegmentedField(
-              "Capture area",
-              this.content.full_screen,
-              CAPTURE_AREA_OPTIONS,
-              (value) =>
-                this.updateContent((content) => {
-                  content.full_screen = value;
-                }),
-            )}
+            <label class="field">
+              <span>Capture area</span>
+              <select
+                aria-label="Capture area"
+                ?disabled=${this.disabled}
+                @change=${(event: Event) =>
+                  this.updateContent((content) => {
+                    content.full_screen =
+                      videoCaptureAreaFullScreen(
+                        (event.target as HTMLSelectElement).value,
+                      );
+                  })}
+              >
+                <option
+                  value="full"
+                  .selected=${videoCaptureAreaValue(
+                    this.content.full_screen,
+                  ) === "full"}
+                >
+                  Full screen
+                </option>
+                <option
+                  value="part"
+                  .selected=${videoCaptureAreaValue(
+                    this.content.full_screen,
+                  ) === "part"}
+                >
+                  Part screen
+                </option>
+              </select>
+            </label>
             ${this.renderCheckboxField(
               "Sound effects",
               this.content.sound_effects,
@@ -234,25 +249,6 @@ export class GoveeVideoProfileEditor extends LitElement {
           </div>
         </section>
       </div>
-    `;
-  }
-
-  private renderSegmentedField<T extends SegmentedControlValue>(
-    label: string,
-    selected: T,
-    options: readonly SegmentedControlOption<T>[],
-    changed: (value: T) => void,
-  ) {
-    return html`
-      <govee-segmented-control
-        .label=${label}
-        .value=${selected}
-        .options=${options}
-        .disabled=${this.disabled}
-        @value-changed=${(
-          event: CustomEvent<SegmentedControlChange<T>>,
-        ) => changed(event.detail.value)}
-      ></govee-segmented-control>
     `;
   }
 

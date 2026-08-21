@@ -25,8 +25,7 @@ export type ReleaseWorkflowId =
   | "video"
   | "palette_diy"
   | "advanced"
-  | "workshop"
-  | "special_diy";
+  | "workshop";
 type ReleaseWorkflowApplication =
   | "studio"
   | "home_assistant"
@@ -59,7 +58,6 @@ export interface DeviceCapabilities {
     palette_diy: CapabilityState;
     advanced: CapabilityState;
     workshop: CapabilityState;
-    special_diy: CapabilityState;
   };
   profiles: {
     music: CapabilityState;
@@ -244,18 +242,6 @@ export interface WorkshopContent {
   trailing_padding: number;
 }
 
-export interface SpecialDiyContent {
-  kind: "special_diy";
-  model: "H6199";
-  template: string;
-  family: number;
-  variant: number;
-  speed: number;
-  palette: RGB[];
-  raw_payload: string;
-  trailing_padding: number;
-}
-
 export type CustomEffectContent =
   | PaintedContent
   | SingleContent
@@ -295,12 +281,6 @@ export interface WorkshopTemplate {
   content: WorkshopContent;
 }
 
-export interface SpecialDiyTemplate {
-  id: string;
-  label: string;
-  content: SpecialDiyContent;
-}
-
 export interface ReleaseWorkflowCapability {
   id: ReleaseWorkflowId;
   label: string;
@@ -315,13 +295,11 @@ export interface ModelEffectCatalogue {
   music_modes: EffectStudioModeOption[];
   video_modes: EffectStudioModeOption[];
   workshop_templates: WorkshopTemplate[];
-  special_diy_templates: SpecialDiyTemplate[];
   workflows: ReleaseWorkflowCapability[];
   supports: {
     multi: CapabilityState;
     advanced: CapabilityState;
     workshop: CapabilityState;
-    special_diy: CapabilityState;
   };
   limits: {
     palette_min: number;
@@ -336,12 +314,11 @@ export interface ModelEffectCatalogue {
     multi: CapabilityState;
     palette_diy: CapabilityState;
     workshop: CapabilityState;
-    special_diy: CapabilityState;
   };
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 6;
+  schema_version: 7;
   sku: "H617A";
   models: Record<ModelSku, ModelEffectCatalogue>;
 }
@@ -397,7 +374,6 @@ export type KnownEffectContent =
   | VideoProfileContent
   | AdvancedContent
   | WorkshopContent
-  | SpecialDiyContent
   | BuiltinSceneContent
   | PaletteSceneContent
   | LayeredSceneContent;
@@ -506,6 +482,10 @@ export interface SceneDetail {
   has_default: boolean;
 }
 
+export interface HomeAssistantEntityState {
+  state: string;
+}
+
 export interface HomeAssistant {
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   connection: {
@@ -517,6 +497,7 @@ export interface HomeAssistant {
   user?: {
     is_admin: boolean;
   };
+  states?: Record<string, HomeAssistantEntityState>;
   dockedSidebar?: "auto" | "docked" | "always_hidden";
   kioskMode?: boolean;
 }

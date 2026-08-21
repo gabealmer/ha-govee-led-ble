@@ -11,7 +11,6 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_TYPE04_FAMILIES,
     H6199_NATIVE_MUSIC_MODES,
     H6199_PALETTE_DIY_FAMILIES,
-    H6199_SPECIAL_DIY_TEMPLATES,
     H6199_VIDEO_MODES,
     LEGACY_CATALOGUE_SKU,
     MODEL_EFFECT_CATALOGUES,
@@ -61,7 +60,6 @@ def test_model_aware_catalogue_includes_both_models_and_legacy_h617a_view() -> N
         "multi": "supported",
         "palette_diy": "unsupported",
         "workshop": "supported",
-        "special_diy": "unsupported",
     }
 
 
@@ -151,7 +149,6 @@ def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries
         "multi": "unsupported",
         "advanced": "supported",
         "workshop": "supported",
-        "special_diy": "supported",
     }
     assert catalogue["apply"] == {
         "painted": "unsupported",
@@ -159,7 +156,6 @@ def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries
         "multi": "unsupported",
         "palette_diy": "supported",
         "workshop": "supported",
-        "special_diy": "supported",
     }
 
 
@@ -175,7 +171,6 @@ def test_release_capability_contract_covers_every_preview_workflow() -> None:
             CapabilityWorkflow.NATIVE_MUSIC,
             CapabilityWorkflow.ADVANCED,
             CapabilityWorkflow.WORKSHOP,
-            CapabilityWorkflow.SPECIAL_DIY,
         },
         "H6199": {
             CapabilityWorkflow.NATIVE_SCENES,
@@ -186,7 +181,6 @@ def test_release_capability_contract_covers_every_preview_workflow() -> None:
             CapabilityWorkflow.VIDEO,
             CapabilityWorkflow.ADVANCED,
             CapabilityWorkflow.WORKSHOP,
-            CapabilityWorkflow.SPECIAL_DIY,
         },
     }
 
@@ -233,7 +227,6 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
     h6199_music = release_capability("H6199", CapabilityWorkflow.NATIVE_MUSIC)
     h6199_video = release_capability("H6199", CapabilityWorkflow.VIDEO)
     h6199_diy = release_capability("H6199", CapabilityWorkflow.PALETTE_DIY)
-    h6199_special = release_capability("H6199", CapabilityWorkflow.SPECIAL_DIY)
 
     assert all(
         capability is not None
@@ -268,11 +261,6 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
     assert h6199_diy.compiler_deployer_strategy is CompilerDeployerStrategy.H6199_CUSTOM_ENGINE
     assert h6199_diy.verification_confidence is VerificationConfidence.SELECTION_ONLY
     assert h6199_diy.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
-    assert h6199_special is not None
-    assert h6199_special.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
-    assert h6199_special.compiler_deployer_strategy is CompilerDeployerStrategy.H6199_CUSTOM_ENGINE
-    assert h6199_special.verification_confidence is VerificationConfidence.SELECTION_ONLY
-    assert h6199_special.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
 
 
 def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contract() -> None:
@@ -282,7 +270,6 @@ def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contr
         "multi": CapabilityWorkflow.MULTI,
         "palette_diy": CapabilityWorkflow.PALETTE_DIY,
         "workshop": CapabilityWorkflow.WORKSHOP,
-        "special_diy": CapabilityWorkflow.SPECIAL_DIY,
     }
     models = cast(
         dict[str, dict[str, JsonValue]],
@@ -306,12 +293,10 @@ def test_capability_state_distinguishes_visibility_from_deployability() -> None:
     assert workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED) is CapabilityState.SUPPORTED
     assert studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY) is CapabilityState.SUPPORTED
     assert studio_apply_capability_state("H617A", CapabilityWorkflow.WORKSHOP) is CapabilityState.SUPPORTED
-    assert studio_apply_capability_state("H617A", CapabilityWorkflow.SPECIAL_DIY) is CapabilityState.UNSUPPORTED
     assert studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP) is CapabilityState.SUPPORTED
-    assert studio_apply_capability_state("H6199", CapabilityWorkflow.SPECIAL_DIY) is CapabilityState.SUPPORTED
 
 
-def test_workshop_and_special_diy_templates_decode_embedded_payloads() -> None:
+def test_workshop_templates_decode_embedded_payloads() -> None:
     for model in ("H617A", "H6199"):
         for template in WORKSHOP_TEMPLATES:
             content = template.content(model)
@@ -319,10 +304,3 @@ def test_workshop_and_special_diy_templates_decode_embedded_payloads() -> None:
             assert content.model == model
             assert content.raw_param
             assert content.template == template.id
-
-    for special_template in H6199_SPECIAL_DIY_TEMPLATES:
-        special_content = special_template.content()
-
-        assert special_content.raw_payload
-        assert special_content.model == "H6199"
-        assert special_content.template == special_template.id

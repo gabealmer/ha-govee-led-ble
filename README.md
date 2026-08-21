@@ -41,7 +41,7 @@ The prerelease Effect Studio stores the current saved-effect library and durable
 
 Live apply is enabled when an administrator opens Effect Studio.  Scene selections and device-affecting edits are sent over BLE as ephemeral previews, while Save remains an explicit library action.  Continuous controls are throttled and coalesced so only the newest pending state is written; readback verifies the latest settled preview without delaying further edits.  The Live apply toggle stops queued previews but does not restore the light's earlier state.
 
-Live apply covers native and edited scenes, H617A Painted, Single and Multi effects, H6199 Palette DIY and Special DIY effects, advanced layered effects, music profiles, video profiles and Workshop uploads.
+Live apply covers native and edited scenes, H617A Painted, Single and Multi effects, H6199 Palette DIY effects, advanced layered effects, music profiles, video profiles and Workshop uploads.
 
 H6199 video saturation, capture area, sound effects, softness, white balance, relative brightness and blank-screen behaviour are edited together in the Effect Studio Video profile.  Saved video profiles provide the automation surface through the standard light effect selector; these interdependent frame settings are not duplicated as standalone entities.
 

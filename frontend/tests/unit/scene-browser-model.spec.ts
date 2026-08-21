@@ -4,10 +4,12 @@ import {
   buildScenePreviewRequest,
   cloneSceneContent,
   initialSceneBrowserState,
+  nativeSceneActions,
   normaliseSceneName,
   previewMayChangeSceneDefault,
   sceneBrowserCategories,
   sceneBrowserEntries,
+  sceneHasParameterSurface,
   sceneKey,
   sceneSpeedOptions,
 } from "../../src/scene-browser-model";
@@ -49,6 +51,31 @@ test("speed glyphs retain clear accessible labels", () => {
   expect(sceneSpeedOptions(4, 0)[0].ariaLabel).toBe(
     "Slowest, catalogue default",
   );
+});
+
+test("native default actions precede the stable Edit action without progress labels", () => {
+  expect(nativeSceneActions(true, true, false)).toEqual([
+    { id: "set-default", label: "Set as Default", style: "primary" },
+    { id: "reset-default", label: "Reset to Defaults", style: "secondary" },
+    { id: "edit", label: "Edit", style: "secondary" },
+  ]);
+  expect(nativeSceneActions(true, true, true).map((action) => action.label)).toEqual([
+    "Reset to Defaults",
+    "Edit",
+  ]);
+  expect(nativeSceneActions(true, true, false).some((action) => action.label.includes("Saving"))).toBe(false);
+});
+
+test("palette inspection data does not create a parameter surface", () => {
+  const paletteScene: SceneSummary = {
+    ...scene,
+    scene_type: 1,
+    parameter_kind: "palette",
+    speed: null,
+  };
+
+  expect(sceneHasParameterSurface(paletteScene)).toBe(false);
+  expect(sceneHasParameterSurface({ ...paletteScene, speed: scene.speed })).toBe(true);
 });
 
 test("settled scene preview statuses trigger an authoritative default refresh", () => {

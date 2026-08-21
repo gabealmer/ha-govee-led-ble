@@ -39,7 +39,6 @@ from .effect_domain import (
     PaintedEffect,
     PaletteDiyEffect,
     SingleEffect,
-    SpecialDiyEffect,
     VideoProfile,
     WorkshopEffect,
 )
@@ -945,7 +944,7 @@ def resolve_diy_code(
         return 800 if requested is None else requested
     if isinstance(content, SingleEffect | MultiEffect):
         return H617A_TYPE04_APPLY_CODE if requested is None else requested
-    if isinstance(content, PaletteDiyEffect | SpecialDiyEffect):
+    if isinstance(content, PaletteDiyEffect):
         return H6199_PALETTE_DIY_APPLY_CODE if requested is None else requested
     return None
 

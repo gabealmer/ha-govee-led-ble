@@ -6,10 +6,10 @@ import {
 } from "../../src/custom-effect-list";
 import {
   customEffectCategories,
+  customEffectCategoryLabel,
   defaultCustomEffectCategory,
-  starterBaseline,
 } from "../../src/custom-effect-workflow";
-import { blankCustomEffect, serialiseEditable } from "../../src/effect-editor-model";
+import { blankAdvancedContent } from "../../src/advanced-effect-model";
 import type { LibrarySummary, ModelEffectCatalogue } from "../../src/types";
 
 const catalogue = {
@@ -29,13 +29,11 @@ const catalogue = {
   music_modes: [{ id: "rhythm", label: "Rhythm" }],
   video_modes: [],
   workshop_templates: [],
-  special_diy_templates: [],
   workflows: [],
   supports: {
     multi: "supported",
     advanced: "supported",
     workshop: "supported",
-    special_diy: "unsupported",
   },
   limits: {
     palette_min: 1,
@@ -50,7 +48,6 @@ const catalogue = {
     multi: "supported",
     palette_diy: "unsupported",
     workshop: "supported",
-    special_diy: "unsupported",
   },
 } satisfies ModelEffectCatalogue;
 
@@ -79,10 +76,41 @@ test("starter lists expose product choices but not protocol evidence fixtures", 
       (entry) => entry.label,
     ),
   ).toEqual(["Jumping", "Paint"]);
-  expect(buildCustomEffectEntries(context(), "advanced")).toEqual([]);
+  expect(
+    buildCustomEffectEntries(context(), "advanced").map(
+      (entry) => entry.label,
+    ),
+  ).toEqual(["Layered"]);
   expect(
     buildCustomEffectEntries(context(), "music").map((entry) => entry.label),
   ).toEqual(["Rhythm"]);
+});
+
+test("Advanced browsing exposes editable Advanced and Workshop templates", () => {
+  const workshopCatalogue: ModelEffectCatalogue = {
+    ...catalogue,
+    workshop_templates: [
+      {
+        id: "workshop-a",
+        label: "Workshop",
+        content: {
+          kind: "workshop",
+          model: "H617A",
+          template: "workshop-a",
+          effect: { layers: blankAdvancedContent().layers },
+          raw_param: "",
+          trailing_padding: 0,
+        },
+      },
+    ],
+  };
+
+  expect(
+    buildCustomEffectEntries(
+      { ...context(), catalogue: workshopCatalogue },
+      "advanced",
+    ).map((entry) => entry.label),
+  ).toEqual(["Layered", "Workshop"]);
 });
 
 test("saved effects remain available in their content category", () => {
@@ -109,7 +137,6 @@ test("Effects is the stable fallback when no custom category is available", () =
           multi: "unsupported",
           advanced: "unsupported",
           workshop: "unsupported",
-          special_diy: "unsupported",
         },
       },
       libraryItems: [],
@@ -128,11 +155,9 @@ test("categories keep Effects first and Advanced last", () => {
   ]);
 });
 
-test("starters stay clean until edited while intentional New shows its selector", () => {
-  const content = blankCustomEffect("h617a_single", catalogue);
-
-  expect(starterBaseline("Jumping", content, true)).toBe(
-    serialiseEditable("Jumping", content),
-  );
-  expect(starterBaseline("New Single effect", content, false)).toBeUndefined();
+test("category labels are shared by navigation and item lists", () => {
+  expect(customEffectCategoryLabel("single-layer")).toBe("Effects");
+  expect(customEffectCategoryLabel("multi-layer")).toBe("Layered Effects");
+  expect(customEffectCategoryLabel("music")).toBe("Reactive");
+  expect(customEffectCategoryLabel("advanced")).toBe("Advanced");
 });

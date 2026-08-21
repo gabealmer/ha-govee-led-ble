@@ -50,13 +50,11 @@ const catalogue = {
   music_modes: [],
   video_modes: [],
   workshop_templates: [],
-  special_diy_templates: [],
   workflows: [],
   supports: {
     multi: "supported",
     advanced: "supported",
     workshop: "unsupported",
-    special_diy: "unsupported",
   },
   limits: {
     palette_min: 1,
@@ -71,7 +69,6 @@ const catalogue = {
     multi: "supported",
     palette_diy: "unsupported",
     workshop: "unsupported",
-    special_diy: "unsupported",
   },
 } satisfies ModelEffectCatalogue;
 

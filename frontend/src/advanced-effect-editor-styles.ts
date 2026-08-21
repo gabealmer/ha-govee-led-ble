@@ -27,28 +27,31 @@ export const advancedEffectEditorStyles = [
       margin-bottom: var(--studio-section-gap);
     }
 
-    .layer-toolbar {
-      display: flex;
-      align-items: flex-start;
-      gap: var(--studio-compact-gap);
-    }
-
-    .layer-toolbar govee-reorderable-strip {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .layer-actions {
-      display: flex;
-      flex: 0 0 auto;
-      gap: var(--studio-compact-gap);
+    .layer-strip {
+      --strip-label-min-width: var(--studio-compact-action-size);
     }
 
     .card-heading,
-    .patterns-heading {
+    .patterns-heading,
+    .section-heading,
+    .subsection-heading {
       display: flex;
       align-items: center;
       gap: var(--studio-compact-gap);
+    }
+
+    .section-heading {
+      margin-bottom: var(--studio-section-title-gap);
+    }
+
+    .section-heading .section-title {
+      margin: 0;
+    }
+
+    .subsection-heading h4 {
+      margin: 0;
+      font-size: var(--studio-subheading-size);
+      font-weight: var(--studio-font-weight-semibold);
     }
 
     .add-button {
@@ -61,18 +64,6 @@ export const advancedEffectEditorStyles = [
       font-weight: var(--studio-font-weight-semibold);
       border-style: dashed;
       cursor: pointer;
-    }
-
-    /* Stacks layer actions when they no longer fit beside the layer strip. */
-    @media (max-width: 600px) {
-      .layer-toolbar {
-        align-items: stretch;
-        flex-direction: column;
-      }
-
-      .layer-actions > button {
-        flex: 1;
-      }
     }
 
     .limit-note,
@@ -101,30 +92,29 @@ export const advancedEffectEditorStyles = [
       grid-column: 1 / -1;
     }
 
-    .selection-controls {
-      margin-top: var(--studio-spacing-sm);
+    .fill-pattern-controls {
+      margin-top: var(--studio-section-gap);
       padding-top: var(--studio-section-gap);
       border-top: var(--studio-border-width) solid var(--studio-border);
     }
 
-    .selection-controls > .parameter-label {
-      display: block;
-      margin-bottom: var(--studio-micro-gap);
+    .parameter-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--studio-parameter-gap) var(--studio-section-gap);
     }
 
-    .brightness-style {
-      margin-top: var(--studio-spacing-2xl);
+    .parameter-grid > .field {
+      margin-top: 0;
     }
 
     .patterns-heading {
       justify-content: space-between;
-      margin-top: var(--studio-spacing-4xl);
     }
 
-    .patterns-heading h4 {
-      margin: 0;
-      font-size: var(--studio-subheading-size);
-      font-weight: var(--studio-font-weight-semibold);
+    .patterns-section {
+      display: grid;
+      gap: var(--studio-parameter-gap);
     }
 
     .pattern-delete {
@@ -132,45 +122,34 @@ export const advancedEffectEditorStyles = [
       padding: var(--studio-spacing-xs) var(--studio-spacing-lg);
     }
 
-    .pattern-strip {
-      margin-top: var(--studio-spacing-md);
-    }
-
-    .brightness-fields {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0 var(--studio-section-gap);
-    }
-
-    .brightness-fields .field:first-child {
-      grid-column: 1 / -1;
-    }
-
     .card-heading {
       justify-content: space-between;
+      margin-bottom: var(--studio-section-title-gap);
     }
 
-    .card-heading h3 {
+    .card-heading .section-heading {
       margin-bottom: 0;
     }
 
-    .movement-enter-exit {
-      margin-top: var(--studio-spacing-lg);
+    .check-control-with-help {
+      display: flex;
+      align-items: center;
+      gap: var(--studio-compact-gap);
     }
 
-    .priority-control {
-      margin-top: var(--studio-spacing-2xl);
+    .check-control-with-help govee-checkbox-control {
+      min-width: 0;
+      flex: 1;
     }
 
-    /* Advanced cards and pattern fields become single-column with horizontal navigation. */
+    /* Advanced cards and parameter pairs become single-column on narrow screens. */
     @media (max-width: 760px) {
       .control-grid,
-      .brightness-fields {
+      .parameter-grid {
         grid-template-columns: 1fr;
       }
 
-      .wide-card,
-      .brightness-fields .field:first-child {
+      .wide-card {
         grid-column: auto;
       }
 

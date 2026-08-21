@@ -1,10 +1,13 @@
 import { blankBrightnessPattern, blankLayer, cloneLayer } from "./advanced-effect-model";
+import { AUTHORING_LAYER_LIMIT } from "./advanced-effect-editor-model";
 import type { AdvancedContent, BrightnessPattern, EffectLayer, RGB } from "./types";
 import { clampInteger, clonePalette, relocatedIndex } from "./ui-utils";
 
-export const AUTHORING_LAYER_LIMIT = 5;
-export const AUTHORING_PALETTE_LIMIT = 8;
-export const DEFAULT_SEGMENT_COUNT = 15;
+export {
+  AUTHORING_LAYER_LIMIT,
+  AUTHORING_PALETTE_LIMIT,
+  DEFAULT_SEGMENT_COUNT,
+} from "./advanced-effect-editor-model";
 export type MovementKey = "selected_movement" | "overall_movement";
 
 type NestedLayerKey = "area" | "distribution" | "selection" | MovementKey;

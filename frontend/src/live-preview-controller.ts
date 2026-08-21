@@ -207,6 +207,27 @@ export class LivePreviewController<T extends LivePreviewRequest> {
     this.scheduleTrailing();
   }
 
+  public scheduleSelection(request: T): void {
+    if (!this.enabled) {
+      return;
+    }
+    this.engaged = true;
+    this.pending = { ...request, committed: true };
+    this.settling = undefined;
+    const elapsed = this.now() - this.lastSubmittedAt;
+    if (elapsed >= this.throttleMs) {
+      this.flush(true);
+      return;
+    }
+    if (this.trailingTimer !== undefined) {
+      this.clearTimer(this.trailingTimer);
+    }
+    this.trailingTimer = this.setTimer(() => {
+      this.trailingTimer = undefined;
+      this.flush(true);
+    }, this.throttleMs - elapsed);
+  }
+
   public enable(request?: T): void {
     this.enabled = true;
     this.engaged = request !== undefined;
@@ -225,10 +246,14 @@ export class LivePreviewController<T extends LivePreviewRequest> {
   }
 
   public reset(): void {
+    this.transition();
+    this.cancelRequests();
+  }
+
+  public transition(): void {
     this.engaged = false;
     this.clearPending();
     this.lastSubmittedKey = undefined;
-    this.cancelRequests();
   }
 
   public dispose(): void {

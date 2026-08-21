@@ -1,6 +1,6 @@
 import type { ModelSku } from "./types";
 
-export const CUSTOM_CATALOGUE_SCHEMA_VERSION = 6;
+export const CUSTOM_CATALOGUE_SCHEMA_VERSION = 7;
 export const MAX_EFFECT_NAME_LENGTH = 128;
 export const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
 export const MAX_EDITOR_DEVICES = 512;

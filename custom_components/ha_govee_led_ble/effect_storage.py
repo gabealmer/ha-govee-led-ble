@@ -41,7 +41,7 @@ from .effect_schema_migration import LegacyEffectMigrationError, migrate_effect_
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 LIBRARY_STORE_VERSION: Final = 2
-LIBRARY_STORE_MINOR_VERSION: Final = 1
+LIBRARY_STORE_MINOR_VERSION: Final = 2
 LIBRARY_STORE_KEY: Final = f"{DOMAIN}.effect_library"
 
 _LOGGER = logging.getLogger(__name__)
@@ -184,8 +184,13 @@ async def _async_migrate_library(
 ) -> dict[str, Any]:
     if old_major_version == LIBRARY_STORE_VERSION and old_minor_version == LIBRARY_STORE_MINOR_VERSION:
         return old_data
-    if old_major_version == LIBRARY_STORE_VERSION and old_minor_version == 0:
-        return _migrate_current_library(old_data)
+    if old_major_version == LIBRARY_STORE_VERSION:
+        without_retired_items = _remove_retired_library_items(old_data)
+        if old_minor_version == 1:
+            return without_retired_items
+        if old_minor_version == 0:
+            return _migrate_current_library(without_retired_items)
+        raise EffectStorageError(f"cannot migrate effect store version {old_major_version}.{old_minor_version}")
     if old_major_version != 1 or old_minor_version > 1:
         raise EffectStorageError(f"cannot migrate effect store version {old_major_version}.{old_minor_version}")
     root = as_persisted_mapping(old_data, "legacy effect library root")
@@ -201,6 +206,8 @@ async def _async_migrate_library(
         if not isinstance(head, int) or isinstance(head, bool):
             raise EffectStorageError(f"legacy effect resource {key} has an invalid head revision")
         raw_item = as_persisted_mapping(revisions.get(str(head)), f"legacy effect head {key}")
+        if _is_retired_library_item(raw_item):
+            continue
         item = _migrate_legacy_item(raw_item, version=head, updated_at=updated_at)
         if str(item.id) != str(key):
             raise EffectStorageError(f"legacy effect resource {key} has mismatched identity")
@@ -243,6 +250,19 @@ def _migrate_legacy_item(raw: Mapping[str, Any], *, version: int, updated_at: st
         )
     except (KeyError, TypeError, ValueError, EffectValidationError, LegacyEffectMigrationError) as exc:
         raise EffectStorageError(f"legacy effect head is invalid: {exc}") from exc
+
+
+def _remove_retired_library_items(old_data: object) -> dict[str, Any]:
+    root = as_persisted_mapping(old_data, "effect library root")
+    items_raw = as_persisted_mapping(root.get("items"), "effect library items")
+    return {"items": {str(key): value for key, value in items_raw.items() if not _is_retired_library_item(value)}}
+
+
+def _is_retired_library_item(value: object) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    content = value.get("content")
+    return isinstance(content, Mapping) and content.get("kind") == "special_diy"
 
 
 def _migrate_current_library(old_data: object) -> dict[str, Any]:

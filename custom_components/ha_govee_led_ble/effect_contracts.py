@@ -18,8 +18,8 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 6
-EDITOR_ASSET_VERSION: Final = 7
+EDITOR_API_VERSION: Final = 7
+EDITOR_ASSET_VERSION: Final = 8
 EFFECT_COMPILER_VERSION: Final = 4
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -42,7 +42,6 @@ class CapabilityWorkflow(StrEnum):
     PALETTE_DIY = "palette_diy"
     ADVANCED = "advanced"
     WORKSHOP = "workshop"
-    SPECIAL_DIY = "special_diy"
 
 
 class FrontendVisibility(StrEnum):
@@ -266,17 +265,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         EvidenceClassification.STRUCTURAL,
     ),
     _capability(
-        "H617A",
-        CapabilityWorkflow.SPECIAL_DIY,
-        "Special DIY",
-        "special_diy",
-        ApplicationRoute.NONE,
-        CompilerDeployerStrategy.RAW_PRESERVATION,
-        VerificationConfidence.UNVERIFIED,
-        PhysicalValidationState.NOT_VALIDATED,
-        EvidenceClassification.OPAQUE,
-    ),
-    _capability(
         "H6199",
         CapabilityWorkflow.NATIVE_SCENES,
         "Scenes",
@@ -360,17 +348,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         "workshop",
         ApplicationRoute.STUDIO_CUSTOM_APPLY,
         CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
-        VerificationConfidence.SELECTION_ONLY,
-        PhysicalValidationState.CAPTURE_VALIDATED,
-        EvidenceClassification.STRUCTURAL,
-    ),
-    _capability(
-        "H6199",
-        CapabilityWorkflow.SPECIAL_DIY,
-        "Special DIY",
-        "special_diy",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
-        CompilerDeployerStrategy.H6199_CUSTOM_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
         EvidenceClassification.STRUCTURAL,
@@ -470,7 +447,6 @@ class DeviceEffectCapabilities:
     music: CapabilityState
     video: CapabilityState
     workshop: CapabilityState
-    special_diy: CapabilityState
     readback: str
 
     def to_dict(self) -> dict[str, JsonValue]:
@@ -487,7 +463,6 @@ class DeviceEffectCapabilities:
                 "palette_diy": self.palette_diy.value,
                 "advanced": self.advanced.value,
                 "workshop": self.workshop.value,
-                "special_diy": self.special_diy.value,
             },
             "profiles": {
                 "music": self.music.value,
@@ -519,6 +494,5 @@ def device_effect_capabilities(
         music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC),
         video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO),
         workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP),
-        special_diy=studio_apply_capability_state(model, CapabilityWorkflow.SPECIAL_DIY),
         readback="diy_code_only" if model == "H617A" else "scene_selector_for_user_effects",
     )

@@ -8,6 +8,7 @@ import {
   type CustomEffectListEntry,
 } from "./custom-effect-list";
 import type { CustomEffectCategory } from "./effect-editor-model";
+import { customEffectCategoryLabel } from "./custom-effect-workflow";
 import {
   studioBaseStyles,
   studioSelectorStyles,
@@ -49,7 +50,10 @@ export class GoveeCustomEffectBrowser extends LitElement {
         Boolean(context.catalogue?.music_modes.length)) ||
       newEffectKindForCategory(context, this.category) !== undefined;
     return html`
-      <aside class="sidebar item-sidebar library" aria-label="Effects">
+      <aside
+        class="sidebar item-sidebar library"
+        aria-label=${customEffectCategoryLabel(this.category)}
+      >
         ${canCreate
           ? html`
               <button

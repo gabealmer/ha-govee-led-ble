@@ -36,7 +36,10 @@ export class GoveeSliderControl extends LitElement {
     const value = clamp(this.value, this.minimum, this.maximum);
     return html`
       <label class="slider-field">
-        <span class="parameter-label">${this.label}</span>
+        <span class="slider-label">
+          <span class="parameter-label">${this.label}</span>
+          <slot name="help"></slot>
+        </span>
         <input
           type="range"
           min=${this.minimum}
@@ -82,6 +85,14 @@ export class GoveeSliderControl extends LitElement {
       .slider-field {
         display: grid;
         gap: var(--studio-control-gap);
+      }
+
+      .slider-label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: var(--studio-info-control-size);
+        gap: var(--studio-compact-gap);
       }
 
       input {

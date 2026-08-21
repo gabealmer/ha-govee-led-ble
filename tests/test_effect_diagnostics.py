@@ -201,7 +201,7 @@ def test_schema_and_evidence_gap_presentation_are_stable() -> None:
         "unsupported_capability",
         correlation_id=CORRELATION_ID,
         config_entry_id="entry-a",
-        details={"capability": "special_diy"},
+        details={"capability": "workshop"},
     )
 
     snapshot = history.snapshot()

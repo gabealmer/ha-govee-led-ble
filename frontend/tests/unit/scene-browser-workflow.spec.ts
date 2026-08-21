@@ -55,8 +55,12 @@ function content(scene: SceneSummary, speedIndex: number | null = null): Builtin
   };
 }
 
-function detail(scene: SceneSummary, speedIndex: number | null = null): SceneDetail {
-  return { scene, content: content(scene, speedIndex), has_default: false };
+function detail(
+  scene: SceneSummary,
+  speedIndex: number | null = null,
+  hasDefault = false,
+): SceneDetail {
+  return { scene, content: content(scene, speedIndex), has_default: hasDefault };
 }
 
 function libraryItem(id: string, scene: SceneSummary, name = "Saved Glacier"): LibraryItem {
@@ -88,10 +92,12 @@ function summary(item: LibraryItem): LibrarySummary {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((complete) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((complete, fail) => {
     resolve = complete;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
 function harness(api: EffectStudioApi) {
@@ -197,15 +203,12 @@ describe("SceneBrowserWorkflow", () => {
     expect(api.sceneDetail).toHaveBeenCalledTimes(2);
   });
 
-  test("setting a changed speed as default adopts the returned baseline", async () => {
-    const savedDetail = {
-      ...detail(firstScene, 2),
-      has_default: true,
-    };
+  test("setting a default immediately adopts the selected speed without shared saving state", async () => {
+    const pending = deferred<SceneDetail>();
     const api = {
       sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
       sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1)),
-      setSceneDefault: vi.fn().mockResolvedValue(savedDetail),
+      setSceneDefault: vi.fn().mockReturnValue(pending.promise),
     } as unknown as EffectStudioApi;
     const { workflow } = harness(api);
     await workflow.loadCatalogue();
@@ -213,7 +216,7 @@ describe("SceneBrowserWorkflow", () => {
     workflow.setSpeedIndex(2);
 
     expect(workflow.sceneDefaultDirty).toBe(true);
-    await workflow.setCurrentDefault(true);
+    const saving = workflow.setCurrentDefault(true);
 
     expect(api.setSceneDefault).toHaveBeenCalledWith(
       device.config_entry_id,
@@ -222,6 +225,172 @@ describe("SceneBrowserWorkflow", () => {
     );
     expect(workflow.sceneDefaultDirty).toBe(false);
     expect(workflow.state.hasDefault).toBe(true);
+    expect(workflow.state.content?.speed_index).toBe(2);
+    expect(workflow.state.saving).toBe(false);
+
+    pending.resolve(detail(firstScene, 2, true));
+    await saving;
+
+    expect(workflow.state.notice).toBeUndefined();
+  });
+
+  test("rapid auto-save speed changes stay interactive and coalesce to the latest request", async () => {
+    const firstWrite = deferred<SceneDetail>();
+    const latestWrite = deferred<SceneDetail>();
+    const setSceneDefault = vi
+      .fn()
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockReturnValueOnce(latestWrite.promise);
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1)),
+      setSceneDefault,
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+
+    workflow.setSpeedIndex(0);
+    const first = workflow.setCurrentDefault(true);
+    workflow.setSpeedIndex(1);
+    const replaced = workflow.setCurrentDefault(true);
+    workflow.setSpeedIndex(2);
+    const latest = workflow.setCurrentDefault(true);
+
+    expect(setSceneDefault.mock.calls.map((call) => call[2])).toEqual([0]);
+    expect(workflow.state.speedIndex).toBe(2);
+    expect(workflow.state.content?.speed_index).toBe(2);
+    expect(workflow.state.saving).toBe(false);
+
+    firstWrite.resolve(detail(firstScene, 0, true));
+    await first;
+    await replaced;
+
+    expect(setSceneDefault.mock.calls.map((call) => call[2])).toEqual([0, 2]);
+    expect(workflow.state.speedIndex).toBe(2);
+    expect(workflow.state.content?.speed_index).toBe(2);
+
+    latestWrite.resolve(detail(firstScene, 1, true));
+    await latest;
+
+    expect(workflow.state.speedIndex).toBe(1);
+    expect(workflow.state.content?.speed_index).toBe(1);
+    expect(workflow.state.hasDefault).toBe(true);
+    expect(workflow.state.notice).toBeUndefined();
+  });
+
+  test("reset immediately restores the documented catalogue speed baseline", async () => {
+    const pending = deferred<SceneDetail>();
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 2, true)),
+      resetScene: vi.fn().mockReturnValue(pending.promise),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+
+    const reset = workflow.resetToCatalogue(true);
+
+    expect(api.resetScene).toHaveBeenCalledWith(device.config_entry_id, firstScene);
+    expect(workflow.state.speedIndex).toBe(firstScene.speed?.default_index);
+    expect(workflow.state.content?.speed_index).toBe(firstScene.speed?.default_index);
+    expect(workflow.state.hasDefault).toBe(false);
+    expect(workflow.sceneDefaultDirty).toBe(false);
+    expect(workflow.state.saving).toBe(false);
+
+    pending.resolve(detail(firstScene, 1, false));
+    await reset;
+
+    expect(workflow.state.notice).toBeUndefined();
+  });
+
+  test("the latest failed default write rolls back only its optimistic baseline fields", async () => {
+    const pending = deferred<SceneDetail>();
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1, false)),
+      setSceneDefault: vi.fn().mockReturnValue(pending.promise),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+    workflow.setSpeedIndex(2);
+
+    const saving = workflow.setCurrentDefault(true);
+    pending.reject(new Error("offline"));
+    await saving;
+
+    expect(workflow.state.speedIndex).toBe(2);
+    expect(workflow.state.content?.speed_index).toBe(1);
+    expect(workflow.state.hasDefault).toBe(false);
+    expect(workflow.sceneDefaultDirty).toBe(true);
+    expect(workflow.state.notice).toBe("Set as Default failed: offline");
+    expect(workflow.state.saving).toBe(false);
+  });
+
+  test("a latest failure rolls back past an earlier stale failure", async () => {
+    const firstWrite = deferred<SceneDetail>();
+    const latestWrite = deferred<SceneDetail>();
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1, false)),
+      setSceneDefault: vi
+        .fn()
+        .mockReturnValueOnce(firstWrite.promise)
+        .mockReturnValueOnce(latestWrite.promise),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+
+    workflow.setSpeedIndex(0);
+    const first = workflow.setCurrentDefault(true);
+    workflow.setSpeedIndex(2);
+    const latest = workflow.setCurrentDefault(true);
+    firstWrite.reject(new Error("first failed"));
+    await first;
+
+    expect(workflow.state.notice).toBeUndefined();
+    expect(workflow.state.content?.speed_index).toBe(2);
+
+    latestWrite.reject(new Error("latest failed"));
+    await latest;
+
+    expect(workflow.state.speedIndex).toBe(2);
+    expect(workflow.state.content?.speed_index).toBe(1);
+    expect(workflow.state.hasDefault).toBe(false);
+    expect(workflow.state.notice).toBe("Set as Default failed: latest failed");
+  });
+
+  test("a stale preview refresh cannot replace newer optimistic default state", async () => {
+    const refresh = deferred<SceneDetail>();
+    const save = deferred<SceneDetail>();
+    const sceneDetail = vi
+      .fn()
+      .mockResolvedValueOnce(detail(firstScene, 1, false))
+      .mockReturnValueOnce(refresh.promise);
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail,
+      setSceneDefault: vi.fn().mockReturnValue(save.promise),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+
+    const refreshing = workflow.refreshSelectedDefault();
+    workflow.setSpeedIndex(2);
+    const saving = workflow.setCurrentDefault(true);
+    refresh.resolve(detail(firstScene, 1, false));
+    await refreshing;
+
+    expect(workflow.state.speedIndex).toBe(2);
+    expect(workflow.state.content?.speed_index).toBe(2);
+    expect(workflow.state.hasDefault).toBe(true);
+
+    save.resolve(detail(firstScene, 2, true));
+    await saving;
   });
 
   test("a completed stale save is announced without restoring its old selection", async () => {

@@ -62,7 +62,10 @@ export class PanelModalController {
     this.requestNamedSave(
       returnFocus,
       this.model.name,
-      this.model.customCopyStarted ? "copy" : "save",
+      this.model.editorSource.kind === "scene" &&
+        this.model.editorSource.itemId === undefined
+        ? "copy"
+        : "save",
     );
   }
 

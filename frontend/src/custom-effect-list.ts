@@ -8,7 +8,7 @@ import type {
   LibrarySummary,
   ModelEffectCatalogue,
   ModelSku,
-  SpecialDiyContent,
+  WorkshopContent,
 } from "./types";
 import { compareLabels } from "./ui-utils";
 
@@ -41,11 +41,17 @@ export type CustomEffectListEntry =
       mode: string;
     }
   | {
-      kind: "special_diy";
+      kind: "advanced";
+      key: "template:advanced";
+      label: "Layered";
+      category: "advanced";
+    }
+  | {
+      kind: "workshop";
       key: string;
       label: string;
-      category: "special-diy";
-      content: SpecialDiyContent;
+      category: "advanced";
+      content: WorkshopContent;
     }
   | {
       kind: "saved";
@@ -92,12 +98,22 @@ export function buildCustomEffectEntries(
         mode: mode.id,
       }),
     ) ?? []),
-    ...(catalogue?.special_diy_templates.map(
+    ...(customEffectKindAvailable(context, "advanced")
+      ? [
+          {
+            kind: "advanced" as const,
+            key: "template:advanced" as const,
+            label: "Layered" as const,
+            category: "advanced" as const,
+          },
+        ]
+      : []),
+    ...(catalogue?.workshop_templates.map(
       (template): CustomEffectListEntry => ({
-        kind: "special_diy",
-        key: `template:special-diy:${template.id}`,
+        kind: "workshop",
+        key: `template:workshop:${template.id}`,
         label: template.label,
-        category: "special-diy",
+        category: "advanced",
         content: template.content,
       }),
     ) ?? []),
@@ -168,8 +184,6 @@ export function customEffectCategoryAvailable(
         customEffectKindAvailable(context, "advanced") ||
         customEffectKindAvailable(context, "workshop")
       );
-    case "special-diy":
-      return customEffectKindAvailable(context, "special_diy");
     case "my-effects":
       return false;
   }
@@ -204,13 +218,6 @@ export function customEffectKindAvailable(
       catalogue !== undefined &&
       catalogue.supports.workshop !== "unsupported" &&
       Boolean(catalogue.workshop_templates.length)
-    );
-  }
-  if (kind === "special_diy") {
-    return (
-      catalogue !== undefined &&
-      catalogue.supports.special_diy !== "unsupported" &&
-      Boolean(catalogue.special_diy_templates.length)
     );
   }
   return catalogue?.supports.advanced !== "unsupported";
@@ -258,8 +265,10 @@ function customEffectEntryAvailable(
       );
     case "music":
       return customEffectKindAvailable(context, "music_profile");
-    case "special_diy":
-      return customEffectKindAvailable(context, "special_diy");
+    case "advanced":
+      return customEffectKindAvailable(context, "advanced");
+    case "workshop":
+      return customEffectKindAvailable(context, "workshop");
     case "saved":
       return libraryItemAvailable(context, entry.item);
   }

@@ -30,7 +30,7 @@ from .effect_persistence_validation import required_persisted_string as _require
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 USER_STATE_STORE_VERSION: Final = 2
-USER_STATE_STORE_MINOR_VERSION: Final = 0
+USER_STATE_STORE_MINOR_VERSION: Final = 1
 USER_STATE_STORE_KEY: Final = f"{DOMAIN}.effect_user_state"
 MAX_RECENT_COLOURS: Final = 12
 
@@ -186,8 +186,12 @@ async def _async_migrate_user_state(
     old_minor_version: int,
     old_data: dict[str, Any],
 ) -> dict[str, Any]:
-    if old_major_version == USER_STATE_STORE_VERSION and old_minor_version <= USER_STATE_STORE_MINOR_VERSION:
-        return old_data
+    if old_major_version == USER_STATE_STORE_VERSION:
+        if old_minor_version == USER_STATE_STORE_MINOR_VERSION:
+            return old_data
+        if old_minor_version == 0:
+            return _remove_retired_navigation(old_data)
+        raise EffectStorageError(f"cannot migrate user-state store version {old_major_version}.{old_minor_version}")
     if old_major_version != 1 or old_minor_version > 1:
         raise EffectStorageError(f"cannot migrate user-state store version {old_major_version}.{old_minor_version}")
     root = _as_mapping(old_data, "legacy user-state store")
@@ -210,6 +214,24 @@ async def _async_migrate_user_state(
             "navigation": navigation,
         }
     return {"users": migrated}
+
+
+def _remove_retired_navigation(old_data: object) -> dict[str, Any]:
+    root = _as_mapping(old_data, "user-state store")
+    users = _as_mapping(root.get("users"), "user-state users")
+    cleaned: dict[str, Any] = {}
+    for key, value in users.items():
+        if not isinstance(value, Mapping):
+            cleaned[str(key)] = value
+            continue
+        state = dict(value)
+        navigation = state.get("navigation")
+        if isinstance(navigation, Mapping) and navigation.get("custom_category") == "special-diy":
+            cleaned_navigation = dict(navigation)
+            cleaned_navigation.pop("custom_category")
+            state["navigation"] = cleaned_navigation
+        cleaned[str(key)] = state
+    return {"users": cleaned}
 
 
 def _validate_user_states(data: object) -> tuple[EffectUserState, ...]:

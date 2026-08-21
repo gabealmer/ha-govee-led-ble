@@ -24,7 +24,6 @@ import type {
   PaletteDiyFamily,
   ReleaseWorkflowCapability,
   ReleaseWorkflowId,
-  SpecialDiyTemplate,
   WorkshopTemplate,
 } from "./types";
 import {
@@ -50,7 +49,6 @@ const RELEASE_WORKFLOW_IDS = [
   "palette_diy",
   "advanced",
   "workshop",
-  "special_diy",
 ] as const;
 const RELEASE_WORKFLOW_APPLICATIONS = [
   "studio",
@@ -68,7 +66,6 @@ const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = 
     "native_music",
     "advanced",
     "workshop",
-    "special_diy",
   ],
   H6199: [
     "native_scenes",
@@ -79,7 +76,6 @@ const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = 
     "video",
     "advanced",
     "workshop",
-    "special_diy",
   ],
 };
 
@@ -218,12 +214,6 @@ function decodeModelEffectCatalogue(
       expectedSku,
       decodeContent,
     ),
-    special_diy_templates: decodeSpecialDiyTemplates(
-      catalogue.special_diy_templates,
-      `${name} Special DIY templates`,
-      expectedSku,
-      decodeContent,
-    ),
     workflows: decodeReleaseWorkflows(
       catalogue.workflows,
       `${name} release workflows`,
@@ -238,10 +228,6 @@ function decodeModelEffectCatalogue(
       workshop: capabilityValue(
         supports.workshop,
         `${name} Workshop support`,
-      ),
-      special_diy: capabilityValue(
-        supports.special_diy,
-        `${name} Special DIY support`,
       ),
     },
     limits: {
@@ -283,10 +269,6 @@ function decodeModelEffectCatalogue(
       workshop: capabilityValue(
         apply.workshop,
         `${name} Workshop Apply capability`,
-      ),
-      special_diy: capabilityValue(
-        apply.special_diy,
-        `${name} Special DIY Apply capability`,
       ),
     },
   };
@@ -497,38 +479,6 @@ function decodeWorkshopTemplates(
       const template = objectValue(item, `${name}[${index}]`);
       const content = decodeContent(template.content);
       if (content.kind !== "workshop" || content.model !== model) {
-        invalid(`${name}[${index}] content does not target ${model}`);
-      }
-      return {
-        id: boundedString(
-          template.id,
-          `${name}[${index}] ID`,
-          MAX_IDENTIFIER_LENGTH,
-        ),
-        label: boundedString(
-          template.label,
-          `${name}[${index}] label`,
-          MAX_EFFECT_NAME_LENGTH,
-        ),
-        content,
-      };
-    },
-  );
-  requireUnique(templates, (template) => template.id, `${name} IDs`);
-  return templates;
-}
-
-function decodeSpecialDiyTemplates(
-  value: unknown,
-  name: string,
-  model: ModelSku,
-  decodeContent: (value: unknown) => EffectContent,
-): SpecialDiyTemplate[] {
-  const templates = arrayValue(value, name, MAX_JSON_COLLECTION_ITEMS).map(
-    (item, index): SpecialDiyTemplate => {
-      const template = objectValue(item, `${name}[${index}]`);
-      const content = decodeContent(template.content);
-      if (content.kind !== "special_diy" || content.model !== model) {
         invalid(`${name}[${index}] content does not target ${model}`);
       }
       return {

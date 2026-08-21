@@ -1,18 +1,15 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
+import {
+  reorderableStripKeyboardAction,
+  reorderableStripModel,
+  type ReorderableStripItem,
+  type ReorderableStripItemRole,
+} from "./reorderable-strip-model";
 import { studioBaseStyles } from "./studio-styles";
 
-export interface ReorderableStripItem {
-  key: string;
-  label: string;
-  ariaLabel: string;
-  colour?: string;
-  removeReady?: boolean;
-  disabled?: boolean;
-  id?: string;
-  ariaControls?: string;
-}
+export type { ReorderableStripItem } from "./reorderable-strip-model";
 
 export class GoveeReorderableStrip extends LitElement {
   @property({ attribute: false })
@@ -25,7 +22,7 @@ export class GoveeReorderableStrip extends LitElement {
   public ariaLabel = "Items";
 
   @property()
-  public itemRole: "button" | "tab" = "button";
+  public itemRole: ReorderableStripItemRole = "button";
 
   @property()
   public addLabel = "Add item";
@@ -49,83 +46,110 @@ export class GoveeReorderableStrip extends LitElement {
   private suppressClick = false;
 
   protected render() {
-    const tablist = this.itemRole === "tab";
+    const model = reorderableStripModel(
+      this.itemRole,
+      this.addLabel,
+      this.addDisabled,
+      this.addHidden,
+    );
+    const tablist = model.listRole === "tablist";
     return html`
-      <ul
-        class="item-list"
-        aria-label=${this.ariaLabel}
-        role=${tablist ? "tablist" : nothing}
-      >
-        ${this.items.map(
-          (item, index) => html`
-            <li
-              class="item-wrapper"
-              role=${tablist ? "presentation" : nothing}
-              data-item-index=${index}
-              draggable=${this.reorderDisabled ? "false" : "true"}
-              @dragstart=${(event: DragEvent) =>
-                this.dragStarted(index, event)}
-              @dragover=${(event: DragEvent) => {
-                if (!this.reorderDisabled) {
-                  event.preventDefault();
-                }
-              }}
-              @drop=${(event: DragEvent) => this.dropped(index, event)}
-              @pointerdown=${(event: PointerEvent) =>
-                this.pointerStarted(index, event)}
-              @pointermove=${this.pointerMovedOver}
-              @pointerup=${this.pointerFinished}
-              @pointercancel=${this.pointerFinished}
-            >
-              <button
-                id=${item.id ?? nothing}
-                class="item ${item.colour ? "colour" : "label"} ${index ===
-                this.activeIndex
-                  ? "selected"
-                  : ""} ${item.removeReady ? "remove-ready" : ""}"
-                type="button"
-                role=${tablist ? "tab" : nothing}
-                aria-label=${item.ariaLabel}
-                aria-selected=${tablist
-                  ? String(index === this.activeIndex)
-                  : nothing}
-                aria-controls=${item.ariaControls ?? nothing}
-                tabindex=${tablist
-                  ? index === this.activeIndex
-                    ? "0"
-                    : "-1"
-                  : nothing}
-                style=${item.colour
-                  ? `--item-colour: ${item.colour}`
-                  : nothing}
-                ?disabled=${item.disabled}
-                @click=${() => this.itemClicked(index)}
-                @keydown=${(event: KeyboardEvent) =>
-                  this.keyPressed(index, event)}
+      <div class="strip">
+        ${tablist
+          ? html`
+              <div
+                class="item-list"
+                role="tablist"
+                aria-label=${this.ariaLabel}
               >
-                ${item.colour ? nothing : item.label}
-              </button>
-              <slot name="item-${index}"></slot>
-            </li>
-          `,
-        )}
-        ${this.addHidden
-          ? nothing
+                ${this.items.map((item, index) =>
+                  this.renderItemButton(item, index, true),
+                )}
+              </div>
+            `
           : html`
-              <li>
+              <ul class="item-list" aria-label=${this.ariaLabel}>
+                ${this.items.map(
+                  (item, index) => html`
+                    <li class="item-container">
+                      ${this.renderItemButton(item, index, false)}
+                      <slot name="item-${index}"></slot>
+                    </li>
+                  `,
+                )}
+              </ul>
+            `}
+        <div class="strip-actions">
+          ${model.addAction
+            ? html`
                 <button
-                  class="add"
+                  class="compact-action add"
                   type="button"
-                  title=${this.addLabel}
-                  aria-label=${this.addLabel}
-                  ?disabled=${this.addDisabled}
+                  title=${model.addAction.label}
+                  aria-label=${model.addAction.label}
+                  ?disabled=${model.addAction.disabled}
                   @click=${this.addClicked}
                 >
-                  +
+                  <span aria-hidden="true">+</span>
                 </button>
-              </li>
-            `}
-      </ul>
+              `
+            : nothing}
+          <slot name="actions"></slot>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderItemButton(
+    item: ReorderableStripItem,
+    index: number,
+    tab: boolean,
+  ) {
+    return html`
+      <button
+        id=${item.id ?? nothing}
+        class="item item-wrapper ${item.colour ? "colour" : "label"} ${index ===
+        this.activeIndex
+          ? "selected"
+          : ""} ${item.removeReady ? "remove-ready" : ""}"
+        type="button"
+        role=${tab ? "tab" : nothing}
+        aria-label=${item.ariaLabel}
+        aria-description=${item.ariaDescription ?? nothing}
+        aria-selected=${tab
+          ? String(index === this.activeIndex)
+          : nothing}
+        aria-controls=${item.ariaControls ?? nothing}
+        tabindex=${tab
+          ? index === this.activeIndex
+            ? "0"
+            : "-1"
+          : nothing}
+        data-item-index=${index}
+        draggable=${this.reorderDisabled ? "false" : "true"}
+        style=${item.colour
+          ? `--item-colour: ${item.colour}`
+          : nothing}
+        ?disabled=${item.disabled}
+        @click=${() => this.itemClicked(index)}
+        @keydown=${(event: KeyboardEvent) =>
+          this.keyPressed(index, event)}
+        @dragstart=${(event: DragEvent) =>
+          this.dragStarted(index, event)}
+        @dragover=${(event: DragEvent) => {
+          if (!this.reorderDisabled) {
+            event.preventDefault();
+          }
+        }}
+        @drop=${(event: DragEvent) => this.dropped(index, event)}
+        @pointerdown=${(event: PointerEvent) =>
+          this.pointerStarted(index, event)}
+        @pointermove=${this.pointerMovedOver}
+        @pointerup=${this.pointerFinished}
+        @pointercancel=${this.pointerFinished}
+      >
+        ${item.colour ? nothing : item.label}
+      </button>
     `;
   }
 
@@ -182,18 +206,22 @@ export class GoveeReorderableStrip extends LitElement {
       return;
     }
     event.preventDefault();
-    const target = index + (event.key === "ArrowLeft" ? -1 : 1);
-    if (target < 0 || target >= this.items.length) {
+    const action = reorderableStripKeyboardAction(
+      index,
+      event.key,
+      this.items.length,
+      this.reorderDisabled,
+      this.itemRole,
+    );
+    if (!action) {
       return;
     }
-    if (this.reorderDisabled) {
-      if (this.itemRole === "tab") {
-        this.itemClicked(target);
-        this.focusItem(target);
-      }
+    if (action.kind === "select") {
+      this.itemClicked(action.index);
+      this.focusItem(action.focusIndex);
       return;
     }
-    this.reorder(index, target, true);
+    this.reorder(action.from, action.to, true);
   }
 
   private pointerStarted(index: number, event: PointerEvent): void {
@@ -283,6 +311,13 @@ export class GoveeReorderableStrip extends LitElement {
       display: block;
     }
 
+    .strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: var(--studio-control-gap);
+    }
+
     .item-list {
       display: flex;
       flex-wrap: wrap;
@@ -292,8 +327,18 @@ export class GoveeReorderableStrip extends LitElement {
       list-style: none;
     }
 
+    .strip-actions {
+      display: flex;
+      flex: 0 0 auto;
+      gap: var(--studio-control-gap);
+    }
+
+    .item-container,
     .item-wrapper {
       position: relative;
+    }
+
+    .item-wrapper {
       touch-action: pan-y;
     }
 
@@ -301,9 +346,18 @@ export class GoveeReorderableStrip extends LitElement {
       cursor: grab;
     }
 
-    .item,
-    .add {
+    .item {
       height: var(--studio-control-height);
+      padding: 0;
+      border-radius: var(--studio-control-radius);
+      cursor: pointer;
+    }
+
+    .compact-action,
+    ::slotted(.compact-action) {
+      width: var(--studio-compact-action-size);
+      height: var(--studio-compact-action-size);
+      min-height: var(--studio-compact-action-size);
       padding: 0;
       border-radius: var(--studio-control-radius);
       cursor: pointer;
@@ -313,8 +367,7 @@ export class GoveeReorderableStrip extends LitElement {
       border: var(--studio-border-width) solid rgb(0 0 0 / 14%);
     }
 
-    .item.colour,
-    .add {
+    .item.colour {
       width: var(--studio-control-height);
     }
 
@@ -357,17 +410,32 @@ export class GoveeReorderableStrip extends LitElement {
       pointer-events: none;
     }
 
-    .add {
+    .compact-action,
+    ::slotted(.compact-action) {
       display: grid;
       place-items: center;
-      border: var(--studio-border-width) dashed var(--studio-border);
+      border: var(--studio-border-width) solid var(--studio-border);
+      background: var(--studio-card);
+      font-size: var(--studio-action-glyph-size);
+      font-weight: var(--studio-font-weight-semibold);
+    }
+
+    .add {
       color: var(--studio-blue);
-      background: transparent;
-      font-size: var(--studio-editor-heading-size);
+    }
+
+    ::slotted(.compact-action) {
+      color: var(--primary-text-color);
+    }
+
+    ::slotted(.compact-action.danger-action) {
+      color: var(--studio-danger);
+      border-color: var(--studio-danger);
     }
 
     .item:focus-visible,
-    .add:focus-visible {
+    .compact-action:focus-visible,
+    ::slotted(.compact-action:focus-visible) {
       outline: var(--studio-focus-width) solid var(--studio-blue);
       outline-offset: var(--studio-focus-offset);
     }

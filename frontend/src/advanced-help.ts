@@ -1,0 +1,52 @@
+export const ADVANCED_HELP_CONTENT = {
+  appliedArea: {
+    label: "Applied area information",
+    text: "Sets the physical LED boundary for this layer.",
+  },
+  fillPattern: {
+    label: "Fill pattern information",
+    text: "Controls how LEDs inside the applied area take part in the effect.",
+  },
+  distribution: {
+    label: "Distribution information",
+    text: "Controls whether participating LEDs share colours or receive colours by IC or segment.",
+  },
+  colourSpeed: {
+    label: "Colour speed information",
+    text: "Controls how quickly the layer changes between palette colours.",
+  },
+  colourRetention: {
+    label: "Colour retention information",
+    text: "Controls how long a palette colour is retained before the next change.",
+  },
+  patterns: {
+    label: "Brightness patterns information",
+    text: "Each pattern defines an ordered brightness change for this layer.",
+  },
+  brightnessScope: {
+    label: "Brightness scope information",
+    text: "Scope low and Scope high bound the brightness values used by the pattern.",
+  },
+  changingSpeed: {
+    label: "Brightness changing speed information",
+    text: "Controls how quickly the brightness pattern changes.",
+  },
+  inAreaMovement: {
+    label: "In-area movement information",
+    text: "Moves the effect inside the applied area.",
+  },
+  wholeLayerMovement: {
+    label: "Whole-layer movement information",
+    text: "Moves the complete layer.",
+  },
+  pauseBeforeReentry: {
+    label: "Pause before re-entry information",
+    text: "Pauses the moving effect before it enters the applied area again.",
+  },
+  priority: {
+    label: "Layer priority information",
+    text: "A higher number gives this layer a higher priority.",
+  },
+} as const;
+
+export type AdvancedHelpKey = keyof typeof ADVANCED_HELP_CONTENT;

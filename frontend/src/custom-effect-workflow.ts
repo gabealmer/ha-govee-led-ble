@@ -4,8 +4,6 @@ import {
 } from "./custom-effect-list";
 import {
   type CustomEffectCategory,
-  type EditableEffectContent,
-  serialiseEditable,
 } from "./effect-editor-model";
 
 const CATEGORY_PRIORITY: readonly Exclude<
@@ -15,7 +13,6 @@ const CATEGORY_PRIORITY: readonly Exclude<
   "single-layer",
   "multi-layer",
   "music",
-  "special-diy",
   "advanced",
 ];
 
@@ -27,7 +24,6 @@ const CATEGORY_LABELS: Readonly<
   "multi-layer": "Layered Effects",
   music: "Reactive",
   "single-layer": "Effects",
-  "special-diy": "Special DIY",
   advanced: "Advanced",
 };
 
@@ -35,9 +31,14 @@ const CATEGORY_DISPLAY_ORDER: readonly CustomEffectCategory[] = [
   "single-layer",
   "multi-layer",
   "music",
-  "special-diy",
   "advanced",
 ];
+
+export function customEffectCategoryLabel(
+  category: CustomEffectCategory,
+): string {
+  return CATEGORY_LABELS[category];
+}
 
 export function customEffectCategories(
   context: CustomEffectListContext,
@@ -46,7 +47,7 @@ export function customEffectCategories(
     customEffectCategoryAvailable(context, category),
   ).map((category) => ({
     category,
-    label: CATEGORY_LABELS[category],
+    label: customEffectCategoryLabel(category),
   }));
 }
 
@@ -58,12 +59,4 @@ export function defaultCustomEffectCategory(
       customEffectCategoryAvailable(context, category),
     ) ?? "single-layer"
   );
-}
-
-export function starterBaseline(
-  name: string,
-  content: EditableEffectContent,
-  customCopyStarted: boolean,
-): string | undefined {
-  return customCopyStarted ? serialiseEditable(name, content) : undefined;
 }

@@ -7,6 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock
+from uuid import UUID
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -31,6 +32,7 @@ from custom_components.ha_govee_led_ble.effect_scene_defaults import (
 )
 from custom_components.ha_govee_led_ble.effect_storage import (
     LIBRARY_STORE_KEY,
+    LIBRARY_STORE_MINOR_VERSION,
     LIBRARY_STORE_VERSION,
     EffectLibraryRepository,
     EffectNotFoundError,
@@ -200,6 +202,47 @@ async def test_current_library_migrates_legacy_painted_content(
     assert isinstance(migrated.content, PaintedEffect)
     assert migrated.content.segments == expected
     assert migrated.content_hash != "0" * 64
+
+
+@pytest.mark.parametrize("minor_version", [0, 1])
+async def test_current_library_migrations_delete_retired_special_diy_before_decoding(
+    hass: HomeAssistant,
+    minor_version: int,
+) -> None:
+    retained = _item("Retained")
+    retained_document = retained.to_dict()
+    if minor_version == 0:
+        retained_document["schema_version"] = 1
+        retained_document["content_hash"] = "0" * 64
+    removed_id = UUID("00000000-0000-4000-8000-000000000099")
+    await Store[dict[str, Any]](
+        hass,
+        LIBRARY_STORE_VERSION,
+        LIBRARY_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=minor_version,
+    ).async_save(
+        {
+            "items": {
+                str(retained.id): retained_document,
+                str(removed_id): {"content": {"kind": "special_diy"}},
+            }
+        }
+    )
+
+    snapshot = await EffectLibraryRepository(hass).async_load()
+
+    assert snapshot.items == (retained,)
+    migrated = await Store[dict[str, Any]](
+        hass,
+        LIBRARY_STORE_VERSION,
+        LIBRARY_STORE_KEY,
+        private=True,
+        atomic_writes=True,
+        minor_version=LIBRARY_STORE_MINOR_VERSION,
+    ).async_load()
+    assert migrated == {"items": {str(retained.id): retained.to_dict()}}
 
 
 async def test_current_library_rejects_overlapping_legacy_paint_groups(hass: HomeAssistant) -> None:

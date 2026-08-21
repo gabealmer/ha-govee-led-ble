@@ -8,17 +8,23 @@ import {
 } from "./advanced-effect-model";
 import {
   AdvancedEffectEditorController,
-  AUTHORING_LAYER_LIMIT,
-  AUTHORING_PALETTE_LIMIT,
-  DEFAULT_SEGMENT_COUNT,
   type MovementKey,
 } from "./advanced-effect-editor-controller";
 import {
+  renderAdvancedHelp,
   renderDistribution,
+  renderFillPatternControls,
   renderNumberField,
   renderRangeField,
-  renderSelectionControls,
 } from "./advanced-effect-editor-fields";
+import {
+  advancedBrightnessPatternItems,
+  advancedLayerActions,
+  advancedLayerItems,
+  AUTHORING_LAYER_LIMIT,
+  AUTHORING_PALETTE_LIMIT,
+  DEFAULT_SEGMENT_COUNT,
+} from "./advanced-effect-editor-model";
 import { advancedEffectEditorStyles } from "./advanced-effect-editor-styles";
 import type { AppliedAreaChange } from "./applied-area-control";
 import "./applied-area-control";
@@ -33,7 +39,6 @@ import "./checkbox-control";
 import "./reorderable-strip";
 import type {
   GoveeReorderableStrip,
-  ReorderableStripItem,
 } from "./reorderable-strip";
 import type {
   SegmentedControlChange,
@@ -66,14 +71,6 @@ const BRIGHTNESS_LABELS: Record<BrightnessOrder, string> = {
   2: "Darkest to brightest",
   3: "Darkest, brightest, darkest",
 };
-
-const BRIGHTNESS_RANGES = [
-  ["Scope low", "scope_low"],
-  ["Scope high", "scope_high"],
-  ["Changing speed", "change_speed"],
-  ["Brightest retention", "brightest_retention"],
-  ["Darkest retention", "darkest_retention"],
-] as const;
 
 const MOVEMENT_LABELS: Record<number, string> = {
   0: "Forward",
@@ -124,62 +121,52 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       return this.renderEmptyLayers();
     }
     const layer = this.activeLayer;
-    const layerItems: ReorderableStripItem[] = this.content.layers.map(
-      (_item, index) => ({
-        key: `layer-${index}`,
-        label: `Layer ${index + 1}`,
-        ariaLabel: `Layer ${index + 1}. Drag to reorder or use arrow keys.`,
-        id: `advanced-layer-tab-${index}`,
-        ariaControls: "advanced-layer-panel",
-      }),
-    );
+    const layerItems = advancedLayerItems(this.content.layers.length);
     return html`
       <div class="visually-hidden" aria-live="polite">
         ${this.movementAnnouncement}
       </div>
 
       <section class="card layer-card">
-        <div class="layer-toolbar">
-          <govee-reorderable-strip
-            .items=${layerItems}
-            .activeIndex=${this.controller.activeLayerIndex}
-            ariaLabel="Effect layers"
-            itemRole="tab"
-            addLabel="Add layer"
-            .addDisabled=${this.disabled}
-            .addHidden=${this.content.layers.length >= AUTHORING_LAYER_LIMIT}
-            .reorderDisabled=${this.disabled}
-            @item-selected=${(event: CustomEvent<{ index: number }>) =>
-              this.selectLayer(event.detail.index)}
-            @items-reordered=${(
-              event: CustomEvent<{ from: number; to: number }>,
-            ) => this.reorderLayer(event.detail.from, event.detail.to)}
-            @item-added=${this.addLayer}
-          ></govee-reorderable-strip>
+        <govee-reorderable-strip
+          class="layer-strip"
+          .items=${layerItems}
+          .activeIndex=${this.controller.activeLayerIndex}
+          ariaLabel="Effect layers"
+          itemRole="tab"
+          addLabel="Add layer"
+          .addDisabled=${this.disabled}
+          .addHidden=${this.content.layers.length >= AUTHORING_LAYER_LIMIT}
+          .reorderDisabled=${this.disabled}
+          @item-selected=${(event: CustomEvent<{ index: number }>) =>
+            this.selectLayer(event.detail.index)}
+          @items-reordered=${(
+            event: CustomEvent<{ from: number; to: number }>,
+          ) => this.reorderLayer(event.detail.from, event.detail.to)}
+          @item-added=${this.addLayer}
+        >
           ${this.disabled
             ? nothing
-            : html`
-                <div class="layer-actions">
+            : advancedLayerActions(this.content.layers.length).map(
+                (action) => html`
                   <button
-                    class="secondary"
+                    slot="actions"
+                    class=${action.danger
+                      ? "compact-action danger-action"
+                      : "compact-action"}
                     type="button"
-                    ?disabled=${this.content.layers.length >=
-                    AUTHORING_LAYER_LIMIT}
-                    @click=${this.copyLayer}
+                    title=${action.label}
+                    aria-label=${action.label}
+                    ?disabled=${action.disabled}
+                    @click=${action.kind === "copy"
+                      ? this.copyLayer
+                      : this.deleteLayer}
                   >
-                    Copy
+                    <span aria-hidden="true">${action.glyph}</span>
                   </button>
-                  <button
-                    class="danger"
-                    type="button"
-                    ?disabled=${this.content.layers.length === 1}
-                    @click=${this.deleteLayer}
-                  >
-                    Delete
-                  </button>
-                </div>
-              `}
-        </div>
+                `,
+              )}
+        </govee-reorderable-strip>
 
         ${this.content.layers.length >= AUTHORING_LAYER_LIMIT
           ? html`
@@ -255,7 +242,10 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   private renderAppliedArea(layer: EffectLayer) {
     return html`
       <section class="card wide-card">
-        <h3 class="section-title">Applied area</h3>
+        <div class="section-heading">
+          <h3 class="section-title">Applied area</h3>
+          ${renderAdvancedHelp("appliedArea")}
+        </div>
         <govee-applied-area-control
           .layer=${layer}
           .disabled=${this.disabled}
@@ -266,7 +256,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
               event.detail.interaction,
             )}
         ></govee-applied-area-control>
-        ${renderSelectionControls(
+        ${renderFillPatternControls(
           layer,
           this.disabled,
           (update) =>
@@ -332,95 +322,135 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     return html`
       <section class="card wide-card">
         <h3 class="section-title">Brightness</h3>
-        <label class="field brightness-style">
-          <span>Style</span>
-          <select
-            .value=${layer.brightness_gradient ? "gradient" : "unified"}
-            ?disabled=${this.disabled}
-            @change=${(event: Event) =>
-              this.updateLayer({
-                brightness_gradient:
-                  (event.target as HTMLSelectElement).value === "gradient",
-              })}
-          >
-            <option value="unified">Unified</option>
-            <option value="gradient">Gradient</option>
-          </select>
-        </label>
-
-        <div class="patterns-heading">
-          <h4>Patterns</h4>
-          <button
-            class="secondary pattern-delete"
-            type="button"
-            ?disabled=${this.disabled ||
-            layer.brightness_patterns.length === 1}
-            @click=${this.deleteBrightnessPattern}
-          >
-            Delete
-          </button>
-        </div>
-        <govee-reorderable-strip
-          class="pattern-strip"
-          .items=${layer.brightness_patterns.map((_item, index) => ({
-            key: `pattern-${index}`,
-            label: String(index + 1),
-            ariaLabel: `Pattern ${index + 1}`,
-            id: `advanced-pattern-tab-${index}`,
-            ariaControls: "advanced-pattern-panel",
-          }))}
-          .activeIndex=${activeIndex}
-          ariaLabel="Patterns"
-          itemRole="tab"
-          addLabel="Add brightness pattern"
-          .addDisabled=${this.disabled}
-          .addHidden=${layer.brightness_patterns.length >= 3}
-          .reorderDisabled=${true}
-          @item-selected=${(event: CustomEvent<{ index: number }>) =>
-            this.selectPattern(event.detail.index)}
-          @item-added=${this.addBrightnessPattern}
-        ></govee-reorderable-strip>
-
-        <div
-          class="brightness-fields"
-          id="advanced-pattern-panel"
-          role="tabpanel"
-          aria-labelledby="advanced-pattern-tab-${activeIndex}"
-        >
+        <div class="parameter-stack">
           <label class="field">
-            <span>Order</span>
+            <span>Style</span>
             <select
-              aria-label="Brightness order"
+              .value=${layer.brightness_gradient ? "gradient" : "unified"}
               ?disabled=${this.disabled}
               @change=${(event: Event) =>
-                this.updateBrightnessPattern({
-                  order: Number((event.target as HTMLSelectElement).value),
+                this.updateLayer({
+                  brightness_gradient:
+                    (event.target as HTMLSelectElement).value === "gradient",
                 })}
             >
-              ${KNOWN_BRIGHTNESS_ORDERS.map(
-                (order) =>
-                  html`<option
-                    value=${order}
-                    .selected=${pattern.order === order}
-                  >
-                    ${BRIGHTNESS_LABELS[order]}
-                  </option>`,
-              )}
-              ${!knownOrder
-                ? html`<option value="" disabled .selected=${true}>
-                    Choose an order
-                  </option>`
-                : nothing}
+              <option value="unified">Unified</option>
+              <option value="gradient">Gradient</option>
             </select>
           </label>
-          ${BRIGHTNESS_RANGES.map(([label, key]) =>
-            renderRangeField(
-              label,
-              pattern[key],
-              (value) => this.updateBrightnessPattern({ [key]: value }),
-              this.disabled,
-            ),
-          )}
+
+          <div class="patterns-section">
+            <div class="patterns-heading">
+              <div class="subsection-heading">
+                <h4>Patterns</h4>
+                ${renderAdvancedHelp("patterns")}
+              </div>
+              <button
+                class="secondary pattern-delete"
+                type="button"
+                ?disabled=${this.disabled ||
+                layer.brightness_patterns.length === 1}
+                @click=${this.deleteBrightnessPattern}
+              >
+                Delete
+              </button>
+            </div>
+            <govee-reorderable-strip
+              class="pattern-strip"
+              .items=${advancedBrightnessPatternItems(
+                layer.brightness_patterns.length,
+              )}
+              .activeIndex=${activeIndex}
+              ariaLabel="Patterns"
+              itemRole="tab"
+              addLabel="Add brightness pattern"
+              .addDisabled=${this.disabled}
+              .addHidden=${layer.brightness_patterns.length >= 3}
+              .reorderDisabled=${true}
+              @item-selected=${(event: CustomEvent<{ index: number }>) =>
+                this.selectPattern(event.detail.index)}
+              @item-added=${this.addBrightnessPattern}
+            ></govee-reorderable-strip>
+
+            <div
+              class="brightness-fields parameter-stack"
+              id="advanced-pattern-panel"
+              role="tabpanel"
+              aria-labelledby="advanced-pattern-tab-${activeIndex}"
+            >
+              <label class="field">
+                <span>Order</span>
+                <select
+                  aria-label="Brightness order"
+                  ?disabled=${this.disabled}
+                  @change=${(event: Event) =>
+                    this.updateBrightnessPattern({
+                      order: Number((event.target as HTMLSelectElement).value),
+                    })}
+                >
+                  ${!knownOrder
+                    ? html`<option value="" disabled .selected=${true}>
+                        Choose an order
+                      </option>`
+                    : nothing}
+                  ${KNOWN_BRIGHTNESS_ORDERS.map(
+                    (order) =>
+                      html`<option
+                        value=${order}
+                        .selected=${pattern.order === order}
+                      >
+                        ${BRIGHTNESS_LABELS[order]}
+                      </option>`,
+                  )}
+                </select>
+              </label>
+              <div class="parameter-grid">
+                ${renderRangeField(
+                  "Scope low",
+                  pattern.scope_low,
+                  (value) =>
+                    this.updateBrightnessPattern({ scope_low: value }),
+                  this.disabled,
+                  "brightnessScope",
+                )}
+                ${renderRangeField(
+                  "Scope high",
+                  pattern.scope_high,
+                  (value) =>
+                    this.updateBrightnessPattern({ scope_high: value }),
+                  this.disabled,
+                )}
+              </div>
+              ${renderRangeField(
+                "Changing speed",
+                pattern.change_speed,
+                (value) =>
+                  this.updateBrightnessPattern({ change_speed: value }),
+                this.disabled,
+                "changingSpeed",
+              )}
+              <div class="parameter-grid">
+                ${renderRangeField(
+                  "Brightest retention",
+                  pattern.brightest_retention,
+                  (value) =>
+                    this.updateBrightnessPattern({
+                      brightest_retention: value,
+                    }),
+                  this.disabled,
+                )}
+                ${renderRangeField(
+                  "Darkest retention",
+                  pattern.darkest_retention,
+                  (value) =>
+                    this.updateBrightnessPattern({
+                      darkest_retention: value,
+                    }),
+                  this.disabled,
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     `;
@@ -433,10 +463,21 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     showEnterExit: boolean,
   ) {
     const movement = layer[key];
+    const help =
+      key === "selected_movement"
+        ? "inAreaMovement"
+        : "wholeLayerMovement";
+    const knownDirection = Object.hasOwn(
+      MOVEMENT_LABELS,
+      movement.direction,
+    );
     return html`
       <section class="card">
         <div class="card-heading">
-          <h3 class="section-title">${label}</h3>
+          <div class="section-heading">
+            <h3 class="section-title">${label}</h3>
+            ${renderAdvancedHelp(help)}
+          </div>
           <govee-switch-control
             .label=${`${label} enabled`}
             .checked=${movement.enabled}
@@ -453,76 +494,88 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         </div>
         ${movement.enabled
           ? html`
-              ${renderNumberField(
-                "ICs per step",
-                movement.distance,
-                (value) =>
-                  this.updateMovement(
-                    key,
-                    { distance: value },
-                    `${label} distance ${value}.`,
-                  ),
-                this.disabled,
-              )}
-              <label class="field">
-                <span>Direction</span>
-                <select
-                  ?disabled=${this.disabled}
-                  @change=${(event: Event) => {
-                    const direction = Number(
-                      (event.target as HTMLSelectElement).value,
-                    );
+              <div class="parameter-stack">
+                ${renderNumberField(
+                  "ICs per step",
+                  movement.distance,
+                  (value) =>
                     this.updateMovement(
                       key,
-                      { direction },
-                      `${label} direction ${MOVEMENT_LABELS[direction]}.`,
-                    );
-                  }}
-                >
-                  ${Object.entries(MOVEMENT_LABELS).map(
-                    ([value, direction]) =>
-                      html`<option
-                        value=${value}
-                        .selected=${movement.direction === Number(value)}
-                      >
-                        ${direction}
-                      </option>`,
-                  )}
-                </select>
-              </label>
-              ${renderRangeField(
-                "Speed",
-                movement.speed,
-                (value) =>
-                  this.updateMovement(
-                    key,
-                    { speed: value },
-                    `${label} speed ${bytePercent(value)} per cent.`,
-                  ),
-                this.disabled,
-              )}
-              ${showEnterExit
-                ? html`
-                    <govee-checkbox-control
-                      class="movement-enter-exit"
-                      label="Pause before re-entering"
-                      .checked=${movement.enter_exit}
-                      .disabled=${this.disabled}
-                      @checked-changed=${(
-                        event: CustomEvent<CheckboxControlChange>,
-                      ) => {
-                        const enterExit = event.detail.checked;
-                        this.updateMovement(
-                          key,
-                          { enter_exit: enterExit },
-                          `${label} pause before re-entering ${enterExit
-                            ? "enabled"
-                            : "disabled"}.`,
-                        );
-                      }}
-                    ></govee-checkbox-control>
-                  `
-                : nothing}
+                      { distance: value },
+                      `${label} distance ${value}.`,
+                    ),
+                  this.disabled,
+                )}
+                <label class="field">
+                  <span>Direction</span>
+                  <select
+                    .value=${knownDirection
+                      ? String(movement.direction)
+                      : ""}
+                    ?disabled=${this.disabled}
+                    @change=${(event: Event) => {
+                      const direction = Number(
+                        (event.target as HTMLSelectElement).value,
+                      );
+                      this.updateMovement(
+                        key,
+                        { direction },
+                        `${label} direction ${MOVEMENT_LABELS[direction]}.`,
+                      );
+                    }}
+                  >
+                    ${knownDirection
+                      ? nothing
+                      : html`<option value="" disabled .selected=${true}>
+                          Choose a direction
+                        </option>`}
+                    ${Object.entries(MOVEMENT_LABELS).map(
+                      ([value, direction]) =>
+                        html`<option
+                          value=${value}
+                          .selected=${movement.direction === Number(value)}
+                        >
+                          ${direction}
+                        </option>`,
+                    )}
+                  </select>
+                </label>
+                ${renderRangeField(
+                  "Speed",
+                  movement.speed,
+                  (value) =>
+                    this.updateMovement(
+                      key,
+                      { speed: value },
+                      `${label} speed ${bytePercent(value)} per cent.`,
+                    ),
+                  this.disabled,
+                )}
+                ${showEnterExit
+                  ? html`
+                      <div class="check-control-with-help">
+                        <govee-checkbox-control
+                          label="Pause before re-entering"
+                          .checked=${movement.enter_exit}
+                          .disabled=${this.disabled}
+                          @checked-changed=${(
+                            event: CustomEvent<CheckboxControlChange>,
+                          ) => {
+                            const enterExit = event.detail.checked;
+                            this.updateMovement(
+                              key,
+                              { enter_exit: enterExit },
+                              `${label} pause before re-entering ${enterExit
+                                ? "enabled"
+                                : "disabled"}.`,
+                            );
+                          }}
+                        ></govee-checkbox-control>
+                        ${renderAdvancedHelp("pauseBeforeReentry")}
+                      </div>
+                    `
+                  : nothing}
+              </div>
             `
           : nothing}
       </section>
@@ -532,18 +585,22 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   private renderPriority(layer: EffectLayer) {
     return html`
       <section class="card">
-        <h3 class="section-title">Priority</h3>
-        <govee-segmented-control
-          class="priority-control"
-          label="Priority"
-          .value=${layer.priority}
-          .options=${PRIORITY_OPTIONS}
-          .disabled=${this.disabled}
-          .hideLabel=${true}
-          @value-changed=${(
-            event: CustomEvent<SegmentedControlChange<number>>,
-          ) => this.updateLayer({ priority: event.detail.value })}
-        ></govee-segmented-control>
+        <div class="section-heading">
+          <h3 class="section-title">Priority</h3>
+          ${renderAdvancedHelp("priority")}
+        </div>
+        <div class="parameter-stack">
+          <govee-segmented-control
+            label="Priority"
+            .value=${layer.priority}
+            .options=${PRIORITY_OPTIONS}
+            .disabled=${this.disabled}
+            .hideLabel=${true}
+            @value-changed=${(
+              event: CustomEvent<SegmentedControlChange<number>>,
+            ) => this.updateLayer({ priority: event.detail.value })}
+          ></govee-segmented-control>
+        </div>
       </section>
     `;
   }
