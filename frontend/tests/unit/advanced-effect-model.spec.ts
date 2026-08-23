@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
 import {
+  ADVANCED_RANGE_SCALES,
   adjustAppliedAreaLeftEdge,
   adjustAppliedAreaRightEdge,
   appliedAreaEffectiveWidth,
@@ -12,8 +13,10 @@ import {
   cloneAdvancedContent,
   cloneLayer,
   cloneLayeredSceneContent,
+  displayValueToRaw,
   layerAppliedAreaSegments,
   moveAppliedArea,
+  rawValueToDisplay,
   withAppliedAreaSegments,
 } from "../../src/advanced-effect-model";
 
@@ -61,6 +64,49 @@ test("advanced and layered scene clones do not share nested state", () => {
 test("byte percentages clamp to the supported range", () => {
   expect(bytePercent(128)).toBe(50);
   expect(bytePercent(300)).toBe(100);
+});
+
+test("advanced percentage scales preserve every selectable display position", () => {
+  const ranges = [
+    ADVANCED_RANGE_SCALES.bytePercentage,
+    ADVANCED_RANGE_SCALES.brightnessSpeed,
+    ADVANCED_RANGE_SCALES.movementSpeed,
+  ];
+
+  for (const range of ranges) {
+    let previousRaw = -1;
+    for (
+      let display = range.displayMinimum;
+      display <= range.displayMaximum;
+      display += 1
+    ) {
+      const raw = displayValueToRaw(display, range);
+      expect(raw).toBeGreaterThan(previousRaw);
+      expect(rawValueToDisplay(raw, range)).toBe(display);
+      previousRaw = raw;
+    }
+  }
+});
+
+test("advanced percentage scales clamp wire and display values", () => {
+  const movement = ADVANCED_RANGE_SCALES.movementSpeed;
+
+  expect(displayValueToRaw(1, movement)).toBe(1);
+  expect(displayValueToRaw(50, movement)).toBe(126);
+  expect(displayValueToRaw(100, movement)).toBe(255);
+  expect(displayValueToRaw(200, movement)).toBe(255);
+  expect(rawValueToDisplay(0, movement)).toBe(1);
+  expect(rawValueToDisplay(126, movement)).toBe(50);
+  expect(rawValueToDisplay(255, movement)).toBe(100);
+});
+
+test("advanced retention controls preserve the full wire range", () => {
+  const retention = ADVANCED_RANGE_SCALES.retention;
+
+  expect(rawValueToDisplay(0, retention)).toBe(0);
+  expect(displayValueToRaw(0, retention)).toBe(0);
+  expect(displayValueToRaw(128, retention)).toBe(128);
+  expect(displayValueToRaw(255, retention)).toBe(255);
 });
 
 test("applied area left edge resizes without moving the right edge", () => {

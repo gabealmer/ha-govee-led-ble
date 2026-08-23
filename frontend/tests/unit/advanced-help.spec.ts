@@ -10,8 +10,11 @@ test("Advanced help registry covers supported evidence without time units", () =
     "colourSpeed",
     "colourRetention",
     "patterns",
-    "brightnessScope",
+    "brightnessScopeLow",
+    "brightnessScopeHigh",
     "changingSpeed",
+    "brightestRetention",
+    "darkestRetention",
     "inAreaMovement",
     "wholeLayerMovement",
     "pauseBeforeReentry",
@@ -24,11 +27,19 @@ test("Advanced help registry covers supported evidence without time units", () =
   expect(ADVANCED_HELP_CONTENT.fillPattern.text).toContain(
     "inside the applied area",
   );
-  expect(ADVANCED_HELP_CONTENT.brightnessScope.text).toContain(
-    "Scope low and Scope high",
+  expect(ADVANCED_HELP_CONTENT.brightnessScopeLow.text).toContain(
+    "lowest brightness",
+  );
+  expect(ADVANCED_HELP_CONTENT.brightnessScopeHigh.text).toContain(
+    "highest brightness",
   );
   expect(
-    `${ADVANCED_HELP_CONTENT.colourRetention.text} ${ADVANCED_HELP_CONTENT.changingSpeed.text}`,
+    [
+      ADVANCED_HELP_CONTENT.colourRetention.text,
+      ADVANCED_HELP_CONTENT.brightestRetention.text,
+      ADVANCED_HELP_CONTENT.darkestRetention.text,
+      ADVANCED_HELP_CONTENT.changingSpeed.text,
+    ].join(" "),
   ).not.toMatch(/\b(?:milliseconds?|seconds?|minutes?)\b/i);
   expect(
     Object.values(ADVANCED_HELP_CONTENT).some(({ label }) =>

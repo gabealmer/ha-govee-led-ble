@@ -23,13 +23,25 @@ export const ADVANCED_HELP_CONTENT = {
     label: "Brightness patterns information",
     text: "Each pattern defines an ordered brightness change for this layer.",
   },
-  brightnessScope: {
-    label: "Brightness scope information",
-    text: "Scope low and Scope high bound the brightness values used by the pattern.",
+  brightnessScopeLow: {
+    label: "Scope low information",
+    text: "Sets the lowest brightness the pattern can use.",
+  },
+  brightnessScopeHigh: {
+    label: "Scope high information",
+    text: "Sets the highest brightness the pattern can use.",
   },
   changingSpeed: {
     label: "Brightness changing speed information",
     text: "Controls how quickly the brightness pattern changes.",
+  },
+  brightestRetention: {
+    label: "Brightest retention information",
+    text: "Controls how long the pattern remains at its brightest level before continuing.",
+  },
+  darkestRetention: {
+    label: "Darkest retention information",
+    text: "Controls how long the pattern remains at its darkest level before continuing.",
   },
   inAreaMovement: {
     label: "In-area movement information",
