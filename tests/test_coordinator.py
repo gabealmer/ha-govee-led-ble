@@ -15,7 +15,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
     BLEDeviceResolver,
-    BLEDeviceSource,
 )
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, MUSIC_MODE_SLUGS
 from custom_components.ha_govee_led_ble.coordinator import (
@@ -35,6 +34,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_colour_mode_query,
     build_firmware_query,
     build_h617a_scene,
+    build_h6199_blank_screen,
     build_h6199_blank_screen_query,
     build_h6199_relative_brightness_query,
     build_h6199_subordinate_query,
@@ -46,6 +46,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power,
     build_power_query,
     build_segment_query,
+    parse_command,
+    parse_status,
 )
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.light_commands import (
@@ -125,9 +127,8 @@ def _c(**kw):
 def _resolution(
     device=None,
     client_class=BleakClient,
-    source=BLEDeviceSource.HA_CACHE,
 ):
-    return BLEDeviceResolution(MagicMock() if device is None else device, client_class, source)
+    return BLEDeviceResolution(MagicMock() if device is None else device, client_class)
 
 
 async def test_initial_state_and_update(coord, h6199):
@@ -620,10 +621,10 @@ async def test_ensure_connected_retries_cache_resolution_with_wrapped_client(coo
     connect.assert_awaited_once_with(BleakClient, device, coord.address)
 
 
-async def test_portable_cache_resolution_reuses_original_client_after_disconnect(coord):
+async def test_resolution_reuses_selected_client_after_disconnect(coord):
     device = MagicMock()
     original_client_class = type("OriginalClient", (), {})
-    resolution = _resolution(device, original_client_class, BLEDeviceSource.PORTABLE_CACHE)
+    resolution = _resolution(device, original_client_class)
     resolver = MagicMock(spec=BLEDeviceResolver)
     resolver.async_resolve = AsyncMock(return_value=resolution)
     coord._device_resolver = resolver
@@ -1824,3 +1825,29 @@ def test_white_balance_fills_the_untouched_axis_with_the_apps_own_neutral(coord)
     coord.white_balance_blue = 5
     assert coord.white_balance == (21, 5)
     assert build_h6199_white_balance(*coord.white_balance) == build_h6199_white_balance(21, 5)
+
+
+def test_h6199_blank_screen_builder_clamps_durations() -> None:
+    assert build_h6199_blank_screen(
+        True,
+        detection=2,
+        low_brightness_duration_seconds=-1,
+        same_tone_duration_seconds=0x10000,
+    ) == bytes.fromhex("33a90a0601020000ffff00000000000000000095")
+
+
+def test_generated_adapter_rejects_structurally_invalid_frames() -> None:
+    assert parse_command(_packet(0x33, 0x04, [101])) is None
+    assert parse_status(bytes.fromhex("aaa506731f646408646464fe6464640000000093")) is None
+
+
+@pytest.mark.parametrize(("model", "maximum"), [("H617A", 5), ("H6199", 4)])
+def test_segment_query_groups_are_model_bounded(model: str, maximum: int) -> None:
+    assert build_segment_query(maximum, model)[2] == maximum
+    with pytest.raises(ValueError, match=f"1 to {maximum}"):
+        build_segment_query(maximum + 1, model)
+
+
+def test_h6199_subordinate_queries_exclude_identity_domain() -> None:
+    with pytest.raises(ValueError, match="0x20 or 0x21"):
+        build_h6199_subordinate_query(0x14)

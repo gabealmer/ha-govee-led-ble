@@ -109,15 +109,6 @@ export const studioTokenStyles = css`
     --studio-switch-thumb-size: 18px;
     --studio-switch-thumb-inset: 3px;
     --studio-compact-switch-track-width: 48px;
-    --studio-labelled-switch-zone-gap: var(--studio-spacing-xxs);
-    --studio-labelled-switch-label-width: 30px;
-    --studio-labelled-switch-track-width: calc(
-      var(--studio-switch-thumb-inset) + var(--studio-switch-thumb-size) +
-        var(--studio-labelled-switch-zone-gap) +
-        var(--studio-labelled-switch-label-width) +
-        var(--studio-labelled-switch-zone-gap) +
-        var(--studio-switch-thumb-size) + var(--studio-switch-thumb-inset)
-    );
     --studio-switch-track-off: color-mix(
       in srgb,
       var(--studio-muted) 42%,

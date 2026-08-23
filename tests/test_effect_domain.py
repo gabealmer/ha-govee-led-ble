@@ -14,7 +14,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     H617A_WORKSHOP_SCENE_TYPE,
     H6199_WORKSHOP_APPLY_CODE,
-    WORKSHOP_TEMPLATES,
+    WORKSHOP_PROTOCOL_FIXTURES,
 )
 from custom_components.ha_govee_led_ble.effect_compiler import (
     ActivationMode,
@@ -218,8 +218,8 @@ def test_saved_effect_profile_content_round_trips(content) -> None:
 @pytest.mark.parametrize(
     "content",
     [
-        WORKSHOP_TEMPLATES[0].content("H617A"),
-        WORKSHOP_TEMPLATES[0].content("H6199"),
+        WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"),
+        WORKSHOP_PROTOCOL_FIXTURES[0].content("H6199"),
     ],
 )
 def test_workshop_content_round_trips(content) -> None:
@@ -572,7 +572,7 @@ def test_music_profile_compiler_applies_parameter_defaults_and_select_values() -
     assert fountain.parameters == {"direction": "two_way"}
 
 
-@pytest.mark.parametrize("template", WORKSHOP_TEMPLATES, ids=lambda template: template.id)
+@pytest.mark.parametrize("template", WORKSHOP_PROTOCOL_FIXTURES, ids=lambda template: template.id)
 @pytest.mark.parametrize("model", ["H617A", "H6199"])
 def test_workshop_compiler_reproduces_fixture_body_with_evidenced_model_activation(model: str, template) -> None:
     content = template.content(model)
@@ -601,7 +601,7 @@ def test_workshop_compiler_reproduces_fixture_body_with_evidenced_model_activati
 
 @pytest.mark.parametrize("model", ["H617A", "H6199"])
 def test_workshop_edit_preserves_reserved_layer_data(model: str) -> None:
-    content = WORKSHOP_TEMPLATES[0].content(model)
+    content = WORKSHOP_PROTOCOL_FIXTURES[0].content(model)
     first = content.effect.layers[0]
     edited = replace(
         content,
@@ -632,7 +632,7 @@ def test_workshop_edit_preserves_reserved_layer_data(model: str) -> None:
 @pytest.mark.parametrize(
     ("item", "model"),
     [
-        (LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content("H617A")), "H617A"),
+        (LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A")), "H617A"),
     ],
 )
 def test_upload_only_compilers_reject_invented_activation(item: LibraryItem, model: str) -> None:
@@ -641,7 +641,7 @@ def test_upload_only_compilers_reject_invented_activation(item: LibraryItem, mod
 
 
 def test_model_mismatch_fails_before_a_packet_can_be_compiled() -> None:
-    workshop = LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content("H617A"))
+    workshop = LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"))
 
     with pytest.raises(ValueError, match="targets H617A"):
         compile_effect(workshop, "H6199")

@@ -39,6 +39,14 @@ export class EffectStudioApi {
     return decodeDevices(resultField(result, "devices"));
   }
 
+  public async device(configEntryId: string): Promise<DeviceCapabilities> {
+    const result = await this.call("device", {
+      config_entry_id: configEntryId,
+    });
+    const devices = decodeDevices([resultField(result, "device")]);
+    return devices[0];
+  }
+
   public async customCatalogue(): Promise<CustomEffectCatalogue> {
     const result = await this.call("custom/catalogue");
     return decodeCustomCatalogue(resultField(result, "catalogue"));

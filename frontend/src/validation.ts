@@ -276,6 +276,14 @@ function decodeObservedEffectState(value: unknown, name: string) {
       state.effect === null
         ? null
         : boundedString(state.effect, `${name}.effect`, MAX_IDENTIFIER_LENGTH),
+    native_mode:
+      state.native_mode === null
+        ? null
+        : boundedString(
+            state.native_mode,
+            `${name}.native_mode`,
+            MAX_IDENTIFIER_LENGTH,
+          ),
     matched_operation_id:
       state.matched_operation_id === null
         ? null

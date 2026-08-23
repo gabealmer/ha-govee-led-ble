@@ -41,9 +41,7 @@ def categories(path: str) -> set[str]:
     if path.startswith(FRONTEND_TESTS):
         result.add("frontend_tests")
     if (path.startswith("tools/generate_frontend_") and suffix == ".py") or (
-        path.startswith(("tools/ble/", "tools/harness/"))
-        and not path.startswith("tools/ble/kaitai/")
-        and suffix in TOOL_SOURCE_SUFFIXES
+        path.startswith("tools/ble/") and not path.startswith("tools/ble/kaitai/") and suffix in TOOL_SOURCE_SUFFIXES
     ):
         result.add("non_kaitai_tools")
     if path == "Makefile" or path.startswith(("scripts/", ".github/workflows/")):

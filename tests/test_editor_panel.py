@@ -42,6 +42,7 @@ from custom_components.ha_govee_led_ble.effect_domain import EFFECT_SCHEMA_VERSI
 from custom_components.ha_govee_led_ble.effect_setup import get_effect_backend
 from custom_components.ha_govee_led_ble.effect_storage import EffectStorageError
 from custom_components.ha_govee_led_ble.effect_websocket import (
+    WS_DEVICE,
     WS_DEVICES,
     WS_INFO,
     WS_LIBRARY_LIST,
@@ -222,6 +223,13 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         devices = await client.receive_json()
         await client.send_json_auto_id(
             {
+                "type": WS_DEVICE,
+                "config_entry_id": entry.entry_id,
+            }
+        )
+        selected_device = await client.receive_json()
+        await client.send_json_auto_id(
+            {
                 "type": WS_SCENE_CATALOGUE_LIST,
                 "config_entry_id": entry.entry_id,
             }
@@ -232,6 +240,10 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
     assert info["result"]["api_version"] == EDITOR_API_VERSION
     assert library["result"] == {"items": []}
     device = devices["result"]["devices"][0]
+    refreshed_device = selected_device["result"]["device"]
+    assert refreshed_device["config_entry_id"] == device["config_entry_id"]
+    assert refreshed_device["light_entity_id"] == device["light_entity_id"]
+    assert refreshed_device["active_state"]["mode"] == device["active_state"]["mode"]
     assert device["config_entry_id"] == "isolated-entry"
     assert device["light_entity_id"] == light.entity_id
     assert device["model"] == "H617A"

@@ -1,5 +1,4 @@
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
@@ -10,20 +9,6 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
-
-_IDENTITY_EXAMPLE = Path(__file__).parents[1] / "tools" / "harness" / "devices.local.env.example"
-
-
-@pytest.fixture(autouse=True)
-def harness_identity(monkeypatch):
-    """Point the harness at the committed example, so no test needs a real rig identity.
-
-    devices.env refuses to load without an identity file, so without this every test that
-    shells into the harness passes on a machine that happens to have a devices.local.env and
-    fails on a fresh clone and in CI. Using the shipped example rather than a fabricated temp
-    file also means the example cannot rot: if it stops being loadable, these tests say so.
-    """
-    monkeypatch.setenv("HARNESS_IDENTITY_FILE", str(_IDENTITY_EXAMPLE))
 
 
 @pytest.fixture(autouse=True)

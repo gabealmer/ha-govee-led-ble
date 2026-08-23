@@ -33,7 +33,7 @@ from .effect_persistence_validation import required_persisted_string as _require
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 DEVICE_CACHE_STORE_VERSION: Final = 2
-DEVICE_CACHE_STORE_MINOR_VERSION: Final = 0
+DEVICE_CACHE_STORE_MINOR_VERSION: Final = 1
 DEVICE_CACHE_STORE_KEY: Final = f"{DOMAIN}.effect_device_cache"
 
 _LOGGER = logging.getLogger(__name__)
@@ -151,6 +151,7 @@ class ObservedDeviceState:
     confidence: ObservationConfidence = ObservationConfidence.UNKNOWN
     diy_code: int | None = None
     effect: str | None = None
+    native_mode: str | None = None
     matched_operation_id: UUID | None = None
     active_effect: ActiveEffectHint | None = None
 
@@ -181,6 +182,13 @@ class ObservedDeviceState:
                 maximum=MAX_IDENTIFIER_LENGTH,
                 error_type=EffectStorageError,
             )
+        if self.native_mode is not None:
+            validate_bounded_string(
+                self.native_mode,
+                "observed native mode",
+                maximum=MAX_IDENTIFIER_LENGTH,
+                error_type=EffectStorageError,
+            )
         if self.active_effect is not None and self.active_effect.confidence is not self.confidence:
             raise EffectStorageError("active-effect confidence must match observation confidence")
 
@@ -192,6 +200,7 @@ class ObservedDeviceState:
             "confidence": self.confidence.value,
             "diy_code": self.diy_code,
             "effect": self.effect,
+            "native_mode": self.native_mode,
             "matched_operation_id": (str(self.matched_operation_id) if self.matched_operation_id is not None else None),
             "active_effect": self.active_effect.to_dict() if self.active_effect is not None else None,
         }
@@ -211,6 +220,7 @@ class ObservedDeviceState:
             confidence=confidence,
             diy_code=_optional_int(raw, "diy_code"),
             effect=_optional_str(raw, "effect"),
+            native_mode=_optional_str(raw, "native_mode"),
             matched_operation_id=operation_id,
             active_effect=(
                 None
@@ -236,6 +246,7 @@ class EffectDeviceCache:
             replace(
                 state,
                 confidence=ObservationConfidence.UNKNOWN,
+                native_mode=None,
                 matched_operation_id=None,
                 active_effect=(
                     None

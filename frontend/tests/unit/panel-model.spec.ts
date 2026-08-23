@@ -490,7 +490,7 @@ test("explicit New and layered scene Reset restore content without changing name
   expect(model.content).toEqual(scene);
 });
 
-test("category transitions own their editor and Reactive opens blank", async () => {
+test("category transitions stay blank without a matching active item", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   const selected = device("entry-a", "H6199");
@@ -539,11 +539,8 @@ test("category transitions own their editor and Reactive opens blank", async () 
   expect(templatePreview).not.toHaveBeenCalled();
 
   await controller.selectSection("custom", "single-layer");
-  expect(model.name).toBe("Fade");
-  expect(model.editorSource).toMatchObject({
-    kind: "catalogue",
-    owner: { section: "custom", category: "single-layer" },
-  });
+  expect(model.name).toBe("");
+  expect(model.editorSource.kind).toBe("none");
   expect(templatePreview).not.toHaveBeenCalled();
 
   await controller.selectSection("custom", "music");
@@ -557,13 +554,265 @@ test("category transitions own their editor and Reactive opens blank", async () 
   expect(model.editorActions.cancel).toBe(false);
 
   await controller.selectSection("video");
-  expect(model.name).toBe("Movie");
+  expect(model.name).toBe("");
   await controller.selectSection("custom", "music");
   expect(model.editorSource.kind).toBe("none");
   await controller.selectSection("custom", "single-layer");
-  expect(model.name).toBe("Fade");
+  expect(model.name).toBe("");
   await controller.selectSection("video");
-  expect(model.name).toBe("Movie");
+  expect(model.name).toBe("");
+});
+
+test("automatic restoration selects only a matching fresh native category", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const selected = device("entry-a", "H6199");
+  selected.profiles = { music: "supported", video: "supported" };
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.userState = {
+    owner_id: "user-a",
+    recent_colours: [],
+    selected_config_entry_id: selected.config_entry_id,
+    navigation: { section: "scenes" },
+  };
+  installH6199Catalogue(model);
+  const preview = new PanelPreviewController(model);
+  const templatePreview = vi.spyOn(preview, "scheduleTemplateSelection");
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  let refreshed = structuredClone(selected);
+  refreshed.active_state = {
+    config_entry_id: selected.config_entry_id,
+    mode: "scene",
+    observed_at: "2026-08-23T00:00:00Z",
+    confidence: "unknown",
+    diy_code: null,
+    effect: "candlelight",
+    native_mode: "candlelight",
+    matched_operation_id: null,
+    active_effect: null,
+  };
+  const applySavedEffect = vi.fn();
+  controller.api = {
+    device: vi.fn().mockImplementation(async () => structuredClone(refreshed)),
+    updateUserState: vi.fn().mockResolvedValue(model.userState),
+    applySavedEffect,
+  } as unknown as EffectStudioApi;
+
+  await controller.openInitialContext();
+  expect(model.sceneInitialSelection).toEqual({
+    kind: "native",
+    effect: "candlelight",
+  });
+
+  await controller.selectSection("video");
+  expect(model.editorSource.kind).toBe("none");
+  expect(model.name).toBe("");
+
+  refreshed.active_state = {
+    ...refreshed.active_state!,
+    mode: "video",
+    effect: null,
+    native_mode: "movie",
+  };
+  await controller.selectSection("video");
+  expect(model.templateSelection).toBe("template:video:movie");
+
+  refreshed.active_state = {
+    ...refreshed.active_state!,
+    mode: "music",
+    native_mode: "energetic",
+  };
+  await controller.selectSection("custom", "music");
+  expect(model.templateSelection).toBe("template:music:energetic");
+  expect(templatePreview).not.toHaveBeenCalled();
+  expect(applySavedEffect).not.toHaveBeenCalled();
+});
+
+test("a delayed device refresh cannot replace later navigation", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const selected = device("entry-a", "H6199");
+  selected.profiles = { music: "supported", video: "supported" };
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  installH6199Catalogue(model);
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  let resolveVideo!: (device: DeviceCapabilities) => void;
+  const delayedVideo = new Promise<DeviceCapabilities>((resolve) => {
+    resolveVideo = resolve;
+  });
+  const video = structuredClone(selected);
+  video.active_state = {
+    config_entry_id: selected.config_entry_id,
+    mode: "video",
+    observed_at: "2026-08-23T00:00:00Z",
+    confidence: "unknown",
+    diy_code: null,
+    effect: null,
+    native_mode: "movie",
+    matched_operation_id: null,
+    active_effect: null,
+  };
+  controller.api = {
+    device: vi.fn().mockReturnValue(delayedVideo),
+    updateUserState: vi.fn().mockResolvedValue(undefined),
+  } as unknown as EffectStudioApi;
+
+  const first = controller.selectSection("video");
+  const second = controller.selectSection("custom", "music");
+  resolveVideo(video);
+  await Promise.all([first, second]);
+
+  expect(model.section).toBe("custom");
+  expect(model.customEffectCategory).toBe("music");
+  expect(model.editorSource.kind).toBe("none");
+});
+
+test("automatic saved restoration reads without applying, previewing, or saving", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = true;
+  const selected = device("entry-a", "H617A");
+  const saved = item(painted());
+  const summary = {
+    id: saved.id,
+    version: saved.version,
+    updated_at: saved.updated_at,
+    name: saved.name,
+    kind: saved.content.kind,
+    content_hash: saved.content_hash,
+    origin: saved.origin,
+  };
+  selected.active_state = {
+    config_entry_id: selected.config_entry_id,
+    mode: "custom",
+    observed_at: "2026-08-23T00:00:00Z",
+    confidence: "activation_match",
+    diy_code: 800,
+    effect: null,
+    native_mode: null,
+    matched_operation_id: "operation-a",
+    active_effect: {
+      source_kind: "saved_effect",
+      selector_label: saved.name,
+      content_hash: saved.content_hash,
+      origin: saved.origin,
+      observable_signature: "custom:800",
+      confidence: "activation_match",
+      item_id: saved.id,
+      item_version: saved.version,
+    },
+  };
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  installH6199Catalogue(model);
+  model.customCatalogue!.models.H617A.painted_effects = [
+    { id: "cycle", label: "Cycle" },
+  ];
+  model.customCatalogue!.models.H617A.apply.painted = "supported";
+  model.library = { items: [summary] };
+  model.userState = {
+    owner_id: "user-a",
+    recent_colours: [],
+    selected_config_entry_id: selected.config_entry_id,
+    navigation: {
+      section: "custom",
+      custom_category: "single-layer",
+      auto_save: true,
+    },
+  };
+  const preview = new PanelPreviewController(model);
+  const templatePreview = vi.spyOn(preview, "scheduleTemplateSelection");
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const contentCommitted = vi.fn();
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  const applySavedEffect = vi.fn();
+  const updateItem = vi.fn();
+  const createItem = vi.fn();
+  controller.api = {
+    device: vi.fn().mockResolvedValue(selected),
+    item: vi.fn().mockResolvedValue(saved),
+    applySavedEffect,
+    updateItem,
+    createItem,
+  } as unknown as EffectStudioApi;
+
+  await controller.openInitialContext();
+
+  expect(model.currentItem?.id).toBe(saved.id);
+  expect(model.editorSource.kind).toBe("saved");
+  expect(applySavedEffect).not.toHaveBeenCalled();
+  expect(templatePreview).not.toHaveBeenCalled();
+  expect(contentCommitted).not.toHaveBeenCalled();
+  expect(updateItem).not.toHaveBeenCalled();
+  expect(createItem).not.toHaveBeenCalled();
 });
 
 test("initial navigation preserves unavailable deep links without a feedback banner", async () => {
@@ -722,6 +971,11 @@ test("saved item selection applies identity only while Live is enabled", async (
 
   model.liveApplyEnabled = false;
   await expect(controller.selectItem(saved.id)).resolves.toBe(true);
+  expect(model.currentItem?.id).toBe(saved.id);
+  expect(model.editorSource).toMatchObject({
+    kind: "saved",
+    itemId: saved.id,
+  });
   expect(applySavedEffect).not.toHaveBeenCalled();
 
   model.liveApplyEnabled = true;

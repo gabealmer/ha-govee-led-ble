@@ -814,6 +814,7 @@ class EffectDeploymentEngine:
             confidence=confidence,
             diy_code=diy_code,
             effect=effect,
+            native_mode=_native_mode_for_state(coordinator, mode=mode) if refreshed else None,
             matched_operation_id=(
                 matched_record.operation_id
                 if matched_record is not None
@@ -830,6 +831,23 @@ class EffectDeploymentEngine:
         if self._device_cache is not None:
             self._device_cache.set(state)
         return state
+
+
+def _native_mode_for_state(
+    coordinator: GoveeBLECoordinator,
+    *,
+    mode: str,
+) -> str | None:
+    if mode == "scene":
+        effect = getattr(coordinator, "effect", None)
+        return effect if isinstance(effect, str) and effect else None
+    if mode == "music":
+        music_mode = getattr(coordinator, "music_mode", None)
+        return music_mode if isinstance(music_mode, str) and music_mode != "off" else None
+    if mode == "video":
+        video_mode = getattr(coordinator, "video_mode", None)
+        return video_mode if isinstance(video_mode, str) and video_mode != "off" else None
+    return None
 
 
 def observable_signature_for_state(

@@ -34,7 +34,7 @@ async def async_establish_ble_connection(
     sleep: Sleep = _SLEEP,
 ) -> BleakClient:
     """Resolve and establish a BLE connection using production retry semantics."""
-    active_resolver = BLEDeviceResolver.from_environment() if resolver is None else resolver
+    active_resolver = BLEDeviceResolver() if resolver is None else resolver
     resolution = None
     for attempt in range(DEVICE_DISCOVERY_ATTEMPTS):
         resolution = await active_resolver.async_resolve(hass, address)

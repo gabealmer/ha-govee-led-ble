@@ -13,7 +13,7 @@ from homeassistant.components.websocket_api.decorators import (
     require_admin,
     websocket_command,
 )
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
@@ -74,6 +74,7 @@ from .effect_websocket_schema import (
     WS_APPLY_SNAPSHOT,
     WS_CUSTOM_CATALOGUE,
     WS_DEPLOYMENT_SUBSCRIBE,
+    WS_DEVICE,
     WS_DEVICES,
     WS_INFO,
     WS_LIBRARY_CREATE,
@@ -124,21 +125,7 @@ async def ws_editor_devices(
     for entry in hass.config_entries.async_entries(DOMAIN):
         if entry.state is not ConfigEntryState.LOADED:
             continue
-        coordinator = entry.runtime_data
-        observed = await backend.engine.async_reconcile(
-            coordinator,
-            config_entry_id=entry.entry_id,
-            observed_at=dt_util.utcnow().isoformat(),
-        )
-        device = device_effect_capabilities(
-            entry.entry_id,
-            coordinator.model,
-            entry.title,
-            coordinator.profile.segment_count,
-            light_entity_id=_light_entity_id(hass, entry.entry_id),
-        ).to_dict()
-        device["active_state"] = observed.to_public_dict()
-        devices.append(device)
+        devices.append(await _async_device_payload(hass, backend, entry))
     if len(devices) > MAX_EDITOR_DEVICES:
         connection.send_error(
             msg["id"],
@@ -147,6 +134,50 @@ async def ws_editor_devices(
         )
         return
     connection.send_result(msg["id"], {"devices": devices})
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_DEVICE,
+        vol.Required("config_entry_id"): IDENTIFIER,
+    }
+)
+@async_response
+async def ws_editor_device(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
+    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
+        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        return
+    connection.send_result(
+        msg["id"],
+        {"device": await _async_device_payload(hass, _backend(hass), entry)},
+    )
+
+
+async def _async_device_payload(
+    hass: HomeAssistant,
+    backend: EffectBackend,
+    entry: ConfigEntry[Any],
+) -> dict[str, Any]:
+    coordinator = entry.runtime_data
+    observed = await backend.engine.async_reconcile(
+        coordinator,
+        config_entry_id=entry.entry_id,
+        observed_at=dt_util.utcnow().isoformat(),
+    )
+    device = device_effect_capabilities(
+        entry.entry_id,
+        coordinator.model,
+        entry.title,
+        coordinator.profile.segment_count,
+        light_entity_id=_light_entity_id(hass, entry.entry_id),
+    ).to_dict()
+    device["active_state"] = observed.to_public_dict()
+    return device
 
 
 def _light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str | None:
@@ -964,6 +995,7 @@ def async_register_effect_websocket(
     hass.data.setdefault(DOMAIN, {})[BACKEND_DATA_KEY] = backend
     websocket_api.async_register_command(hass, ws_editor_info)
     websocket_api.async_register_command(hass, ws_editor_devices)
+    websocket_api.async_register_command(hass, ws_editor_device)
     websocket_api.async_register_command(hass, ws_custom_catalogue)
     websocket_api.async_register_command(hass, ws_scene_catalogue_list)
     websocket_api.async_register_command(hass, ws_scene_catalogue_get)

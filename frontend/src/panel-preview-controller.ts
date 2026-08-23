@@ -9,6 +9,25 @@ import { EffectStudioPreviewSession, scenePreviewRequest, snapshotPreviewRequest
 import type { ScenePreviewRequest } from "./scene-browser";
 import { isEditableEffectContent } from "./effect-editor-model";
 import { errorCode, errorMessage } from "./ui-utils";
+import type { PreviewStatus } from "./types";
+
+export function previewStatusMessage(
+  status: PreviewStatus | undefined,
+): string | undefined {
+  if (status === undefined || status.phase !== "failed") {
+    return undefined;
+  }
+  switch (status.error_code) {
+    case "transport_failed":
+      return "Live apply could not reach the light. Tap Live to try again.";
+    case "compilation_failed":
+      return "Live apply could not prepare this effect.";
+    case "storage_failed":
+      return "The light changed, but its scene default could not be saved.";
+    default:
+      return "The latest Live change did not complete.";
+  }
+}
 
 export class PanelPreviewController {
   private session?: EffectStudioPreviewSession;
@@ -53,6 +72,7 @@ export class PanelPreviewController {
         }
         this.model.update((model) => {
           model.previewStatus = status;
+          model.previewNotice = previewStatusMessage(status);
         });
       },
       subscriptionFailed,
@@ -74,10 +94,12 @@ export class PanelPreviewController {
     } else {
       this.scheduler.transition();
     }
+    this.session?.transition();
     this.progress.clear();
     this.model.patch({
       editorTransitionEpoch,
       previewStatus: undefined,
+      previewNotice: undefined,
       previewProgressVisible: false,
     });
     return editorTransitionEpoch;
@@ -116,6 +138,7 @@ export class PanelPreviewController {
       this.model.update((model) => {
         model.liveApplyEnabled = false;
         model.previewStatus = undefined;
+        model.previewNotice = undefined;
         model.previewProgressVisible = false;
       });
       this.progress.clear();
@@ -151,6 +174,7 @@ export class PanelPreviewController {
     this.session = undefined;
     this.model.update((model) => {
       model.previewStatus = undefined;
+      model.previewNotice = undefined;
       model.previewProgressVisible = false;
     });
   }

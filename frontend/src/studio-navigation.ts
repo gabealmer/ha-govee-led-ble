@@ -2,6 +2,7 @@ import type {
   DeviceCapabilities,
   EffectUserState,
   LibrarySummary,
+  ModelEffectCatalogue,
 } from "./types";
 import type { CustomEffectCategory } from "./effect-editor-model";
 
@@ -16,6 +17,13 @@ export interface StudioNavigationItem {
 export type ActiveStudioContext =
   | { kind: "saved"; item: LibrarySummary }
   | { kind: "native-scene"; effect: string }
+  | {
+      kind: "native-profile";
+      section: "video" | "custom";
+      category?: "music";
+      mode: string;
+      label: string;
+    }
   | { kind: "root" };
 
 export function deviceIdFromEditorPath(pathname: string): string | undefined {
@@ -52,13 +60,6 @@ export function studioNavigationItems(
       label,
     })),
   ];
-}
-
-export function shouldOpenVideoSelection(
-  section: StudioSection,
-  contentKind: string,
-): boolean {
-  return section === "video" && contentKind !== "video_profile";
 }
 
 export function initialDeviceId(
@@ -103,6 +104,7 @@ export function activeStudioContext(
   device: DeviceCapabilities | undefined,
   items: readonly LibrarySummary[],
   itemAvailable: (item: LibrarySummary) => boolean,
+  catalogue: ModelEffectCatalogue | undefined,
 ): ActiveStudioContext {
   const active = device?.active_state;
   const hint = active?.active_effect;
@@ -115,6 +117,7 @@ export function activeStudioContext(
       const item = items.find(
         (candidate) =>
           candidate.id === hint.item_id &&
+          candidate.version === hint.item_version &&
           candidate.content_hash === hint.content_hash &&
           itemAvailable(candidate),
       );
@@ -124,8 +127,42 @@ export function activeStudioContext(
     }
     return { kind: "root" };
   }
-  if (active?.mode === "scene" && active.effect) {
-    return { kind: "native-scene", effect: active.effect };
+  const nativeMode = active?.native_mode;
+  if (!nativeMode) {
+    return { kind: "root" };
+  }
+  if (
+    active.mode === "scene" &&
+    active.effect === nativeMode
+  ) {
+    return { kind: "native-scene", effect: nativeMode };
+  }
+  if (active.mode === "video") {
+    const mode = catalogue?.video_modes.find(
+      (candidate) => candidate.id === nativeMode,
+    );
+    return mode
+      ? {
+          kind: "native-profile",
+          section: "video",
+          mode: mode.id,
+          label: mode.label,
+        }
+      : { kind: "root" };
+  }
+  if (active.mode === "music") {
+    const mode = catalogue?.music_modes.find(
+      (candidate) => candidate.id === nativeMode,
+    );
+    return mode
+      ? {
+          kind: "native-profile",
+          section: "custom",
+          category: "music",
+          mode: mode.id,
+          label: mode.label,
+        }
+      : { kind: "root" };
   }
   return { kind: "root" };
 }

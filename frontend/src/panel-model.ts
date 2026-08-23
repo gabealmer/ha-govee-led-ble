@@ -57,6 +57,7 @@ export class PanelModel {
   public autoSaveEnabled = false;
   public autoSaveFailed = false;
   public previewStatus?: PreviewStatus;
+  public previewNotice?: string;
   public previewProgressVisible = false;
   public savedBaseline?: string;
   public resetBaseline?: EditableEffectContent;

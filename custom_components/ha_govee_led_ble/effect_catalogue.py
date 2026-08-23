@@ -444,7 +444,7 @@ H6199_VIDEO_MODES: Final = (
     NativeModeOption("game", "Game"),
 )
 
-WORKSHOP_TEMPLATES: Final = (
+WORKSHOP_PROTOCOL_FIXTURES: Final = (
     WorkshopTemplate(
         "movement-baseline",
         "Movement",
@@ -504,7 +504,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
         effects=H617A_TYPE04_FAMILIES,
         music_modes=H617A_NATIVE_MUSIC_MODES,
         video_modes=(),
-        workshop_templates=WORKSHOP_TEMPLATES,
+        workshop_templates=(),
         supports=CatalogueSupport(
             multi=workflow_capability_state("H617A", CapabilityWorkflow.MULTI),
             advanced=workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED),
@@ -524,7 +524,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
         effects=H6199_PALETTE_DIY_FAMILIES,
         music_modes=H6199_NATIVE_MUSIC_MODES,
         video_modes=H6199_VIDEO_MODES,
-        workshop_templates=WORKSHOP_TEMPLATES,
+        workshop_templates=(),
         supports=CatalogueSupport(
             multi=workflow_capability_state("H6199", CapabilityWorkflow.MULTI),
             advanced=workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED),

@@ -124,7 +124,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.address, self.model, self.profile = address, model, profile
         self.configuration_url = configuration_url
         self.effect_families = default_effect_families(model) if effect_families is None else effect_families
-        self._device_resolver = BLEDeviceResolver.from_environment() if device_resolver is None else device_resolver
+        self._device_resolver = BLEDeviceResolver() if device_resolver is None else device_resolver
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
         self._control_lock = asyncio.Lock()

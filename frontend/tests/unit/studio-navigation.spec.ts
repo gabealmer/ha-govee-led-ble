@@ -6,12 +6,12 @@ import {
   editorDevicePath,
   initialDeviceId,
   rememberedStudioSection,
-  shouldOpenVideoSelection,
   studioNavigationItems,
 } from "../../src/studio-navigation";
 import type {
   DeviceCapabilities,
   LibrarySummary,
+  ModelEffectCatalogue,
 } from "../../src/types";
 
 const device = (
@@ -38,6 +38,35 @@ const device = (
   readback: "state",
   active_state: null,
 });
+
+const catalogue: ModelEffectCatalogue = {
+  sku: "H617A",
+  painted_effects: [],
+  effects: [],
+  music_modes: [{ id: "separation", label: "Separation" }],
+  video_modes: [{ id: "movie", label: "Movie" }],
+  workshop_templates: [],
+  workflows: [],
+  supports: {
+    multi: "unsupported",
+    advanced: "unsupported",
+    workshop: "unsupported",
+  },
+  limits: {
+    palette_min: 1,
+    palette_max: 8,
+    multi_max: 5,
+    music_sensitivity_min: 0,
+    music_sensitivity_max: 100,
+  },
+  apply: {
+    painted: "supported",
+    single: "supported",
+    multi: "supported",
+    palette_diy: "unsupported",
+    workshop: "unsupported",
+  },
+};
 
 test("remembered navigation restores only an available top-level section", () => {
   expect(
@@ -82,13 +111,7 @@ test("primary navigation flattens custom categories", () => {
   ]);
 });
 
-test("an empty active Video section opens its first profile", () => {
-  expect(shouldOpenVideoSelection("video", "h617a_painted")).toBe(true);
-  expect(shouldOpenVideoSelection("video", "video_profile")).toBe(false);
-  expect(shouldOpenVideoSelection("scenes", "h617a_painted")).toBe(false);
-});
-
-test("active context opens only exact current saved content or native scenes", () => {
+test("active context requires exact available saved identity", () => {
   const saved: LibrarySummary = {
     id: "effect-a",
     version: 1,
@@ -106,6 +129,7 @@ test("active context opens only exact current saved content or native scenes", (
     confidence: "activation_match",
     diy_code: 800,
     effect: null,
+    native_mode: null,
     matched_operation_id: "operation-a",
     active_effect: {
       source_kind: "saved_effect",
@@ -119,25 +143,82 @@ test("active context opens only exact current saved content or native scenes", (
     },
   };
 
-  expect(activeStudioContext(active, [saved], () => true)).toEqual({
+  expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
     kind: "saved",
     item: saved,
   });
-  active.active_state.mode = "scene";
-  active.active_state.effect = "rainbow";
-  active.active_state.active_effect!.content_hash = "b".repeat(64);
-  expect(activeStudioContext(active, [saved], () => true)).toEqual({
+  active.active_state!.active_effect!.item_version = saved.version + 1;
+  expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
     kind: "root",
   });
+  active.active_state!.active_effect!.item_version = saved.version;
+  active.active_state!.active_effect!.content_hash = "b".repeat(64);
+  expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
+    kind: "root",
+  });
+  active.active_state!.active_effect!.content_hash = saved.content_hash;
+  active.active_state!.active_effect!.confidence = "unknown";
+  active.active_state!.confidence = "unknown";
+  expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
+    kind: "root",
+  });
+  active.active_state!.active_effect!.confidence = "activation_match";
+  active.active_state!.confidence = "activation_match";
+  expect(activeStudioContext(active, [saved], () => false, catalogue)).toEqual({
+    kind: "root",
+  });
+  active.active_state!.active_effect = {
+    ...active.active_state!.active_effect!,
+    source_kind: "snapshot",
+    item_id: null,
+    item_version: null,
+  };
+  active.active_state!.mode = "scene";
+  active.active_state!.effect = "rainbow";
+  active.active_state!.native_mode = "rainbow";
+  expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
+    kind: "root",
+  });
+});
+
+test("fresh native identities are catalogue validated without confidence gating", () => {
+  const active = device("entry-a", "supported");
   active.active_state = {
-    ...active.active_state,
+    config_entry_id: active.config_entry_id,
     mode: "scene",
+    observed_at: "2026-08-17T00:00:00Z",
+    confidence: "unknown",
+    diy_code: null,
     effect: "rainbow",
+    native_mode: "rainbow",
+    matched_operation_id: null,
     active_effect: null,
   };
-  expect(activeStudioContext(active, [saved], () => true)).toEqual({
+  expect(activeStudioContext(active, [], () => true, catalogue)).toEqual({
     kind: "native-scene",
     effect: "rainbow",
+  });
+  active.active_state.mode = "video";
+  active.active_state.effect = null;
+  active.active_state.native_mode = "movie";
+  expect(activeStudioContext(active, [], () => true, catalogue)).toEqual({
+    kind: "native-profile",
+    section: "video",
+    mode: "movie",
+    label: "Movie",
+  });
+  active.active_state.mode = "music";
+  active.active_state.native_mode = "separation";
+  expect(activeStudioContext(active, [], () => true, catalogue)).toEqual({
+    kind: "native-profile",
+    section: "custom",
+    category: "music",
+    mode: "separation",
+    label: "Separation",
+  });
+  active.active_state.native_mode = "shared-diy-code";
+  expect(activeStudioContext(active, [], () => true, catalogue)).toEqual({
+    kind: "root",
   });
 });
 

@@ -18,7 +18,6 @@ def test_source_categories_are_stable() -> None:
     assert categories("frontend/tests/unit/panel.spec.ts") == {"frontend_tests"}
     assert categories("tests/test_light.py") == {"python_tests"}
     assert categories("tools/generate_frontend_contract_fixtures.py") == {"non_kaitai_tools"}
-    assert categories("tools/generate_frontend_harness_data.py") == {"non_kaitai_tools"}
     assert categories("tools/ble/kaitai/status_reply.ksy") == {"ksy"}
     assert categories("scripts/package.py") == {"build_scripts_workflows"}
     assert categories("README.md") == {"documentation"}

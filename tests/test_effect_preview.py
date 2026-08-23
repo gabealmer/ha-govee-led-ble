@@ -17,7 +17,7 @@ from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENE
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
-    WORKSHOP_TEMPLATES,
+    WORKSHOP_PROTOCOL_FIXTURES,
 )
 from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
@@ -813,7 +813,7 @@ async def test_workshop_preview_verifies_evidenced_selector(
     owner = object()
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
-    item = LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content("H617A"))
+    item = LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"))
 
     await manager.async_queue_snapshot(
         session_id=session_id,

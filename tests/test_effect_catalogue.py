@@ -14,7 +14,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H6199_VIDEO_MODES,
     LEGACY_CATALOGUE_SKU,
     MODEL_EFFECT_CATALOGUES,
-    WORKSHOP_TEMPLATES,
+    WORKSHOP_PROTOCOL_FIXTURES,
     custom_effect_catalogue_payload,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import (
@@ -296,11 +296,20 @@ def test_capability_state_distinguishes_visibility_from_deployability() -> None:
     assert studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP) is CapabilityState.SUPPORTED
 
 
-def test_workshop_templates_decode_embedded_payloads() -> None:
+def test_workshop_protocol_fixtures_decode_embedded_payloads() -> None:
     for model in ("H617A", "H6199"):
-        for template in WORKSHOP_TEMPLATES:
+        for template in WORKSHOP_PROTOCOL_FIXTURES:
             content = template.content(model)
 
             assert content.model == model
             assert content.raw_param
             assert content.template == template.id
+
+
+def test_product_catalogues_do_not_expose_protocol_fixtures_as_starters() -> None:
+    models = cast(
+        dict[str, dict[str, JsonValue]],
+        custom_effect_catalogue_payload()["models"],
+    )
+
+    assert all(catalogue["workshop_templates"] == [] for catalogue in models.values())

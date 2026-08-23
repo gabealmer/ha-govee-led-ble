@@ -17,8 +17,6 @@ import {
 } from "./effect-editor-model";
 import { customEffectCategories } from "./custom-effect-workflow";
 import type { LivePreviewInteraction } from "./live-preview-controller";
-import type { LabelledSwitchChange } from "./labelled-switch";
-import "./labelled-switch";
 import "./music-profile-editor";
 import "./palette-editor";
 import "./painted-segment-editor";
@@ -244,7 +242,7 @@ export class GoveeLedEffectStudio extends LitElement {
           .api=${this.controller.api}
           .device=${this.model.selectedDevice}
           .library=${this.model.library}
-          .panelNotice=${this.model.notice}
+          .panelNotice=${this.model.notice ?? this.model.previewNotice}
           .previewStatus=${this.model.previewStatus}
           .isAdmin=${this.isAdmin}
           .autoSaveEnabled=${this.model.autoSaveEnabled}
@@ -307,8 +305,8 @@ export class GoveeLedEffectStudio extends LitElement {
       <div class="studio-toolbar">
         ${layout.deviceSelector ? this.renderDeviceSelector() : nothing}
         <div class="studio-toolbar-controls">
-          ${layout.labelledSwitches ? this.renderLiveApplyControl() : nothing}
-          ${layout.labelledSwitches ? this.renderAutoSaveControl() : nothing}
+          ${layout.modeControls ? this.renderLiveApplyControl() : nothing}
+          ${layout.modeControls ? this.renderAutoSaveControl() : nothing}
           ${layout.lightControl && device && lightEntityId
             ? this.renderLightControl(device.display_name, lightEntityId)
             : nothing}
@@ -430,19 +428,21 @@ export class GoveeLedEffectStudio extends LitElement {
     const status = pending
       ? "Applying changes"
       : warning
-        ? "The latest change could not reach the light"
+        ? this.model.previewNotice ??
+          "The latest change could not reach the light"
         : undefined;
     return html`
       <div class="live-apply-control">
-        <govee-labelled-switch
-          label="Live"
-          .checked=${this.model.liveApplyEnabled}
-          @checked-changed=${(event: CustomEvent<LabelledSwitchChange>) => {
-            if (event.detail.checked !== this.model.liveApplyEnabled) {
-              this.preview.toggle(this.currentScenePreviewRequest());
-            }
-          }}
-        ></govee-labelled-switch>
+        <button
+          class="toolbar-mode-button"
+          type="button"
+          aria-pressed=${this.model.liveApplyEnabled}
+          title="Apply committed changes automatically"
+          @click=${() =>
+            this.preview.toggle(this.currentScenePreviewRequest())}
+        >
+          Live
+        </button>
         <span
           class="live-apply-status ${pending
             ? "pending"
@@ -463,17 +463,16 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderAutoSaveControl() {
     return html`
-      <govee-labelled-switch
-        label="Save"
-        accessible-name="Save automatically"
-        description="Automatically save committed changes"
-        .checked=${this.model.autoSaveEnabled}
-        @checked-changed=${(event: CustomEvent<LabelledSwitchChange>) => {
-          if (event.detail.checked !== this.model.autoSaveEnabled) {
-            this.controller.toggleAutoSave();
-          }
-        }}
-      ></govee-labelled-switch>
+      <button
+        class="toolbar-mode-button"
+        type="button"
+        aria-pressed=${this.model.autoSaveEnabled}
+        aria-label="Save automatically"
+        title="Save committed changes automatically"
+        @click=${() => this.controller.toggleAutoSave()}
+      >
+        Save
+      </button>
     `;
   }
 
@@ -676,8 +675,9 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderPanelNotice() {
-    return this.model.notice
-      ? html`<p class="action-error" role="alert">${this.model.notice}</p>`
+    const notice = this.model.notice ?? this.model.previewNotice;
+    return notice
+      ? html`<p class="action-error" role="alert">${notice}</p>`
       : nothing;
   }
 

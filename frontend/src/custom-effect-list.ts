@@ -8,7 +8,6 @@ import type {
   LibrarySummary,
   ModelEffectCatalogue,
   ModelSku,
-  WorkshopContent,
 } from "./types";
 import { compareLabels } from "./ui-utils";
 
@@ -45,13 +44,6 @@ export type CustomEffectListEntry =
       key: "template:advanced";
       label: "Layered";
       category: "advanced";
-    }
-  | {
-      kind: "workshop";
-      key: string;
-      label: string;
-      category: "advanced";
-      content: WorkshopContent;
     }
   | {
       kind: "saved";
@@ -108,15 +100,6 @@ export function buildCustomEffectEntries(
           },
         ]
       : []),
-    ...(catalogue?.workshop_templates.map(
-      (template): CustomEffectListEntry => ({
-        kind: "workshop",
-        key: `template:workshop:${template.id}`,
-        label: template.label,
-        category: "advanced",
-        content: template.content,
-      }),
-    ) ?? []),
     ...context.libraryItems
       .filter(
         (item) => isMyEffectKind(item.kind) && item.kind !== "video_profile",
@@ -216,8 +199,7 @@ export function customEffectKindAvailable(
   if (kind === "workshop") {
     return (
       catalogue !== undefined &&
-      catalogue.supports.workshop !== "unsupported" &&
-      Boolean(catalogue.workshop_templates.length)
+      catalogue.supports.workshop !== "unsupported"
     );
   }
   return catalogue?.supports.advanced !== "unsupported";
@@ -267,8 +249,6 @@ function customEffectEntryAvailable(
       return customEffectKindAvailable(context, "music_profile");
     case "advanced":
       return customEffectKindAvailable(context, "advanced");
-    case "workshop":
-      return customEffectKindAvailable(context, "workshop");
     case "saved":
       return libraryItemAvailable(context, entry.item);
   }

@@ -16,7 +16,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     H6199_PALETTE_DIY_APPLY_CODE,
     H6199_WORKSHOP_APPLY_CODE,
-    WORKSHOP_TEMPLATES,
+    WORKSHOP_PROTOCOL_FIXTURES,
 )
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, compile_h617a, compile_h6199
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -737,6 +737,42 @@ async def test_reconciliation_matches_only_latest_confirmed_selector(
     assert changed.active_effect is None
 
 
+@pytest.mark.parametrize(
+    ("mode_attribute", "native_mode"),
+    [
+        ("effect", "candlelight"),
+        ("music_mode", "separation"),
+        ("video_mode", "movie"),
+    ],
+)
+async def test_reconciliation_reports_only_fresh_native_mode_identity(
+    hass: HomeAssistant,
+    mode_attribute: str,
+    native_mode: str,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    setattr(coordinator, mode_attribute, native_mode)
+
+    observed = await EffectDeploymentEngine(repository, cache).async_reconcile(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-11T00:00:00Z",
+    )
+
+    assert observed.native_mode == native_mode
+    assert observed.confidence is ObservationConfidence.UNKNOWN
+
+    coordinator.refresh_state.return_value = False
+    stale = await EffectDeploymentEngine(repository, cache).async_reconcile(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-11T00:01:00Z",
+    )
+
+    assert stale.native_mode is None
+
+
 async def test_unreadable_device_is_uncertain_not_confirmed(
     hass: HomeAssistant,
 ) -> None:
@@ -882,7 +918,7 @@ async def test_workshop_uses_evidenced_model_application(
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     coordinator.model = model
-    item = LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content(model))
+    item = LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content(model))
     compiled = compile_effect(item, model)
     workshop_code = H6199_WORKSHOP_APPLY_CODE if model == "H6199" else H617A_WORKSHOP_APPLY_CODE
     _confirm_scene_code_on_call(coordinator, 2, workshop_code)
@@ -908,7 +944,7 @@ async def test_cross_model_workshop_is_rejected_before_any_write(
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     coordinator.model = "H6199"
-    item = LibraryItem.new("Workshop", WORKSHOP_TEMPLATES[0].content("H617A"))
+    item = LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"))
 
     with pytest.raises(ValueError, match="targets H617A"):
         await EffectDeploymentEngine(repository, cache).async_apply_saved(

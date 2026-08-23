@@ -593,6 +593,27 @@ async def test_device_cache_drops_session_confidence_after_reload(
     assert states[0].active_effect.item_id == deployment.item_id
 
 
+async def test_device_cache_drops_native_identity_after_reload(
+    hass: HomeAssistant,
+) -> None:
+    cache = EffectDeviceCache(hass)
+    await cache.async_load()
+    cache.set(
+        ObservedDeviceState(
+            config_entry_id="entry-a",
+            mode="video",
+            observed_at="2026-08-11T00:00:00Z",
+            native_mode="movie",
+        )
+    )
+    await cache.async_flush()
+
+    (restored,) = await EffectDeviceCache(hass).async_load()
+
+    assert restored.mode == "video"
+    assert restored.native_mode is None
+
+
 async def test_legacy_device_cache_migrates_without_claiming_active_identity(
     hass: HomeAssistant,
 ) -> None:

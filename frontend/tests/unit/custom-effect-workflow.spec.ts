@@ -9,7 +9,6 @@ import {
   customEffectCategoryLabel,
   defaultCustomEffectCategory,
 } from "../../src/custom-effect-workflow";
-import { blankAdvancedContent } from "../../src/advanced-effect-model";
 import type { LibrarySummary, ModelEffectCatalogue } from "../../src/types";
 
 const catalogue = {
@@ -86,33 +85,6 @@ test("starter lists expose product choices but not protocol evidence fixtures", 
   ).toEqual(["Rhythm"]);
 });
 
-test("Advanced browsing exposes editable Advanced and Workshop templates", () => {
-  const workshopCatalogue: ModelEffectCatalogue = {
-    ...catalogue,
-    workshop_templates: [
-      {
-        id: "workshop-a",
-        label: "Workshop",
-        content: {
-          kind: "workshop",
-          model: "H617A",
-          template: "workshop-a",
-          effect: { layers: blankAdvancedContent().layers },
-          raw_param: "",
-          trailing_padding: 0,
-        },
-      },
-    ],
-  };
-
-  expect(
-    buildCustomEffectEntries(
-      { ...context(), catalogue: workshopCatalogue },
-      "advanced",
-    ).map((entry) => entry.label),
-  ).toEqual(["Layered", "Workshop"]);
-});
-
 test("saved effects remain available in their content category", () => {
   const entries = buildCustomEffectEntries(context([saved]), "single-layer");
 
@@ -122,6 +94,21 @@ test("saved effects remain available in their content category", () => {
     "My Jump",
     "Paint",
   ]);
+});
+
+test("saved Workshop content remains available without starter templates", () => {
+  const workshop: LibrarySummary = {
+    ...saved,
+    id: "workshop-a",
+    name: "Saved Workshop",
+    kind: "workshop",
+  };
+
+  expect(
+    buildCustomEffectEntries(context([workshop]), "advanced").map(
+      (entry) => entry.label,
+    ),
+  ).toEqual(["Layered", "Saved Workshop"]);
 });
 
 test("Effects is the stable fallback when no custom category is available", () => {

@@ -115,14 +115,6 @@ export class PanelEditorController {
         { section: "custom", category: entry.category },
         true,
       );
-    } else if (entry.kind === "workshop") {
-      this.openEditableTemplate(
-        entry.label,
-        entry.content,
-        entry.key,
-        { section: "custom", category: entry.category },
-        true,
-      );
     } else {
       const catalogue = this.model.modelCatalogue;
       if (!catalogue) return;
@@ -249,21 +241,11 @@ export class PanelEditorController {
       return;
     }
     if (category === "advanced") {
-      const workshop = catalogue?.workshop_templates[0];
       if (this.model.customEffectKindAvailable("advanced")) {
         this.openEditableTemplate(
           "Layered",
           blankAdvancedContent(),
           "template:advanced",
-          { section: "custom", category },
-          false,
-          existingTransitionEpoch,
-        );
-      } else if (workshop && this.model.customEffectKindAvailable("workshop")) {
-        this.openEditableTemplate(
-          workshop.label,
-          workshop.content,
-          `template:workshop:${workshop.id}`,
           { section: "custom", category },
           false,
           existingTransitionEpoch,

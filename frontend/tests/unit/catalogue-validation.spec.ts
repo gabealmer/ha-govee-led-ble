@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import backendContracts from "../fixtures/backend-contracts.json";
 import { decodeCustomCataloguePayload } from "../../src/catalogue-validation";
 import { decodeEffectContent } from "../../src/validation";
+import type { WorkshopTemplate } from "../../src/types";
 
 function decodeCatalogue(value: unknown) {
   return decodeCustomCataloguePayload(value, decodeEffectContent);
@@ -60,7 +61,21 @@ test("catalogue keys and embedded template models must agree", () => {
   const wrongTemplateModel = structuredClone(
     backendContracts.responses.custom_catalogue,
   );
-  wrongTemplateModel.models.H617A.workshop_templates[0].content.model = "H6199";
+  const workshopTemplates: WorkshopTemplate[] = [
+    {
+      id: "protocol-fixture",
+      label: "Protocol fixture",
+      content: structuredClone(
+        backendContracts.content_samples.workshop,
+      ) as WorkshopTemplate["content"],
+    },
+  ];
+  workshopTemplates[0].content.model = "H6199";
+  (
+    wrongTemplateModel.models.H617A as {
+      workshop_templates: WorkshopTemplate[];
+    }
+  ).workshop_templates = workshopTemplates;
   expect(() => decodeCatalogue(wrongTemplateModel)).toThrow(
     "content does not target H617A",
   );

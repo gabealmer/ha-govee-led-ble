@@ -35,6 +35,7 @@ SceneType1Body = _generated("scene_type1_body", "SceneType1Body")
 SceneBody = _generated("scene_body", "SceneBody")
 MusicBody = _generated("music_body", "MusicBody")
 MusicStream = _generated("music_stream", "MusicStream")
+H6199WifiBody = _generated("h6199_wifi_body", "H6199WifiBody")
 H6199WifiProvision = _generated("h6199_wifi_provision", "H6199WifiProvision")
 H6199WifiResult = _generated("h6199_wifi_result", "H6199WifiResult")
 
@@ -59,6 +60,10 @@ SCENE_TYPE2 = bytes.fromhex(
 )
 MUSIC_BODY = bytes.fromhex("0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a14000000000000")
 MUSIC_STREAM = bytes.fromhex("a5028356000080")
+WIFI_BODY = bytes.fromhex(
+    "0746414b454e4554083132333435363738000a0000001868747470733a2f2f6465766963652e676f7665652e636f6d0000"
+)
+WIFI_PROVISION = bytes.fromhex("a111010746414b454e45540831323334353637d8")
 WIFI_RESULT_SUCCESS = bytes.fromhex("ee110000000000000000000000000000000000ff")
 WIFI_RESULT_FAILURE = bytes.fromhex("ee110100000000000000000000000000000000fe")
 
@@ -85,6 +90,8 @@ REPRESENTATIVE_ROOTS = (
     pytest.param(SceneBody, SCENE_TYPE2, id="scene type 2"),
     pytest.param(MusicBody, MUSIC_BODY, id="music body"),
     pytest.param(MusicStream, MUSIC_STREAM, id="music stream"),
+    pytest.param(H6199WifiBody, WIFI_BODY, id="Wi-Fi body"),
+    pytest.param(H6199WifiProvision, WIFI_PROVISION, id="Wi-Fi provision"),
     pytest.param(H6199WifiResult, WIFI_RESULT_SUCCESS, id="Wi-Fi result"),
 )
 
@@ -181,6 +188,13 @@ def test_music_and_wifi_result_fields_preserve_semantics() -> None:
     stream = _parse(MusicStream, MUSIC_STREAM)
     assert (stream.colour.red, stream.colour.green, stream.colour.blue) == (86, 0, 0)
     assert stream.checksum == stream.checksum_expected == 128
+
+    wifi_body = _parse(H6199WifiBody, WIFI_BODY)
+    assert (wifi_body.ssid, wifi_body.password) == ("FAKENET", "12345678")
+    assert (wifi_body.tz_hour, wifi_body.api) == (10, "https://device.govee.com")
+
+    provision = _parse(H6199WifiProvision, WIFI_PROVISION)
+    assert (provision.index, provision.is_header, provision.is_terminator) == (1, False, False)
 
     success = _parse(H6199WifiResult, WIFI_RESULT_SUCCESS)
     failure = _parse(H6199WifiResult, WIFI_RESULT_FAILURE)

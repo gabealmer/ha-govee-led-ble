@@ -18,6 +18,7 @@ import {
   type StudioSection,
 } from "./studio-navigation";
 import type {
+  DeviceCapabilities,
   EffectUserState,
   HomeAssistant,
   LibraryItem,
@@ -46,6 +47,11 @@ export class PanelController {
   private unsubscribeLibrary?: () => void;
   private autoSavePending?: AutoSaveTarget;
   private autoSaveRunning = false;
+  private deviceRefresh?: {
+    api: EffectStudioApi;
+    configEntryId: string;
+    promise: Promise<DeviceCapabilities>;
+  };
   private readonly latestSavedItems = new Map<string, LibraryItem>();
   private readonly loadRequests = new AsyncRequestController<{ api: EffectStudioApi }>(
     (left, right) => left.api === right.api,
@@ -60,7 +66,13 @@ export class PanelController {
   ) {}
 
   public async load(hass: HomeAssistant, isAdmin: boolean): Promise<void> {
-    this.model.patch({ loading: true, error: undefined, previewStatus: undefined, isAdmin });
+    this.model.patch({
+      loading: true,
+      error: undefined,
+      previewStatus: undefined,
+      previewNotice: undefined,
+      isAdmin,
+    });
     const api = new EffectStudioApi(hass);
     this.api = api;
     const request = this.loadRequests.begin({ api });
@@ -121,7 +133,12 @@ export class PanelController {
       !this.model.devices.some((device) => device.config_entry_id === selectedDeviceId)
     ) return;
     await this.preview.cancel();
-    this.model.patch({ selectedDeviceId, previewStatus: undefined, notice: undefined });
+    this.model.patch({
+      selectedDeviceId,
+      previewStatus: undefined,
+      previewNotice: undefined,
+      notice: undefined,
+    });
     this.options.replacePath(editorDevicePath(selectedDeviceId));
     try {
       const userState = await this.api?.updateUserState(
@@ -165,67 +182,95 @@ export class PanelController {
       }
       return;
     }
-    const blankTarget =
-      section === "scenes" ||
-      (section === "custom" &&
-        (nextCategory === "music" || nextCategory === "multi-layer"));
-    const transitionEpoch = blankTarget
-      ? this.editor.beginTransition()
-      : this.editor.beginSelectionTransition();
+    const transitionEpoch = this.editor.beginTransition();
     this.model.patch({
       sceneEditorOpen: false,
+      sceneInitialSelection: undefined,
       section,
       customEffectCategory: nextCategory,
       notice: undefined,
     });
+    this.editor.clearSelection(transitionEpoch);
     this.remember();
-    if (section === "scenes") {
-      this.editor.clearSelection(transitionEpoch);
-      return;
-    }
-    if (section === "video") {
-      await this.openVideoSelection(transitionEpoch);
-      return;
-    }
-    if (this.model.isAdmin) {
-      this.editor.openDefaultAvailableTemplate(nextCategory, transitionEpoch);
-    } else {
-      this.editor.clearSelection(transitionEpoch);
-    }
+    await this.restoreActiveSelection(transitionEpoch);
   }
 
   public async openInitialContext(): Promise<void> {
     this.openRootCreateView();
+    await this.restoreActiveSelection(this.model.editorTransitionEpoch);
+  }
+
+  private async restoreActiveSelection(
+    transitionEpoch: number,
+  ): Promise<void> {
+    const device = await this.refreshSelectedDevice(transitionEpoch);
+    if (
+      !device ||
+      transitionEpoch !== this.model.editorTransitionEpoch
+    ) {
+      return;
+    }
     const context = activeStudioContext(
-      this.model.selectedDevice,
+      device,
       this.model.library.items,
       (candidate) =>
         candidate.kind === "scene_builtin" || candidate.kind === "scene_palette" || candidate.kind === "scene_layered"
           ? candidate.template?.sku === this.model.selectedModel
           : this.model.libraryItemAvailable(candidate),
+      this.model.modelCatalogue,
     );
     if (context.kind === "native-scene") {
-      this.model.patch({ sceneInitialSelection: { kind: "native", effect: context.effect } });
+      if (this.model.section === "scenes") {
+        this.model.patch({ sceneInitialSelection: { kind: "native", effect: context.effect } });
+      }
+      return;
+    }
+    if (context.kind === "native-profile") {
+      if (
+        context.section !== this.model.section ||
+        (context.section === "custom" &&
+          context.category !== this.model.customEffectCategory)
+      ) {
+        return;
+      }
+      if (context.section === "video") {
+        this.editor.openVideoTemplate(
+          context.mode,
+          context.label,
+          false,
+          transitionEpoch,
+        );
+      } else {
+        this.editor.openMusicTemplate(
+          context.mode,
+          context.label,
+          false,
+          transitionEpoch,
+        );
+      }
       return;
     }
     if (context.kind === "root") {
-      await this.openDefaultForActiveSection();
       return;
     }
     const item = context.item;
     if (item.kind === "scene_builtin" || item.kind === "scene_palette" || item.kind === "scene_layered") {
-      this.model.patch({ sceneInitialSelection: { kind: "saved", itemId: item.id } });
+      if (this.model.section === "scenes") {
+        this.model.patch({ sceneInitialSelection: { kind: "saved", itemId: item.id } });
+      }
       return;
     }
-    this.model.patch({
-      section: item.kind === "video_profile" ? "video" : "custom",
-      customEffectCategory:
-        item.kind === "video_profile"
-          ? this.model.customEffectCategory
-          : this.categoryForKind(item.kind),
-    });
-    if (!(await this.selectItem(item.id, undefined, false))) {
-      this.openRootCreateView();
+    if (
+      (item.kind === "video_profile" && this.model.section !== "video") ||
+      (item.kind !== "video_profile" &&
+        (this.model.section !== "custom" ||
+          this.categoryForKind(item.kind) !==
+            this.model.customEffectCategory))
+    ) {
+      return;
+    }
+    if (!(await this.selectItem(item.id, transitionEpoch, false))) {
+      this.editor.clearSelection(transitionEpoch);
     }
   }
 
@@ -688,35 +733,58 @@ export class PanelController {
     }
   }
 
-  private async openVideoSelection(transitionEpoch: number): Promise<void> {
-    const modes = this.model.modelCatalogue?.video_modes ?? [];
-    const mode =
-      modes.find((candidate) => candidate.id === "movie") ?? modes[0];
-    if (mode) {
-      this.editor.openVideoTemplate(
-        mode.id,
-        mode.label,
-        false,
-        transitionEpoch,
-      );
-    } else {
-      this.editor.clearSelection(transitionEpoch);
+  private async refreshSelectedDevice(
+    transitionEpoch: number,
+  ): Promise<DeviceCapabilities | undefined> {
+    const api = this.api;
+    const selectedDeviceId = this.model.selectedDeviceId;
+    if (!api || !selectedDeviceId) {
+      return undefined;
     }
+    let refreshed: DeviceCapabilities;
+    try {
+      refreshed = await this.requestDeviceRefresh(api, selectedDeviceId);
+    } catch (error) {
+      if (transitionEpoch === this.model.editorTransitionEpoch) {
+        this.model.patch({
+          notice: `Refresh failed: ${errorMessage(error)}`,
+        });
+      }
+      return undefined;
+    }
+    if (
+      api !== this.api ||
+      transitionEpoch !== this.model.editorTransitionEpoch ||
+      selectedDeviceId !== this.model.selectedDeviceId
+    ) {
+      return undefined;
+    }
+    this.model.patch({
+      devices: this.model.devices.map((device) =>
+        device.config_entry_id === selectedDeviceId ? refreshed : device,
+      ),
+    });
+    return refreshed;
   }
 
-  private async openDefaultForActiveSection(): Promise<void> {
-    if (!this.model.isAdmin || this.model.section === "scenes") {
-      return;
+  private requestDeviceRefresh(
+    api: EffectStudioApi,
+    configEntryId: string,
+  ): Promise<DeviceCapabilities> {
+    const current = this.deviceRefresh;
+    if (
+      current?.api === api &&
+      current.configEntryId === configEntryId
+    ) {
+      return current.promise;
     }
-    const transitionEpoch = this.editor.beginSelectionTransition();
-    if (this.model.section === "video") {
-      await this.openVideoSelection(transitionEpoch);
-      return;
-    }
-    this.editor.openDefaultAvailableTemplate(
-      this.model.customEffectCategory,
-      transitionEpoch,
-    );
+    const promise = api.device(configEntryId).finally(() => {
+      if (this.deviceRefresh?.promise === promise) {
+        this.deviceRefresh = undefined;
+      }
+    });
+    this.deviceRefresh = { api, configEntryId, promise };
+    return promise;
   }
 
   private loadIsCurrent(request: LoadRequest): boolean {

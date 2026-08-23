@@ -18,6 +18,7 @@ from .effect_limits import (
 
 WS_INFO = f"{DOMAIN}/editor/info"
 WS_DEVICES = f"{DOMAIN}/editor/devices"
+WS_DEVICE = f"{DOMAIN}/editor/device"
 WS_CUSTOM_CATALOGUE = f"{DOMAIN}/editor/custom/catalogue"
 WS_LIBRARY_LIST = f"{DOMAIN}/editor/library/list"
 WS_LIBRARY_GET = f"{DOMAIN}/editor/library/get"

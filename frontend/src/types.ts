@@ -95,6 +95,7 @@ export interface ObservedEffectState {
   confidence: ObservationConfidence;
   diy_code: number | null;
   effect: string | null;
+  native_mode: string | null;
   matched_operation_id: string | null;
   active_effect: ActiveEffectHint | null;
 }

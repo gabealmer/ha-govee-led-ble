@@ -1,10 +1,16 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   LivePreviewController,
   LivePreviewProgressController,
   type LivePreviewRequest,
 } from "../../src/live-preview-controller";
+import type { EffectStudioApi } from "../../src/api";
+import {
+  EffectStudioPreviewSession,
+  type PanelPreviewRequest,
+} from "../../src/panel-preview";
+import { previewStatusMessage } from "../../src/panel-preview-controller";
 import type { PreviewStatus } from "../../src/types";
 
 interface Request extends LivePreviewRequest {
@@ -350,4 +356,72 @@ test("writing without queued status does not create timing samples", () => {
 
     progress.accept(status(7, "queued"));
     expect(timers.size).toBe(0);
+});
+
+test("editor transitions reject a late status when no successor request exists", async () => {
+  let subscribed!: (status: PreviewStatus) => void;
+  const api = {
+    openPreviewSession: vi.fn().mockResolvedValue("session-a"),
+    subscribePreview: vi.fn().mockImplementation(
+      async (
+        _sessionId: string,
+        callback: (status: PreviewStatus) => void,
+      ) => {
+        subscribed = callback;
+        return () => undefined;
+      },
+    ),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    previewSnapshot: vi.fn().mockResolvedValue(undefined),
+  } as unknown as EffectStudioApi;
+  const statuses: (PreviewStatus | undefined)[] = [];
+  const session = new EffectStudioPreviewSession(
+    api,
+    (value) => statuses.push(value),
+    () => undefined,
+  );
+  await expect(session.open()).resolves.toBe(true);
+  await session.submit({
+    kind: "snapshot",
+    configEntryId: "entry-a",
+    name: "Preview",
+    content: {
+      kind: "h617a_single",
+      family: 0,
+      variant: 0,
+      speed: 50,
+      palette: [[255, 0, 0]],
+    },
+    fingerprint: "preview-a",
+  } satisfies PanelPreviewRequest);
+  const failed = {
+    ...status(1, "failed"),
+    error_code: "transport_failed",
+  };
+
+  subscribed(failed);
+  session.transition();
+  subscribed(failed);
+
+  expect(statuses).toEqual([
+    expect.objectContaining({ sequence: 1, phase: "queued" }),
+    failed,
+    undefined,
+  ]);
+});
+
+test("preview failure messages distinguish failures from unconfirmed readback", () => {
+  expect(
+    previewStatusMessage({
+      ...status(1, "failed"),
+      error_code: "transport_failed",
+    }),
+  ).toBe("Live apply could not reach the light. Tap Live to try again.");
+  expect(
+    previewStatusMessage({
+      ...status(2, "unconfirmed"),
+      error_code: "device_state_mismatch",
+    }),
+  ).toBeUndefined();
+  expect(previewStatusMessage(status(3, "confirmed"))).toBeUndefined();
 });

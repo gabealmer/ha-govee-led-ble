@@ -9,7 +9,7 @@ export type NativeLightState = "on" | "off" | "unavailable";
 export interface StudioToolbarLayoutState {
   visible: boolean;
   deviceSelector: boolean;
-  labelledSwitches: boolean;
+  modeControls: boolean;
   lightControl: boolean;
   settings: boolean;
 }
@@ -84,29 +84,16 @@ export function studioToolbarLayoutState(
   deviceAvailable: boolean,
   lightEntityId: string | undefined,
 ): StudioToolbarLayoutState {
-  const labelledSwitches = isAdmin && deviceAvailable;
+  const modeControls = isAdmin && deviceAvailable;
   const lightControl = deviceAvailable && lightEntityId !== undefined;
   const settings = isAdmin && deviceAvailable;
   return {
     visible:
-      showDeviceSelector || labelledSwitches || lightControl || settings,
+      showDeviceSelector || modeControls || lightControl || settings,
     deviceSelector: showDeviceSelector,
-    labelledSwitches,
+    modeControls,
     lightControl,
     settings,
-  };
-}
-
-export function labelledSwitchModel(
-  label: string,
-  checked: boolean,
-  accessibleName = label,
-) {
-  return {
-    role: "switch" as const,
-    label,
-    accessibleName,
-    checked,
   };
 }
 

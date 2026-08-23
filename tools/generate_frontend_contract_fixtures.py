@@ -10,7 +10,10 @@ from typing import Any, cast
 from uuid import UUID
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
-from custom_components.ha_govee_led_ble.effect_catalogue import custom_effect_catalogue_payload
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    WORKSHOP_PROTOCOL_FIXTURES,
+    custom_effect_catalogue_payload,
+)
 from custom_components.ha_govee_led_ble.effect_contracts import (
     EFFECT_COMPILER_VERSION,
     EditorApiInfo,
@@ -33,7 +36,6 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SingleEffect,
     TargetHint,
     VideoProfile,
-    WorkshopEffect,
     effect_content_from_dict,
     effect_content_to_dict,
 )
@@ -130,12 +132,8 @@ def _content_samples(
     catalogue: dict[str, Any],
     scene_details: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    h617a_catalogue = cast(dict[str, Any], cast(dict[str, Any], catalogue["models"])["H617A"])
-    workshop_templates = cast(list[dict[str, Any]], h617a_catalogue["workshop_templates"])
-    workshop_payload = cast(dict[str, Any], workshop_templates[0]["content"])
-    workshop = effect_content_from_dict(workshop_payload)
-    if not isinstance(workshop, WorkshopEffect):
-        raise RuntimeError("Catalogue templates do not expose the expected frontend content family")
+    workshop = WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A")
+    workshop_payload = effect_content_to_dict(workshop)
 
     samples = {
         "h617a_painted": effect_content_to_dict(

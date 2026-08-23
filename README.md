@@ -18,7 +18,7 @@ All models support on/off, brightness, RGB color, color temperature, and state r
 
 The supported product scope is local BLE control of H617A and H6199 through Home Assistant.  The persistent H617A [`0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) stores the app's gradual-colour-change switch, but the app explicitly classifies H617A as unsupported.  Paired physical comparisons found no visible effect, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
 
-Wi-Fi provisioning is an expert recovery and investigation tool, not a Home Assistant integration surface.  The guarded workflow is documented under [Writing Wi-Fi credentials to a device](tools/harness/README.md#writing-wi-fi-credentials-to-a-device).  [Home Assistant-integrated provisioning](https://github.com/teh-hippo/ha-govee-led-ble/issues/210) is tracked separately as future work.
+Wi-Fi provisioning is not a maintained integration or contributor workflow.  The decoded H6199 [`a1 11` frame](tools/ble/kaitai/h6199_wifi_provision.ksy), [reassembled body](tools/ble/kaitai/h6199_wifi_body.ksy) and [`ee 11` result](tools/ble/kaitai/h6199_wifi_result.ksy) remain as tested protocol findings.
 
 The following are intentional non-goals for this integration:
 
@@ -39,7 +39,7 @@ The final [UX completion evidence matrix](docs/completion-evidence.md) records i
 
 The prerelease Effect Studio stores the current saved-effect library and durable deployment status in the local Home Assistant instance.  Administrators can browse native scenes, author effects and manage the shared library.  Other authenticated users have read-only access to scenes and understood saved effects; unknown opaque definitions remain administrator-only.
 
-Live apply is enabled when an administrator opens Effect Studio.  Scene selections and device-affecting edits are sent over BLE as ephemeral previews, while Save remains an explicit library action.  Continuous controls are throttled and coalesced so only the newest pending state is written; readback verifies the latest settled preview without delaying further edits.  The Live apply toggle stops queued previews but does not restore the light's earlier state.
+Live mode is enabled when an administrator opens Effect Studio.  Scene selections and device-affecting edits are sent over BLE as ephemeral previews.  Save mode automatically persists committed edits to an open saved item; both modes are controlled by pressed toolbar buttons.  Continuous controls are throttled and coalesced so only the newest pending state is written; readback verifies the latest settled preview without delaying further edits.  Disabling Live stops queued previews but does not restore the light's earlier state.
 
 Live apply covers native and edited scenes, H617A Painted, Single and Multi effects, H6199 Palette DIY effects, advanced layered effects, music profiles, video profiles and Workshop uploads.
 
@@ -61,17 +61,7 @@ Committed native-scene edits become the selected device's default after Live app
 
 ### Development deployment
 
-Use the isolated Home Assistant Container harness rather than changing the household Home Assistant instance.  It bind-mounts the current integration, automates the temporary BLE ownership handover, and restores the household config entry during teardown:
-
-```bash
-bash tools/harness/container.sh frontend strip  # optional live Vite module
-bash tools/harness/container.sh up strip
-bash tools/harness/container.sh status strip
-bash tools/harness/container.sh restart strip   # reload Python changes
-bash tools/harness/container.sh down strip
-```
-
-See the [container harness instructions](tools/harness/README.md#isolated-home-assistant-container) for local secrets, device opt-in, dry-run checks and live frontend loading.
+Physical and isolated Home Assistant qualification belongs to the published [`ha-test-harness`](https://github.com/teh-hippo/ha-test-harness).  This repository does not contain privileged lab, household identity or provisioning implementations.
 
 ## Version 6 migration
 
@@ -115,6 +105,8 @@ make package
 ```
 
 `bash scripts/check.sh` remains an alias for `make check`.  The build requires the Node.js version in `.node-version`, locked Python dependencies through [uv](https://docs.astral.sh/uv/), and Kaitai Struct Compiler 0.11.  [mise](https://mise.jdx.dev/) can install the pinned tools, but Make calls the standard tools directly.  `make package` writes the deterministic HACS archive and SHA-256 to `dist/`; byte identity is guaranteed for the pinned CI toolchain.
+
+The public [`ios-ble-capture` methodology](https://github.com/teh-hippo/ios-ble-capture/blob/main/docs/methodology.md) documents the iPhone capture, peer attribution and target-owned Kaitai workflow used when adding or revisiting a model.  This repository owns its schemas and protocol findings and has no build or runtime dependency on that tooling.
 
 The production frontend has two generated outputs: `effect-studio-bootstrap.js` and `manifest.json`.  Home Assistant serves them without cache headers, while `editor-loader.js` validates the manifest and retains the stable fallback module.
 

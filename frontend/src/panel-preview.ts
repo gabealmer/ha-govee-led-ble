@@ -179,6 +179,14 @@ export class EffectStudioPreviewSession {
     }
   }
 
+  public transition(): void {
+    this.latestStatusSequence = Math.max(
+      this.latestStatusSequence,
+      this.sequence + 1,
+    );
+    this.statusChanged(undefined);
+  }
+
   public close(): void {
     this.generation += 1;
     this.statusChanged(undefined);

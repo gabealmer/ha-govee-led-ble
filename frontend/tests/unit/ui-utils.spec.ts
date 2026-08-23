@@ -6,7 +6,6 @@ import {
   clampInteger,
   clonePalette,
   integrationSettingsPath,
-  labelledSwitchModel,
   lightControlPresentation,
   lightControlEntityId,
   moreInfoDetail,
@@ -81,21 +80,21 @@ test("light controls follow the selected device without hiding the toolbar", () 
   ).toEqual({
     visible: true,
     deviceSelector: true,
-    labelledSwitches: true,
+    modeControls: true,
     lightControl: true,
     settings: true,
   });
   expect(studioToolbarLayoutState(false, false, true, undefined)).toEqual({
     visible: false,
     deviceSelector: false,
-    labelledSwitches: false,
+    modeControls: false,
     lightControl: false,
     settings: false,
   });
   expect(studioToolbarLayoutState(false, false, true, "light.cupboard")).toEqual({
     visible: true,
     deviceSelector: false,
-    labelledSwitches: false,
+    modeControls: false,
     lightControl: true,
     settings: false,
   });
@@ -110,19 +109,6 @@ test("light controls follow the selected device without hiding the toolbar", () 
   ).toBe(
     "/config/integrations/integration/ha_govee_led_ble#config_entry=entry+a",
   );
-});
-
-test("labelled switch models keep text and accessible names stationary", () => {
-  const off = labelledSwitchModel("Save", false, "Save automatically");
-  const on = labelledSwitchModel("Save", true, "Save automatically");
-
-  expect(off).toEqual({
-    role: "switch",
-    label: "Save",
-    accessibleName: "Save automatically",
-    checked: false,
-  });
-  expect(on).toEqual({ ...off, checked: true });
 });
 
 test("native light presentation follows reactive Home Assistant state", () => {

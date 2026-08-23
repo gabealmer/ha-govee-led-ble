@@ -183,6 +183,40 @@ export const effectStudioPanelStyles = [
       gap: var(--studio-action-gap);
     }
 
+    .toolbar-mode-button {
+      min-width: var(--studio-touch-target-size);
+      min-height: var(--studio-control-height);
+      padding: 0 var(--studio-control-gap);
+      border: var(--studio-border-width) solid var(--studio-border);
+      border-radius: var(--studio-button-radius);
+      color: var(--secondary-text-color);
+      background: transparent;
+      font: inherit;
+      font-size: var(--studio-caption-size);
+      font-weight: var(--studio-font-weight-semibold);
+      cursor: pointer;
+    }
+
+    .toolbar-mode-button:hover {
+      color: var(--primary-text-color);
+      background: color-mix(
+        in srgb,
+        var(--primary-text-color) 8%,
+        transparent
+      );
+    }
+
+    .toolbar-mode-button[aria-pressed="true"] {
+      border-color: var(--studio-blue);
+      color: var(--studio-blue);
+      background: color-mix(in srgb, var(--studio-blue) 12%, transparent);
+    }
+
+    .toolbar-mode-button:focus-visible {
+      outline: var(--studio-focus-width) solid var(--studio-blue);
+      outline-offset: var(--studio-focus-offset);
+    }
+
     .studio-toolbar-controls {
       display: flex;
       align-items: center;
