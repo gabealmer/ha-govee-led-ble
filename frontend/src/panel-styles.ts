@@ -36,7 +36,6 @@ export const effectStudioPanelStyles = [
       --studio-light-on-hover-strength: 18%;
       --studio-light-off-foreground-strength: 72%;
       --studio-light-off-background-strength: 4%;
-      --studio-backdrop-blur: 10px;
       --studio-dialog-shadow-offset: 18px;
       --studio-dialog-shadow-blur: 52px;
       display: flex;
@@ -152,12 +151,8 @@ export const effectStudioPanelStyles = [
       padding: var(--studio-tight-gap) var(--studio-section-gap);
       box-sizing: border-box;
       border-bottom: var(--studio-border-width) solid var(--studio-border);
-      background: color-mix(
-        in srgb,
-        var(--primary-background-color, #fff) 94%,
-        transparent
-      );
-      backdrop-filter: blur(var(--studio-backdrop-blur));
+      background: var(--primary-background-color, #fff);
+      contain: style;
     }
 
     .device-selector {
@@ -380,6 +375,7 @@ export const effectStudioPanelStyles = [
       min-height: 0;
       overflow: hidden;
       flex: 1 1 auto;
+      contain: style;
       grid-template-columns:
         var(--studio-navigation-width)
         var(--studio-list-width)
@@ -409,11 +405,14 @@ export const effectStudioPanelStyles = [
       display: flex;
       min-height: 0;
       overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
       flex-direction: column;
       gap: var(--studio-tight-gap);
       padding: var(--studio-sidebar-padding);
       border-inline-end: var(--studio-border-width) solid var(--studio-border);
       background: var(--secondary-background-color, #f5f6f8);
+      contain: layout paint style;
     }
 
     .button-row {
@@ -687,6 +686,8 @@ export const effectStudioPanelStyles = [
         flex-wrap: nowrap;
         gap: var(--studio-tight-gap);
         overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-gutter: auto;
         padding: var(--studio-control-gap) var(--studio-chrome-gutter);
         border-inline-end: 0;
         border-bottom: var(--studio-border-width) solid var(--studio-border);

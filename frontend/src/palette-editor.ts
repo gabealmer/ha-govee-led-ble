@@ -2,9 +2,9 @@ import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import type { GoveeColourPicker } from "./colour-picker";
-import { recentColour } from "./colour-picker";
 import "./colour-picker";
 import type { LivePreviewInteraction } from "./live-preview-controller";
+import { recentColour } from "./recent-colours";
 import "./reorderable-strip";
 import type {
   GoveeReorderableStrip,

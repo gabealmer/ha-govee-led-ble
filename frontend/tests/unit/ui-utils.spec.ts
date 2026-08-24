@@ -6,6 +6,7 @@ import {
   clamp,
   clampInteger,
   clonePalette,
+  hassPanelRenderChanged,
   integrationSettingsPath,
   lightControlPresentation,
   lightControlEntityId,
@@ -15,7 +16,11 @@ import {
   showHomeAssistantHeader,
   studioToolbarLayoutState,
 } from "../../src/ui-utils";
-import type { DeviceCapabilities, RGB } from "../../src/types";
+import type {
+  DeviceCapabilities,
+  HomeAssistant,
+  RGB,
+} from "../../src/types";
 
 function device(lightEntityId: string | null): DeviceCapabilities {
   return {
@@ -87,6 +92,65 @@ test("Home Assistant header appears only when native navigation is unavailable",
   expect(showHomeAssistantHeader(false, "always_hidden", false)).toBe(true);
   expect(showHomeAssistantHeader(false, "docked", false)).toBe(false);
   expect(showHomeAssistantHeader(true, "auto", true)).toBe(false);
+});
+
+test("panel renders only for Home Assistant state visible in the panel", () => {
+  const base = {
+    callWS: async () => {
+      throw new Error("Not used by this test");
+    },
+    connection: {
+      subscribeMessage: async () => () => {},
+    },
+    user: { is_admin: true },
+    dockedSidebar: "docked",
+    kioskMode: false,
+    states: {
+      "light.cupboard": {
+        state: "on",
+        attributes: { brightness: 128 },
+      },
+      "sensor.temperature": { state: "21" },
+    },
+  } satisfies HomeAssistant;
+
+  expect(
+    hassPanelRenderChanged(
+      {
+        ...base,
+        states: {
+          ...base.states,
+          "sensor.temperature": { state: "22" },
+        },
+      },
+      base,
+      "light.cupboard",
+    ),
+  ).toBe(false);
+  expect(
+    hassPanelRenderChanged(
+      {
+        ...base,
+        states: {
+          ...base.states,
+          "light.cupboard": {
+            state: "on",
+            attributes: { brightness: 200 },
+          },
+        },
+      },
+      base,
+      "light.cupboard",
+    ),
+  ).toBe(true);
+  expect(
+    hassPanelRenderChanged(
+      { ...base, kioskMode: true },
+      base,
+      "light.cupboard",
+    ),
+  ).toBe(true);
+  expect(hassPanelRenderChanged(base, undefined, undefined)).toBe(true);
 });
 
 test("light controls follow the selected device without hiding the toolbar", () => {

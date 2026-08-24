@@ -4,9 +4,9 @@ import { live } from "lit/directives/live.js";
 
 import type { CheckboxControlChange } from "./checkbox-control";
 import "./checkbox-control";
-import { recentColour } from "./colour-picker";
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import { reactiveParameterValueText } from "./effect-editor-model";
+import { recentColour } from "./recent-colours";
 import "./single-colour-field";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";

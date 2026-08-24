@@ -99,9 +99,9 @@ export const studioTokenStyles = css`
     --studio-chrome-gutter: var(--studio-spacing-2xl);
     --studio-empty-state-max-width: 680px;
     --studio-editor-name-max-width: 460px;
-    --studio-navigation-width: 190px;
-    --studio-list-width: 230px;
-    --studio-stacked-navigation-width: 170px;
+    --studio-navigation-width: clamp(168px, 14vw, 190px);
+    --studio-list-width: clamp(210px, 18vw, 230px);
+    --studio-stacked-navigation-width: clamp(152px, 16vw, 170px);
     --studio-stacked-list-max-height: 220px;
     --studio-mobile-list-max-height: 340px;
     --studio-transition-duration: 120ms;
@@ -438,8 +438,11 @@ export const studioVisuallyHiddenStyles = css`
 export const studioWorkspaceStyles = css`
   .sidebar {
     overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     padding: var(--studio-sidebar-padding);
     border-inline-end: var(--studio-border-width) solid var(--studio-border);
+    contain: style;
   }
 
   .item-sidebar {
@@ -450,8 +453,11 @@ export const studioWorkspaceStyles = css`
     min-width: 0;
     min-height: 0;
     overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     padding: var(--studio-editor-padding);
     background: var(--secondary-background-color, #f5f6f8);
+    contain: style;
   }
 
   /* Matches the panel's narrow document-flow breakpoint. */

@@ -11,6 +11,7 @@ dist/
 frontend/node_modules/
 /custom_components/ha_govee_led_ble/generated_protocol/
 /custom_components/ha_govee_led_ble/frontend/effect-studio-bootstrap.js
+/custom_components/ha_govee_led_ble/frontend/effect-studio-*-*.js
 /custom_components/ha_govee_led_ble/frontend/manifest.json
 .playwright-cli/
 

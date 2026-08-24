@@ -1,15 +1,10 @@
 import { LitElement, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import "./advanced-effect-editor";
-import { rememberRecentColour } from "./colour-picker";
-import "./custom-effect-editor";
-import "./info-control";
 import type {
   CustomEffectBrowserCategoryRequest,
   CustomEffectBrowserEntryRequest,
 } from "./custom-effect-browser";
-import "./custom-effect-browser";
 import {
   advancedEditorContent,
   effectOriginDescription,
@@ -19,29 +14,23 @@ import {
 import { customEffectCategories } from "./custom-effect-workflow";
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import type { MusicModeChange } from "./music-profile-editor";
-import "./music-profile-editor";
-import "./palette-editor";
-import "./painted-segment-editor";
 import { PanelController } from "./panel-controller";
 import { PanelEditorController } from "./panel-editor-controller";
 import { PanelModalController } from "./panel-modal-controller";
 import { PanelModel, type DeleteCandidate } from "./panel-model";
 import { PanelPreviewController } from "./panel-preview-controller";
 import { effectStudioPanelStyles } from "./panel-styles";
+import { rememberRecentColour } from "./recent-colours";
 import type {
   GoveeSceneBrowser,
   LibraryItemDeleteRequest,
   ScenePreviewRequest,
 } from "./scene-browser";
-import "./scene-browser";
 import type { SliderControlChange } from "./slider-control";
-import "./slider-control";
-import "./single-colour-field";
 import {
   studioNavigationItems,
   type StudioNavigationItem,
 } from "./studio-navigation";
-import "./video-profile-editor";
 import type {
   AdvancedContent,
   CustomEffectContent,
@@ -61,6 +50,7 @@ import {
   brightnessFillPercentage,
   classifyLightEntityState,
   compareLabels,
+  hassPanelRenderChanged,
   integrationSettingsPath,
   lightControlEntityId,
   lightControlPresentation,
@@ -68,6 +58,27 @@ import {
   showHomeAssistantHeader,
   studioToolbarLayoutState,
 } from "./ui-utils";
+
+const componentLoaders = {
+  shell: () =>
+    Promise.all([
+      import("./custom-effect-browser"),
+      import("./info-control"),
+    ]),
+  scenes: () => import("./scene-browser"),
+  video: () => import("./video-profile-editor"),
+  music: () => import("./music-profile-editor"),
+  advanced: () => import("./advanced-effect-editor"),
+  painted: () =>
+    Promise.all([
+      import("./painted-segment-editor"),
+      import("./single-colour-field"),
+      import("./slider-control"),
+    ]),
+  custom: () => import("./custom-effect-editor"),
+} as const;
+
+type ComponentGroup = keyof typeof componentLoaders;
 
 export class GoveeLedEffectStudio extends LitElement {
   @property({ attribute: false })
@@ -83,6 +94,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private modelRevision = 0;
 
   private readonly model = new PanelModel(() => {
+    this.loadComponentsForCurrentView();
     this.modelRevision += 1;
   });
   private readonly preview = new PanelPreviewController(this.model);
@@ -93,6 +105,7 @@ export class GoveeLedEffectStudio extends LitElement {
   });
   private readonly editor: PanelEditorController;
   private readonly controller: PanelController;
+  private readonly requestedComponentGroups = new Set<ComponentGroup>();
 
   public constructor() {
     super();
@@ -135,6 +148,7 @@ export class GoveeLedEffectStudio extends LitElement {
   public connectedCallback(): void {
     super.connectedCallback();
     this.addEventListener("keydown", this.keyDown);
+    this.loadComponentsForCurrentView();
     this.model.syncAdmin(this.hass);
     if (this.hass && !this.controller.api) {
       void this.controller.load(this.hass, this.isAdmin);
@@ -149,6 +163,17 @@ export class GoveeLedEffectStudio extends LitElement {
     this.controller.disconnect();
   }
 
+  protected shouldUpdate(changed: Map<PropertyKey, unknown>): boolean {
+    if (changed.size !== 1 || !changed.has("hass")) {
+      return true;
+    }
+    return hassPanelRenderChanged(
+      this.hass,
+      changed.get("hass") as HomeAssistant | undefined,
+      lightControlEntityId(this.model.selectedDevice),
+    );
+  }
+
   protected updated(changed: Map<PropertyKey, unknown>): void {
     if (changed.has("hass")) {
       this.model.syncAdmin(this.hass);
@@ -156,8 +181,57 @@ export class GoveeLedEffectStudio extends LitElement {
     if (changed.has("hass") && this.hass && !this.controller.api) {
       void this.controller.load(this.hass, this.isAdmin);
     }
-    this.modal.syncScrollLock();
-    this.syncSingleEffectSelects();
+    if (changed.has("modelRevision")) {
+      this.modal.syncScrollLock();
+      this.syncSingleEffectSelects();
+    }
+  }
+
+  private loadComponentsForCurrentView(): void {
+    this.requestComponentGroup("shell");
+    if (this.model.section === "scenes") {
+      this.requestComponentGroup("scenes");
+    }
+    if (this.model.section === "video") {
+      this.requestComponentGroup("video");
+    }
+    if (!this.model.editorOwnedByActiveView) {
+      return;
+    }
+    switch (this.model.content.kind) {
+      case "advanced":
+      case "scene_layered":
+      case "workshop":
+        this.requestComponentGroup("advanced");
+        break;
+      case "h617a_painted":
+        this.requestComponentGroup("painted");
+        break;
+      case "h617a_single":
+      case "h617a_multi":
+      case "palette_diy":
+        this.requestComponentGroup("custom");
+        break;
+      case "music_profile":
+        this.requestComponentGroup("music");
+        break;
+      case "video_profile":
+        this.requestComponentGroup("video");
+        break;
+    }
+  }
+
+  private requestComponentGroup(group: ComponentGroup): void {
+    if (this.requestedComponentGroups.has(group)) {
+      return;
+    }
+    this.requestedComponentGroups.add(group);
+    void componentLoaders[group]().catch((error: unknown) => {
+      console.error(`Effect Studio could not load the ${group} controls.`, error);
+      this.model.patch({
+        error: "Effect Studio could not load all controls. Reload the page to try again.",
+      });
+    });
   }
 
   protected render() {
@@ -1367,7 +1441,7 @@ export class GoveeLedEffectStudio extends LitElement {
         this.shadowRoot?.querySelector<GoveeSceneBrowser>(
           "govee-scene-browser",
         );
-      if (sceneBrowser?.invokeSaveShortcut()) {
+      if (sceneBrowser?.invokeSaveShortcut?.()) {
         event.preventDefault();
       }
       return;
@@ -1477,7 +1551,7 @@ export class GoveeLedEffectStudio extends LitElement {
     void this.updateComplete.then(() =>
       this.shadowRoot
         ?.querySelector<GoveeSceneBrowser>("govee-scene-browser")
-        ?.refreshSelectedDefault(),
+        ?.refreshSelectedDefault?.(),
     );
   }
 
@@ -1542,7 +1616,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private currentScenePreviewRequest(): ScenePreviewRequest | undefined {
     return this.shadowRoot
       ?.querySelector<GoveeSceneBrowser>("govee-scene-browser")
-      ?.currentPreviewRequest();
+      ?.currentPreviewRequest?.();
   }
 
   static styles = effectStudioPanelStyles;

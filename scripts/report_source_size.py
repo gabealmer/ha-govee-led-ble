@@ -19,10 +19,6 @@ COMMITTED_FRONTEND_SOURCE = {
     f"{INTEGRATION_FRONTEND}editor-loader.js",
     f"{INTEGRATION_FRONTEND}editor.js",
 }
-IGNORED_FRONTEND_OUTPUTS = (
-    Path(INTEGRATION_FRONTEND) / "effect-studio-bootstrap.js",
-    Path(INTEGRATION_FRONTEND) / "manifest.json",
-)
 
 
 def line_count(data: bytes) -> int:
@@ -101,8 +97,13 @@ def report(ref: str, *, working_generated: bool = False) -> dict[str, int | str]
     if working_generated and values["ref"] == _run("git", "rev-parse", "HEAD").decode().strip():
         protocol_root = REPO / GENERATED_PROTOCOL
         values["ignored_generated_protocol"] = sum(line_count(path.read_bytes()) for path in protocol_root.glob("*.py"))
+        frontend_root = REPO / INTEGRATION_FRONTEND
+        frontend_outputs = [
+            *frontend_root.glob("effect-studio-*.js"),
+            frontend_root / "manifest.json",
+        ]
         values["ignored_generated_frontend"] = sum(
-            line_count((REPO / path).read_bytes()) for path in IGNORED_FRONTEND_OUTPUTS if (REPO / path).is_file()
+            line_count(path.read_bytes()) for path in frontend_outputs if path.is_file()
         )
     return values
 

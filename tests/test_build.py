@@ -147,7 +147,10 @@ source = b"".join(path.read_bytes() for path in sorted((root / "frontend/src").g
 digest = hashlib.sha256(source).hexdigest()[:8]
 (output / "effect-studio-bootstrap.js").write_text(f'export const build = "{digest}";\\n', encoding="utf-8")
 (output / "manifest.json").write_text(
-    json.dumps({"bootstrap": "effect-studio-bootstrap.js"}, indent=2) + "\\n",
+    json.dumps(
+        {"bootstrap": "effect-studio-bootstrap.js", "chunks": []},
+        indent=2,
+    ) + "\\n",
     encoding="utf-8",
 )
 """,

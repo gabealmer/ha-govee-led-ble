@@ -20,7 +20,11 @@ PROTOCOL_INPUTS := $(sort $(wildcard tools/ble/kaitai/*.ksy)) scripts/generate-k
 
 FRONTEND_MANIFEST := $(FRONTEND_OUTPUT_DIR)/manifest.json
 FRONTEND_BOOTSTRAP := $(FRONTEND_OUTPUT_DIR)/effect-studio-bootstrap.js
-FRONTEND_OUTPUTS := $(FRONTEND_BOOTSTRAP) $(FRONTEND_MANIFEST)
+FRONTEND_CHUNK_NAMES := $(shell \
+	python3 -c 'import json, pathlib; path = pathlib.Path("$(FRONTEND_MANIFEST)"); print(" ".join(json.loads(path.read_text()).get("chunks", [])) if path.is_file() else "")' \
+	2>/dev/null)
+FRONTEND_CHUNKS := $(addprefix $(FRONTEND_OUTPUT_DIR)/,$(FRONTEND_CHUNK_NAMES))
+FRONTEND_OUTPUTS := $(FRONTEND_BOOTSTRAP) $(FRONTEND_CHUNKS) $(FRONTEND_MANIFEST)
 FRONTEND_NODE_MODULES_LOCK := frontend/node_modules/.package-lock.json
 FRONTEND_SOURCE := $(shell find frontend/src -type f -print | LC_ALL=C sort)
 FRONTEND_CONFIG := frontend/package.json frontend/package-lock.json frontend/tsconfig.json frontend/vite.config.ts frontend/vite.dev.config.ts frontend/vitest.config.ts

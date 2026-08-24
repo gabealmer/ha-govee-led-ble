@@ -7,6 +7,27 @@ import {
   EFFECT_SCHEMA_VERSION,
 } from "./src/contracts.ts";
 
+const panelEntry = resolve(import.meta.dirname, "src/panel.ts");
+
+function isStaticPanelDependency(
+  id: string,
+  getModuleInfo: (id: string) => { importers: readonly string[] } | null,
+  visited = new Set<string>(),
+): boolean {
+  if (id === panelEntry) {
+    return true;
+  }
+  if (visited.has(id)) {
+    return false;
+  }
+  visited.add(id);
+  return (
+    getModuleInfo(id)?.importers.some((importer) =>
+      isStaticPanelDependency(importer, getModuleInfo, visited),
+    ) ?? false
+  );
+}
+
 function editorManifest(): Plugin {
   return {
     name: "editor-manifest",
@@ -21,11 +42,21 @@ function editorManifest(): Plugin {
       ) {
         throw new Error("Editor bootstrap entry was not generated");
       }
+      const chunks = Object.values(bundle)
+        .filter(
+          (asset) =>
+            asset.type === "chunk" &&
+            !asset.isEntry &&
+            asset.fileName.endsWith(".js"),
+        )
+        .map((asset) => asset.fileName)
+        .sort();
       this.emitFile({
         type: "asset",
         fileName: "manifest.json",
         source: `${JSON.stringify({
           bootstrap: entry.fileName,
+          chunks,
           asset_version: EDITOR_ASSET_VERSION,
           api_version: EDITOR_API_VERSION,
           effect_schema_version: EFFECT_SCHEMA_VERSION,
@@ -37,6 +68,7 @@ function editorManifest(): Plugin {
 }
 
 export default defineConfig({
+  base: "./",
   plugins: [editorManifest()],
   build: {
     outDir: resolve(
@@ -49,10 +81,18 @@ export default defineConfig({
     emptyOutDir: false,
     target: "es2022",
     rollupOptions: {
-      input: resolve(import.meta.dirname, "src/panel.ts"),
+      input: panelEntry,
       output: {
         entryFileNames: "effect-studio-bootstrap.js",
-        codeSplitting: false,
+        chunkFileNames: "effect-studio-[name]-[hash].js",
+        manualChunks(id, { getModuleInfo }) {
+          if (
+            id !== panelEntry &&
+            isStaticPanelDependency(id, getModuleInfo)
+          ) {
+            return "core";
+          }
+        },
       },
     },
   },

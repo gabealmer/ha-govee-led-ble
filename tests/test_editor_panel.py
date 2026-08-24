@@ -264,6 +264,9 @@ def test_manifest_selects_stable_advanced_asset() -> None:
     module_url = urlparse(EDITOR_LOADER_MODULE_URL)
 
     assert filename == "effect-studio-bootstrap.js"
+    assert manifest["chunks"]
+    assert all(filename.startswith("effect-studio-") and filename.endswith(".js") for filename in manifest["chunks"])
+    assert all((_EDITOR_STATIC_PATH / filename).is_file() for filename in manifest["chunks"])
     assert manifest["asset_version"] == EDITOR_ASSET_VERSION
     assert manifest["api_version"] == EDITOR_API_VERSION
     assert manifest["effect_schema_version"] == EFFECT_SCHEMA_VERSION

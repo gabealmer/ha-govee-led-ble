@@ -1,5 +1,6 @@
 import type {
   DeviceCapabilities,
+  HomeAssistant,
   HomeAssistantEntityState,
   RGB,
 } from "./types";
@@ -70,6 +71,33 @@ export function showHomeAssistantHeader(
   kioskMode: boolean | undefined,
 ): boolean {
   return kioskMode !== true && (narrow || dockedSidebar === "always_hidden");
+}
+
+export function hassPanelRenderChanged(
+  current: HomeAssistant | undefined,
+  previous: HomeAssistant | undefined,
+  lightEntityId: string | undefined,
+): boolean {
+  if (!current || !previous) {
+    return current !== previous;
+  }
+  if (
+    current.user?.is_admin !== previous.user?.is_admin ||
+    current.dockedSidebar !== previous.dockedSidebar ||
+    current.kioskMode !== previous.kioskMode
+  ) {
+    return true;
+  }
+  if (!lightEntityId) {
+    return false;
+  }
+  const currentLight = current.states?.[lightEntityId];
+  const previousLight = previous.states?.[lightEntityId];
+  return (
+    currentLight?.state !== previousLight?.state ||
+    currentLight?.attributes?.brightness !==
+      previousLight?.attributes?.brightness
+  );
 }
 
 export function lightControlEntityId(
