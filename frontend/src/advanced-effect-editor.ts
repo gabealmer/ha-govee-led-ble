@@ -28,6 +28,7 @@ import { advancedEffectEditorStyles } from "./advanced-effect-editor-styles";
 import type { AppliedAreaChange } from "./applied-area-control";
 import "./applied-area-control";
 import type { LivePreviewInteraction } from "./live-preview-controller";
+import "./palette-editor";
 export {
   blankAdvancedContent,
   cloneAdvancedContent,
