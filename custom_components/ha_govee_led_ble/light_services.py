@@ -14,6 +14,7 @@ from homeassistant.helpers import service
 from homeassistant.helpers.typing import VolDictType
 
 from .const import DOMAIN
+from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .generated_protocol_adapter import build_h6199_video, build_power
 from .light_commands import SegmentColorGroup
@@ -92,6 +93,8 @@ class _GoveeLightOwner:
 
         def _notify_state_changed(self) -> None: ...
 
+        async def _async_supersede_preview(self) -> None: ...
+
         def _require_support(self, service: str, *, supported: bool) -> None: ...
 
 
@@ -147,7 +150,11 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
-        async with self.coordinator._control_lock:
+        await self._async_supersede_preview()
+        async with async_control_intent(
+            self.coordinator,
+            ControlIntent.USER,
+        ):
             self._require_support("paint_segments", supported=self.coordinator.profile.supports_segments)
             if not groups or any(not group.get("segments") for group in groups):
                 raise ServiceValidationError(
@@ -175,7 +182,11 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         await self.async_paint_segments([group])
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
-        async with self.coordinator._control_lock:
+        await self._async_supersede_preview()
+        async with async_control_intent(
+            self.coordinator,
+            ControlIntent.USER,
+        ):
             self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
             if not segments:
                 raise ServiceValidationError(

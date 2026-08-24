@@ -39,7 +39,7 @@ The final [UX completion evidence matrix](docs/completion-evidence.md) records i
 
 The prerelease Effect Studio stores the current saved-effect library and durable deployment status in the local Home Assistant instance.  Administrators can browse native scenes, author effects and manage the shared library.  Other authenticated users have read-only access to scenes and understood saved effects; unknown opaque definitions remain administrator-only.
 
-Live mode is enabled when an administrator opens Effect Studio.  Scene selections and device-affecting edits are sent over BLE as ephemeral previews.  Save mode automatically persists committed edits to an open saved item; both modes are controlled by pressed toolbar buttons.  Continuous controls are throttled and coalesced so only the newest pending state is written; readback verifies the latest settled preview without delaying further edits.  Disabling Live stops queued previews but does not restore the light's earlier state.
+Live mode is enabled when an administrator opens Effect Studio.  Scene selections and device-affecting edits are sent over BLE as lower-priority ephemeral previews.  Home Assistant light commands, scenes and automations supersede queued preview work.  Save mode automatically persists committed edits to an open saved item; both modes are controlled by pressed toolbar buttons.  Continuous controls are throttled, deduplicated and coalesced so only the newest pending state is written; readback verifies the latest settled preview without delaying further edits.  Disabling Live stops queued previews but does not restore the light's earlier state.
 
 Live apply covers native and edited scenes, H617A Painted, Single and Multi effects, H6199 Palette DIY effects, advanced layered effects, music profiles, video profiles and Workshop uploads.
 
@@ -47,7 +47,7 @@ H6199 video saturation, capture area, sound effects, softness, white balance, re
 
 Saved effects overwrite their stable identity after a stale-write check and are deleted permanently.  Deployment status retains content-free source metadata and does not retain unsaved effect bodies.  The editor refuses incompatible backend, schema, compiler or frontend asset versions.
 
-Compatible saved effects also appear by their user-defined names in the standard Home Assistant light effect selector.  Names are unique and cannot reuse native scene, music, video or `off` labels.  Renaming removes the old selector name immediately, so name-based automations must use the new name; deleting removes the selector option.  The `ha_govee_led_ble.apply_custom_effect` action remains stable across renames because it targets the saved effect UUID, and fails after permanent deletion.
+Compatible saved effects also appear by their user-defined names in the standard Home Assistant light effect selector.  Effect Studio applies saved effects through that light entity, so dashboards, scenes, scripts, automations and Studio share the same atomic control path.  Names are unique and cannot reuse native scene, music, video or `off` labels.  Renaming removes the old selector name immediately, so name-based automations must use the new name; deleting removes the selector option.  The `ha_govee_led_ble.apply_custom_effect` entity action accepts either a saved name or stable UUID, supports normal Home Assistant entity, device, area and label targets, and can return deployment phase and confidence data.
 
 Committed native-scene edits become the selected device's default after Live apply completes successfully.  Home Assistant effect selection and automations that select the native scene replay that complete stored scene body, including its speed.  Use **Reset to catalogue** in Effect Studio to apply the catalogue body and default speed before removing the device-specific default.  Type 0 scenes remain selector-only and do not store editable defaults.
 
@@ -56,7 +56,7 @@ Committed native-scene edits become the selected device's default after Live app
 - Effect Studio stores only the current saved-effect definition.  Revision history, recovery drafts and restore actions are removed.
 - Deleting a saved effect is permanent.  Deployment diagnostics retain content-free metadata only.
 - The standalone H617A scene-speed entity is removed.  Edit scene speed in Effect Studio, or apply a native scene atomically through the light effect selector.
-- Compatible saved effects appear in the standard light effect selector by name.  Rename updates that selector immediately; UUID-based `ha_govee_led_ble.apply_custom_effect` automations remain stable across renames.
+- Compatible saved effects appear in the standard light effect selector by name.  Rename updates that selector immediately; `ha_govee_led_ble.apply_custom_effect` accepts the current name or a UUID that remains stable across renames.
 - HACS installs release assets from `ha_govee_led_ble.zip`; default-branch installation is hidden.  Manual installations should extract the same ZIP into `custom_components/ha_govee_led_ble`.
 
 ### Development deployment

@@ -14,11 +14,13 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENES
+from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     WORKSHOP_PROTOCOL_FIXTURES,
 )
+from custom_components.ha_govee_led_ble.effect_compiler import CompiledEffect, compile_application
 from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
 )
@@ -43,6 +45,7 @@ from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewShutdownError,
     PreviewStatus,
 )
+from custom_components.ha_govee_led_ble.effect_runtime import resolve_diy_code
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
@@ -384,7 +387,15 @@ async def test_native_scene_preview_uses_scene_speed_primitive_and_reasserts(
     coordinator.effect_families = set()
     applied = []
 
-    async def apply_scene(scene_name, *, speed_index, canonical_body, writer, verify):
+    async def apply_scene(
+        scene_name,
+        *,
+        speed_index,
+        canonical_body,
+        writer,
+        verify,
+        intent,
+    ):
         async with coordinator._control_lock:
             applied.append((scene_name, speed_index, verify))
             await writer(b"scene")
@@ -1105,6 +1116,58 @@ async def test_config_unload_waits_for_atomic_write_and_drops_pending_work(
     await manager.async_shutdown()
 
 
+async def test_higher_intent_finishes_upload_then_skips_preview_activation(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator()
+    arbiter = BLEControlArbiter()
+    coordinator._control_arbiter = arbiter
+    coordinator._control_lock = arbiter
+    coordinator.admit_preview = arbiter.admit_preview
+    coordinator.invalidate_previews = arbiter.invalidate_previews
+    coordinator.is_on = True
+    item = _item("atomic")
+    compiled = compile_application(item, coordinator.model, diy_code=resolve_diy_code(item, None))
+    assert isinstance(compiled, CompiledEffect)
+    foreground: asyncio.Task[None] | None = None
+
+    async def run_foreground() -> None:
+        async with arbiter.hold(ControlIntent.USER):
+            pass
+
+    async def write(packet: bytes) -> None:
+        nonlocal foreground
+        coordinator.writes.append(packet)
+        if foreground is None:
+            foreground = asyncio.create_task(run_foreground())
+            await asyncio.sleep(0)
+
+    coordinator.async_preview_write.side_effect = write
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=item,
+    )
+    await manager.async_wait_idle("entry-a")
+    assert foreground is not None
+    await foreground
+
+    assert coordinator.writes == list(compiled.upload_packets)
+    assert compiled.activation_packet not in coordinator.writes
+    assert any(event.phase is PreviewPhase.CANCELLED and event.error_code == "superseded" for event in events)
+    assert "entry-a" not in manager._health_targets
+    await manager.async_shutdown()
+
+
 async def test_session_cancel_finishes_active_sequence_without_replaying_pending_work(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
@@ -1414,6 +1477,47 @@ async def test_compilation_failure_is_reported_without_writing(
 
     coordinator.async_preview_write.assert_not_awaited()
     assert any(event.phase is PreviewPhase.FAILED and event.error_code == "compilation_failed" for event in events)
+    await manager.async_shutdown()
+
+
+async def test_external_supersession_clears_pending_health_and_publishes_reason(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from custom_components.ha_govee_led_ble import effect_preview
+
+    coordinator = _coordinator()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+    request = effect_preview._PreviewRequest(
+        session_id=session_id,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        fingerprint="pending",
+        generation=1,
+        correlation_id="correlation",
+        reassert=False,
+        persist_default=False,
+        content_kind="h617a_single",
+        item=_item("pending"),
+    )
+    manager._devices["entry-a"] = effect_preview._DeviceWorker(
+        pending=request,
+        latest_accepted_generation=1,
+    )
+    manager._health_targets["entry-a"] = effect_preview._HealthTarget(
+        expectations={"effect": None},
+        confirmed_confidence=ObservationConfidence.ACTIVATION_MATCH,
+    )
+
+    await manager.async_supersede_device("entry-a", reason="user_command")
+
+    assert manager._devices["entry-a"].pending is None
+    assert "entry-a" not in manager._health_targets
+    assert any(event.phase is PreviewPhase.CANCELLED and event.error_code == "user_command" for event in events)
     await manager.async_shutdown()
 
 

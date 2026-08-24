@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from hashlib import sha256
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock, MagicMock, call
 from uuid import uuid4
 
 import pytest
@@ -189,6 +189,8 @@ async def test_saved_effect_uploads_activates_then_confirms_selector(
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
+    coordinator.data = {}
+    coordinator.async_set_updated_data = MagicMock()
     _confirm_on_call(coordinator, 2, 800)
     item = _item()
     compiled = compile_h617a(item, 800)
@@ -214,6 +216,7 @@ async def test_saved_effect_uploads_activates_then_confirms_selector(
     assert cache.get("entry-a").active_effect.item_version == item.version
     assert cache.get("entry-a").active_effect.content_hash == item.content_hash
     assert cache.get("entry-a").active_effect.observable_signature == "custom:800"
+    coordinator.async_set_updated_data.assert_called_once_with({})
 
 
 async def test_layered_scene_uses_shared_transaction_and_identity_verification(
@@ -745,7 +748,7 @@ async def test_reconciliation_matches_only_latest_confirmed_selector(
         ("video_mode", "movie"),
     ],
 )
-async def test_reconciliation_reports_only_fresh_native_mode_identity(
+async def test_reconciliation_preserves_native_mode_with_unknown_confidence(
     hass: HomeAssistant,
     mode_attribute: str,
     native_mode: str,
@@ -770,7 +773,8 @@ async def test_reconciliation_reports_only_fresh_native_mode_identity(
         observed_at="2026-08-11T00:01:00Z",
     )
 
-    assert stale.native_mode is None
+    assert stale.native_mode == native_mode
+    assert stale.confidence is ObservationConfidence.UNKNOWN
 
 
 async def test_unreadable_device_is_uncertain_not_confirmed(

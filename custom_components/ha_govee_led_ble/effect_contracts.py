@@ -19,8 +19,8 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 9
-EDITOR_ASSET_VERSION: Final = 10
+EDITOR_API_VERSION: Final = 10
+EDITOR_ASSET_VERSION: Final = 11
 EFFECT_COMPILER_VERSION: Final = 4
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -182,7 +182,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.EDITED_PALETTE_SCENES,
         "Edited palette scenes",
         "scene_palette",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
@@ -193,7 +193,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.LAYERED_SCENES,
         "Layered scenes",
         "scene_layered",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
@@ -204,7 +204,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.PAINTED,
         "Painted",
         "h617a_painted",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.APPLICATION_VALIDATED,
@@ -215,7 +215,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.SINGLE,
         "Single",
         "h617a_single",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.APPLICATION_VALIDATED,
@@ -226,7 +226,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.MULTI,
         "Multi",
         "h617a_multi",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.APPLICATION_VALIDATED,
@@ -237,7 +237,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.NATIVE_MUSIC,
         "Music",
         "music_profile",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.COORDINATOR_WRITER,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.APPLICATION_VALIDATED,
@@ -248,7 +248,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.ADVANCED,
         "Advanced",
         "advanced",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
@@ -259,7 +259,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.WORKSHOP,
         "Workshop",
         "workshop",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
@@ -281,7 +281,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.EDITED_PALETTE_SCENES,
         "Edited palette scenes",
         "scene_palette",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
@@ -292,7 +292,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.LAYERED_SCENES,
         "Layered scenes",
         "scene_layered",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
@@ -303,7 +303,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.PALETTE_DIY,
         "Palette DIY",
         "palette_diy",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.H6199_CUSTOM_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
@@ -314,7 +314,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.NATIVE_MUSIC,
         "Music",
         "music_profile",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.COORDINATOR_WRITER,
         VerificationConfidence.STATE_CONFIRMED,
         PhysicalValidationState.APPLICATION_VALIDATED,
@@ -325,7 +325,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.VIDEO,
         "Video",
         "video_profile",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.COORDINATOR_WRITER,
         VerificationConfidence.STATE_CONFIRMED,
         PhysicalValidationState.APPLICATION_VALIDATED,
@@ -336,7 +336,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.ADVANCED,
         "Advanced",
         "advanced",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
@@ -347,7 +347,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CapabilityWorkflow.WORKSHOP,
         "Workshop",
         "workshop",
-        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
         CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
@@ -404,7 +404,10 @@ def workflow_capability_state(model: str, workflow: CapabilityWorkflow) -> Capab
 
 def studio_apply_capability_state(model: str, workflow: CapabilityWorkflow) -> CapabilityState:
     capability = release_capability(model, workflow)
-    if capability is None or capability.application_route is not ApplicationRoute.STUDIO_CUSTOM_APPLY:
+    if capability is None or capability.application_route not in {
+        ApplicationRoute.STUDIO_CUSTOM_APPLY,
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+    }:
         return CapabilityState.UNSUPPORTED
     return CapabilityState.SUPPORTED
 

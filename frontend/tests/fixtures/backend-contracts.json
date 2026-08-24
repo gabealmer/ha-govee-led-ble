@@ -810,49 +810,49 @@
               "label": "Scenes"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "scene_palette",
               "id": "edited_palette_scenes",
               "label": "Edited palette scenes"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "scene_layered",
               "id": "layered_scenes",
               "label": "Layered scenes"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "h617a_painted",
               "id": "painted",
               "label": "Painted"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "h617a_single",
               "id": "single",
               "label": "Single"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "h617a_multi",
               "id": "multi",
               "label": "Multi"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "music_profile",
               "id": "native_music",
               "label": "Music"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "advanced",
               "id": "advanced",
               "label": "Advanced"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "workshop",
               "id": "workshop",
               "label": "Workshop"
@@ -919,43 +919,43 @@
               "label": "Scenes"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "scene_palette",
               "id": "edited_palette_scenes",
               "label": "Edited palette scenes"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "scene_layered",
               "id": "layered_scenes",
               "label": "Layered scenes"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "palette_diy",
               "id": "palette_diy",
               "label": "Palette DIY"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "music_profile",
               "id": "native_music",
               "label": "Music"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "video_profile",
               "id": "video",
               "label": "Video"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "advanced",
               "id": "advanced",
               "label": "Advanced"
             },
             {
-              "application": "studio",
+              "application": "home_assistant",
               "content_kind": "workshop",
               "id": "workshop",
               "label": "Workshop"
@@ -992,49 +992,49 @@
           "label": "Scenes"
         },
         {
-          "application": "studio",
+          "application": "home_assistant",
           "content_kind": "scene_palette",
           "id": "edited_palette_scenes",
           "label": "Edited palette scenes"
         },
         {
-          "application": "studio",
+          "application": "home_assistant",
           "content_kind": "scene_layered",
           "id": "layered_scenes",
           "label": "Layered scenes"
         },
         {
-          "application": "studio",
+          "application": "home_assistant",
           "content_kind": "h617a_painted",
           "id": "painted",
           "label": "Painted"
         },
         {
-          "application": "studio",
+          "application": "home_assistant",
           "content_kind": "h617a_single",
           "id": "single",
           "label": "Single"
         },
         {
-          "application": "studio",
+          "application": "home_assistant",
           "content_kind": "h617a_multi",
           "id": "multi",
           "label": "Multi"
         },
         {
-          "application": "studio",
+          "application": "home_assistant",
           "content_kind": "music_profile",
           "id": "native_music",
           "label": "Music"
         },
         {
-          "application": "studio",
+          "application": "home_assistant",
           "content_kind": "advanced",
           "id": "advanced",
           "label": "Advanced"
         },
         {
-          "application": "studio",
+          "application": "home_assistant",
           "content_kind": "workshop",
           "id": "workshop",
           "label": "Workshop"
@@ -1143,7 +1143,7 @@
       }
     ],
     "editor_info": {
-      "api_version": 9,
+      "api_version": 10,
       "compiler_version": 4,
       "effect_schema_version": 2,
       "limits": {

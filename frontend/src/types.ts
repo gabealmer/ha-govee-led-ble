@@ -517,6 +517,11 @@ export interface HomeAssistantEntityState {
 
 export interface HomeAssistant {
   callWS<T>(message: Record<string, unknown>): Promise<T>;
+  callService(
+    domain: string,
+    service: string,
+    data?: Record<string, unknown>,
+  ): Promise<unknown>;
   connection: {
     subscribeMessage<T>(
       callback: (event: T) => void,

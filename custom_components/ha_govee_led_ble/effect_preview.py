@@ -19,6 +19,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
 
 from .const import DOMAIN
+from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
 from .effect_catalogue import H6199_PALETTE_DIY_APPLY_CODE, H6199_WORKSHOP_APPLY_CODE
 from .effect_compiler import (
     ActivationMode,
@@ -204,6 +205,7 @@ class _PreviewRequest:
     speed_index: int | None = None
     canonical_body: bytes | None = None
     default_action: str | None = None
+    admission: PreviewAdmission | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,7 +472,13 @@ class EffectPreviewManager:
                     f"preview session accepts at most {MAX_PREVIEW_REQUESTS_PER_SECOND} requests per second"
                 )
             self._generation += 1
-            request = replace(request, generation=self._generation)
+            coordinator = self._loaded_coordinator(request.config_entry_id)
+            admit_preview = getattr(coordinator, "admit_preview", None)
+            request = replace(
+                request,
+                generation=self._generation,
+                admission=admit_preview() if admit_preview is not None else None,
+            )
             session.last_sequence = request.sequence
             session.accepted_at.append(now)
             superseded = worker.pending
@@ -546,6 +554,44 @@ class EffectPreviewManager:
                     write_disposition=current_health.write_disposition,
                     incident_id=current_health.incident_id,
                 )
+
+    async def async_supersede_device(
+        self,
+        config_entry_id: str,
+        *,
+        reason: str = "superseded_by_foreground",
+    ) -> None:
+        """Cancel queued preview state before an external foreground operation."""
+        entry = self._hass.config_entries.async_get_entry(config_entry_id)
+        coordinator = None if entry is None else entry.runtime_data
+        invalidate = getattr(coordinator, "invalidate_previews", None)
+        if invalidate is not None:
+            invalidate()
+
+        cancelled: dict[int, _PreviewRequest] = {}
+        verification_task: asyncio.Task[None] | None = None
+        async with self._lock:
+            worker = self._devices.get(config_entry_id)
+            self._health_targets.pop(config_entry_id, None)
+            if worker is None:
+                return
+            for request in (worker.pending, worker.verification_request):
+                if request is not None:
+                    cancelled[request.generation] = request
+                    worker.cancelled_generations.add(request.generation)
+            if worker.active is not None:
+                worker.cancelled_generations.add(worker.active.generation)
+            worker.pending = None
+            verification_task = worker.verification_task
+            if verification_task is not None:
+                verification_task.cancel()
+                worker.verification_task = None
+                worker.verification_request = None
+            worker.wake.set()
+        for request in cancelled.values():
+            self._publish(request, PreviewPhase.CANCELLED, error_code=reason)
+        if verification_task is not None:
+            await asyncio.gather(verification_task, return_exceptions=True)
 
     async def async_close_session(self, session_id: str, owner: object) -> None:
         self.require_owner(session_id, owner)
@@ -688,6 +734,13 @@ class EffectPreviewManager:
                         )
 
     async def _async_execute_request(self, request: _PreviewRequest) -> None:
+        if not await self._async_request_is_current(request):
+            self._publish(
+                request,
+                PreviewPhase.CANCELLED,
+                error_code="superseded",
+            )
+            return
         try:
             coordinator = self._loaded_coordinator(request.config_entry_id)
             compiled = (
@@ -728,6 +781,13 @@ class EffectPreviewManager:
             return
 
         expectations = _verification_expectations(coordinator, request, compiled)
+        if not await self._async_request_is_current(request):
+            self._publish(
+                request,
+                PreviewPhase.CANCELLED,
+                error_code="superseded",
+            )
+            return
         if expectations is not None:
             self._health_targets[request.config_entry_id] = _HealthTarget(
                 expectations=dict(expectations),
@@ -744,15 +804,18 @@ class EffectPreviewManager:
                     canonical_body=request.canonical_body,
                     writer=writer,
                     verify=False,
+                    intent=ControlIntent.PREVIEW,
                 )
             else:
                 assert compiled is not None
-                async with coordinator._control_lock:
+                async with async_control_intent(coordinator, ControlIntent.PREVIEW):
                     if isinstance(compiled, CompiledEffect):
                         if not coordinator.is_on:
                             await writer(build_power(True, coordinator.model))
                             coordinator.is_on = True
                         await async_write_packets(compiled.upload_packets, writer)
+                        if not await self._async_request_is_current(request):
+                            raise _PreviewSupersededError
                         if compiled.activation_packet is not None:
                             await writer(compiled.activation_packet)
                         _install_effect_state(coordinator, compiled)
@@ -763,9 +826,12 @@ class EffectPreviewManager:
                             writer=writer,
                             verify=False,
                         )
+            if not await self._async_request_is_current(request):
+                raise _PreviewSupersededError
             if self._stopping or self._hass.is_stopping:
                 raise PreviewShutdownError("Home Assistant is stopping")
         except _PreviewSupersededError:
+            self._health_targets.pop(request.config_entry_id, None)
             self._publish(request, PreviewPhase.CANCELLED, error_code="superseded")
             return
         except PreviewShutdownError:
@@ -964,6 +1030,7 @@ class EffectPreviewManager:
                 or request.generation != worker.latest_accepted_generation
                 or request.generation in worker.cancelled_generations
                 or request.session_id not in self._sessions
+                or (request.admission is not None and not request.admission.is_current)
             ):
                 raise _PreviewSupersededError
             worker.last_write_started = asyncio.get_running_loop().time()
@@ -1097,15 +1164,26 @@ class EffectPreviewManager:
                 and request.generation == worker.latest_accepted_generation
                 and request.generation not in worker.cancelled_generations
                 and request.session_id in self._sessions
+                and (request.admission is None or request.admission.is_current)
             )
 
     async def _async_request_status_is_live(self, request: _PreviewRequest) -> bool:
+        return await self._async_request_is_current(request, require_latest=False)
+
+    async def _async_request_is_current(
+        self,
+        request: _PreviewRequest,
+        *,
+        require_latest: bool = True,
+    ) -> bool:
         async with self._lock:
             worker = self._devices.get(request.config_entry_id)
             return (
                 worker is not None
                 and request.generation not in worker.cancelled_generations
                 and request.session_id in self._sessions
+                and (not require_latest or request.generation == worker.latest_accepted_generation)
+                and (request.admission is None or request.admission.is_current)
             )
 
     def _invalidate_observed_match(self, request: _PreviewRequest) -> None:
@@ -1312,7 +1390,7 @@ class EffectPreviewManager:
         ):
             return None, False
         try:
-            await coordinator.disconnect()
+            await coordinator.disconnect(intent=ControlIntent.PREVIEW)
             if request is not None and not await self._async_verification_is_current(request):
                 return None, True
             if health_generation is not None and not await self._async_health_check_is_current(

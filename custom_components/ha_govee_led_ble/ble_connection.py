@@ -7,7 +7,6 @@ from collections.abc import Awaitable, Callable
 from typing import cast
 
 from bleak import BleakClient, BleakError  # type: ignore[attr-defined]
-from bleak.backends.device import BLEDevice
 from bleak_retry_connector import close_stale_connections_by_address, establish_connection
 from homeassistant.core import HomeAssistant
 
@@ -18,7 +17,8 @@ DEVICE_DISCOVERY_ATTEMPTS = 4
 VALIDATION_DISCONNECT_TIMEOUT = 10
 VALIDATION_CONNECT_TIMEOUT = 30
 
-type EstablishConnection = Callable[[type[BleakClient], BLEDevice, str], Awaitable[BleakClient]]
+type DisconnectedCallback = Callable[[BleakClient], None]
+type EstablishConnection = Callable[..., Awaitable[BleakClient]]
 type Sleep = Callable[[float], Awaitable[None]]
 
 _ESTABLISH_CONNECTION = cast(EstablishConnection, establish_connection)
@@ -32,6 +32,7 @@ async def async_establish_ble_connection(
     resolver: BLEDeviceResolver | None = None,
     establish: EstablishConnection = _ESTABLISH_CONNECTION,
     sleep: Sleep = _SLEEP,
+    disconnected_callback: DisconnectedCallback | None = None,
 ) -> BleakClient:
     """Resolve and establish a BLE connection using production retry semantics."""
     active_resolver = BLEDeviceResolver() if resolver is None else resolver
@@ -44,7 +45,14 @@ async def async_establish_ble_connection(
             await sleep(RETRY_BACKOFF_SECONDS)
     if resolution is None:
         raise BleakError(f"Device {address} not found")
-    return await establish(resolution.client_class, resolution.device, address)
+    if disconnected_callback is None:
+        return await establish(resolution.client_class, resolution.device, address)
+    return await establish(
+        resolution.client_class,
+        resolution.device,
+        address,
+        disconnected_callback=disconnected_callback,
+    )
 
 
 async def async_validate_ble_connection(hass: HomeAssistant, address: str) -> None:

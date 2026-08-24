@@ -1,11 +1,11 @@
 """Shared typed base for the coordinator and its write mixins."""
 
-import asyncio
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import ModelProfile
+from .control_arbiter import BLEControlArbiter
 from .coordinator_status import ParsedMode
 
 if TYPE_CHECKING:
@@ -39,7 +39,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     music_calm: bool
     diy_code: int | None
     color_mode: ParsedMode | None
-    _control_lock: asyncio.Lock
+    _control_lock: BLEControlArbiter
     _pre_mode_snapshot: PreModeSnapshot
     segment_colors: list[tuple[int, int, int]]
 

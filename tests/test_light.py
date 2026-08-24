@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
@@ -195,18 +196,27 @@ async def test_saved_effects_are_compatible_reactive_and_lock_safe(
         listener = callback
         return MagicMock()
 
+    @asynccontextmanager
+    async def saved_effect_for_apply(*_args, **_kwargs):
+        assert not mock_coordinator._control_lock.locked()
+        yield saved
+
+    async def apply_saved_effect(*_args, **_kwargs):
+        assert mock_coordinator._control_lock.locked()
+
     application = SimpleNamespace(
         library_snapshot=MagicMock(
             return_value=LibrarySnapshot((saved, incompatible)),
         ),
         subscribe_library=MagicMock(side_effect=subscribe),
-        async_apply_saved_effect=AsyncMock(),
+        saved_effect_for_apply=saved_effect_for_apply,
     )
+    apply_saved = AsyncMock(side_effect=apply_saved_effect)
     backend = cast(
         EffectBackend,
         SimpleNamespace(
             application=application,
-            engine=MagicMock(),
+            engine=SimpleNamespace(async_apply_saved=apply_saved),
             device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
         ),
     )
@@ -222,13 +232,11 @@ async def test_saved_effects_are_compatible_reactive_and_lock_safe(
 
     await entity.async_turn_on(effect="my effect")
 
-    application.async_apply_saved_effect.assert_awaited_once_with(
-        backend.engine,
+    apply_saved.assert_awaited_once_with(
         mock_coordinator,
-        item_id=str(saved.id),
+        saved,
         config_entry_id="entry-a",
-        updated_at=application.async_apply_saved_effect.await_args.kwargs["updated_at"],
-        expected_version=saved.version,
+        updated_at=apply_saved.await_args.kwargs["updated_at"],
     )
     mock_coordinator.send_command.assert_awaited_once_with(build_power(True))
     assert mock_coordinator.is_on is True

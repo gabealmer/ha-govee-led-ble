@@ -45,6 +45,7 @@ export class PanelController {
   public api?: EffectStudioApi;
 
   private unsubscribeLibrary?: () => void;
+  private unsubscribeDevice?: () => void;
   private autoSavePending?: AutoSaveTarget;
   private autoSaveRunning = false;
   private deviceRefresh?: {
@@ -102,6 +103,10 @@ export class PanelController {
         return;
       }
       this.unsubscribeLibrary = unsubscribeLibrary;
+      await this.subscribeSelectedDevice(api);
+      if (!this.loadIsCurrent(request) || this.model.error) {
+        return;
+      }
       if (isAdmin) {
         const opened = await this.preview.open(api, (error) => this.subscriptionFailed(error, request));
         if (!opened || !this.loadIsCurrent(request) || this.model.error) {
@@ -139,6 +144,9 @@ export class PanelController {
       previewNotice: undefined,
       notice: undefined,
     });
+    if (this.api) {
+      await this.subscribeSelectedDevice(this.api);
+    }
     this.options.replacePath(editorDevicePath(selectedDeviceId));
     try {
       const userState = await this.api?.updateUserState(
@@ -204,7 +212,7 @@ export class PanelController {
   private async restoreActiveSelection(
     transitionEpoch: number,
   ): Promise<void> {
-    const device = await this.refreshSelectedDevice(transitionEpoch);
+    const device = this.model.selectedDevice;
     if (
       !device ||
       transitionEpoch !== this.model.editorTransitionEpoch
@@ -723,12 +731,14 @@ export class PanelController {
     item: LibraryItem,
     transitionEpoch: number,
   ): Promise<void> {
-    const configEntryId = this.model.selectedDeviceId;
-    if (!this.api || !configEntryId) {
+    const device = this.model.selectedDevice;
+    const lightEntityId = device?.light_entity_id;
+    if (!this.api || !device || !lightEntityId) {
       return;
     }
     try {
-      await this.api.applySavedEffect(configEntryId, item.id);
+      await this.api.applySavedEffect(lightEntityId, item.name);
+      await this.refreshSelectedDevice(transitionEpoch);
     } catch (error) {
       if (transitionEpoch === this.model.editorTransitionEpoch) {
         this.model.patch({
@@ -804,9 +814,48 @@ export class PanelController {
     });
   }
 
+  private async subscribeSelectedDevice(api: EffectStudioApi): Promise<void> {
+    const configEntryId = this.model.selectedDeviceId;
+    this.unsubscribeDevice?.();
+    this.unsubscribeDevice = undefined;
+    if (!configEntryId) {
+      return;
+    }
+    const unsubscribe = await api.subscribeDevice(
+      configEntryId,
+      (device) => {
+        if (
+          api !== this.api ||
+          device.config_entry_id !== this.model.selectedDeviceId
+        ) {
+          return;
+        }
+        this.model.patch({
+          devices: this.model.devices.map((current) =>
+            current.config_entry_id === device.config_entry_id
+              ? device
+              : current,
+          ),
+        });
+      },
+      (error) => {
+        if (api === this.api) {
+          this.model.patch({ notice: `State updates stopped: ${error.message}` });
+        }
+      },
+    );
+    if (api !== this.api || configEntryId !== this.model.selectedDeviceId) {
+      unsubscribe();
+      return;
+    }
+    this.unsubscribeDevice = unsubscribe;
+  }
+
   private stopSubscriptions(): void {
     this.unsubscribeLibrary?.();
     this.unsubscribeLibrary = undefined;
+    this.unsubscribeDevice?.();
+    this.unsubscribeDevice = undefined;
     this.preview.dispose();
   }
 }

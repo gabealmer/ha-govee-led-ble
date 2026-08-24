@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -44,6 +45,7 @@ from custom_components.ha_govee_led_ble.effect_setup import get_effect_backend
 from custom_components.ha_govee_led_ble.effect_storage import EffectStorageError
 from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_DEVICE,
+    WS_DEVICE_SUBSCRIBE,
     WS_DEVICES,
     WS_INFO,
     WS_LIBRARY_LIST,
@@ -189,6 +191,13 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         configuration_url=editor_url("isolated-entry"),
         effect_families=frozenset(),
     )
+    monkeypatch.setattr(
+        coordinator,
+        "refresh_state",
+        AsyncMock(
+            side_effect=AssertionError("device payloads must not read BLE"),
+        ),
+    )
     entry = SimpleNamespace(
         entry_id="isolated-entry",
         domain=DOMAIN,
@@ -231,6 +240,14 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         selected_device = await client.receive_json()
         await client.send_json_auto_id(
             {
+                "type": WS_DEVICE_SUBSCRIBE,
+                "config_entry_id": entry.entry_id,
+            }
+        )
+        subscribed = await client.receive_json()
+        device_event = await client.receive_json()
+        await client.send_json_auto_id(
+            {
                 "type": WS_SCENE_CATALOGUE_LIST,
                 "config_entry_id": entry.entry_id,
             }
@@ -242,6 +259,8 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
     assert library["result"] == {"items": []}
     device = devices["result"]["devices"][0]
     refreshed_device = selected_device["result"]["device"]
+    assert subscribed["success"] is True
+    assert device_event["event"]["device"]["config_entry_id"] == entry.entry_id
     assert refreshed_device["config_entry_id"] == device["config_entry_id"]
     assert refreshed_device["light_entity_id"] == device["light_entity_id"]
     assert refreshed_device["active_state"]["mode"] == device["active_state"]["mode"]

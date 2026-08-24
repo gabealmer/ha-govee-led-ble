@@ -15,9 +15,10 @@ from homeassistant.components.websocket_api.decorators import (
     websocket_command,
 )
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
@@ -77,6 +78,7 @@ from .effect_websocket_schema import (
     WS_CUSTOM_CATALOGUE,
     WS_DEPLOYMENT_SUBSCRIBE,
     WS_DEVICE,
+    WS_DEVICE_SUBSCRIBE,
     WS_DEVICES,
     WS_INFO,
     WS_LIBRARY_CREATE,
@@ -125,19 +127,16 @@ async def ws_editor_devices(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    devices = []
-    backend = _backend(hass)
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        if entry.state is not ConfigEntryState.LOADED:
-            continue
-        devices.append(await _async_device_payload(hass, backend, entry))
-    if len(devices) > MAX_EDITOR_DEVICES:
+    entries = [entry for entry in hass.config_entries.async_entries(DOMAIN) if entry.state is ConfigEntryState.LOADED]
+    if len(entries) > MAX_EDITOR_DEVICES:
         connection.send_error(
             msg["id"],
             "limit_reached",
             f"device response must not exceed {MAX_EDITOR_DEVICES} entries",
         )
         return
+    backend = _backend(hass)
+    devices = [_device_payload(hass, backend, entry) for entry in entries]
     connection.send_result(msg["id"], {"devices": devices})
 
 
@@ -159,21 +158,24 @@ async def ws_editor_device(
         return
     connection.send_result(
         msg["id"],
-        {"device": await _async_device_payload(hass, _backend(hass), entry)},
+        {"device": _device_payload(hass, _backend(hass), entry)},
     )
 
 
-async def _async_device_payload(
+def _device_payload(
     hass: HomeAssistant,
     backend: EffectBackend,
     entry: ConfigEntry[Any],
 ) -> dict[str, Any]:
     coordinator = entry.runtime_data
-    observed = await backend.engine.async_reconcile(
-        coordinator,
-        config_entry_id=entry.entry_id,
-        observed_at=dt_util.utcnow().isoformat(),
-    )
+    observed = backend.device_cache.get(entry.entry_id)
+    if observed is None:
+        observed = backend.engine.reconcile_current(
+            coordinator,
+            config_entry_id=entry.entry_id,
+            observed_at=dt_util.utcnow().isoformat(),
+            refreshed=False,
+        )
     device = device_effect_capabilities(
         entry.entry_id,
         coordinator.model,
@@ -194,6 +196,59 @@ def _light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str | None:
         if entry.domain == "light" and entry.platform == DOMAIN and entry.disabled_by is None
     ]
     return entries[0].entity_id if len(entries) == 1 else None
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_DEVICE_SUBSCRIBE,
+        vol.Required("config_entry_id"): IDENTIFIER,
+    }
+)
+@callback
+def ws_device_subscribe(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
+    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
+        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        return
+    backend = _backend(hass)
+    cancel_forward: CALLBACK_TYPE | None = None
+
+    @callback
+    def forward() -> None:
+        nonlocal cancel_forward
+        cancel_forward = None
+        connection.send_event(
+            msg["id"],
+            {"device": _device_payload(hass, backend, entry)},
+        )
+
+    @callback
+    def schedule_forward() -> None:
+        nonlocal cancel_forward
+        if cancel_forward is None:
+            cancel_forward = async_call_later(
+                hass,
+                0.1,
+                lambda _now: forward(),
+            )
+
+    unsubscribe = entry.runtime_data.async_add_listener(schedule_forward)
+
+    @callback
+    def unsubscribe_all() -> None:
+        nonlocal cancel_forward
+        unsubscribe()
+        if cancel_forward is not None:
+            cancel_forward()
+            cancel_forward = None
+
+    connection.subscriptions[msg["id"]] = unsubscribe_all
+    connection.send_result(msg["id"])
+    forward()
 
 
 @websocket_command({vol.Required("type"): WS_CUSTOM_CATALOGUE})
@@ -300,6 +355,10 @@ async def ws_scene_apply(
         return
     try:
         backend = _backend(hass)
+        await backend.preview.async_supersede_device(
+            entry.entry_id,
+            reason="committed_apply",
+        )
         resolved, speed_index = await async_apply_scene(
             hass,
             entry,
@@ -315,10 +374,11 @@ async def ws_scene_apply(
     except (HomeAssistantError, RuntimeError) as exc:
         connection.send_error(msg["id"], "apply_failed", str(exc))
         return
-    await backend.engine.async_reconcile(
+    backend.engine.reconcile_current(
         entry.runtime_data,
         config_entry_id=entry.entry_id,
         observed_at=dt_util.utcnow().isoformat(),
+        refreshed=True,
     )
     connection.send_result(
         msg["id"],
@@ -360,6 +420,10 @@ async def ws_scene_reset(
         return
     backend = _backend(hass)
     try:
+        await backend.preview.async_supersede_device(
+            entry.entry_id,
+            reason="committed_apply",
+        )
         resolved = await async_reset_scene_default(
             entry,
             scene_id=msg["scene_id"],
@@ -372,10 +436,11 @@ async def ws_scene_reset(
     except (EffectStorageError, HomeAssistantError, RuntimeError) as exc:
         connection.send_error(msg["id"], "reset_failed", str(exc))
         return
-    await backend.engine.async_reconcile(
+    backend.engine.reconcile_current(
         entry.runtime_data,
         config_entry_id=entry.entry_id,
         observed_at=dt_util.utcnow().isoformat(),
+        refreshed=True,
     )
     connection.send_result(
         msg["id"],
@@ -410,6 +475,10 @@ async def ws_scene_default_set(
         return
     backend = _backend(hass)
     try:
+        await backend.preview.async_supersede_device(
+            entry.entry_id,
+            reason="committed_apply",
+        )
         resolved = await async_set_scene_default(
             entry,
             scene_id=msg["scene_id"],
@@ -424,12 +493,12 @@ async def ws_scene_default_set(
     except (EffectStorageError, HomeAssistantError, RuntimeError) as exc:
         connection.send_error(msg["id"], "save_failed", str(exc))
         return
-    await backend.engine.async_reconcile(
+    backend.engine.reconcile_current(
         entry.runtime_data,
         config_entry_id=entry.entry_id,
         observed_at=msg["updated_at"],
+        refreshed=True,
     )
-    entry.runtime_data.async_update_listeners()
     connection.send_result(
         msg["id"],
         scene_detail_payload(
@@ -955,6 +1024,7 @@ def ws_user_state_record_colour(
         vol.Required("config_entry_id"): IDENTIFIER,
         vol.Required("item_id"): UUID_TEXT,
         vol.Required("updated_at"): TIMESTAMP,
+        vol.Optional("operation_id"): UUID_TEXT,
     }
 )
 @require_admin
@@ -971,16 +1041,22 @@ async def ws_apply(
         return
     try:
         UUID(msg["item_id"])
+        operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
     except ValueError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
     try:
+        await backend.preview.async_supersede_device(
+            entry.entry_id,
+            reason="committed_apply",
+        )
         result = await backend.application.async_apply_saved_effect(
             backend.engine,
             entry.runtime_data,
             item_id=msg["item_id"],
             config_entry_id=entry.entry_id,
             updated_at=msg["updated_at"],
+            operation_id=operation_id,
         )
     except EffectNotFoundError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
@@ -994,7 +1070,6 @@ async def ws_apply(
     except Exception as exc:
         connection.send_error(msg["id"], "apply_failed", str(exc))
         return
-    entry.runtime_data.async_update_listeners()
     connection.send_result(msg["id"], {"deployment": result.to_public_dict()})
 
 
@@ -1005,6 +1080,7 @@ async def ws_apply(
         vol.Required("name"): EFFECT_NAME,
         vol.Required("content"): EFFECT_CONTENT,
         vol.Required("updated_at"): TIMESTAMP,
+        vol.Optional("operation_id"): UUID_TEXT,
     }
 )
 @require_admin
@@ -1020,6 +1096,10 @@ async def ws_apply_snapshot(
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
     try:
+        await backend.preview.async_supersede_device(
+            entry.entry_id,
+            reason="committed_apply",
+        )
         item = backend.application.new_authored_item(
             name=msg["name"],
             content=msg["content"],
@@ -1029,6 +1109,7 @@ async def ws_apply_snapshot(
             item,
             config_entry_id=entry.entry_id,
             updated_at=msg["updated_at"],
+            operation_id=(UUID(msg["operation_id"]) if "operation_id" in msg else None),
         )
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
@@ -1053,6 +1134,7 @@ def async_register_effect_websocket(
     websocket_api.async_register_command(hass, ws_editor_info)
     websocket_api.async_register_command(hass, ws_editor_devices)
     websocket_api.async_register_command(hass, ws_editor_device)
+    websocket_api.async_register_command(hass, ws_device_subscribe)
     websocket_api.async_register_command(hass, ws_custom_catalogue)
     websocket_api.async_register_command(hass, ws_scene_catalogue_list)
     websocket_api.async_register_command(hass, ws_scene_catalogue_get)

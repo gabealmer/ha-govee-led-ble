@@ -209,7 +209,7 @@ def test_model_visible_capabilities_declare_application_and_evidence_strategies(
     assert all(capability.persistent_content_kind for capability in visible)
 
 
-def test_release_capability_contract_preserves_audited_application_boundaries() -> None:
+def test_release_capability_contract_routes_saved_effects_through_home_assistant() -> None:
     h617a_painted = release_capability("H617A", CapabilityWorkflow.PAINTED)
     h617a_single = release_capability("H617A", CapabilityWorkflow.SINGLE)
     h617a_multi = release_capability("H617A", CapabilityWorkflow.MULTI)
@@ -230,7 +230,7 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
 
     assert all(
         capability is not None
-        and capability.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+        and capability.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
         and capability.compiler_deployer_strategy is CompilerDeployerStrategy.H617A_CUSTOM_ENGINE
         and capability.verification_confidence is VerificationConfidence.SELECTION_ONLY
         for capability in (h617a_painted, h617a_single, h617a_multi)
@@ -239,25 +239,25 @@ def test_release_capability_contract_preserves_audited_application_boundaries() 
     assert h617a_scenes.application_route is ApplicationRoute.STUDIO_SCENE_APPLY
     assert h617a_scenes.compiler_deployer_strategy is CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION
     assert h617a_music is not None
-    assert h617a_music.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+    assert h617a_music.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
     assert h617a_music.compiler_deployer_strategy is CompilerDeployerStrategy.COORDINATOR_WRITER
     assert h617a_music.verification_confidence is VerificationConfidence.SELECTION_ONLY
     assert all(
         capability is not None
-        and capability.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+        and capability.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
         and capability.compiler_deployer_strategy is CompilerDeployerStrategy.MODEL_SCENE_ENGINE
         and capability.verification_confidence is VerificationConfidence.SELECTION_ONLY
         for capability in compiled_scenes
     )
     assert all(
         capability is not None
-        and capability.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+        and capability.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
         and capability.compiler_deployer_strategy is CompilerDeployerStrategy.COORDINATOR_WRITER
         and capability.verification_confidence is VerificationConfidence.STATE_CONFIRMED
         for capability in (h6199_music, h6199_video)
     )
     assert h6199_diy is not None
-    assert h6199_diy.application_route is ApplicationRoute.STUDIO_CUSTOM_APPLY
+    assert h6199_diy.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
     assert h6199_diy.compiler_deployer_strategy is CompilerDeployerStrategy.H6199_CUSTOM_ENGINE
     assert h6199_diy.verification_confidence is VerificationConfidence.SELECTION_ONLY
     assert h6199_diy.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL

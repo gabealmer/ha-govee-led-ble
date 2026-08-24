@@ -483,6 +483,7 @@ class DeploymentRecord:
             "progress_current": self.progress_current,
             "progress_total": self.progress_total,
             "verification_confidence": self.verification_confidence.value,
+            "evidence_codes": list(self.evidence_codes),
         }
 
     @classmethod

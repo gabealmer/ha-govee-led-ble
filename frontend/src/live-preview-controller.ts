@@ -21,8 +21,6 @@ interface LivePreviewControllerOptions<T extends LivePreviewRequest> {
 
 const DEFAULT_THROTTLE_MS = 150;
 const DEFAULT_TRAILING_MS = 200;
-const PREVIEW_DURATION_SAMPLE_COUNT = 5;
-const SLOW_PREVIEW_AVERAGE_MS = 1_000;
 const SLOW_PREVIEW_DISPLAY_DELAY_MS = 500;
 
 interface LivePreviewProgressOptions {
@@ -37,7 +35,6 @@ export class LivePreviewProgressController {
   private readonly now: () => number;
   private readonly setTimer: (callback: () => void, delay: number) => number;
   private readonly clearTimer: (timer: number) => void;
-  private readonly durations: number[] = [];
   private starts = new Map<number, number>();
   private configEntryId?: string;
   private pendingSequence?: number;
@@ -77,15 +74,8 @@ export class LivePreviewProgressController {
       return;
     }
     if (status.phase === "written") {
-      const startedAt = this.starts.get(status.sequence);
-      if (startedAt !== undefined) {
-        this.durations.push(Math.max(0, this.now() - startedAt));
-        if (this.durations.length > PREVIEW_DURATION_SAMPLE_COUNT) {
-          this.durations.shift();
-        }
-      }
+      this.starts.delete(status.sequence);
     }
-    this.starts.delete(status.sequence);
     this.clearPending(status.sequence);
   }
 
@@ -102,7 +92,6 @@ export class LivePreviewProgressController {
     this.clear();
     this.configEntryId = undefined;
     this.starts = new Map();
-    this.durations.splice(0);
   }
 
   private startPending(sequence: number): void {
@@ -112,9 +101,6 @@ export class LivePreviewProgressController {
     this.pendingSequence = sequence;
     this.clearDisplayTimer();
     this.setVisible(false);
-    if (!this.progressIsUseful) {
-      return;
-    }
     this.displayTimer = this.setTimer(() => {
       this.displayTimer = undefined;
       if (this.pendingSequence === sequence) {
@@ -143,15 +129,6 @@ export class LivePreviewProgressController {
     }
     this.visible = visible;
     this.changed(visible);
-  }
-
-  private get progressIsUseful(): boolean {
-    return (
-      this.durations.length === PREVIEW_DURATION_SAMPLE_COUNT &&
-      this.durations.reduce((total, duration) => total + duration, 0) /
-        PREVIEW_DURATION_SAMPLE_COUNT >
-        SLOW_PREVIEW_AVERAGE_MS
-    );
   }
 }
 
@@ -280,7 +257,7 @@ export class LivePreviewController<T extends LivePreviewRequest> {
     if (!request) {
       return;
     }
-    const requestKey = `${request.fingerprint}:${request.committed === true ? "committed" : "changing"}:${request.persistDefault === true ? "persist" : "preview"}`;
+    const requestKey = `${request.fingerprint}:${request.persistDefault === true ? "persist" : "preview"}`;
     if (!request.force && requestKey === this.lastSubmittedKey) {
       this.pending = undefined;
       return;

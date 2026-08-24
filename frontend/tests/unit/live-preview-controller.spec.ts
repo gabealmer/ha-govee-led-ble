@@ -92,7 +92,7 @@ test("persistence intent is part of preview deduplication", () => {
   ]);
 });
 
-test("a settled single changing value is resubmitted as committed", () => {
+test("a settled single changing value is not submitted twice", () => {
   let nextTimer = 1;
   const timers = new Map<number, () => void>();
   const submitted: Request[] = [];
@@ -113,10 +113,7 @@ test("a settled single changing value is resubmitted as committed", () => {
   controller.schedule({ fingerprint: "same", value: 1 }, "changing");
   [...timers.values()][0]();
 
-  expect(submitted).toEqual([
-    { fingerprint: "same", value: 1 },
-    { fingerprint: "same", value: 1, committed: true },
-  ]);
+  expect(submitted).toEqual([{ fingerprint: "same", value: 1 }]);
 });
 
 test("toggle-on forces the current state and toggle-off cancels pending work", () => {
@@ -265,7 +262,7 @@ function status(
     };
 }
 
-test("shows progress only after five slow successful writes and a display delay", () => {
+test("shows delayed progress for the first slow write", () => {
     let now = 0;
     let nextTimer = 1;
     const timers = new Map<number, () => void>();
@@ -283,20 +280,14 @@ test("shows progress only after five slow successful writes and a display delay"
       },
     });
 
-    for (let sequence = 1; sequence <= 5; sequence += 1) {
-      progress.accept(status(sequence, "queued"));
-      now += 1_100;
-      progress.accept(status(sequence, "written"));
-    }
-
-    progress.accept(status(6, "queued"));
+    progress.accept(status(1, "queued"));
     expect(visible).toEqual([]);
     expect(timers.size).toBe(1);
     [...timers.values()][0]();
     expect(visible).toEqual([true]);
 
     now += 1_100;
-    progress.accept(status(6, "written"));
+    progress.accept(status(1, "written"));
     expect(visible).toEqual([true, false]);
 });
 
@@ -318,14 +309,9 @@ test("fast writes, failures, cancellation, and device changes clear delayed prog
       },
     });
 
-    for (let sequence = 1; sequence <= 5; sequence += 1) {
-      progress.accept(status(sequence, "queued"));
-      now += 1_200;
-      progress.accept(status(sequence, "written"));
-    }
-    progress.accept(status(6, "queued"));
+    progress.accept(status(1, "queued"));
     expect(timers.size).toBe(1);
-    progress.accept(status(6, "failed"));
+    progress.accept(status(1, "failed"));
     expect(timers.size).toBe(0);
 
     progress.accept(status(7, "queued"));
@@ -333,11 +319,11 @@ test("fast writes, failures, cancellation, and device changes clear delayed prog
     expect(timers.size).toBe(0);
 
     progress.accept(status(8, "queued", "entry-b"));
-    expect(timers.size).toBe(0);
+    expect(timers.size).toBe(1);
     expect(visible).toEqual([]);
 });
 
-test("writing without queued status does not create timing samples", () => {
+test("writing and queued statuses both use delayed progress", () => {
     let now = 0;
     let nextTimer = 1;
     const timers = new Map<number, () => void>();
@@ -361,7 +347,7 @@ test("writing without queued status does not create timing samples", () => {
     }
 
     progress.accept(status(7, "queued"));
-    expect(timers.size).toBe(0);
+    expect(timers.size).toBe(1);
 });
 
 test("editor transitions reject a late status when no successor request exists", async () => {

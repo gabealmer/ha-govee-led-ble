@@ -4,10 +4,11 @@ import asyncio
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
@@ -158,11 +159,49 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     entry.runtime_data = coordinator
     if effect_backend := get_effect_backend(hass):
         await effect_backend.preview.async_load_device(entry.entry_id)
-        await effect_backend.engine.async_reconcile(
+        effect_backend.engine.reconcile_current(
             coordinator,
             config_entry_id=entry.entry_id,
             observed_at=dt_util.utcnow().isoformat(),
+            refreshed=True,
         )
+
+        cancel_sync: CALLBACK_TYPE | None = None
+
+        @callback
+        def sync_effect_observation() -> None:
+            nonlocal cancel_sync
+            cancel_sync = None
+            effect_backend.engine.reconcile_current(
+                coordinator,
+                config_entry_id=entry.entry_id,
+                observed_at=dt_util.utcnow().isoformat(),
+                refreshed=False,
+            )
+
+        @callback
+        def schedule_effect_observation() -> None:
+            nonlocal cancel_sync
+            if cancel_sync is None:
+                cancel_sync = async_call_later(
+                    hass,
+                    0.1,
+                    lambda _now: sync_effect_observation(),
+                )
+
+        unsubscribe_observation = coordinator.async_add_listener(
+            schedule_effect_observation,
+        )
+
+        @callback
+        def unsubscribe_effect_observation() -> None:
+            nonlocal cancel_sync
+            unsubscribe_observation()
+            if cancel_sync is not None:
+                cancel_sync()
+                cancel_sync = None
+
+        entry.async_on_unload(unsubscribe_effect_observation)
     _maybe_flag_music_mode_replaced(hass, entry)
     await _async_cleanup_legacy_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

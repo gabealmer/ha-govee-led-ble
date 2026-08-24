@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable, Generator
 from contextlib import contextmanager
 from functools import partial
 from typing import Any
+from uuid import UUID, uuid4
 
 from homeassistant.components.light import (  # type: ignore[attr-defined]
     ATTR_BRIGHTNESS,
@@ -33,9 +34,12 @@ from .const import (
     EFFECT_FAMILY_VIDEO,
     effect_category_for_content_kind,
 )
+from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
+from .effect_deployments import DeploymentRecord
+from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
 from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
 from .effect_runtime import observable_signature_for_coordinator
 from .effect_selector import (
@@ -415,6 +419,14 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self.async_write_ha_state()
         self.coordinator.async_set_updated_data(self.coordinator.data or {})
 
+    async def _async_supersede_preview(self) -> None:
+        preview = getattr(self._effect_backend, "preview", None) if self._effect_backend is not None else None
+        if preview is not None and self._config_entry_id is not None:
+            await preview.async_supersede_device(
+                self._config_entry_id,
+                reason="home_assistant_control",
+            )
+
     def _require_support(self, service: str, *, supported: bool) -> None:
         if supported:
             return
@@ -506,38 +518,147 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._async_supersede_preview()
         if ATTR_EFFECT in kwargs and (item := self._saved_effect(str(kwargs[ATTR_EFFECT]))) is not None:
             remaining = {key: value for key, value in kwargs.items() if key != ATTR_EFFECT}
-            async with self.coordinator._control_lock:
-                await self._async_turn_on(**remaining)
-            assert self._effect_backend is not None
-            assert self._config_entry_id is not None
-            try:
-                await self._effect_backend.application.async_apply_saved_effect(
-                    self._effect_backend.engine,
-                    self.coordinator,
-                    item_id=str(item.id),
-                    config_entry_id=self._config_entry_id,
-                    updated_at=dt_util.utcnow().isoformat(),
-                    expected_version=item.version,
-                )
-            except (EffectNotFoundError, EffectVersionConflictError) as exc:
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="unknown_effect",
-                    translation_placeholders={"effect": item.name},
-                ) from exc
-            except HomeAssistantError:
-                raise
-            except Exception as exc:
-                raise HomeAssistantError(
-                    translation_domain=DOMAIN,
-                    translation_key="effect_apply_failed",
-                ) from exc
-            self._notify_state_changed()
+            await self._async_apply_saved_item(
+                item,
+                turn_on_kwargs=remaining,
+            )
             return
-        async with self.coordinator._control_lock:
+        async with async_control_intent(
+            self.coordinator,
+            ControlIntent.USER,
+        ):
             await self._async_turn_on(**kwargs)
+
+    async def _async_apply_saved_item(
+        self,
+        item: LibraryItem,
+        *,
+        operation_id: UUID | None = None,
+        turn_on_kwargs: dict[str, Any] | None = None,
+    ) -> DeploymentRecord:
+        assert self._effect_backend is not None
+        assert self._config_entry_id is not None
+        try:
+            async with self._effect_backend.application.saved_effect_for_apply(
+                str(item.id),
+                expected_version=item.version,
+            ) as current:
+                async with async_control_intent(
+                    self.coordinator,
+                    ControlIntent.USER,
+                ):
+                    if turn_on_kwargs is not None:
+                        await self._async_turn_on(**turn_on_kwargs)
+                    if operation_id is None:
+                        return await self._effect_backend.engine.async_apply_saved(
+                            self.coordinator,
+                            current,
+                            config_entry_id=self._config_entry_id,
+                            updated_at=dt_util.utcnow().isoformat(),
+                        )
+                    return await self._effect_backend.engine.async_apply_saved(
+                        self.coordinator,
+                        current,
+                        config_entry_id=self._config_entry_id,
+                        updated_at=dt_util.utcnow().isoformat(),
+                        operation_id=operation_id,
+                    )
+        except (EffectNotFoundError, EffectVersionConflictError) as exc:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_effect",
+                translation_placeholders={"effect": item.name},
+            ) from exc
+        except HomeAssistantError:
+            raise
+        except Exception as exc:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="effect_apply_failed",
+            ) from exc
+
+    async def async_apply_custom_effect(
+        self,
+        effect: str | None = None,
+        effect_id: str | None = None,
+    ) -> dict[str, Any]:
+        if self._effect_backend is None or self._config_entry_id is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="effect_storage_unavailable",
+            )
+        if (effect is None) == (effect_id is None):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_custom_effect",
+            )
+        operation_id = uuid4()
+        self._record_custom_effect_service(
+            DiagnosticOutcome.STARTED,
+            "apply_request_received",
+            operation_id,
+        )
+        item: LibraryItem | None
+        if effect is not None:
+            item = self._saved_effect(effect)
+        else:
+            try:
+                item = self._effect_backend.application.get_saved_effect(
+                    str(UUID(effect_id or "")),
+                )
+            except ValueError, EffectNotFoundError:
+                item = None
+            if item is not None and not self._saved_effect_visible(item):
+                item = None
+        if item is None:
+            self._record_custom_effect_service(
+                DiagnosticOutcome.FAILED,
+                "invalid_effect",
+                operation_id,
+            )
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_custom_effect",
+            )
+        await self._async_supersede_preview()
+        try:
+            deployment = await self._async_apply_saved_item(
+                item,
+                operation_id=operation_id,
+            )
+        except Exception:
+            self._record_custom_effect_service(
+                DiagnosticOutcome.FAILED,
+                "apply_failed",
+                operation_id,
+            )
+            raise
+        self._record_custom_effect_service(
+            DiagnosticOutcome.SUCCEEDED,
+            "apply_completed",
+            operation_id,
+        )
+        return deployment.to_public_dict()
+
+    def _record_custom_effect_service(
+        self,
+        outcome: DiagnosticOutcome,
+        code: str,
+        operation_id: UUID,
+    ) -> None:
+        diagnostics = getattr(self._effect_backend, "diagnostics", None) if self._effect_backend is not None else None
+        if diagnostics is not None:
+            diagnostics.record(
+                DiagnosticStage.API_SERVICE,
+                outcome,
+                code,
+                correlation_id=str(operation_id),
+                config_entry_id=self._config_entry_id,
+                operation_id=str(operation_id),
+            )
 
     def _saved_effect(self, effect_name: str) -> LibraryItem | None:
         try:
@@ -599,7 +720,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._notify_state_changed()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        async with self.coordinator._control_lock:
+        await self._async_supersede_preview()
+        async with async_control_intent(
+            self.coordinator,
+            ControlIntent.USER,
+        ):
             await self._async_turn_off(**kwargs)
 
     async def _async_turn_off(self, **kwargs: Any) -> None:

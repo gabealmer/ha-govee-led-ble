@@ -10,6 +10,7 @@ from dataclasses import replace
 from uuid import UUID, uuid4
 
 from .const import MUSIC_MODE_SLUGS
+from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
@@ -222,14 +223,34 @@ class EffectDeploymentEngine:
         config_entry_id: str,
         observed_at: str,
     ) -> ObservedDeviceState:
-        async with coordinator._control_lock:
+        async with async_control_intent(
+            coordinator,
+            ControlIntent.BACKGROUND,
+        ):
             refreshed = await self._async_refresh_for_reconciliation(coordinator)
-            return self._reconcile_observation(
+            return self.reconcile_current(
                 coordinator,
                 config_entry_id=config_entry_id,
                 observed_at=observed_at,
                 refreshed=refreshed,
             )
+
+    def reconcile_current(
+        self,
+        coordinator: GoveeBLECoordinator,
+        *,
+        config_entry_id: str,
+        observed_at: str,
+        refreshed: bool,
+        matched_record: DeploymentRecord | None = None,
+    ) -> ObservedDeviceState:
+        return self._reconcile_observation(
+            coordinator,
+            config_entry_id=config_entry_id,
+            observed_at=observed_at,
+            refreshed=refreshed,
+            matched_record=matched_record,
+        )
 
     def _new_record(
         self,
@@ -300,7 +321,10 @@ class EffectDeploymentEngine:
         lock_acquired = False
         try:
             await self._deployments.async_put(record, expected_version=None)
-            async with coordinator._control_lock:
+            async with async_control_intent(
+                coordinator,
+                ControlIntent.APPLY,
+            ):
                 lock_acquired = True
                 try:
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
@@ -374,6 +398,7 @@ class EffectDeploymentEngine:
                         refreshed=True,
                         matched_record=completed,
                     )
+                    self._publish_coordinator_state(coordinator)
                     return completed
                 except asyncio.CancelledError:
                     current = self._deployments.get_optional(record.operation_id) or current
@@ -544,6 +569,7 @@ class EffectDeploymentEngine:
                 verification_confidence=ObservationConfidence.UNKNOWN,
             )
             await self._deployments.async_put(failed, expected_version=None)
+            self._publish_coordinator_state(coordinator)
             return failed
 
         recovering = replace(
@@ -584,7 +610,14 @@ class EffectDeploymentEngine:
             observed_at=record.updated_at,
             refreshed=recovered,
         )
+        self._publish_coordinator_state(coordinator)
         return final
+
+    @staticmethod
+    def _publish_coordinator_state(coordinator: GoveeBLECoordinator) -> None:
+        publish = getattr(coordinator, "async_set_updated_data", None)
+        if publish is not None:
+            publish(getattr(coordinator, "data", None) or {})
 
     async def _async_finish_failure_best_effort(
         self,
@@ -594,7 +627,10 @@ class EffectDeploymentEngine:
         error_code: str,
     ) -> None:
         try:
-            async with coordinator._control_lock:
+            async with async_control_intent(
+                coordinator,
+                ControlIntent.APPLY,
+            ):
                 await self._async_finish_failure(
                     coordinator,
                     record,
@@ -814,7 +850,7 @@ class EffectDeploymentEngine:
             confidence=confidence,
             diy_code=diy_code,
             effect=effect,
-            native_mode=_native_mode_for_state(coordinator, mode=mode) if refreshed else None,
+            native_mode=_native_mode_for_state(coordinator, mode=mode),
             matched_operation_id=(
                 matched_record.operation_id
                 if matched_record is not None

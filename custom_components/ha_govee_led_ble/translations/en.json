@@ -113,15 +113,15 @@
     },
     "apply_custom_effect": {
       "name": "Apply custom effect",
-      "description": "Apply a saved custom effect to one supported Govee light.",
+      "description": "Apply a saved custom effect through a supported Govee light entity.",
       "fields": {
-        "entity_id": {
-          "name": "Light",
-          "description": "Govee BLE light to control."
+        "effect": {
+          "name": "Effect",
+          "description": "Name of the saved custom effect."
         },
         "effect_id": {
           "name": "Effect ID",
-          "description": "Stable ID of the saved custom effect."
+          "description": "Stable ID of the saved custom effect. Use either Effect or Effect ID."
         }
       }
     }

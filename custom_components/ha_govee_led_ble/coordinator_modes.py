@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from .const import MUSIC_MODE_SLUGS
+from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import build_music_mode, build_power
@@ -169,8 +170,9 @@ class _ActiveModeMixin(_CoordinatorBase):
         canonical_body: bytes | None = None,
         writer: Callable[[bytes], Awaitable[None]] | None = None,
         verify: bool = True,
+        intent: ControlIntent = ControlIntent.USER,
     ) -> None:
-        async with self._control_lock:
+        async with async_control_intent(self, intent):
             await self._async_apply_native_scene_locked(
                 scene_name,
                 speed_index=speed_index,

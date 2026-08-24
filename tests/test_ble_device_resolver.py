@@ -73,6 +73,29 @@ async def test_connection_establishment_reuses_resolution_retry_contract(hass):
     establish.assert_awaited_once_with(resolution.client_class, resolution.device, ADDRESS)
 
 
+async def test_connection_establishment_passes_disconnected_callback(hass):
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolution = _resolution()
+    resolver.async_resolve = AsyncMock(return_value=resolution)
+    establish = AsyncMock(return_value=MagicMock())
+    disconnected_callback = MagicMock()
+
+    await async_establish_ble_connection(
+        hass,
+        ADDRESS,
+        resolver=resolver,
+        establish=establish,
+        disconnected_callback=disconnected_callback,
+    )
+
+    establish.assert_awaited_once_with(
+        resolution.client_class,
+        resolution.device,
+        ADDRESS,
+        disconnected_callback=disconnected_callback,
+    )
+
+
 async def test_connection_establishment_fails_after_bounded_cache_resolution(hass):
     resolver = MagicMock(spec=BLEDeviceResolver)
     resolver.async_resolve = AsyncMock(return_value=None)

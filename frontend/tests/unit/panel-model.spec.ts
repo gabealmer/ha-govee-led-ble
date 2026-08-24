@@ -828,9 +828,10 @@ test("automatic restoration selects only a matching fresh native category", asyn
     matched_operation_id: null,
     active_effect: null,
   };
+  selected.active_state = structuredClone(refreshed.active_state);
   const applySavedEffect = vi.fn();
   controller.api = {
-    device: vi.fn().mockImplementation(async () => structuredClone(refreshed)),
+    device: vi.fn().mockImplementation(async () => structuredClone(selected)),
     updateUserState: vi.fn().mockResolvedValue(model.userState),
     applySavedEffect,
   } as unknown as EffectStudioApi;
@@ -851,6 +852,7 @@ test("automatic restoration selects only a matching fresh native category", asyn
     effect: null,
     native_mode: "movie",
   };
+  selected.active_state = structuredClone(refreshed.active_state);
   await controller.selectSection("video");
   expect(model.templateSelection).toBe("template:video:movie");
 
@@ -859,13 +861,14 @@ test("automatic restoration selects only a matching fresh native category", asyn
     mode: "music",
     native_mode: "energetic",
   };
+  selected.active_state = structuredClone(refreshed.active_state);
   await controller.selectSection("custom", "music");
   expect(model.templateSelection).toBe("template:music:energetic");
   expect(templatePreview).not.toHaveBeenCalled();
   expect(applySavedEffect).not.toHaveBeenCalled();
 });
 
-test("a delayed device refresh cannot replace later navigation", async () => {
+test("navigation does not request device refreshes", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   const selected = device("entry-a", "H6199");
@@ -897,35 +900,19 @@ test("a delayed device refresh cannot replace later navigation", async () => {
       replacePath: () => undefined,
     },
   );
-  let resolveVideo!: (device: DeviceCapabilities) => void;
-  const delayedVideo = new Promise<DeviceCapabilities>((resolve) => {
-    resolveVideo = resolve;
-  });
-  const video = structuredClone(selected);
-  video.active_state = {
-    config_entry_id: selected.config_entry_id,
-    mode: "video",
-    observed_at: "2026-08-23T00:00:00Z",
-    confidence: "unknown",
-    diy_code: null,
-    effect: null,
-    native_mode: "movie",
-    matched_operation_id: null,
-    active_effect: null,
-  };
+  const deviceRefresh = vi.fn();
   controller.api = {
-    device: vi.fn().mockReturnValue(delayedVideo),
+    device: deviceRefresh,
     updateUserState: vi.fn().mockResolvedValue(undefined),
   } as unknown as EffectStudioApi;
 
-  const first = controller.selectSection("video");
-  const second = controller.selectSection("custom", "music");
-  resolveVideo(video);
-  await Promise.all([first, second]);
+  await controller.selectSection("video");
+  await controller.selectSection("custom", "music");
 
   expect(model.section).toBe("custom");
   expect(model.customEffectCategory).toBe("music");
   expect(model.editorSource.kind).toBe("none");
+  expect(deviceRefresh).not.toHaveBeenCalled();
 });
 
 test("automatic saved restoration reads without applying, previewing, or saving", async () => {
@@ -1194,7 +1181,10 @@ test("saved item selection applies identity only while Live is enabled", async (
 
   model.liveApplyEnabled = true;
   await expect(controller.selectItem(saved.id)).resolves.toBe(true);
-  expect(applySavedEffect).toHaveBeenCalledWith("entry-a", saved.id);
+  expect(applySavedEffect).toHaveBeenCalledWith(
+    "light.entry-a",
+    "Saved paint",
+  );
 });
 
 test("manual Save adopts the saved content as the next Reset baseline", async () => {

@@ -61,7 +61,7 @@ async def test_setup_entry(hass: HomeAssistant):
 async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):
     entry = _entry()
     backend = MagicMock(
-        engine=MagicMock(async_reconcile=AsyncMock()),
+        engine=MagicMock(),
         preview=MagicMock(async_load_device=AsyncMock()),
     )
     with (
@@ -75,10 +75,11 @@ async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass:
 
         assert await async_setup_entry(hass, entry) is True
 
-    backend.engine.async_reconcile.assert_awaited_once()
+    backend.engine.reconcile_current.assert_called_once()
     backend.preview.async_load_device.assert_awaited_once_with(entry.entry_id)
-    assert backend.engine.async_reconcile.await_args.args == (cls.return_value,)
-    assert backend.engine.async_reconcile.await_args.kwargs["config_entry_id"] == entry.entry_id
+    assert backend.engine.reconcile_current.call_args.args == (cls.return_value,)
+    assert backend.engine.reconcile_current.call_args.kwargs["config_entry_id"] == entry.entry_id
+    assert backend.engine.reconcile_current.call_args.kwargs["refreshed"] is True
 
 
 @pytest.mark.parametrize("data", [{}, {CONF_MODEL: "H9999"}])

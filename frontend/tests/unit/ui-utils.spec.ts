@@ -99,6 +99,9 @@ test("panel renders only for Home Assistant state visible in the panel", () => {
     callWS: async () => {
       throw new Error("Not used by this test");
     },
+    callService: async () => {
+      throw new Error("Not used by this test");
+    },
     connection: {
       subscribeMessage: async () => () => {},
     },

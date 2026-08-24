@@ -49,6 +49,26 @@ export class EffectStudioApi {
     return devices[0];
   }
 
+  public subscribeDevice(
+    configEntryId: string,
+    callback: (device: DeviceCapabilities) => void,
+    onError?: (error: Error) => void,
+  ): Promise<() => void> {
+    return this.hass.connection.subscribeMessage(
+      (payload) => {
+        try {
+          callback(decodeDevices([resultField(payload, "device")])[0]);
+        } catch (error) {
+          onError?.(asError(error));
+        }
+      },
+      {
+        type: `${PREFIX}/device/subscribe`,
+        config_entry_id: configEntryId,
+      },
+    );
+  }
+
   public async customCatalogue(): Promise<CustomEffectCatalogue> {
     const result = await this.call("custom/catalogue");
     return decodeCustomCatalogue(resultField(result, "catalogue"));
@@ -118,13 +138,12 @@ export class EffectStudioApi {
   }
 
   public async applySavedEffect(
-    configEntryId: string,
-    itemId: string,
+    lightEntityId: string,
+    effectName: string,
   ): Promise<void> {
-    await this.call("apply", {
-      config_entry_id: configEntryId,
-      item_id: itemId,
-      updated_at: new Date().toISOString(),
+    await this.hass.callService("light", "turn_on", {
+      entity_id: lightEntityId,
+      effect: effectName,
     });
   }
 

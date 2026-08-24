@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from dataclasses import replace
@@ -17,6 +18,7 @@ from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolver,
 )
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, MUSIC_MODE_SLUGS
+from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
     RX_STALE_TIMEOUT,
@@ -131,6 +133,46 @@ def _resolution(
     return BLEDeviceResolution(MagicMock() if device is None else device, client_class)
 
 
+async def test_control_arbiter_prioritises_waiters_reenters_and_skips_background():
+    arbiter = BLEControlArbiter()
+    order: list[ControlIntent] = []
+
+    async def contender(intent: ControlIntent) -> None:
+        async with arbiter.hold(intent):
+            order.append(intent)
+            await asyncio.sleep(0)
+
+    async with arbiter.hold(ControlIntent.BACKGROUND):
+        async with arbiter.hold(ControlIntent.PREVIEW):
+            assert arbiter.active_intent is ControlIntent.PREVIEW
+        tasks = [
+            asyncio.create_task(contender(ControlIntent.PREVIEW)),
+            asyncio.create_task(contender(ControlIntent.APPLY)),
+            asyncio.create_task(contender(ControlIntent.USER)),
+        ]
+        await asyncio.sleep(0)
+        async with arbiter.hold(ControlIntent.BACKGROUND, wait=False) as acquired:
+            assert acquired is True
+
+        async def separate_background() -> bool:
+            async with arbiter.hold(ControlIntent.BACKGROUND, wait=False) as background_acquired:
+                return background_acquired
+
+        assert await asyncio.create_task(separate_background()) is False
+
+    await asyncio.gather(*tasks)
+    assert order == [ControlIntent.USER, ControlIntent.APPLY, ControlIntent.PREVIEW]
+
+
+async def test_control_arbiter_rejects_preview_admission_during_foreground_intent():
+    arbiter = BLEControlArbiter()
+
+    async with arbiter.hold(ControlIntent.USER):
+        admission = arbiter.admit_preview()
+
+    assert admission.is_current is False
+
+
 async def test_initial_state_and_update(coord, h6199):
     assert (coord.is_on, coord.brightness_pct, coord.rgb_color) == (False, 100, (255, 255, 255))
     assert coord.effect is None and coord.address == "AA:BB:CC:DD:EE:FF" and coord.model == "H617A"
@@ -149,9 +191,9 @@ async def test_initial_state_and_update(coord, h6199):
         "effect": None,
         "diy_code": None,
     }
+    coord._client = _c()
     with (
-        patch.object(coord, "_ensure_connected", new_callable=AsyncMock),
-        patch.object(coord, "_send_state_queries", new_callable=AsyncMock),
+        patch.object(coord, "refresh_state", new=AsyncMock(return_value=True)),
     ):
         assert await coord._async_update_data() == exp
 
@@ -449,6 +491,126 @@ async def test_send_command(coord):
     assert c2.write_gatt_char.call_count == 3 and coord._client is None
 
 
+async def test_foreground_command_waits_for_atomic_preview_packets(coord):
+    writes: list[bytes] = []
+    client = _c(write_gatt_char=AsyncMock(side_effect=lambda _uuid, packet, **_kwargs: writes.append(packet)))
+    coord._client = client
+    first, second, user = b"first", b"second", proto.build_power(True)
+
+    async with coord._control_arbiter.hold(ControlIntent.PREVIEW):
+        await coord.async_preview_write(first)
+        command = asyncio.create_task(coord.send_command(user))
+        await asyncio.sleep(0)
+        await coord.async_preview_write(second)
+        assert writes == [first, second]
+
+    await command
+    assert writes == [first, second, user]
+
+
+async def test_preview_write_arms_expected_state(coord):
+    packet = proto.build_power(True)
+    coord._client = _c(write_gatt_char=AsyncMock())
+
+    await coord.async_preview_write(packet)
+
+    assert coord._expected_state["is_on"][0] is True
+
+
+async def test_background_connection_use_does_not_renew_foreground_lease(coord):
+    coord._client = _c()
+    with patch.object(coord, "_reset_disconnect_timer") as reset:
+        async with coord._control_arbiter.hold(ControlIntent.BACKGROUND):
+            await coord._ensure_connected()
+        reset.assert_not_called()
+
+        async with coord._control_arbiter.hold(ControlIntent.USER):
+            await coord._ensure_connected()
+        reset.assert_called_once_with()
+
+
+async def test_background_refresh_keeps_background_intent_and_preview_admission(
+    coord,
+):
+    coord._client = _c()
+
+    async def reply(**_kwargs) -> bool:
+        assert coord._control_arbiter.current_task_intent is ControlIntent.BACKGROUND
+        assert coord.admit_preview().is_current
+        coord._notify_callback(
+            None,
+            bytearray(proto.build_packet(0xAA, 0x01, [1])),
+        )
+        coord._notify_callback(
+            None,
+            bytearray(proto.build_packet(0xAA, 0x04, [42])),
+        )
+        coord._notify_callback(
+            None,
+            bytearray(
+                proto.build_packet(
+                    0xAA,
+                    0x05,
+                    [0x04, 0x9D, 0x08],
+                )
+            ),
+        )
+        return True
+
+    with (
+        patch.object(
+            coord,
+            "_send_state_queries",
+            new=AsyncMock(side_effect=reply),
+        ),
+        patch.object(coord, "_reset_disconnect_timer") as reset,
+    ):
+        await coord._async_update_data()
+
+    reset.assert_not_called()
+
+
+async def test_background_refresh_disconnects_poll_only_connection_after_query(coord):
+    client = _c(disconnect=AsyncMock())
+
+    async def refresh(**_kwargs) -> bool:
+        coord._client = client
+        client.disconnect.assert_not_awaited()
+        return True
+
+    with patch.object(
+        coord,
+        "refresh_state",
+        new=AsyncMock(side_effect=refresh),
+    ):
+        await coord._async_update_data()
+
+    client.disconnect.assert_awaited_once_with()
+    assert coord._client is None
+
+
+def test_disconnect_callback_clears_only_current_unintentional_client(coord):
+    client = _c()
+    coord._client = client
+    coord._notify_started_monotonic = 1
+    coord._last_rx_monotonic = 2
+    coord._expected_state["is_on"] = (True, 3)
+
+    with patch.object(coord, "async_update_listeners") as listeners:
+        coord._disconnected_callback(client)
+
+    assert coord._client is None
+    assert coord._notify_started_monotonic is None
+    assert coord._last_rx_monotonic is None
+    assert coord._expected_state == {}
+    listeners.assert_called_once_with()
+
+    replacement = _c()
+    coord._client = replacement
+    coord._disconnected_callback(client)
+    assert coord._client is replacement
+
+
 async def test_disconnect(coord, h6199):
     c = _c(disconnect=AsyncMock())
     coord._client, coord._cancel_disconnect = c, (cancel := MagicMock())
@@ -618,7 +780,12 @@ async def test_ensure_connected_retries_cache_resolution_with_wrapped_client(coo
 
     assert resolver.async_resolve.await_count == 2
     sleep.assert_awaited_once()
-    connect.assert_awaited_once_with(BleakClient, device, coord.address)
+    connect.assert_awaited_once_with(
+        BleakClient,
+        device,
+        coord.address,
+        disconnected_callback=coord._disconnected_callback,
+    )
 
 
 async def test_resolution_reuses_selected_client_after_disconnect(coord):
@@ -643,8 +810,18 @@ async def test_resolution_reuses_selected_client_after_disconnect(coord):
 
     assert resolver.async_resolve.await_count == 2
     assert connect.await_args_list == [
-        call(original_client_class, device, coord.address),
-        call(original_client_class, device, coord.address),
+        call(
+            original_client_class,
+            device,
+            coord.address,
+            disconnected_callback=coord._disconnected_callback,
+        ),
+        call(
+            original_client_class,
+            device,
+            coord.address,
+            disconnected_callback=coord._disconnected_callback,
+        ),
     ]
     first.disconnect.assert_awaited_once()
     await coord.disconnect()
@@ -658,8 +835,10 @@ async def test_start_notify(coord, h6199):
     ):
         assert await h6199._ensure_connected() is c
     c.start_notify.assert_called_once()
-    for query in (build_power_query("H6199"), build_brightness_query("H6199"), build_colour_mode_query("H6199")):
+    for query in (build_hardware_query("H6199"), build_firmware_query("H6199")):
         c.write_gatt_char.assert_any_await(WRITE_UUID, query, response=False)
+    state_queries = (build_power_query("H6199"), build_brightness_query("H6199"), build_colour_mode_query("H6199"))
+    assert not any(item.args[1] in state_queries for item in c.write_gatt_char.await_args_list)
     await h6199.disconnect()
     c2 = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     with (
@@ -668,8 +847,10 @@ async def test_start_notify(coord, h6199):
     ):
         await coord._ensure_connected()
     c2.start_notify.assert_called_once()
-    for query in (build_power_query(), build_brightness_query(), build_colour_mode_query()):
+    for query in (build_hardware_query("H617A"), build_firmware_query("H617A")):
         c2.write_gatt_char.assert_any_await(WRITE_UUID, query, response=False)
+    state_queries = (build_power_query(), build_brightness_query(), build_colour_mode_query())
+    assert not any(item.args[1] in state_queries for item in c2.write_gatt_char.await_args_list)
     await coord.disconnect()
     h6199._client = _c(start_notify=AsyncMock(side_effect=BleakError("fail")))
     with pytest.raises(BleakError, match="fail"):
@@ -686,6 +867,26 @@ async def test_ensure_connected_cleans_up_notify_failure(coord):
     ):
         await coord._ensure_connected()
     client.disconnect.assert_awaited_once()
+    assert coord._client is None
+
+
+async def test_background_refresh_disconnects_replacement_connection(coord):
+    original = _c()
+    replacement = _c(disconnect=AsyncMock())
+    coord._client = original
+
+    async def refresh(**_kwargs) -> bool:
+        coord._client = replacement
+        return True
+
+    with patch.object(
+        coord,
+        "refresh_state",
+        new=AsyncMock(side_effect=refresh),
+    ):
+        await coord._async_update_data()
+
+    replacement.disconnect.assert_awaited_once()
     assert coord._client is None
 
 
@@ -1039,6 +1240,41 @@ async def test_refresh_state_query_selection(coord):
         sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
 
 
+async def test_refresh_reply_timeout_starts_after_connection(coord):
+    client = _c(disconnect=AsyncMock())
+
+    async def connect():
+        await asyncio.sleep(0.03)
+        coord._client = client
+        return client
+
+    async def reply(**_kwargs) -> bool:
+        coord._notify_callback(
+            None,
+            bytearray(proto.build_packet(0xAA, 0x01, [1])),
+        )
+        return True
+
+    with (
+        patch.object(
+            coord,
+            "_ensure_connected",
+            new=AsyncMock(side_effect=connect),
+        ),
+        patch.object(
+            coord,
+            "_send_state_queries",
+            new=AsyncMock(side_effect=reply),
+        ),
+    ):
+        assert await coord.refresh_state(
+            expected_on=True,
+            timeout=0.02,
+        )
+
+    client.disconnect.assert_not_awaited()
+
+
 async def test_refresh_state_queries_each_display_domain(h6199):
     h6199._client = client = _c()
 
@@ -1070,10 +1306,11 @@ async def test_refresh_state_rejects_optimistic_value_without_fresh_reply(coord)
     coord._client = client = _c(disconnect=AsyncMock())
     with (
         patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
-        patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)),
-        patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
+        patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)) as queries,
+        patch.object(coord, "_disconnect_if_current_locked", new_callable=AsyncMock) as disconnect,
     ):
         assert await coord.refresh_state(expected_on=True, timeout=0.01) is False
+    assert queries.await_count == 2
     disconnect.assert_awaited_once_with(client)
 
 
@@ -1092,7 +1329,7 @@ async def test_refresh_state_ignored_stale_reply_does_not_confirm(coord):
     with (
         patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_stale_reply)),
-        patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
+        patch.object(coord, "_disconnect_if_current_locked", new_callable=AsyncMock) as disconnect,
     ):
         assert await coord.refresh_state(expected_music_mode="rhythm", timeout=0.01) is False
     disconnect.assert_not_awaited()
@@ -1101,7 +1338,7 @@ async def test_refresh_state_ignored_stale_reply_does_not_confirm(coord):
 async def test_refresh_state_requires_fresh_power_and_video_replies(coord):
     coord.is_on = True
     coord.video_mode = "game"
-    coord._client = client = _c()
+    coord._client = client = _c(disconnect=AsyncMock())
 
     async def _video_only(**kwargs) -> bool:
         coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 60])))
@@ -1110,7 +1347,7 @@ async def test_refresh_state_requires_fresh_power_and_video_replies(coord):
     with (
         patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_video_only)),
-        patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
+        patch.object(coord, "_disconnect_if_current_locked", new_callable=AsyncMock) as disconnect,
     ):
         assert await coord.refresh_state(expected_on=True, expected_video_mode="game", timeout=0.01) is False
     disconnect.assert_awaited_once_with(client)
@@ -1360,17 +1597,24 @@ async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
             self._locked = False
 
         async def __aenter__(self):
+            await self.acquire()
+
+        async def __aexit__(self, *_args):
+            self.release()
+
+        async def acquire(self):
             assert not self._locked
             self._locked = True
             self.acquisitions += 1
 
-        async def __aexit__(self, *_args):
+        def release(self):
             self._locked = False
 
         def locked(self) -> bool:
             return self._locked
 
     lock = CountingLock()
+    coord._control_arbiter = None
     coord._control_lock = lock
     coord.is_on = False
     packets = []
@@ -1401,11 +1645,12 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord):
     ):
         result = await coord.async_preview_observe(
             {"effect": "glacier"},
-            timeout=0.001,
+            timeout=0.05,
         )
 
     assert result is None
-    query.assert_awaited_once_with(
+    assert query.await_count == 2
+    query.assert_awaited_with(
         query_power=False,
         query_brightness=False,
         query_color_mode=True,
@@ -1629,7 +1874,7 @@ def test_keep_alive_started_as_background_task(coord):
 
 async def test_keep_alive_retries_identity_until_bounded(coord):
     """Connect-time identity replies can be missed, so retries remain bounded."""
-    coord._client = _c(write_gatt_char=AsyncMock())
+    coord._client = client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord.fw_version = coord.hw_version = None
     calls = {"n": 0}
 
@@ -1644,10 +1889,12 @@ async def test_keep_alive_retries_identity_until_bounded(coord):
     ):
         await coord._keep_alive_loop()
     assert ident.await_count == IDENTITY_RETRY_TICKS
+    client.disconnect.assert_awaited_once()
+    assert coord._client is None
 
 
 async def test_keep_alive_retries_missing_hw_when_fw_known(coord):
-    coord._client = _c(write_gatt_char=AsyncMock())
+    coord._client = client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord.fw_version, coord.hw_version = "3.02.24", None
     with (
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock) as ident,
@@ -1656,10 +1903,12 @@ async def test_keep_alive_retries_missing_hw_when_fw_known(coord):
     ):
         await coord._keep_alive_loop()
     ident.assert_awaited_once_with()
+    client.disconnect.assert_awaited_once()
+    assert coord._client is None
 
 
 async def test_keep_alive_skips_identity_when_versions_known(coord):
-    coord._client = _c(write_gatt_char=AsyncMock())
+    coord._client = client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord.fw_version, coord.hw_version = "3.02.24", "3.01.01"
     with (
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock) as ident,
@@ -1668,6 +1917,8 @@ async def test_keep_alive_skips_identity_when_versions_known(coord):
     ):
         await coord._keep_alive_loop()
     ident.assert_not_awaited()
+    client.disconnect.assert_awaited_once()
+    assert coord._client is None
 
 
 async def test_async_setup_registers_presence_and_callbacks_flip(coord):

@@ -69,7 +69,7 @@ async def test_surfaces_release_capability_evidence_without_hiding_planned_workf
         "workflow": "palette_diy",
         "frontend_visibility": "visible",
         "persistent_content_kind": "palette_diy",
-        "application_route": "studio_custom_apply",
+        "application_route": "home_assistant_control",
         "compiler_deployer_strategy": "h6199_custom_engine",
         "verification_confidence": "selection_only",
         "physical_validation_state": "capture_validated",
