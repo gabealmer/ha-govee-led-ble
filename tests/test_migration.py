@@ -4,7 +4,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import async_migrate_entry
-from custom_components.ha_govee_led_ble.const import CONF_EFFECT_FAMILIES, CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.const import CONF_EFFECT_CATEGORIES, CONF_MODEL, DOMAIN
 
 _ADDR = "AA:BB:CC:DD:EE:FF"
 
@@ -20,8 +20,11 @@ async def test_migrate_bumps_version_and_strips_experimental(hass: HomeAssistant
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 5
-    assert dict(entry.options) == {"keep_me": 1, CONF_EFFECT_FAMILIES: ["scenes", "music"]}
+    assert entry.version == 6
+    assert dict(entry.options) == {
+        "keep_me": 1,
+        CONF_EFFECT_CATEGORIES: ["scenes", "effects", "multi_layered", "reactive", "advanced"],
+    }
 
 
 async def test_clean_install_migrates(hass: HomeAssistant):
@@ -29,17 +32,19 @@ async def test_clean_install_migrates(hass: HomeAssistant):
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 5
-    assert entry.options == {CONF_EFFECT_FAMILIES: ["scenes", "music"]}
+    assert entry.version == 6
+    assert entry.options == {
+        CONF_EFFECT_CATEGORIES: ["scenes", "effects", "multi_layered", "reactive", "advanced"],
+    }
 
 
-async def test_migrate_current_entry_bumps_to_v5(hass: HomeAssistant):
+async def test_migrate_current_entry_bumps_to_v6(hass: HomeAssistant):
     entry = MockConfigEntry(domain=DOMAIN, unique_id=_ADDR, version=2, data={CONF_MODEL: "H617A"})
     entry.add_to_hass(hass)
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 5
+    assert entry.version == 6
 
 
 async def test_migrate_recovers_model_from_legacy_title(hass: HomeAssistant):
@@ -48,6 +53,8 @@ async def test_migrate_recovers_model_from_legacy_title(hass: HomeAssistant):
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 5
+    assert entry.version == 6
     assert entry.data == {CONF_MODEL: "H6199"}
-    assert entry.options == {CONF_EFFECT_FAMILIES: ["video"]}
+    assert entry.options == {
+        CONF_EFFECT_CATEGORIES: ["scenes", "video", "effects", "reactive", "advanced"],
+    }

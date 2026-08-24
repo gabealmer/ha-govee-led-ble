@@ -2,8 +2,6 @@ import { LitElement, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import {
-  ADVANCED_RANGE_SCALES,
-  rawValueToDisplay,
   isKnownBrightnessOrder,
   KNOWN_BRIGHTNESS_ORDERS,
 } from "./advanced-effect-model";
@@ -413,7 +411,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                     this.updateBrightnessPattern({ scope_low: value }),
                   this.disabled,
                   "brightnessScopeLow",
-                  ADVANCED_RANGE_SCALES.bytePercentage,
                 )}
                 ${renderRangeField(
                   "Scope high",
@@ -422,7 +419,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                     this.updateBrightnessPattern({ scope_high: value }),
                   this.disabled,
                   "brightnessScopeHigh",
-                  ADVANCED_RANGE_SCALES.bytePercentage,
                 )}
               </div>
               ${renderRangeField(
@@ -432,7 +428,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   this.updateBrightnessPattern({ change_speed: value }),
                 this.disabled,
                 "changingSpeed",
-                ADVANCED_RANGE_SCALES.brightnessSpeed,
               )}
               <div class="parameter-grid">
                 ${renderRangeField(
@@ -444,7 +439,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                     }),
                   this.disabled,
                   "brightestRetention",
-                  ADVANCED_RANGE_SCALES.retention,
                 )}
                 ${renderRangeField(
                   "Darkest retention",
@@ -455,7 +449,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                     }),
                   this.disabled,
                   "darkestRetention",
-                  ADVANCED_RANGE_SCALES.retention,
                 )}
               </div>
             </div>
@@ -556,14 +549,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                     this.updateMovement(
                       key,
                       { speed: value },
-                      `${label} speed ${rawValueToDisplay(
-                        value,
-                        ADVANCED_RANGE_SCALES.movementSpeed,
-                      )} per cent.`,
+                      `${label} speed ${value}.`,
                     ),
                   this.disabled,
-                  undefined,
-                  ADVANCED_RANGE_SCALES.movementSpeed,
                 )}
                 ${showEnterExit
                   ? html`

@@ -64,6 +64,7 @@ export interface DeviceCapabilities {
     video: CapabilityState;
   };
   readback: string;
+  effect_categories: string[];
   active_state: ObservedEffectState | null;
 }
 
@@ -444,6 +445,12 @@ export interface PreviewStatus {
   content_kind: string;
   confidence: ObservationConfidence;
   error_code: string | null;
+  error_message: string | null;
+  write_disposition:
+    | "not_started"
+    | "may_have_started"
+    | "completed"
+    | "unknown";
 }
 
 interface SceneCategory {
@@ -485,6 +492,7 @@ export interface SceneDetail {
 
 export interface HomeAssistantEntityState {
   state: string;
+  attributes?: Record<string, unknown>;
 }
 
 export interface HomeAssistant {

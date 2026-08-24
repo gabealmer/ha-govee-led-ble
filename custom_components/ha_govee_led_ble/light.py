@@ -27,14 +27,16 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
+    EFFECT_CATEGORIES,
     EFFECT_FAMILY_MUSIC,
     EFFECT_FAMILY_SCENES,
     EFFECT_FAMILY_VIDEO,
+    effect_category_for_content_kind,
 )
 from .coordinator import GoveeBLECoordinator
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
-from .effect_domain import EffectValidationError, LibraryItem
+from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
 from .effect_runtime import observable_signature_for_coordinator
 from .effect_selector import (
     MUSIC_EFFECTS,
@@ -225,13 +227,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             else []
         )
         video = list(VIDEO_EFFECTS) if EFFECT_FAMILY_VIDEO in families else []
-        saved = [
-            item.name
-            for item in compatible_saved_effects(
-                self._library_snapshot.items,
-                self.coordinator.model,
-            )
-        ]
+        saved = [item.name for item in self._visible_saved_effects()]
+        if not self._effect_categories:
+            return []
         return [*scenes, EFFECT_OFF, *music, *video, *saved]
 
     @property
@@ -271,7 +269,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return None
         if hint.observable_signature != observable_signature_for_coordinator(self.coordinator):
             return None
-        return next(
+        item = next(
             (
                 item
                 for item in self._library_snapshot.items
@@ -279,6 +277,27 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             ),
             None,
         )
+        return item if item is not None and self._saved_effect_visible(item) else None
+
+    def _visible_saved_effects(self) -> tuple[LibraryItem, ...]:
+        return tuple(
+            item
+            for item in compatible_saved_effects(
+                self._library_snapshot.items,
+                self.coordinator.model,
+            )
+            if self._saved_effect_visible(item)
+        )
+
+    def _saved_effect_visible(self, item: LibraryItem) -> bool:
+        content_kind = effect_content_to_dict(item.content).get("kind")
+        category = effect_category_for_content_kind(str(content_kind))
+        return category is not None and category in self._effect_categories
+
+    @property
+    def _effect_categories(self) -> frozenset[str]:
+        categories = getattr(self.coordinator, "effect_categories", None)
+        return categories if isinstance(categories, frozenset) else frozenset(EFFECT_CATEGORIES)
 
     async def _async_restore_static_color(self) -> None:
         coordinator = self.coordinator
@@ -522,11 +541,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     def _saved_effect(self, effect_name: str) -> LibraryItem | None:
         try:
-            return saved_effect_by_name(
+            item = saved_effect_by_name(
                 self._library_snapshot.items,
                 self.coordinator.model,
                 effect_name,
             )
+            return item if item is not None and self._saved_effect_visible(item) else None
         except EffectValidationError as exc:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,

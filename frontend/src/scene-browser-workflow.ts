@@ -148,6 +148,7 @@ export class SceneBrowserWorkflow {
   private defaultSelectionRevision = 0;
   private speedRevision = 0;
   private defaultRefreshGeneration = 0;
+  private defaultRefreshPending = false;
   private defaultBaseline?: SceneDefaultSnapshot;
   private readonly defaultWriter = new SerialLatestWriter<SceneDefaultWrite>((write) =>
     this.performDefaultWrite(write),
@@ -175,15 +176,18 @@ export class SceneBrowserWorkflow {
   }
 
   public get sceneDefaultDirty(): boolean {
-    const { content, editingCopy, selectedItem, selectedScene, speedIndex } =
+    const { editingCopy, selectedItem, selectedScene, speedIndex } =
       this.stateValue;
     return Boolean(
       selectedScene?.speed &&
-        content &&
         selectedItem === undefined &&
         !editingCopy &&
-        speedIndex !== content.speed_index,
+        speedIndex !== this.defaultBaseline?.speedIndex,
     );
+  }
+
+  public get defaultWritePending(): boolean {
+    return this.defaultWriter.busy;
   }
 
   public hasCurrentSceneContent(): boolean {
@@ -286,7 +290,12 @@ export class SceneBrowserWorkflow {
 
   public setSpeedIndex(speedIndex: number): void {
     this.speedRevision += 1;
-    this.patch({ speedIndex });
+    this.patch({
+      speedIndex,
+      ...(this.stateValue.content
+        ? { content: sceneContentAtSpeed(this.stateValue.content, speedIndex) }
+        : {}),
+    });
   }
 
   public async loadCatalogue(): Promise<void> {
@@ -509,7 +518,6 @@ export class SceneBrowserWorkflow {
     this.patch({
       content: sceneContentAtSpeed(content, speedIndex),
       speedIndex,
-      hasDefault: false,
       notice: undefined,
     });
     await this.defaultWriter.enqueue(
@@ -518,6 +526,8 @@ export class SceneBrowserWorkflow {
         speedIndex,
       }),
     );
+    this.patch({});
+    await this.flushPendingDefaultRefresh();
   }
 
   public async setCurrentDefault(isAdmin: boolean): Promise<void> {
@@ -538,7 +548,6 @@ export class SceneBrowserWorkflow {
     this.defaultRefreshGeneration += 1;
     this.patch({
       content: sceneContentAtSpeed(content, speedIndex),
-      hasDefault: true,
       notice: undefined,
     });
     await this.defaultWriter.enqueue(
@@ -547,13 +556,19 @@ export class SceneBrowserWorkflow {
         speedIndex,
       }),
     );
+    this.patch({});
+    await this.flushPendingDefaultRefresh();
   }
 
   public async refreshSelectedDefault(): Promise<void> {
     const selected = this.stateValue.selectedScene;
     if (!this.api || !this.device || !selected || this.defaultWriter.busy) {
+      if (this.defaultWriter.busy) {
+        this.defaultRefreshPending = true;
+      }
       return;
     }
+
     const request = this.captureRequest();
     const selectionRevision = this.defaultSelectionRevision;
     const writerGeneration = this.defaultWriter.currentGeneration;
@@ -590,13 +605,21 @@ export class SceneBrowserWorkflow {
     }
   }
 
+  private async flushPendingDefaultRefresh(): Promise<void> {
+    if (!this.defaultRefreshPending) {
+      return;
+    }
+    this.defaultRefreshPending = false;
+    await this.refreshSelectedDefault();
+  }
+
   public edit(isAdmin: boolean): SceneEditSelection | undefined {
     const { content, selectedItem, selectedScene } = this.stateValue;
     if (!isAdmin || !selectedScene || !this.hasCurrentSceneContent()) {
       return undefined;
     }
     if (!selectedItem) {
-      this.invalidateDefaultWrites();
+      this.invalidateDefaultWrites(true);
     }
     if (selectedScene.scene_type === 2 && content?.kind === "scene_layered") {
       return {
@@ -722,11 +745,14 @@ export class SceneBrowserWorkflow {
     );
   }
 
-  private invalidateDefaultWrites(): void {
+  private invalidateDefaultWrites(preserveBaseline = false): void {
     this.defaultSelectionRevision += 1;
     this.speedRevision = 0;
     this.defaultRefreshGeneration += 1;
-    this.defaultBaseline = undefined;
+    if (!preserveBaseline) {
+      this.defaultBaseline = undefined;
+    }
+    this.defaultRefreshPending = false;
     this.defaultWriter.invalidate();
   }
 

@@ -1077,6 +1077,13 @@
           "workshop": "supported"
         },
         "display_name": "H617A LED Strip",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive",
+          "advanced"
+        ],
         "light_entity_id": "light.h617a_main",
         "model": "H617A",
         "profiles": {
@@ -1098,6 +1105,13 @@
           "workshop": "supported"
         },
         "display_name": "H6199 DreamView T1",
+        "effect_categories": [
+          "scenes",
+          "video",
+          "effects",
+          "reactive",
+          "advanced"
+        ],
         "light_entity_id": null,
         "model": "H6199",
         "profiles": {
@@ -1109,7 +1123,7 @@
       }
     ],
     "editor_info": {
-      "api_version": 7,
+      "api_version": 8,
       "compiler_version": 4,
       "effect_schema_version": 2,
       "limits": {
@@ -1216,9 +1230,11 @@
       "config_entry_id": "h617a-main",
       "content_kind": "h617a_painted",
       "error_code": null,
+      "error_message": null,
       "phase": "confirmed",
       "sequence": 4,
-      "session_id": "fixture-session"
+      "session_id": "fixture-session",
+      "write_disposition": "unknown"
     },
     "scene_catalogues": {
       "H617A": {

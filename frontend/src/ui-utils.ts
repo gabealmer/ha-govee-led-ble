@@ -111,11 +111,19 @@ export function classifyLightEntityState(
 export function lightControlPresentation(
   displayName: string,
   state: NativeLightState,
+  brightness?: unknown,
 ) {
+  const brightnessLevel =
+    state === "on" &&
+    typeof brightness === "number" &&
+    Number.isFinite(brightness)
+      ? clamp(brightness, 0, 255)
+      : undefined;
   const accessibleName = `Control ${displayName} (${state})`;
   return {
     accessibleName,
     className: `light-state-${state}`,
+    brightnessLevel,
   };
 }
 

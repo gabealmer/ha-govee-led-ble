@@ -24,6 +24,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     address: str
     model: str
     effect_families: frozenset[str]
+    effect_categories: frozenset[str]
     is_on: bool
     effect: str | None
     fw_version: str | None

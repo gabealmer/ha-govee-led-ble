@@ -36,6 +36,13 @@ const device = (
     video: "unsupported",
   },
   readback: "state",
+  effect_categories: [
+    "scenes",
+    "effects",
+    "multi_layered",
+    "reactive",
+    "advanced",
+  ],
   active_state: null,
 });
 
@@ -72,19 +79,19 @@ test("remembered navigation restores only an available top-level section", () =>
   expect(
     rememberedStudioSection(
       { section: "video" },
-      { custom: true, video: true },
+      { scenes: true, custom: true, video: true },
     ),
   ).toBe("video");
   expect(
     rememberedStudioSection(
       { section: "video" },
-      { custom: true, video: false },
+      { scenes: true, custom: true, video: false },
     ),
   ).toBe("custom");
   expect(
     rememberedStudioSection(
       { section: "future" },
-      { custom: false, video: false },
+      { scenes: true, custom: false, video: false },
     ),
   ).toBe("scenes");
 });
@@ -92,22 +99,22 @@ test("remembered navigation restores only an available top-level section", () =>
 test("primary navigation flattens custom categories", () => {
   const categories = [
     { category: "single-layer" as const, label: "Effects" },
-    { category: "multi-layer" as const, label: "Layered Effects" },
+    { category: "multi-layer" as const, label: "Multi-Layered" },
   ];
-  expect(studioNavigationItems(true, categories)).toEqual([
+  expect(studioNavigationItems(true, true, categories)).toEqual([
     { section: "scenes", label: "Scenes" },
     { section: "video", label: "Video" },
     { section: "custom", category: "single-layer", label: "Effects" },
     {
       section: "custom",
       category: "multi-layer",
-      label: "Layered Effects",
+      label: "Multi-Layered",
     },
   ]);
-  expect(studioNavigationItems(false, categories).map((item) => item.label)).toEqual([
+  expect(studioNavigationItems(true, false, categories).map((item) => item.label)).toEqual([
     "Scenes",
     "Effects",
-    "Layered Effects",
+    "Multi-Layered",
   ]);
 });
 

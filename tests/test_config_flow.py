@@ -11,7 +11,7 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.config_flow import _extract_model
-from custom_components.ha_govee_led_ble.const import CONF_EFFECT_FAMILIES, CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.const import CONF_EFFECT_CATEGORIES, CONF_MODEL, DOMAIN
 
 M = "custom_components.ha_govee_led_ble.config_flow"
 SVC = BluetoothServiceInfo("ihoment_H617A_ABCD", "AA:BB:CC:DD:EE:FF", -60, {}, {}, [], "local")
@@ -238,8 +238,8 @@ def test_extract_model(name, expected):
 @pytest.mark.parametrize(
     ("model", "expected"),
     [
-        ("H617A", {"scenes", "music"}),
-        ("H6199", {"video"}),
+        ("H617A", {"scenes", "effects", "multi_layered", "reactive", "advanced"}),
+        ("H6199", {"scenes", "video", "effects", "reactive", "advanced"}),
     ],
 )
 async def test_options_flow_model_defaults(hass: HomeAssistant, model: str, expected: set[str]):
@@ -249,7 +249,7 @@ async def test_options_flow_model_defaults(hass: HomeAssistant, model: str, expe
     assert result["type"] is FlowResultType.FORM
     schema = result["data_schema"]
     assert schema is not None
-    assert set(schema({})[CONF_EFFECT_FAMILIES]) == expected
+    assert set(schema({})[CONF_EFFECT_CATEGORIES]) == expected
 
 
 async def test_options_flow_aborts_for_unsupported_model(hass: HomeAssistant):
@@ -262,14 +262,14 @@ async def test_options_flow_aborts_for_unsupported_model(hass: HomeAssistant):
     assert result["reason"] == "not_supported"
 
 
-async def test_options_flow_saves_selected_families(hass: HomeAssistant):
+async def test_options_flow_saves_ordered_studio_categories(hass: HomeAssistant):
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6199"}, unique_id="AA:BB:CC:DD:EE:FF")
     entry.add_to_hass(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     with patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock):
         saved = await hass.config_entries.options.async_configure(
             result["flow_id"],
-            {CONF_EFFECT_FAMILIES: ["scenes", "music"]},
+            {CONF_EFFECT_CATEGORIES: ["scenes", "reactive"]},
         )
     assert saved["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {CONF_EFFECT_FAMILIES: ["scenes", "music"]}
+    assert entry.options == {CONF_EFFECT_CATEGORIES: ["scenes", "reactive"]}

@@ -18,7 +18,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .ble_connection import RETRY_BACKOFF_SECONDS, async_establish_ble_connection
 from .ble_device_resolver import BLEDeviceResolver
-from .const import DOMAIN, MUSIC_MODE_SLUGS, default_effect_families, get_profile
+from .const import DOMAIN, MUSIC_MODE_SLUGS, default_effect_categories, default_effect_families, get_profile
 from .coordinator_expectations import expectations_from_packet
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin, music_params_for_mode
 from .coordinator_status import ParsedMode, StatusDomain, decode_status_frame, parse_color_mode
@@ -112,6 +112,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         *,
         configuration_url: str,
         effect_families: frozenset[str] | None = None,
+        effect_categories: frozenset[str] | None = None,
         device_resolver: BLEDeviceResolver | None = None,
     ) -> None:
         profile = get_profile(model)
@@ -124,6 +125,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.address, self.model, self.profile = address, model, profile
         self.configuration_url = configuration_url
         self.effect_families = default_effect_families(model) if effect_families is None else effect_families
+        self.effect_categories = (
+            frozenset(default_effect_categories(model)) if effect_categories is None else effect_categories
+        )
         self._device_resolver = BLEDeviceResolver() if device_resolver is None else device_resolver
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()

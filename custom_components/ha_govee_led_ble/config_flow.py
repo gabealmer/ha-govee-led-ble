@@ -17,14 +17,14 @@ from homeassistant.helpers import config_validation as cv
 
 from .ble_connection import async_validate_ble_connection
 from .const import (
+    CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_MODEL,
     DOMAIN,
-    EFFECT_FAMILIES,
     MODEL_PROFILES,
-    default_effect_families,
+    default_effect_categories,
     resolve_model,
-    supported_effect_families,
+    supported_effect_categories,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def _normalize_manual_address(address: str) -> str:
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 5
+    VERSION = 6
 
     _discovered: dict[str, str]
 
@@ -120,22 +120,33 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
         model = resolve_model(raw_model) if isinstance(raw_model, str) else None
         if model is None:
             return self.async_abort(reason="not_supported")
-        supported = supported_effect_families(model)
+        supported = supported_effect_categories(model)
         if user_input is not None:
-            selected = set(user_input[CONF_EFFECT_FAMILIES]) & supported
-            ordered = [family for family in EFFECT_FAMILIES if family in selected]
-            return self.async_create_entry(data={CONF_EFFECT_FAMILIES: ordered})
-        defaults = default_effect_families(model)
+            selected = set(user_input[CONF_EFFECT_CATEGORIES]) & set(supported)
+            ordered = [category for category in supported if category in selected]
+            options = {key: value for key, value in self.config_entry.options.items() if key != CONF_EFFECT_FAMILIES}
+            options[CONF_EFFECT_CATEGORIES] = ordered
+            return self.async_create_entry(data=options)
+        defaults = default_effect_categories(model)
         current = self.config_entry.options.get(
-            CONF_EFFECT_FAMILIES,
-            [family for family in EFFECT_FAMILIES if family in defaults],
+            CONF_EFFECT_CATEGORIES,
+            list(defaults),
         )
-        choices = {family: family.title() for family in EFFECT_FAMILIES if family in supported}
+        choices = {
+            "scenes": "Scenes",
+            "video": "Video",
+            "effects": "Effects",
+            "multi_layered": "Multi-Layered",
+            "reactive": "Reactive",
+            "advanced": "Advanced",
+        }
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_EFFECT_FAMILIES, default=current): cv.multi_select(choices),
+                    vol.Required(CONF_EFFECT_CATEGORIES, default=current): cv.multi_select(
+                        {category: choices[category] for category in supported}
+                    ),
                 }
             ),
         )

@@ -43,6 +43,7 @@ export function editorDevicePath(deviceId: string): string {
 }
 
 export function studioNavigationItems(
+  scenesAvailable: boolean,
   videoAvailable: boolean,
   customCategories: readonly {
     category: CustomEffectCategory;
@@ -50,7 +51,9 @@ export function studioNavigationItems(
   }[],
 ): StudioNavigationItem[] {
   return [
-    { section: "scenes", label: "Scenes" },
+    ...(scenesAvailable
+      ? [{ section: "scenes" as const, label: "Scenes" }]
+      : []),
     ...(videoAvailable
       ? [{ section: "video" as const, label: "Video" }]
       : []),
@@ -83,6 +86,7 @@ export function initialDeviceId(
 export function rememberedStudioSection(
   navigation: EffectUserState["navigation"],
   available: {
+    scenes: boolean;
     custom: boolean;
     video: boolean;
   },
@@ -91,13 +95,13 @@ export function rememberedStudioSection(
   if (section === "video" && available.video) {
     return section;
   }
-  if (section === "scenes") {
+  if (section === "scenes" && available.scenes) {
     return section;
   }
   if (section === "custom" && available.custom) {
     return section;
   }
-  return available.custom ? "custom" : "scenes";
+  return available.custom ? "custom" : available.video ? "video" : "scenes";
 }
 
 export function activeStudioContext(

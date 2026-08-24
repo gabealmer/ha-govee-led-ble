@@ -175,6 +175,7 @@ async def _async_device_payload(
         entry.title,
         coordinator.profile.segment_count,
         light_entity_id=_light_entity_id(hass, entry.entry_id),
+        effect_categories=tuple(coordinator.effect_categories),
     ).to_dict()
     device["active_state"] = observed.to_public_dict()
     return device

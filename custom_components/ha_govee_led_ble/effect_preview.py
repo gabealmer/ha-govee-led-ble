@@ -88,6 +88,13 @@ class PreviewPhase(StrEnum):
     CANCELLED = "cancelled"
 
 
+class PreviewWriteDisposition(StrEnum):
+    NOT_STARTED = "not_started"
+    MAY_HAVE_STARTED = "may_have_started"
+    COMPLETED = "completed"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True, slots=True)
 class PreviewStatus:
     session_id: str
@@ -97,6 +104,8 @@ class PreviewStatus:
     content_kind: str
     confidence: ObservationConfidence
     error_code: str | None
+    error_message: str | None = None
+    write_disposition: PreviewWriteDisposition = PreviewWriteDisposition.UNKNOWN
 
     def to_dict(self) -> dict[str, str | int | None]:
         return {
@@ -107,6 +116,8 @@ class PreviewStatus:
             "content_kind": self.content_kind,
             "confidence": self.confidence.value,
             "error_code": self.error_code,
+            "error_message": self.error_message,
+            "write_disposition": self.write_disposition.value,
         }
 
 
@@ -584,9 +595,16 @@ class EffectPreviewManager:
                 config_entry_id=request.config_entry_id,
                 details={"error_type": type(exc).__name__, "sequence": request.sequence},
             )
-            self._publish(request, PreviewPhase.FAILED, error_code="compilation_failed")
+            self._publish(
+                request,
+                PreviewPhase.FAILED,
+                error_code="compilation_failed",
+                error_message="The effect could not be prepared. Review its settings before trying again.",
+                write_disposition=PreviewWriteDisposition.NOT_STARTED,
+            )
             return
 
+        writer: _PreviewWriter | None = None
         try:
             await coordinator.async_preview_preflight(timeout=self._connect_timeout)
             writer = _PreviewWriter(self, request, coordinator)
@@ -622,7 +640,17 @@ class EffectPreviewManager:
             self._publish(request, PreviewPhase.CANCELLED, error_code="superseded")
             return
         except PreviewShutdownError:
-            self._publish(request, PreviewPhase.FAILED, error_code="shutdown_incomplete")
+            self._publish(
+                request,
+                PreviewPhase.FAILED,
+                error_code="shutdown_incomplete",
+                error_message="Home Assistant stopped before the Live change completed.",
+                write_disposition=(
+                    PreviewWriteDisposition.MAY_HAVE_STARTED
+                    if writer is not None and writer.started
+                    else PreviewWriteDisposition.NOT_STARTED
+                ),
+            )
             return
         except Exception as exc:
             async with self._lock:
@@ -637,7 +665,20 @@ class EffectPreviewManager:
                 config_entry_id=request.config_entry_id,
                 details={"error_type": type(exc).__name__, "sequence": request.sequence},
             )
-            self._publish(request, PreviewPhase.FAILED, error_code="transport_failed")
+            started = writer is not None and writer.started
+            self._publish(
+                request,
+                PreviewPhase.FAILED,
+                error_code="transport_failed",
+                error_message=(
+                    "The light could not be reached before the Live change started."
+                    if not started
+                    else "The connection stopped while writing. The light may have changed."
+                ),
+                write_disposition=(
+                    PreviewWriteDisposition.MAY_HAVE_STARTED if started else PreviewWriteDisposition.NOT_STARTED
+                ),
+            )
             return
 
         self._invalidate_observed_match(request)
@@ -655,7 +696,13 @@ class EffectPreviewManager:
                     config_entry_id=request.config_entry_id,
                     details={"error_type": type(exc).__name__, "sequence": request.sequence},
                 )
-                self._publish(request, PreviewPhase.FAILED, error_code="storage_failed")
+                self._publish(
+                    request,
+                    PreviewPhase.FAILED,
+                    error_code="storage_failed",
+                    error_message="The light changed, but its scene default could not be saved.",
+                    write_disposition=PreviewWriteDisposition.COMPLETED,
+                )
                 return
 
         if await self._async_request_status_is_live(request):
@@ -663,6 +710,7 @@ class EffectPreviewManager:
                 request,
                 PreviewPhase.WRITTEN,
                 confidence=ObservationConfidence.WRITE_COMPLETED,
+                write_disposition=PreviewWriteDisposition.COMPLETED,
             )
         expectations = _verification_expectations(coordinator, request, compiled)
         async with self._lock:
@@ -805,19 +853,24 @@ class EffectPreviewManager:
             phase = PreviewPhase.CONFIRMED
             confidence = confirmed_confidence
             error_code = None
+            error_message = None
         elif result is False:
             phase = PreviewPhase.UNCONFIRMED
             confidence = ObservationConfidence.UNKNOWN
             error_code = "device_state_mismatch"
+            error_message = "The light accepted the write, but its reported state did not match the requested change."
         else:
             phase = PreviewPhase.UNCONFIRMED
             confidence = ObservationConfidence.UNKNOWN
             error_code = "device_readback_unknown"
+            error_message = "The light accepted the write, but did not provide state readback to confirm it."
         self._publish(
             request,
             phase,
             confidence=confidence,
             error_code=error_code,
+            error_message=error_message,
+            write_disposition=PreviewWriteDisposition.COMPLETED,
         )
 
     async def _async_verification_is_current(self, request: _PreviewRequest) -> bool:
@@ -880,6 +933,8 @@ class EffectPreviewManager:
         *,
         confidence: ObservationConfidence = ObservationConfidence.UNKNOWN,
         error_code: str | None = None,
+        error_message: str | None = None,
+        write_disposition: PreviewWriteDisposition = PreviewWriteDisposition.UNKNOWN,
     ) -> None:
         session = self._sessions.get(request.session_id)
         if session is None:
@@ -892,6 +947,8 @@ class EffectPreviewManager:
             request.content_kind,
             confidence,
             error_code,
+            error_message,
+            write_disposition,
         )
         for listener in tuple(session.listeners.values()):
             try:

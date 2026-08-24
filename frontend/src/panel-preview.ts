@@ -126,6 +126,8 @@ export class EffectStudioPreviewSession {
         request.kind === "scene" ? "scene_builtin" : request.content.kind,
       confidence: "unknown",
       error_code: null,
+      error_message: null,
+      write_disposition: "not_started",
     });
     try {
       if (request.kind === "scene") {
@@ -136,7 +138,7 @@ export class EffectStudioPreviewSession {
           request.scene.scene,
           request.scene.speedIndex,
           request.force,
-          request.persistDefault,
+          request.committed,
         );
       } else {
         await this.api.previewSnapshot(
@@ -146,7 +148,7 @@ export class EffectStudioPreviewSession {
           request.name,
           request.content,
           request.force,
-          request.persistDefault,
+          request.committed,
         );
       }
     } catch (error) {
@@ -164,6 +166,8 @@ export class EffectStudioPreviewSession {
             request.kind === "scene" ? "scene_builtin" : request.content.kind,
           confidence: "unknown",
           error_code: errorCode(error) ?? "preview_failed",
+          error_message: "Effect Studio could not confirm whether the Live request reached the light.",
+          write_disposition: "unknown",
         });
       }
     }

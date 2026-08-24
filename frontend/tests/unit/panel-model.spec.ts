@@ -47,6 +47,14 @@ function device(
       video: "unsupported",
     },
     readback: "supported",
+    effect_categories: [
+      "scenes",
+      "video",
+      "effects",
+      "multi_layered",
+      "reactive",
+      "advanced",
+    ],
     active_state: null,
   };
 }

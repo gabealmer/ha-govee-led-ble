@@ -12,12 +12,13 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_MODEL,
     DOMAIN,
-    EFFECT_FAMILIES,
     MODEL_PROFILES,
-    default_effect_families,
+    default_effect_categories,
+    effect_categories_from_options,
     effect_families_from_options,
     resolve_model,
 )
@@ -106,9 +107,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -
         model = next((candidate for candidate in MODEL_PROFILES if candidate in entry.title.upper()), None)
     if model is not None:
         data[CONF_MODEL] = model
-        defaults = default_effect_families(model)
-        options.setdefault(CONF_EFFECT_FAMILIES, [family for family in EFFECT_FAMILIES if family in defaults])
-    hass.config_entries.async_update_entry(entry, data=data, options=options, version=5)
+        options.pop(CONF_EFFECT_FAMILIES, None)
+        options.setdefault(CONF_EFFECT_CATEGORIES, list(default_effect_categories(model)))
+    hass.config_entries.async_update_entry(entry, data=data, options=options, version=6)
     return True
 
 
@@ -151,6 +152,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         model,
         configuration_url=editor_url(entry.entry_id),
         effect_families=effect_families_from_options(model, entry.options),
+        effect_categories=effect_categories_from_options(model, entry.options),
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

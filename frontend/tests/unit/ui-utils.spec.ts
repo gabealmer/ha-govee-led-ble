@@ -36,6 +36,13 @@ function device(lightEntityId: string | null): DeviceCapabilities {
       video: "unsupported",
     },
     readback: "diy_code_only",
+    effect_categories: [
+      "scenes",
+      "effects",
+      "multi_layered",
+      "reactive",
+      "advanced",
+    ],
     active_state: null,
   };
 }

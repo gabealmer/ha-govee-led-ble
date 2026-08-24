@@ -113,6 +113,10 @@ export class GoveeSceneBrowser extends LitElement {
     return this.workflow.previewRequest(this.isAdmin);
   }
 
+  public refreshSelectedDefault(): void {
+    void this.workflow.refreshSelectedDefault();
+  }
+
   public invokeSaveShortcut(): boolean {
     if (!this.isAdmin) {
       return false;
@@ -223,8 +227,10 @@ export class GoveeSceneBrowser extends LitElement {
         </div>
       </aside>
 
-      ${this.externalEditActive
-        ? nothing
+      ${this.externalEditActive || (!state.selectedScene || !state.content)
+        ? state.notice
+          ? html`<p class="action-error" role="alert">${state.notice}</p>`
+          : nothing
         : html`
             <section class="editor-surface detail">
               ${this.panelNotice ? html`<p class="action-error" role="alert">${this.panelNotice}</p>` : nothing}
@@ -322,6 +328,7 @@ export class GoveeSceneBrowser extends LitElement {
                 state.hasDefault,
                 this.workflow.sceneDefaultDirty,
                 this.autoSaveEnabled,
+                this.workflow.defaultWritePending,
               ).map((action) => this.renderNativeAction(action))
             : html`
                 <button

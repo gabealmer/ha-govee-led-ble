@@ -193,6 +193,11 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         `devices[${index}].readback`,
         MAX_IDENTIFIER_LENGTH,
       ),
+      effect_categories: stringArray(
+        device.effect_categories,
+        `devices[${index}].effect_categories`,
+        MAX_IDENTIFIER_LENGTH,
+      ),
       active_state:
         device.active_state === null
           ? null
@@ -482,6 +487,19 @@ export function decodePreviewStatus(value: unknown): PreviewStatus {
             "preview error code",
             MAX_IDENTIFIER_LENGTH,
           ),
+    error_message:
+      status.error_message === null
+          ? null
+          : boundedString(
+              status.error_message,
+              "preview error message",
+              MAX_EFFECT_NAME_LENGTH,
+            ),
+    write_disposition: enumString(
+      status.write_disposition,
+      ["not_started", "may_have_started", "completed", "unknown"],
+      "preview write disposition",
+    ),
   };
 }
 
@@ -1134,6 +1152,19 @@ function relativeBrightnessValue(
 function boundedRecord(value: unknown, name: string): Record<string, unknown> {
   assertBoundedJson(value, name, MAX_EFFECT_DOCUMENT_BYTES);
   return objectValue(value, name);
+}
+
+function stringArray(
+  value: unknown,
+  name: string,
+  maximumItemLength: number,
+): string[] {
+  if (!Array.isArray(value)) {
+    invalid(`${name} must be an array`);
+  }
+  return value.map((item, index) =>
+    boundedString(item, `${name}[${index}]`, maximumItemLength),
+  );
 }
 
 

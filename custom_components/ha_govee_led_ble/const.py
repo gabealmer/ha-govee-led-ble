@@ -6,11 +6,34 @@ from typing import Any
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
+CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
 EFFECT_FAMILY_SCENES = "scenes"
 EFFECT_FAMILY_MUSIC = "music"
 EFFECT_FAMILY_VIDEO = "video"
 EFFECT_FAMILIES = (EFFECT_FAMILY_SCENES, EFFECT_FAMILY_MUSIC, EFFECT_FAMILY_VIDEO)
+EFFECT_CATEGORY_SCENES = "scenes"
+EFFECT_CATEGORY_VIDEO = "video"
+EFFECT_CATEGORY_EFFECTS = "effects"
+EFFECT_CATEGORY_MULTI_LAYERED = "multi_layered"
+EFFECT_CATEGORY_REACTIVE = "reactive"
+EFFECT_CATEGORY_ADVANCED = "advanced"
+EFFECT_CATEGORIES = (
+    EFFECT_CATEGORY_SCENES,
+    EFFECT_CATEGORY_VIDEO,
+    EFFECT_CATEGORY_EFFECTS,
+    EFFECT_CATEGORY_MULTI_LAYERED,
+    EFFECT_CATEGORY_REACTIVE,
+    EFFECT_CATEGORY_ADVANCED,
+)
+EFFECT_CATEGORY_CONTENT_KINDS = {
+    EFFECT_CATEGORY_SCENES: frozenset({"scene_builtin", "scene_palette", "scene_layered"}),
+    EFFECT_CATEGORY_VIDEO: frozenset({"video_profile"}),
+    EFFECT_CATEGORY_EFFECTS: frozenset({"h617a_painted", "h617a_single", "palette_diy"}),
+    EFFECT_CATEGORY_MULTI_LAYERED: frozenset({"h617a_multi"}),
+    EFFECT_CATEGORY_REACTIVE: frozenset({"music_profile"}),
+    EFFECT_CATEGORY_ADVANCED: frozenset({"advanced", "workshop"}),
+}
 
 
 @dataclass(frozen=True)
@@ -20,6 +43,8 @@ class ModelProfile:
     supports_scenes: bool = False
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
+    supports_advanced_effects: bool = False
+    supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
@@ -65,6 +90,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_scenes=True,
         music_modes=tuple(MUSIC_MODE_SLUGS),
         supports_music_color=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
         # H617A exposes fifteen segments through five explicit aa a5 query groups of three.
         # Segment writes ACK normally but do not publish updated groups without those queries.
         segment_count=15,
@@ -88,6 +115,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_min=1,
         music_sensitivity_max=100,
         supports_music_color=True,
+        supports_advanced_effects=True,
         # Static readback identifies the mode but exposes rendered colour only through segment
         # queries. Kelvin remains last-known while its RGB companion matches.
         # Fifteen segment bits are independently writable. The aa 40 value 38 is not a segment count.
@@ -122,6 +150,53 @@ def supported_effect_families(model: str) -> frozenset[str]:
     return frozenset(families)
 
 
+def supported_effect_categories(model: str) -> tuple[str, ...]:
+    profile = get_profile(model)
+    categories: set[str] = {
+        EFFECT_CATEGORY_EFFECTS,
+    }
+    if profile.supports_scenes:
+        categories.add(EFFECT_CATEGORY_SCENES)
+    if profile.supports_video_mode:
+        categories.add(EFFECT_CATEGORY_VIDEO)
+    if profile.supports_music_mode:
+        categories.add(EFFECT_CATEGORY_REACTIVE)
+    if profile.supports_multi_layered_effects:
+        categories.add(EFFECT_CATEGORY_MULTI_LAYERED)
+    if profile.supports_advanced_effects:
+        categories.add(EFFECT_CATEGORY_ADVANCED)
+    return tuple(category for category in EFFECT_CATEGORIES if category in categories)
+
+
+def default_effect_categories(model: str) -> tuple[str, ...]:
+    return supported_effect_categories(model)
+
+
+def effect_categories_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:
+    selected = options.get(CONF_EFFECT_CATEGORIES)
+    if not isinstance(selected, list | tuple | set | frozenset):
+        return frozenset(default_effect_categories(model))
+    return frozenset(str(value) for value in selected) & frozenset(supported_effect_categories(model))
+
+
+def effect_families_from_categories(categories: frozenset[str]) -> frozenset[str]:
+    families: set[str] = set()
+    if EFFECT_CATEGORY_SCENES in categories:
+        families.add(EFFECT_FAMILY_SCENES)
+    if EFFECT_CATEGORY_REACTIVE in categories:
+        families.add(EFFECT_FAMILY_MUSIC)
+    if EFFECT_CATEGORY_VIDEO in categories:
+        families.add(EFFECT_FAMILY_VIDEO)
+    return frozenset(families)
+
+
+def effect_category_for_content_kind(content_kind: str) -> str | None:
+    return next(
+        (category for category, kinds in EFFECT_CATEGORY_CONTENT_KINDS.items() if content_kind in kinds),
+        None,
+    )
+
+
 def default_effect_families(model: str) -> frozenset[str]:
     supported = supported_effect_families(model)
     if model == "H6199":
@@ -130,6 +205,8 @@ def default_effect_families(model: str) -> frozenset[str]:
 
 
 def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:
+    if CONF_EFFECT_CATEGORIES in options:
+        return effect_families_from_categories(effect_categories_from_options(model, options))
     selected = options.get(CONF_EFFECT_FAMILIES)
     if not isinstance(selected, list | tuple | set | frozenset):
         return default_effect_families(model)

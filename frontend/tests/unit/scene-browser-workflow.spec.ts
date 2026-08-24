@@ -223,8 +223,8 @@ describe("SceneBrowserWorkflow", () => {
       firstScene,
       2,
     );
-    expect(workflow.sceneDefaultDirty).toBe(false);
-    expect(workflow.state.hasDefault).toBe(true);
+    expect(workflow.sceneDefaultDirty).toBe(true);
+    expect(workflow.state.hasDefault).toBe(false);
     expect(workflow.state.content?.speed_index).toBe(2);
     expect(workflow.state.saving).toBe(false);
 
@@ -295,8 +295,8 @@ describe("SceneBrowserWorkflow", () => {
     expect(api.resetScene).toHaveBeenCalledWith(device.config_entry_id, firstScene);
     expect(workflow.state.speedIndex).toBe(firstScene.speed?.default_index);
     expect(workflow.state.content?.speed_index).toBe(firstScene.speed?.default_index);
-    expect(workflow.state.hasDefault).toBe(false);
-    expect(workflow.sceneDefaultDirty).toBe(false);
+    expect(workflow.state.hasDefault).toBe(true);
+    expect(workflow.sceneDefaultDirty).toBe(true);
     expect(workflow.state.saving).toBe(false);
 
     pending.resolve(detail(firstScene, 1, false));
@@ -387,7 +387,7 @@ describe("SceneBrowserWorkflow", () => {
 
     expect(workflow.state.speedIndex).toBe(2);
     expect(workflow.state.content?.speed_index).toBe(2);
-    expect(workflow.state.hasDefault).toBe(true);
+    expect(workflow.state.hasDefault).toBe(false);
 
     save.resolve(detail(firstScene, 2, true));
     await saving;

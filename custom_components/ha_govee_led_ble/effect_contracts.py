@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from .const import default_effect_categories
 from .effect_domain import EFFECT_SCHEMA_VERSION, JsonValue
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -18,8 +19,8 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 7
-EDITOR_ASSET_VERSION: Final = 8
+EDITOR_API_VERSION: Final = 8
+EDITOR_ASSET_VERSION: Final = 9
 EFFECT_COMPILER_VERSION: Final = 4
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -448,6 +449,7 @@ class DeviceEffectCapabilities:
     video: CapabilityState
     workshop: CapabilityState
     readback: str
+    effect_categories: tuple[str, ...]
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
@@ -469,6 +471,7 @@ class DeviceEffectCapabilities:
                 "video": self.video.value,
             },
             "readback": self.readback,
+            "effect_categories": list(self.effect_categories),
         }
 
 
@@ -479,6 +482,7 @@ def device_effect_capabilities(
     segment_count: int,
     *,
     light_entity_id: str | None = None,
+    effect_categories: tuple[str, ...] | None = None,
 ) -> DeviceEffectCapabilities:
     return DeviceEffectCapabilities(
         config_entry_id=config_entry_id,
@@ -495,4 +499,5 @@ def device_effect_capabilities(
         video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO),
         workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP),
         readback="diy_code_only" if model == "H617A" else "scene_selector_for_user_effects",
+        effect_categories=(default_effect_categories(model) if effect_categories is None else effect_categories),
     )

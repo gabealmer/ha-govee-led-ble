@@ -256,6 +256,8 @@ function status(
       content_kind: "advanced",
       confidence: "unknown",
       error_code: null,
+      error_message: null,
+      write_disposition: "unknown",
     };
 }
 
@@ -422,6 +424,6 @@ test("preview failure messages distinguish failures from unconfirmed readback", 
       ...status(2, "unconfirmed"),
       error_code: "device_state_mismatch",
     }),
-  ).toBeUndefined();
+  ).toContain("reported state did not match");
   expect(previewStatusMessage(status(3, "confirmed"))).toBeUndefined();
 });

@@ -87,15 +87,22 @@ test("settled scene preview statuses trigger an authoritative default refresh", 
     content_kind: "scene_layered",
     confidence: "write_completed" as const,
     error_code: null,
+    error_message: null,
+    write_disposition: "completed" as const,
   };
 
-  expect(previewMayChangeSceneDefault(status, "entry-a")).toBe(true);
+  expect(previewMayChangeSceneDefault(status, "entry-a")).toBe(false);
   expect(
     previewMayChangeSceneDefault(
-      { ...status, phase: "failed", error_code: "transport_failed" },
+      {
+        ...status,
+        phase: "failed",
+        error_code: "transport_failed",
+        write_disposition: "may_have_started",
+      },
       "entry-a",
     ),
-  ).toBe(false);
+  ).toBe(true);
   expect(previewMayChangeSceneDefault(status, "entry-b")).toBe(false);
 });
 

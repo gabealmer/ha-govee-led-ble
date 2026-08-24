@@ -130,9 +130,9 @@
     "step": {
       "init": {
         "title": "Effects",
-        "description": "Choose which effect families appear on the light entity.",
+        "description": "Choose which Effect Studio categories appear in the Studio and on the light entity.",
         "data": {
-          "effect_families": "Effect families"
+          "effect_categories": "Effect Studio"
         }
       }
     }

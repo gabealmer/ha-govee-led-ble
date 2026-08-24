@@ -157,6 +157,7 @@ export class PanelController {
     customEffectCategory?: CustomEffectCategory,
   ): Promise<void> {
     if (
+      (section === "scenes" && !this.model.scenesAvailable) ||
       (section === "custom" &&
         (!this.model.customEffectsAvailable ||
           (customEffectCategory !== undefined &&
@@ -599,7 +600,11 @@ export class PanelController {
       this.model.defaultCustomEffectCategory(),
     );
     this.model.patch({
-      section: rememberedStudioSection(navigation, { custom: this.model.customEffectsAvailable, video: this.model.videoAvailable }),
+      section: rememberedStudioSection(navigation, {
+        scenes: this.model.scenesAvailable,
+        custom: this.model.customEffectsAvailable,
+        video: this.model.videoAvailable,
+      }),
       customEffectCategory,
       autoSaveEnabled: restoredAutoSave(navigation.auto_save),
       notice: undefined,

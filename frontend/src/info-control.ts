@@ -15,6 +15,9 @@ export class GoveeInfoControl extends LitElement {
   @property()
   public text = "";
 
+  @property()
+  public variant: "info" | "error" = "info";
+
   @state()
   private open = false;
 
@@ -41,14 +44,22 @@ export class GoveeInfoControl extends LitElement {
         @click=${nativePopover ? nothing : this.toggleFallback}
       >
         <svg
+          class=${this.variant}
           aria-hidden="true"
           viewBox="0 0 24 24"
           width="18"
           height="18"
         >
           <circle cx="12" cy="12" r="9"></circle>
-          <path d="M12 10.75v6"></path>
-          <circle class="info-dot" cx="12" cy="7.25" r="0.75"></circle>
+          ${this.variant === "error"
+            ? html`
+                <path d="M12 7.5v6"></path>
+                <circle class="info-dot" cx="12" cy="16.5" r="0.75"></circle>
+              `
+            : html`
+                <path d="M12 10.75v6"></path>
+                <circle class="info-dot" cx="12" cy="7.25" r="0.75"></circle>
+              `}
         </svg>
       </button>
       <div
@@ -268,6 +279,11 @@ export class GoveeInfoControl extends LitElement {
       .info-trigger:focus-visible {
         color: var(--studio-blue);
         border-color: var(--studio-blue);
+      }
+
+      .info-trigger:has(svg.error) {
+        color: var(--error-color, #db4437);
+        border-color: var(--error-color, #db4437);
       }
 
       .info-trigger:focus-visible {

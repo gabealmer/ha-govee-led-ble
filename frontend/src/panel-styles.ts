@@ -171,6 +171,14 @@ export const effectStudioPanelStyles = [
       font-weight: var(--studio-font-weight-semibold);
     }
 
+    .studio-toolbar-device {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: var(--studio-micro-gap);
+      flex: 1 1 auto;
+    }
+
     .device-selector select {
       width: min(var(--studio-device-selector-max-width), 50vw);
       max-width: 100%;
@@ -260,6 +268,11 @@ export const effectStudioPanelStyles = [
       width: var(--studio-icon-size);
       height: var(--studio-icon-size);
       fill: currentColor;
+    }
+
+    .native-light-brightness-fill {
+      fill: var(--studio-blue);
+      opacity: 0.55;
     }
 
     .native-light-control.light-state-on {

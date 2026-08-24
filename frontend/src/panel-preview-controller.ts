@@ -14,8 +14,14 @@ import type { PreviewStatus } from "./types";
 export function previewStatusMessage(
   status: PreviewStatus | undefined,
 ): string | undefined {
-  if (status === undefined || status.phase !== "failed") {
+  if (
+    status === undefined ||
+    (status.phase !== "failed" && status.phase !== "unconfirmed")
+  ) {
     return undefined;
+  }
+  if (status.error_message) {
+    return status.error_message;
   }
   switch (status.error_code) {
     case "transport_failed":
@@ -24,8 +30,12 @@ export function previewStatusMessage(
       return "Live apply could not prepare this effect.";
     case "storage_failed":
       return "The light changed, but its scene default could not be saved.";
+    case "device_state_mismatch":
+      return "The light accepted the write, but its reported state did not match the requested change.";
+    case "device_readback_unknown":
+      return "The light accepted the write, but did not provide state readback to confirm it.";
     default:
-      return "The latest Live change did not complete.";
+      return "Effect Studio could not confirm whether the Live change completed.";
   }
 }
 

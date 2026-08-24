@@ -21,7 +21,7 @@ const CATEGORY_LABELS: Readonly<
 > = {
   all: "All",
   "my-effects": "My Effects",
-  "multi-layer": "Layered Effects",
+  "multi-layer": "Multi-Layered",
   music: "Reactive",
   "single-layer": "Effects",
   advanced: "Advanced",

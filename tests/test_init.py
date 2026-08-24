@@ -48,6 +48,9 @@ async def test_setup_entry(hass: HomeAssistant):
         "H617A",
         configuration_url="homeassistant://ha-govee-led-ble/editor/test_entry_id",
         effect_families=frozenset({"scenes", "music"}),
+        effect_categories=frozenset(
+            {"scenes", "effects", "multi_layered", "reactive", "advanced"},
+        ),
     )
     build_url.assert_called_once_with(entry.entry_id)
     assert entry.runtime_data is cls.return_value

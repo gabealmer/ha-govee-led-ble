@@ -147,7 +147,8 @@ export function previewMayChangeSceneDefault(status: PreviewStatus | undefined, 
       configEntryId &&
       status.config_entry_id === configEntryId &&
       ["scene_builtin", "scene_palette", "scene_layered"].includes(status.content_kind) &&
-      ["written", "confirmed", "unconfirmed"].includes(status.phase),
+        ["confirmed", "unconfirmed", "failed", "cancelled"].includes(status.phase) &&
+        ["may_have_started", "completed", "unknown"].includes(status.write_disposition),
   );
 }
 
@@ -163,12 +164,13 @@ export function nativeSceneActions(
   hasDefault: boolean,
   defaultDirty: boolean,
   autoSaveEnabled: boolean,
+  defaultWritePending = false,
 ): NativeSceneAction[] {
   const actions: NativeSceneAction[] = [];
-  if (!autoSaveEnabled && defaultDirty) {
+  if (!defaultWritePending && !autoSaveEnabled && defaultDirty) {
     actions.push({ id: "set-default", label: "Set as Default", style: "primary" });
   }
-  if (hasDefault) {
+  if (!defaultWritePending && hasDefault) {
     actions.push({ id: "reset-default", label: "Reset to Defaults", style: "secondary" });
   }
   actions.push({ id: "edit", label: "Edit", style: "secondary" });

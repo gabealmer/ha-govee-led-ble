@@ -1,5 +1,4 @@
 import { customEffectCategoryAvailable, customEffectKindAvailable, libraryItemAvailable, type CustomEffectListContext } from "./custom-effect-list";
-import { defaultCustomEffectCategory } from "./custom-effect-workflow";
 import {
   editorActionVisibility,
   editorOwnerMatches,
@@ -134,17 +133,20 @@ export class PanelModel {
   }
 
   public get videoAvailable(): boolean {
-    return Boolean(this.modelCatalogue?.video_modes.length);
+    return (
+      this.effectCategoryEnabled("video") &&
+      Boolean(this.modelCatalogue?.video_modes.length)
+    );
   }
 
   public get customEffectsAvailable(): boolean {
     const catalogue = this.modelCatalogue;
     return Boolean(
       catalogue &&
-        (catalogue.painted_effects.length ||
-          catalogue.effects.length ||
-          catalogue.music_modes.length ||
-          catalogue.supports.advanced !== "unsupported"),
+        (this.customEffectCategoryAvailable("single-layer") ||
+          this.customEffectCategoryAvailable("multi-layer") ||
+          this.customEffectCategoryAvailable("music") ||
+          this.customEffectCategoryAvailable("advanced")),
     );
   }
 
@@ -255,14 +257,37 @@ export class PanelModel {
   public customEffectCategoryAvailable(
     category: CustomEffectCategory,
   ): boolean {
-    return customEffectCategoryAvailable(
-      this.customEffectListContext,
-      category,
+    return (
+      this.effectCategoryEnabled(category) &&
+      customEffectCategoryAvailable(this.customEffectListContext, category)
     );
   }
 
+  public get scenesAvailable(): boolean {
+    return this.effectCategoryEnabled("scenes");
+  }
+
+  private effectCategoryEnabled(category: CustomEffectCategory | "scenes" | "video"): boolean {
+    const option = {
+      scenes: "scenes",
+      video: "video",
+      "single-layer": "effects",
+      "multi-layer": "multi_layered",
+      music: "reactive",
+      advanced: "advanced",
+      all: "",
+      "my-effects": "",
+    }[category];
+    return option !== "" && this.selectedDevice?.effect_categories.includes(option) === true;
+  }
+
   public defaultCustomEffectCategory(): CustomEffectCategory {
-    return defaultCustomEffectCategory(this.customEffectListContext);
+    return (
+      ["single-layer", "multi-layer", "music", "advanced"].find(
+        (category) =>
+          this.customEffectCategoryAvailable(category as CustomEffectCategory),
+      ) as CustomEffectCategory | undefined
+    ) ?? "single-layer";
   }
 
   public customEffectKindAvailable(kind: string): boolean {

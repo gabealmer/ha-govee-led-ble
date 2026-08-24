@@ -136,7 +136,7 @@ test("categories keep Effects first and Advanced last", () => {
     customEffectCategories(context([saved])).map(({ label }) => label),
   ).toEqual([
     "Effects",
-    "Layered Effects",
+    "Multi-Layered",
     "Reactive",
     "Advanced",
   ]);
@@ -144,7 +144,7 @@ test("categories keep Effects first and Advanced last", () => {
 
 test("category labels are shared by navigation and item lists", () => {
   expect(customEffectCategoryLabel("single-layer")).toBe("Effects");
-  expect(customEffectCategoryLabel("multi-layer")).toBe("Layered Effects");
+  expect(customEffectCategoryLabel("multi-layer")).toBe("Multi-Layered");
   expect(customEffectCategoryLabel("music")).toBe("Reactive");
   expect(customEffectCategoryLabel("advanced")).toBe("Advanced");
 });

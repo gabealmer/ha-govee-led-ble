@@ -4,6 +4,7 @@ import { property, state } from "lit/decorators.js";
 import "./advanced-effect-editor";
 import { rememberRecentColour } from "./colour-picker";
 import "./custom-effect-editor";
+import "./info-control";
 import type {
   CustomEffectBrowserCategoryRequest,
   CustomEffectBrowserEntryRequest,
@@ -178,7 +179,9 @@ export class GoveeLedEffectStudio extends LitElement {
       ${this.renderStudioToolbar()}
 
       ${this.model.selectedDevice
-        ? this.renderStudio()
+        ? this.model.selectedDevice.effect_categories.length
+          ? this.renderStudio()
+          : this.renderNoEffectCategories()
         : this.renderMissingDevice()}
       ${this.model.saveNameDialogOpen ? this.renderSaveNameDialog() : nothing}
       ${this.model.deleteCandidate ? this.renderDeleteConfirmation() : nothing}
@@ -229,9 +232,13 @@ export class GoveeLedEffectStudio extends LitElement {
       >
         <nav class="primary-nav" aria-label="Create">
           ${studioNavigationItems(
+            this.model.scenesAvailable,
             this.model.videoAvailable,
             this.model.customEffectsAvailable
-              ? customEffectCategories(this.model.customEffectListContext)
+              ? customEffectCategories(this.model.customEffectListContext).filter(
+                  ({ category }) =>
+                    this.model.customEffectCategoryAvailable(category),
+                )
               : [],
           ).map((item) => this.navButton(item))}
         </nav>
@@ -289,6 +296,21 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
+  private renderNoEffectCategories() {
+    return html`
+      <main class="empty-state">
+        <h2>No Effect Studio categories are enabled</h2>
+        <p>Enable one or more categories in this light's integration settings.</p>
+        ${this.model.selectedDevice
+          ? this.renderIntegrationSettings(
+              this.model.selectedDevice.display_name,
+              this.model.selectedDevice.config_entry_id,
+            )
+          : nothing}
+      </main>
+    `;
+  }
+
   private renderStudioToolbar() {
     const device = this.model.selectedDevice;
     const lightEntityId = lightControlEntityId(device);
@@ -303,7 +325,10 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     return html`
       <div class="studio-toolbar">
-        ${layout.deviceSelector ? this.renderDeviceSelector() : nothing}
+        <div class="studio-toolbar-device">
+          ${layout.deviceSelector ? this.renderDeviceSelector() : nothing}
+          ${this.renderPreviewIssue()}
+        </div>
         <div class="studio-toolbar-controls">
           ${layout.modeControls ? this.renderLiveApplyControl() : nothing}
           ${layout.modeControls ? this.renderAutoSaveControl() : nothing}
@@ -322,8 +347,14 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderLightControl(displayName: string, entityId: string) {
+    const entity = this.hass?.states?.[entityId];
     const state = classifyLightEntityState(this.hass?.states, entityId);
-    const presentation = lightControlPresentation(displayName, state);
+    const presentation = lightControlPresentation(
+      displayName,
+      state,
+      entity?.attributes?.brightness,
+    );
+    const fillHeight = (presentation.brightnessLevel ?? 0) / 255 * 12;
     return html`
       <button
         class="light-control-button native-light-control ${presentation.className}"
@@ -333,6 +364,23 @@ export class GoveeLedEffectStudio extends LitElement {
         @click=${() => this.showLightControls(entityId)}
       >
         <svg aria-hidden="true" viewBox="0 0 24 24">
+          <defs>
+            <clipPath id="native-light-brightness-fill">
+              <circle cx="12" cy="12" r="6"></circle>
+            </clipPath>
+          </defs>
+          ${presentation.brightnessLevel === undefined
+            ? nothing
+            : html`
+                <rect
+                  class="native-light-brightness-fill"
+                  x="6"
+                  y=${18 - fillHeight}
+                  width="12"
+                  height=${fillHeight}
+                  clip-path="url(#native-light-brightness-fill)"
+                ></rect>
+              `}
           <path
             d="M20 15.31 23.31 12 20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69M12 18V6a6 6 0 0 1 0 12"
           ></path>
@@ -424,12 +472,11 @@ export class GoveeLedEffectStudio extends LitElement {
     const pending =
       this.model.previewProgressVisible &&
       (phase === "queued" || phase === "writing");
-    const warning = phase === "failed";
+    const warning = phase === "failed" || phase === "unconfirmed";
     const status = pending
       ? "Applying changes"
       : warning
-        ? this.model.previewNotice ??
-          "The latest change could not reach the light"
+        ? this.model.previewNotice
         : undefined;
     return html`
       <div class="live-apply-control">
@@ -446,9 +493,7 @@ export class GoveeLedEffectStudio extends LitElement {
         <span
           class="live-apply-status ${pending
             ? "pending"
-            : warning
-              ? "warning"
-              : "idle"}"
+            : "idle"}"
           title=${status ?? nothing}
           aria-hidden="true"
         ></span>
@@ -459,6 +504,20 @@ export class GoveeLedEffectStudio extends LitElement {
           : nothing}
       </div>
     `;
+  }
+
+  private renderPreviewIssue() {
+    const message = this.model.previewNotice;
+    return message
+      ? html`
+          <govee-info-control
+            class="live-apply-error"
+            variant="error"
+            label="Live change details"
+            .text=${message}
+          ></govee-info-control>
+        `
+      : nothing;
   }
 
   private renderAutoSaveControl() {
@@ -508,6 +567,9 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderCustomEffects() {
+    const hasEditor =
+      this.model.editorOwnedByActiveView &&
+      (this.model.name !== "" || this.currentItem !== undefined);
     return html`
       <govee-custom-effect-browser
         .context=${this.model.customEffectListContext}
@@ -523,13 +585,14 @@ export class GoveeLedEffectStudio extends LitElement {
         ) => this.editor.newCustomEffect(event.detail.category)}
       ></govee-custom-effect-browser>
 
-      <section class="editor-surface editor">
-        ${this.renderPanelNotice()}
-        ${this.model.editorOwnedByActiveView &&
-        (this.model.name || this.currentItem)
-          ? this.renderCurrentCustomEditor()
-          : nothing}
-      </section>
+      ${hasEditor
+        ? html`
+            <section class="editor-surface editor">
+              ${this.renderPanelNotice()}
+              ${this.renderCurrentCustomEditor()}
+            </section>
+          `
+        : this.renderPanelNotice()}
     `;
   }
 
@@ -582,13 +645,15 @@ export class GoveeLedEffectStudio extends LitElement {
           ),
         )}
       </aside>
-      <section class="editor-surface editor">
-        ${this.renderPanelNotice()}
-        ${this.model.editorOwnedByActiveView &&
-        this.content.kind === "video_profile"
-          ? this.renderVideoProfileEditor()
-          : nothing}
-      </section>
+      ${this.model.editorOwnedByActiveView &&
+      this.content.kind === "video_profile"
+        ? html`
+            <section class="editor-surface editor">
+              ${this.renderPanelNotice()}
+              ${this.renderVideoProfileEditor()}
+            </section>
+          `
+        : this.renderPanelNotice()}
     `;
   }
 
@@ -675,7 +740,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderPanelNotice() {
-    const notice = this.model.notice ?? this.model.previewNotice;
+    const notice = this.model.notice;
     return notice
       ? html`<p class="action-error" role="alert">${notice}</p>`
       : nothing;
@@ -1377,6 +1442,11 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private cancelSceneEdit(): void {
     this.editor.cancelSceneEdit();
+    void this.updateComplete.then(() =>
+      this.shadowRoot
+        ?.querySelector<GoveeSceneBrowser>("govee-scene-browser")
+        ?.refreshSelectedDefault(),
+    );
   }
 
   private cancelCreation(): void {

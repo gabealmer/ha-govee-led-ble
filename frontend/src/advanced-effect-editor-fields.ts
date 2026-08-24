@@ -5,12 +5,8 @@ import {
   type AdvancedHelpKey,
 } from "./advanced-help";
 import {
-  ADVANCED_RANGE_SCALES,
-  type AdvancedRangeScale,
-  displayValueToRaw,
   isKnownSelectionType,
   KNOWN_SELECTION_TYPES,
-  rawValueToDisplay,
 } from "./advanced-effect-model";
 import {
   FILL_PATTERN_LABELS,
@@ -117,7 +113,6 @@ export function renderDistribution(
             (value) => updateLayer({ colour_speed: value }),
             disabled,
             "colourSpeed",
-            ADVANCED_RANGE_SCALES.bytePercentage,
           )}
           ${renderRangeField(
             "Colour retention",
@@ -125,7 +120,6 @@ export function renderDistribution(
             (value) => updateLayer({ colour_retention: value }),
             disabled,
             "colourRetention",
-            ADVANCED_RANGE_SCALES.retention,
           )}
         </div>
       </div>
@@ -139,27 +133,17 @@ export function renderRangeField(
   changed: (value: number) => void,
   disabled: boolean,
   help?: AdvancedHelpKey,
-  scale?: AdvancedRangeScale,
 ): TemplateResult {
-  const displayValue = scale
-    ? rawValueToDisplay(value, scale)
-    : value;
   return html`
     <govee-slider-control
       .label=${label}
-      .value=${displayValue}
-      .minimum=${scale?.displayMinimum ?? 0}
-      .maximum=${scale?.displayMaximum ?? 255}
-      .valueText=${scale
-        ? `${displayValue}${scale.suffix ?? ""}`
-        : undefined}
+      .value=${value}
+      .minimum=${0}
+      .maximum=${255}
+      .valueText=${String(value)}
       .disabled=${disabled}
       @value-changed=${(event: CustomEvent<SliderControlChange>) =>
-        changed(
-          scale
-            ? displayValueToRaw(event.detail.value, scale)
-            : event.detail.value,
-        )}
+        changed(event.detail.value)}
     >
       ${help ? renderAdvancedHelp(help, "help") : nothing}
     </govee-slider-control>
