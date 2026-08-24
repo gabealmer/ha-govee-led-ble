@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -246,6 +247,12 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         )
         subscribed = await client.receive_json()
         device_event = await client.receive_json()
+        coordinator.is_on = True
+        coordinator.effect = "forest"
+        coordinator.async_set_updated_data(coordinator.data or {})
+        await asyncio.sleep(0.2)
+        async with asyncio.timeout(2):
+            pushed_device_event = await client.receive_json()
         await client.send_json_auto_id(
             {
                 "type": WS_SCENE_CATALOGUE_LIST,
@@ -261,6 +268,8 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
     refreshed_device = selected_device["result"]["device"]
     assert subscribed["success"] is True
     assert device_event["event"]["device"]["config_entry_id"] == entry.entry_id
+    assert pushed_device_event["event"]["device"]["active_state"]["mode"] == "scene"
+    assert pushed_device_event["event"]["device"]["active_state"]["native_mode"] == "forest"
     assert refreshed_device["config_entry_id"] == device["config_entry_id"]
     assert refreshed_device["light_entity_id"] == device["light_entity_id"]
     assert refreshed_device["active_state"]["mode"] == device["active_state"]["mode"]

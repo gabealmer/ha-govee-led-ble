@@ -1,6 +1,7 @@
 """HA Govee LED BLE integration."""
 
 import asyncio
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -180,13 +181,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
             )
 
         @callback
+        def delayed_effect_observation(_now: Any) -> None:
+            sync_effect_observation()
+
+        @callback
         def schedule_effect_observation() -> None:
             nonlocal cancel_sync
             if cancel_sync is None:
                 cancel_sync = async_call_later(
                     hass,
                     0.1,
-                    lambda _now: sync_effect_observation(),
+                    delayed_effect_observation,
                 )
 
         unsubscribe_observation = coordinator.async_add_listener(

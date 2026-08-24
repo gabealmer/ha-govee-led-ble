@@ -221,10 +221,20 @@ def ws_device_subscribe(
     def forward() -> None:
         nonlocal cancel_forward
         cancel_forward = None
+        backend.engine.reconcile_current(
+            entry.runtime_data,
+            config_entry_id=entry.entry_id,
+            observed_at=dt_util.utcnow().isoformat(),
+            refreshed=False,
+        )
         connection.send_event(
             msg["id"],
             {"device": _device_payload(hass, backend, entry)},
         )
+
+    @callback
+    def delayed_forward(_now: Any) -> None:
+        forward()
 
     @callback
     def schedule_forward() -> None:
@@ -233,7 +243,7 @@ def ws_device_subscribe(
             cancel_forward = async_call_later(
                 hass,
                 0.1,
-                lambda _now: forward(),
+                delayed_forward,
             )
 
     unsubscribe = entry.runtime_data.async_add_listener(schedule_forward)
