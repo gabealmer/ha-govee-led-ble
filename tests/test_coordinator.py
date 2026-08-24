@@ -1091,6 +1091,7 @@ def test_readback_mode_mutual_exclusion(h6199):
 
 def test_diy_readback_retains_complete_code(coord):
     coord.is_on = True
+    baselines = {field: coord._field_revisions.get(field, 0) for field in ("color_mode", "diy_code")}
     coord._notify_callback(
         None,
         bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_DIY, 0x84, 0x03])),
@@ -1099,6 +1100,7 @@ def test_diy_readback_retains_complete_code(coord):
     assert coord.color_mode is proto.ParsedMode.DIY
     assert coord.active_mode == "custom"
     assert coord.diy_code == 900
+    assert all(coord._field_revisions[field] > baseline for field, baseline in baselines.items())
 
 
 async def test_diy_command_expectation_rejects_truncated_readback(coord):
@@ -1660,6 +1662,36 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord):
     )
     disconnect.assert_not_awaited()
     send.assert_not_awaited()
+
+
+async def test_preview_observation_confirms_diy_code_readback(coord):
+    coord._client = MagicMock(is_connected=True)
+
+    async def query(**_kwargs) -> bool:
+        coord._notify_callback(
+            None,
+            bytearray(
+                proto.build_packet(
+                    0xAA,
+                    0x05,
+                    [proto.COLOR_MODE_DIY, 0x18, 0x00],
+                )
+            ),
+        )
+        return True
+
+    with patch.object(
+        coord,
+        "_send_state_queries",
+        new=AsyncMock(side_effect=query),
+    ) as sent:
+        result = await coord.async_preview_observe(
+            {"diy_code": 24},
+            timeout=0.2,
+        )
+
+    assert result is True
+    sent.assert_awaited_once()
 
 
 async def test_preview_observation_retries_queries_until_fresh_state_arrives(coord):

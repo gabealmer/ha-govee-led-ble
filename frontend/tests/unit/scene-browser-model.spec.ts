@@ -12,6 +12,7 @@ import {
   sceneHasParameterSurface,
   sceneKey,
   sceneSpeedOptions,
+  sameSceneDeviceIdentity,
 } from "../../src/scene-browser-model";
 import type {
   LibrarySummary,
@@ -36,6 +37,25 @@ const scene: SceneSummary = {
 test("scene identity and names use stable normalisation", () => {
   expect(sceneKey(scene)).toBe("builtin:1:2");
   expect(normaliseSceneName("  Glacier   Blue ")).toBe("glacier blue");
+});
+
+test("scene device identity ignores pushed state object replacement", () => {
+  const device = {
+    config_entry_id: "entry-a",
+    model: "H617A",
+  } as const;
+
+  expect(
+    sameSceneDeviceIdentity(device, {
+      ...device,
+    }),
+  ).toBe(true);
+  expect(
+    sameSceneDeviceIdentity(device, {
+      ...device,
+      config_entry_id: "entry-b",
+    }),
+  ).toBe(false);
 });
 
 test("speed glyphs retain clear accessible labels", () => {

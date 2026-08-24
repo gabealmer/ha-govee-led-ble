@@ -12,6 +12,7 @@ import {
   sceneHasParameterSurface,
   sceneKey,
   sceneSelectionKey,
+  sameSceneDeviceIdentity,
   sceneSpeedOptions,
   type CategorySelection,
   type NativeSceneAction,
@@ -139,7 +140,13 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
-    if (changed.has("device") || changed.has("api")) {
+    const previousDevice = changed.get("device") as
+      | DeviceCapabilities
+      | undefined;
+    const deviceIdentityChanged =
+      changed.has("device") &&
+      !sameSceneDeviceIdentity(previousDevice, this.device);
+    if (deviceIdentityChanged || changed.has("api")) {
       this.workflow.configure(this.api, this.device);
     }
     if (changed.has("initialSelection")) {
@@ -154,7 +161,13 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   protected updated(changed: Map<PropertyKey, unknown>): void {
-    if ((changed.has("device") || changed.has("api")) && this.api && this.device) {
+    const previousDevice = changed.get("device") as
+      | DeviceCapabilities
+      | undefined;
+    const deviceIdentityChanged =
+      changed.has("device") &&
+      !sameSceneDeviceIdentity(previousDevice, this.device);
+    if ((deviceIdentityChanged || changed.has("api")) && this.api && this.device) {
       void this.workflow.loadCatalogue();
     }
     if (changed.has("initialSelection") && this.viewState.catalogue && this.initialSelection) {

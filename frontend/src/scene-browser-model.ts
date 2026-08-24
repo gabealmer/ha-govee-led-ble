@@ -2,6 +2,7 @@ import { cloneLayeredSceneContent } from "./advanced-effect-model";
 import type { SegmentedControlOption } from "./segmented-control";
 import type {
   BuiltinSceneContent,
+  DeviceCapabilities,
   LayeredSceneContent,
   LibraryItem,
   LibrarySummary,
@@ -33,6 +34,21 @@ export type ScenePreviewRequest =
       content: SceneContent;
       persistDefault?: boolean;
     };
+
+type SceneDeviceIdentity = Pick<
+  DeviceCapabilities,
+  "config_entry_id" | "model"
+>;
+
+export function sameSceneDeviceIdentity(
+  left: SceneDeviceIdentity | undefined,
+  right: SceneDeviceIdentity | undefined,
+): boolean {
+  return (
+    left?.config_entry_id === right?.config_entry_id &&
+    left?.model === right?.model
+  );
+}
 export type NativeSceneActionId = "set-default" | "reset-default" | "edit";
 
 export interface NativeSceneAction {

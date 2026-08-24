@@ -738,7 +738,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         # rather than silently claiming nothing is on. None for every other mode, so this one
         # assignment cannot leave a stale code behind.
         unknown_scene_code = parsed.scene_code if scene_effect is None else None
-        observed: list[str] = []
+        observed: list[str] = ["color_mode"]
         accept_parameters = True
         # Readback mirror of _enter_static_mode: committing one mode clears the others.
         if parsed.mode is ParsedMode.MUSIC:
@@ -765,7 +765,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 self.effect = None
                 self.music_mode = self.video_mode = "off"
                 self.diy_code = parsed.diy_code
-                observed.append("effect")
+                observed.extend(("effect", "diy_code"))
             else:
                 accept_parameters = False
         elif parsed.mode is ParsedMode.SCENE:
