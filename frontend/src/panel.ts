@@ -57,6 +57,7 @@ import type {
   VideoProfileContent,
 } from "./types";
 import {
+  brightnessFillGeometry,
   classifyLightEntityState,
   compareLabels,
   integrationSettingsPath,
@@ -354,7 +355,9 @@ export class GoveeLedEffectStudio extends LitElement {
       state,
       entity?.attributes?.brightness,
     );
-    const fillHeight = (presentation.brightnessLevel ?? 0) / 255 * 12;
+    const fill = brightnessFillGeometry(
+      presentation.brightnessLevel ?? 0,
+    );
     return html`
       <button
         class="light-control-button native-light-control ${presentation.className}"
@@ -375,14 +378,16 @@ export class GoveeLedEffectStudio extends LitElement {
                 <rect
                   class="native-light-brightness-fill"
                   x="6"
-                  y=${18 - fillHeight}
+                  y=${fill.y}
                   width="12"
-                  height=${fillHeight}
+                  height=${fill.height}
                   clip-path="url(#native-light-brightness-fill)"
                 ></rect>
               `}
           <path
-            d="M20 15.31 23.31 12 20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69M12 18V6a6 6 0 0 1 0 12"
+            class="native-light-brightness-ring"
+            fill-rule="evenodd"
+            d="M20 15.31 23.31 12 20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69ZM12 6a6 6 0 1 0 0 12 6 6 0 1 0 0-12Z"
           ></path>
         </svg>
       </button>

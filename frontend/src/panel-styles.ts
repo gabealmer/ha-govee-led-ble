@@ -272,7 +272,10 @@ export const effectStudioPanelStyles = [
 
     .native-light-brightness-fill {
       fill: var(--studio-blue);
-      opacity: 0.55;
+    }
+
+    .native-light-brightness-ring {
+      fill: currentColor;
     }
 
     .native-light-control.light-state-on {

@@ -423,7 +423,7 @@ test("cancelling a new effect restores the prior editor state", () => {
   controller.newEffect("advanced");
   expect(model.editorSource.kind).toBe("new");
   expect(model.editorActions.cancel).toBe(true);
-  expect(model.name).toBe("New Layered effect");
+  expect(model.name).toBe("New Advanced effect");
 
   controller.cancelCreation();
   expect(model.editorActions.cancel).toBe(false);
@@ -438,7 +438,7 @@ test("cancelling a new effect restores the prior editor state", () => {
   expect(model.name).toBe("Prior");
 });
 
-test("automatic default templates are catalogue sources without Cancel", () => {
+test("Advanced waits for New or a saved effect instead of opening a redundant starter", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.devices = [device("entry-a", "H617A")];
@@ -449,8 +449,8 @@ test("automatic default templates are catalogue sources without Cancel", () => {
 
   controller.openDefaultAvailableTemplate("advanced", transitionEpoch);
 
-  expect(model.name).toBe("Layered");
-  expect(model.editorSource.kind).toBe("catalogue");
+  expect(model.name).toBe("");
+  expect(model.editorSource.kind).toBe("none");
   expect(model.editorActions.cancel).toBe(false);
 });
 

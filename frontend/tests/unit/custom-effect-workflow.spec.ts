@@ -79,7 +79,7 @@ test("starter lists expose product choices but not protocol evidence fixtures", 
     buildCustomEffectEntries(context(), "advanced").map(
       (entry) => entry.label,
     ),
-  ).toEqual(["Layered"]);
+  ).toEqual([]);
   expect(
     buildCustomEffectEntries(context(), "music").map((entry) => entry.label),
   ).toEqual(["Rhythm"]);
@@ -108,7 +108,7 @@ test("saved Workshop content remains available without starter templates", () =>
     buildCustomEffectEntries(context([workshop]), "advanced").map(
       (entry) => entry.label,
     ),
-  ).toEqual(["Layered", "Saved Workshop"]);
+  ).toEqual(["Saved Workshop"]);
 });
 
 test("Effects is the stable fallback when no custom category is available", () => {

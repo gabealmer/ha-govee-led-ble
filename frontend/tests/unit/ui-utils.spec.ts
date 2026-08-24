@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
 import {
+  brightnessFillGeometry,
   classifyLightEntityState,
   clamp,
   clampInteger,
@@ -135,4 +136,26 @@ test("native light presentation follows reactive Home Assistant state", () => {
     "unavailable",
   );
   expect(classifyLightEntityState({}, "light.cupboard")).toBe("unavailable");
+});
+
+test("native light fill rises bottom-up in proportion to raw brightness", () => {
+  expect(brightnessFillGeometry(0)).toEqual({
+    height: 0,
+    y: 18,
+  });
+
+  const fortyFivePercent = brightnessFillGeometry(
+    Math.round(255 * 0.45),
+  );
+  expect(fortyFivePercent.height / 12).toBeCloseTo(0.45, 2);
+  expect(fortyFivePercent.y).toBeCloseTo(
+    18 - fortyFivePercent.height,
+  );
+
+  const midpoint = brightnessFillGeometry(128);
+  expect(midpoint.height / 12).toBeCloseTo(0.5, 2);
+  expect(brightnessFillGeometry(255)).toEqual({
+    height: 12,
+    y: 6,
+  });
 });

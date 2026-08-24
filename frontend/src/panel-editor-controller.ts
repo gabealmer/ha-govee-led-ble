@@ -107,14 +107,6 @@ export class PanelEditorController {
         { section: "custom", category: entry.category },
         true,
       );
-    } else if (entry.kind === "advanced") {
-      this.openEditableTemplate(
-        entry.label,
-        blankAdvancedContent(),
-        entry.key,
-        { section: "custom", category: entry.category },
-        true,
-      );
     } else {
       const catalogue = this.model.modelCatalogue;
       if (!catalogue) return;
@@ -241,18 +233,7 @@ export class PanelEditorController {
       return;
     }
     if (category === "advanced") {
-      if (this.model.customEffectKindAvailable("advanced")) {
-        this.openEditableTemplate(
-          "Layered",
-          blankAdvancedContent(),
-          "template:advanced",
-          { section: "custom", category },
-          false,
-          existingTransitionEpoch,
-        );
-      } else {
-        this.clearSelection(existingTransitionEpoch);
-      }
+      this.clearSelection(existingTransitionEpoch);
       return;
     }
     if (category !== "single-layer") {

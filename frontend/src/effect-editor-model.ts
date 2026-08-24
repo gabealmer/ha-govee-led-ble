@@ -448,7 +448,7 @@ export function customKindLabel(kind: unknown): string {
     case "h617a_multi":
       return "Multi";
     case "advanced":
-      return "Layered";
+      return "Advanced";
     case "palette_diy":
       return "Single";
     case "workshop":

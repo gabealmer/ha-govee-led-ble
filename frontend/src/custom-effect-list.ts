@@ -40,12 +40,6 @@ export type CustomEffectListEntry =
       mode: string;
     }
   | {
-      kind: "advanced";
-      key: "template:advanced";
-      label: "Layered";
-      category: "advanced";
-    }
-  | {
       kind: "saved";
       key: string;
       label: string;
@@ -90,16 +84,6 @@ export function buildCustomEffectEntries(
         mode: mode.id,
       }),
     ) ?? []),
-    ...(customEffectKindAvailable(context, "advanced")
-      ? [
-          {
-            kind: "advanced" as const,
-            key: "template:advanced" as const,
-            label: "Layered" as const,
-            category: "advanced" as const,
-          },
-        ]
-      : []),
     ...context.libraryItems
       .filter(
         (item) => isMyEffectKind(item.kind) && item.kind !== "video_profile",
@@ -247,8 +231,6 @@ function customEffectEntryAvailable(
       );
     case "music":
       return customEffectKindAvailable(context, "music_profile");
-    case "advanced":
-      return customEffectKindAvailable(context, "advanced");
     case "saved":
       return libraryItemAvailable(context, entry.item);
   }
