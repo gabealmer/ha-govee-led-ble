@@ -915,6 +915,63 @@ test("navigation does not request device refreshes", async () => {
   expect(deviceRefresh).not.toHaveBeenCalled();
 });
 
+test("late device restoration cannot clear newer editor work", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const first = device("entry-a", "H617A");
+  const second = device("entry-b", "H617A");
+  model.devices = [first, second];
+  model.selectedDeviceId = first.config_entry_id;
+  installH6199Catalogue(model);
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  let finishRemembering!: () => void;
+  const remembering = new Promise<void>((resolve) => {
+    finishRemembering = resolve;
+  });
+  controller.api = {
+    subscribeDevice: vi.fn().mockResolvedValue(() => undefined),
+    updateUserState: vi.fn().mockReturnValue(remembering),
+  } as unknown as EffectStudioApi;
+
+  const changingDevice = controller.deviceChanged(second.config_entry_id);
+  await Promise.resolve();
+  await controller.selectSection("custom", "advanced");
+  editorController.newCustomEffect("advanced");
+  expect(model.editorSource.kind).toBe("new");
+
+  finishRemembering();
+  await changingDevice;
+
+  expect(model.selectedDeviceId).toBe(second.config_entry_id);
+  expect(model.section).toBe("custom");
+  expect(model.customEffectCategory).toBe("advanced");
+  expect(model.editorSource.kind).toBe("new");
+  expect(model.content.kind).toBe("advanced");
+});
+
 test("automatic saved restoration reads without applying, previewing, or saving", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;

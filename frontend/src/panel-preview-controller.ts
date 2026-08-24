@@ -238,13 +238,15 @@ export class PanelPreviewController {
     }
   }
 
-  public async cancel(): Promise<void> {
+  public async cancel(
+    configEntryId = this.model.selectedDeviceId,
+  ): Promise<void> {
     const session = this.session;
     if (!session) {
       return;
     }
     try {
-      await session.cancel(this.model.selectedDeviceId);
+      await session.cancel(configEntryId);
     } catch (error) {
       if (errorCode(error) !== "not_found") {
         this.model.update((model) => {

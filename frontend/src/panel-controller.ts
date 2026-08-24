@@ -137,13 +137,18 @@ export class PanelController {
       !selectedDeviceId || selectedDeviceId === this.model.selectedDeviceId ||
       !this.model.devices.some((device) => device.config_entry_id === selectedDeviceId)
     ) return;
-    await this.preview.cancel();
+    const previousDeviceId = this.model.selectedDeviceId;
+    const transitionEpoch = this.editor.beginTransition();
+    this.editor.clearSelection(transitionEpoch);
     this.model.patch({
       selectedDeviceId,
       previewStatus: undefined,
       previewNotice: undefined,
       notice: undefined,
     });
+    this.openRootCreateView();
+    const rootEpoch = this.model.editorTransitionEpoch;
+    await this.preview.cancel(previousDeviceId);
     if (this.api) {
       await this.subscribeSelectedDevice(this.api);
     }
@@ -157,7 +162,12 @@ export class PanelController {
     } catch (error) {
       console.warn("Could not remember the selected light", error);
     }
-    await this.openInitialContext();
+    if (
+      rootEpoch === this.model.editorTransitionEpoch &&
+      selectedDeviceId === this.model.selectedDeviceId
+    ) {
+      await this.restoreActiveSelection(rootEpoch);
+    }
   }
 
   public async selectSection(
