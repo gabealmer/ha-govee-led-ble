@@ -173,7 +173,7 @@ export class LivePreviewController<T extends LivePreviewRequest> {
         : request;
     if (interaction === "committed") {
       this.settling = undefined;
-      this.flush(true);
+      this.flushAtThrottleBoundary();
       return;
     }
     this.settling = request;
@@ -191,6 +191,10 @@ export class LivePreviewController<T extends LivePreviewRequest> {
     this.engaged = true;
     this.pending = { ...request, committed: true };
     this.settling = undefined;
+    this.flushAtThrottleBoundary();
+  }
+
+  private flushAtThrottleBoundary(): void {
     const elapsed = this.now() - this.lastSubmittedAt;
     if (elapsed >= this.throttleMs) {
       this.flush(true);

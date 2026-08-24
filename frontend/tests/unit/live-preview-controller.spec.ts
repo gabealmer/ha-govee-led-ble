@@ -54,26 +54,56 @@ test("throttles changing values and always flushes the trailing value", () => {
   ]);
 });
 
-test("committed changes flush immediately and suppress duplicates", () => {
+test("rapid committed changes coalesce at the throttle boundary", () => {
+  let now = 0;
+  let nextTimer = 1;
+  const timers = new Map<number, () => void>();
   const submitted: Request[] = [];
   const controller = new LivePreviewController<Request>({
     submit: (request) => submitted.push(request),
     cancel: () => undefined,
+    now: () => now,
+    setTimer: (callback) => {
+      const id = nextTimer++;
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimer: (id) => {
+      timers.delete(id);
+    },
   });
 
   controller.schedule({ fingerprint: "same", value: 1 }, "committed");
+  now = 20;
   controller.schedule({ fingerprint: "same", value: 1 }, "committed");
+  now = 40;
   controller.schedule({ fingerprint: "next", value: 2 }, "committed");
 
+  expect(submitted.map((request) => request.value)).toEqual([1]);
+  expect(timers.size).toBe(1);
+  now = 150;
+  [...timers.values()][0]();
   expect(submitted.map((request) => request.value)).toEqual([1, 2]);
   expect(submitted.every((request) => request.committed)).toBe(true);
 });
 
 test("persistence intent is part of preview deduplication", () => {
+  let now = 0;
+  let nextTimer = 1;
+  const timers = new Map<number, () => void>();
   const submitted: Request[] = [];
   const controller = new LivePreviewController<Request>({
     submit: (request) => submitted.push(request),
     cancel: () => undefined,
+    now: () => now,
+    setTimer: (callback) => {
+      const id = nextTimer++;
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimer: (id) => {
+      timers.delete(id);
+    },
   });
 
   controller.schedule(
@@ -84,6 +114,8 @@ test("persistence intent is part of preview deduplication", () => {
     { fingerprint: "same", value: 1, persistDefault: true },
     "committed",
   );
+  now = 150;
+  [...timers.values()][0]();
 
   expect(submitted).toHaveLength(2);
   expect(submitted.map((request) => request.persistDefault)).toEqual([
