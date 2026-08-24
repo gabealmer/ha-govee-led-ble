@@ -127,16 +127,10 @@ export function lightControlPresentation(
   };
 }
 
-export function brightnessFillGeometry(
+export function brightnessFillPercentage(
   brightness: number,
-  top = 6,
-  bottom = 18,
-): { height: number; y: number } {
-  const height = ((bottom - top) * clamp(brightness, 0, 255)) / 255;
-  return {
-    height,
-    y: bottom - height,
-  };
+): number {
+  return (clamp(brightness, 0, 255) / 255) * 100;
 }
 
 export function moreInfoDetail(entityId: string): { entityId: string } {

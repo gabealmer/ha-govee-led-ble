@@ -15,6 +15,7 @@ import type {
   MusicProfileContent,
   PaletteSceneContent,
   PaletteDiyEffectContent,
+  PreviewHealthStatus,
   PreviewStatus,
   RelativeBrightness,
   RGB,
@@ -197,6 +198,9 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         device.effect_categories,
         `devices[${index}].effect_categories`,
         MAX_IDENTIFIER_LENGTH,
+      ),
+      preview_health: decodePreviewHealthStatus(
+        device.preview_health,
       ),
       active_state:
         device.active_state === null
@@ -499,6 +503,93 @@ export function decodePreviewStatus(value: unknown): PreviewStatus {
       status.write_disposition,
       ["not_started", "may_have_started", "completed", "unknown"],
       "preview write disposition",
+    ),
+    persist_default: booleanValue(
+      status.persist_default,
+      "preview persist default",
+    ),
+    scene_id:
+      status.scene_id === null
+        ? null
+        : integerValue(
+            status.scene_id,
+            "preview scene ID",
+            0,
+            0xffff,
+          ),
+    effect_id:
+      status.effect_id === null
+        ? null
+        : integerValue(
+            status.effect_id,
+            "preview effect ID",
+            0,
+            0xffff,
+          ),
+    default_action:
+      status.default_action === null
+        ? null
+        : enumString(
+            status.default_action,
+            ["set", "reset"],
+            "preview default action",
+          ),
+  };
+}
+
+export function decodePreviewHealthStatus(
+  value: unknown,
+): PreviewHealthStatus {
+  const status = objectValue(value, "preview health");
+  return {
+    config_entry_id: boundedString(
+      status.config_entry_id,
+      "preview health config entry ID",
+      MAX_IDENTIFIER_LENGTH,
+    ),
+    revision: integerValue(
+      status.revision,
+      "preview health revision",
+      0,
+      MAX_SAFE_REVISION,
+    ),
+    phase: enumString(
+      status.phase,
+      ["healthy", "checking", "degraded"],
+      "preview health phase",
+    ),
+    incident_id:
+      status.incident_id === null
+        ? null
+        : boundedString(
+            status.incident_id,
+            "preview health incident ID",
+            MAX_IDENTIFIER_LENGTH,
+          ),
+    error_code:
+      status.error_code === null
+        ? null
+        : boundedString(
+            status.error_code,
+            "preview health error code",
+            MAX_IDENTIFIER_LENGTH,
+          ),
+    error_message:
+      status.error_message === null
+        ? null
+        : boundedString(
+            status.error_message,
+            "preview health error message",
+            MAX_EFFECT_NAME_LENGTH,
+          ),
+    write_disposition: enumString(
+      status.write_disposition,
+      ["not_started", "may_have_started", "completed", "unknown"],
+      "preview health write disposition",
+    ),
+    checked_at: timestampString(
+      status.checked_at,
+      "preview health checked time",
     ),
   };
 }

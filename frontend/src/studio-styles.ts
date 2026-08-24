@@ -216,6 +216,10 @@ export const studioActionStyles = css`
     background: var(--studio-danger);
   }
 
+  .actions > .danger + .primary {
+    margin-inline-start: var(--studio-action-gap);
+  }
+
   .secondary.active {
     color: var(--studio-blue);
     border-color: var(--studio-blue);

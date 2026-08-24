@@ -1,8 +1,11 @@
 import { expect, test } from "vitest";
 
 import {
+  editorActionOrder,
   editorActionVisibility,
   editorOwnerMatches,
+  newEditorSourceSelected,
+  reactiveEffectSelectorVisible,
   type EditorSource,
 } from "../../src/editor-state";
 
@@ -69,4 +72,49 @@ test("editor ownership rejects content from another category or section", () => 
       "single-layer",
     ),
   ).toBe(true);
+});
+
+test("New selection follows its explicit custom category owner", () => {
+  for (const category of [
+    "single-layer",
+    "multi-layer",
+    "music",
+    "advanced",
+  ] as const) {
+    const source: EditorSource = {
+      kind: "new",
+      owner: { section: "custom", category },
+    };
+    expect(newEditorSourceSelected(source, category)).toBe(true);
+    expect(
+      newEditorSourceSelected(
+        source,
+        category === "single-layer" ? "music" : "single-layer",
+      ),
+    ).toBe(false);
+  }
+  expect(newEditorSourceSelected(saved, "music")).toBe(false);
+});
+
+test("shared editor actions place destructive work before separated save actions", () => {
+  expect(
+    editorActionOrder({
+      reset: true,
+      cancel: true,
+      delete: true,
+      save: true,
+      saveAs: true,
+    }),
+  ).toEqual(["reset", "cancel", "delete", "save", "saveAs"]);
+});
+
+test("Reactive selector belongs to New and saved drafts, not catalogue templates", () => {
+  expect(
+    reactiveEffectSelectorVisible({
+      kind: "new",
+      owner: { section: "custom", category: "music" },
+    }),
+  ).toBe(true);
+  expect(reactiveEffectSelectorVisible(saved)).toBe(true);
+  expect(reactiveEffectSelectorVisible(catalogue)).toBe(false);
 });

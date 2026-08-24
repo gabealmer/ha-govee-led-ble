@@ -24,6 +24,7 @@ export function snapshotPreviewRequest(
   name: string,
   content: EffectContent,
   force = false,
+  persistDefault = false,
 ): PanelPreviewRequest {
   return {
     kind: "snapshot",
@@ -32,6 +33,7 @@ export function snapshotPreviewRequest(
     content,
     fingerprint: JSON.stringify({ configEntryId, name, content }),
     force,
+    persistDefault,
   };
 }
 
@@ -46,6 +48,7 @@ export function scenePreviewRequest(
       request.name,
       request.content,
       force,
+      request.persistDefault === true,
     );
   }
   return {
@@ -57,8 +60,10 @@ export function scenePreviewRequest(
       sceneId: request.scene.scene_id,
       effectId: request.scene.effect_id,
       speedIndex: request.speedIndex,
+      persistDefault: request.persistDefault === true,
     }),
     force,
+    persistDefault: request.persistDefault,
   };
 }
 
@@ -128,6 +133,24 @@ export class EffectStudioPreviewSession {
       error_code: null,
       error_message: null,
       write_disposition: "not_started",
+      persist_default: false,
+      scene_id:
+        request.kind === "scene"
+          ? request.scene.scene.scene_id
+          : request.content.kind === "scene_palette" ||
+              request.content.kind === "scene_layered" ||
+              request.content.kind === "scene_builtin"
+            ? request.content.template.scene_id
+            : null,
+      effect_id:
+        request.kind === "scene"
+          ? request.scene.scene.effect_id
+          : request.content.kind === "scene_palette" ||
+              request.content.kind === "scene_layered" ||
+              request.content.kind === "scene_builtin"
+            ? request.content.template.effect_id
+            : null,
+      default_action: null,
     });
     try {
       if (request.kind === "scene") {
@@ -138,7 +161,7 @@ export class EffectStudioPreviewSession {
           request.scene.scene,
           request.scene.speedIndex,
           request.force,
-          request.committed,
+          request.persistDefault,
         );
       } else {
         await this.api.previewSnapshot(
@@ -148,7 +171,7 @@ export class EffectStudioPreviewSession {
           request.name,
           request.content,
           request.force,
-          request.committed,
+          request.persistDefault,
         );
       }
     } catch (error) {
@@ -168,6 +191,16 @@ export class EffectStudioPreviewSession {
           error_code: errorCode(error) ?? "preview_failed",
           error_message: "Effect Studio could not confirm whether the Live request reached the light.",
           write_disposition: "unknown",
+          persist_default: false,
+          scene_id:
+            request.kind === "scene"
+              ? request.scene.scene.scene_id
+              : null,
+          effect_id:
+            request.kind === "scene"
+              ? request.scene.scene.effect_id
+              : null,
+          default_action: null,
         });
       }
     }

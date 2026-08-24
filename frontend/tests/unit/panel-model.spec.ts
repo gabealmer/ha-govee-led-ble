@@ -21,6 +21,7 @@ import type {
   HomeAssistant,
   LibraryItem,
   ModelEffectCatalogue,
+  MusicProfileContent,
   PaintedContent,
 } from "../../src/types";
 
@@ -47,6 +48,16 @@ function device(
       video: "unsupported",
     },
     readback: "supported",
+    preview_health: {
+      config_entry_id: id,
+      revision: 0,
+      phase: "healthy",
+      incident_id: null,
+      error_code: null,
+      error_message: null,
+      write_disposition: "not_started",
+      checked_at: "2026-08-24T00:00:00Z",
+    },
     effect_categories: [
       "scenes",
       "video",
@@ -146,6 +157,20 @@ function item(content: PaintedContent): LibraryItem {
   };
 }
 
+function musicItem(content: MusicProfileContent): LibraryItem {
+  return {
+    schema_version: 1,
+    id: "music-1",
+    version: 2,
+    updated_at: "2026-08-18T00:00:00Z",
+    name: "Saved Reactive",
+    content,
+    content_hash: "music-hash",
+    origin: { kind: "authored", source_id: null },
+    extensions: {},
+  };
+}
+
 function editor(model: PanelModel): PanelEditorController {
   const preview = new PanelPreviewController(model);
   const modal = new PanelModalController(model, {
@@ -175,6 +200,57 @@ test("derives selected-device and preview decisions from panel state", () => {
   model.selectedDeviceId = "missing";
   expect(model.selectedDevice).toBeUndefined();
   expect(model.showDeviceSelector).toBe(true);
+});
+
+test("selected-device health remains latched until a confirmed health update", () => {
+  const model = new PanelModel(() => undefined);
+  model.devices = [device("entry-a", "H617A")];
+  model.selectedDeviceId = "entry-a";
+
+  expect(model.selectedPreviewHealth?.phase).toBe("healthy");
+
+  model.previewHealth = {
+    "entry-a": {
+      config_entry_id: "entry-a",
+      revision: 1,
+      phase: "degraded",
+      incident_id: "incident-a",
+      error_code: "device_readback_unknown",
+      error_message: "No readback",
+      write_disposition: "completed",
+      checked_at: "2026-08-24T00:01:00Z",
+    },
+  };
+  model.previewStatus = {
+    session_id: "session-a",
+    sequence: 2,
+    config_entry_id: "entry-a",
+    phase: "queued",
+    content_kind: "h617a_single",
+    confidence: "unknown",
+    error_code: null,
+    error_message: null,
+    write_disposition: "not_started",
+    persist_default: false,
+    scene_id: null,
+    effect_id: null,
+    default_action: null,
+  };
+
+  expect(model.selectedPreviewHealth?.phase).toBe("degraded");
+
+  model.previewHealth = {
+    "entry-a": {
+      ...model.previewHealth["entry-a"],
+      revision: 2,
+      phase: "healthy",
+      incident_id: null,
+      error_code: null,
+      error_message: null,
+    },
+  };
+
+  expect(model.selectedPreviewHealth?.phase).toBe("healthy");
 });
 
 test("administrator state follows late Home Assistant user updates", () => {
@@ -408,6 +484,136 @@ test("explicit template selection previews once while automatic opening only pop
   controller.resetContent();
   expect(scheduleEdited).toHaveBeenCalledWith("committed", undefined);
   expect(committed).toHaveBeenCalledWith("committed");
+});
+
+test("Reactive Reset restores its baseline immediately and previews only once", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const selected = device("entry-a", "H6199");
+  selected.profiles.music = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.customEffectCategory = "music";
+  installH6199Catalogue(model);
+  const preview = new PanelPreviewController(model);
+  const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
+  const committed = vi.fn();
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const controller = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => undefined,
+    contentCommitted: committed,
+  });
+
+  controller.newCustomEffect("music");
+  controller.musicModeChanged("rhythm");
+  expect(model.resetDirty).toBe(true);
+  scheduleEdited.mockClear();
+  committed.mockClear();
+
+  controller.resetContent();
+  expect(model.content).toMatchObject({
+    kind: "music_profile",
+    mode: "energetic",
+  });
+  expect(model.resetDirty).toBe(false);
+  expect(model.editorActions.reset).toBe(false);
+  expect(scheduleEdited).toHaveBeenCalledTimes(1);
+  expect(scheduleEdited).toHaveBeenCalledWith("committed", undefined);
+  expect(committed).toHaveBeenCalledTimes(1);
+
+  controller.resetContent();
+  expect(scheduleEdited).toHaveBeenCalledTimes(1);
+  expect(committed).toHaveBeenCalledTimes(1);
+});
+
+test("Reactive mode changes preserve common fields, identity, and generated names", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.customEffectCategory = "music";
+  const selected = device("entry-a", "H6199");
+  selected.profiles.music = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  installH6199Catalogue(model);
+  const preview = new PanelPreviewController(model);
+  const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
+  const committed = vi.fn();
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const controller = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => undefined,
+    contentCommitted: committed,
+  });
+
+  controller.newCustomEffect("music");
+  controller.musicContentChanged({
+    kind: "music_profile",
+    model: "H6199",
+    mode: "energetic",
+    sensitivity: 61,
+    colour: [1, 2, 3],
+    calm: null,
+    parameters: { point: 4, speed: 8 },
+  });
+  scheduleEdited.mockClear();
+  committed.mockClear();
+
+  controller.musicModeChanged("rhythm");
+  expect(model.editorSource).toEqual({
+    kind: "new",
+    owner: { section: "custom", category: "music" },
+  });
+  expect(model.newCustomEffectSelected).toBe(true);
+  expect(model.name).toBe("New Rhythm effect");
+  expect(model.content).toEqual({
+    kind: "music_profile",
+    model: "H6199",
+    mode: "rhythm",
+    sensitivity: 61,
+    colour: [1, 2, 3],
+    calm: false,
+    parameters: {},
+  });
+  expect(scheduleEdited).toHaveBeenCalledWith("committed", undefined);
+  expect(committed).toHaveBeenCalledWith("committed");
+
+  model.name = "My Reactive effect";
+  controller.musicModeChanged("energetic");
+  expect(model.name).toBe("My Reactive effect");
+
+  const saved = musicItem({
+    kind: "music_profile",
+    model: "H6199",
+    mode: "energetic",
+    sensitivity: 72,
+    colour: null,
+    calm: null,
+    parameters: { point: 5 },
+  });
+  controller.applyLibraryItem(saved);
+  controller.musicModeChanged("rhythm");
+  expect(model.editorSource).toMatchObject({
+    kind: "saved",
+    itemId: saved.id,
+  });
+  expect(model.dirty).toBe(true);
+  expect(model.content).toMatchObject({
+    mode: "rhythm",
+    sensitivity: 72,
+    colour: null,
+    parameters: {},
+  });
 });
 
 test("cancelling a new effect restores the prior editor state", () => {

@@ -1392,7 +1392,7 @@ async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
     assert packets[1:] == build_native_scene_packets("H617A", SCENES["glacier"], speed_index=0)
 
 
-async def test_preview_observation_is_one_read_without_disconnect_or_command_retry(coord):
+async def test_preview_observation_stays_read_only_when_device_is_silent(coord):
     coord._client = MagicMock(is_connected=True)
     with (
         patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)) as query,
@@ -1415,6 +1415,35 @@ async def test_preview_observation_is_one_read_without_disconnect_or_command_ret
     )
     disconnect.assert_not_awaited()
     send.assert_not_awaited()
+
+
+async def test_preview_observation_retries_queries_until_fresh_state_arrives(coord):
+    coord._client = MagicMock(is_connected=True)
+    coord.effect = None
+    calls = 0
+
+    async def query_state(**_kwargs) -> bool:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            coord.effect = "glacier"
+            coord._field_revisions["effect"] = coord._field_revisions.get("effect", 0) + 1
+        return True
+
+    with patch.object(
+        coord,
+        "_send_state_queries",
+        new=AsyncMock(side_effect=query_state),
+    ) as query:
+        result = await coord.async_preview_observe(
+            {"effect": "glacier"},
+            timeout=0.2,
+            attempts=3,
+        )
+
+    assert result is True
+    assert query.await_count == 2
+    assert not coord._control_lock.locked()
 
 
 def test_notify_callback_unknown_domain_ignored(h6199):

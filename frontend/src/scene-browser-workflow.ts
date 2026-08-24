@@ -27,6 +27,7 @@ import type {
   LibraryItem,
   LibrarySnapshot,
   LibrarySummary,
+  PreviewStatus,
   SceneDetail,
   SceneSummary,
 } from "./types";
@@ -149,6 +150,8 @@ export class SceneBrowserWorkflow {
   private speedRevision = 0;
   private defaultRefreshGeneration = 0;
   private defaultRefreshPending = false;
+  private defaultPreviewPending = false;
+  private defaultPreviewRollback?: SceneDefaultSnapshot;
   private defaultBaseline?: SceneDefaultSnapshot;
   private readonly defaultWriter = new SerialLatestWriter<SceneDefaultWrite>((write) =>
     this.performDefaultWrite(write),
@@ -187,7 +190,7 @@ export class SceneBrowserWorkflow {
   }
 
   public get defaultWritePending(): boolean {
-    return this.defaultWriter.busy;
+    return this.defaultWriter.busy || this.defaultPreviewPending;
   }
 
   public hasCurrentSceneContent(): boolean {
@@ -195,12 +198,18 @@ export class SceneBrowserWorkflow {
   }
 
   public previewRequest(isAdmin: boolean): ScenePreviewRequest | undefined {
-    return buildScenePreviewRequest(
+    const request = buildScenePreviewRequest(
       this.stateValue,
       this.activeSelectionIdentity,
       Boolean(this.device),
       isAdmin,
     );
+    return request
+      ? {
+          ...request,
+          persistDefault: this.sceneDefaultDirty,
+        }
+      : undefined;
   }
 
   public configure(api: EffectStudioApi | undefined, device: DeviceCapabilities | undefined): void {
@@ -518,6 +527,7 @@ export class SceneBrowserWorkflow {
     this.patch({
       content: sceneContentAtSpeed(content, speedIndex),
       speedIndex,
+      hasDefault: false,
       notice: undefined,
     });
     await this.defaultWriter.enqueue(
@@ -548,6 +558,8 @@ export class SceneBrowserWorkflow {
     this.defaultRefreshGeneration += 1;
     this.patch({
       content: sceneContentAtSpeed(content, speedIndex),
+      hasDefault:
+        speedIndex !== (selectedScene.speed?.default_index ?? null),
       notice: undefined,
     });
     await this.defaultWriter.enqueue(
@@ -603,6 +615,78 @@ export class SceneBrowserWorkflow {
         this.patch({ notice: `Could not refresh the scene default: ${errorMessage(error)}` });
       }
     }
+  }
+
+  public previewStatusChanged(status: PreviewStatus | undefined): void {
+    const selected = this.stateValue.selectedScene;
+    if (
+      !status ||
+      !selected ||
+      status.config_entry_id !== this.device?.config_entry_id ||
+      status.scene_id !== selected.scene_id ||
+      status.effect_id !== selected.effect_id
+    ) {
+      return;
+    }
+    if (
+      status.phase === "queued" &&
+      status.persist_default &&
+      status.default_action !== null
+    ) {
+      if (!this.defaultPreviewPending) {
+        this.defaultPreviewRollback = this.defaultBaseline
+          ? {
+              ...this.defaultBaseline,
+              scene: { ...this.defaultBaseline.scene },
+              content: cloneSceneContent(this.defaultBaseline.content),
+            }
+          : undefined;
+      }
+      this.defaultPreviewPending = true;
+      this.patch({
+        content: this.stateValue.content
+          ? sceneContentAtSpeed(
+              this.stateValue.content,
+              this.stateValue.speedIndex,
+            )
+          : this.stateValue.content,
+        hasDefault: status.default_action === "set",
+        notice: undefined,
+      });
+      return;
+    }
+    if (!this.defaultPreviewPending) {
+      return;
+    }
+    if (
+      status.phase !== "confirmed" &&
+      status.phase !== "unconfirmed" &&
+      status.phase !== "failed" &&
+      status.phase !== "cancelled"
+    ) {
+      return;
+    }
+    this.defaultPreviewPending = false;
+    if (
+      (status.phase === "failed" || status.phase === "cancelled") &&
+      status.write_disposition === "not_started"
+    ) {
+      const rollback = this.defaultPreviewRollback;
+      this.defaultPreviewRollback = undefined;
+      this.patch(
+        rollback
+          ? {
+              content: cloneSceneContent(rollback.content),
+              speedIndex: rollback.speedIndex,
+              hasDefault: rollback.hasDefault,
+            }
+          : { hasDefault: false },
+      );
+      return;
+    }
+    this.defaultPreviewRollback = undefined;
+    this.patch({});
+    void this.refreshSelectedDefault();
   }
 
   private async flushPendingDefaultRefresh(): Promise<void> {
@@ -753,6 +837,8 @@ export class SceneBrowserWorkflow {
       this.defaultBaseline = undefined;
     }
     this.defaultRefreshPending = false;
+    this.defaultPreviewPending = false;
+    this.defaultPreviewRollback = undefined;
     this.defaultWriter.invalidate();
   }
 

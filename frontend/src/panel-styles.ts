@@ -270,17 +270,20 @@ export const effectStudioPanelStyles = [
       fill: currentColor;
     }
 
-    .native-light-brightness-fill {
-      fill: var(--studio-blue);
-    }
-
     .native-light-brightness-ring {
       fill: currentColor;
     }
 
     .native-light-control.light-state-on {
       color: var(--studio-blue);
-      background: var(--studio-blue-soft);
+      background:
+        linear-gradient(
+          to top,
+          color-mix(in srgb, var(--studio-blue) 38%, transparent)
+            0 var(--native-light-fill),
+          transparent var(--native-light-fill) 100%
+        ),
+        var(--studio-blue-soft);
       box-shadow: inset 0 0 0 var(--studio-border-width)
         color-mix(
           in srgb,
@@ -292,11 +295,18 @@ export const effectStudioPanelStyles = [
     .native-light-control.light-state-on:hover,
     .native-light-control.light-state-on:focus-visible {
       color: var(--studio-blue);
-      background: color-mix(
-        in srgb,
-        var(--studio-blue) var(--studio-light-on-hover-strength),
-        transparent
-      );
+      background:
+        linear-gradient(
+          to top,
+          color-mix(in srgb, var(--studio-blue) 48%, transparent)
+            0 var(--native-light-fill),
+          transparent var(--native-light-fill) 100%
+        ),
+        color-mix(
+          in srgb,
+          var(--studio-blue) var(--studio-light-on-hover-strength),
+          transparent
+        );
     }
 
     .native-light-control.light-state-off {

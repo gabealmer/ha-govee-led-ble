@@ -456,6 +456,43 @@ export class PanelEditorController {
     this.installEditedContent(cloneMusicProfileContent(content), interaction);
   }
 
+  public musicModeChanged(mode: string): void {
+    const source = this.model.editorSource;
+    const current = this.model.content;
+    const catalogue = this.model.modelCatalogue;
+    const selected = catalogue?.music_modes.find((candidate) => candidate.id === mode);
+    if (
+      (source.kind !== "new" && source.kind !== "saved") ||
+      source.owner.section !== "custom" ||
+      source.owner.category !== "music" ||
+      current.kind !== "music_profile" ||
+      !selected ||
+      current.mode === mode
+    ) {
+      return;
+    }
+    const defaults = this.musicTemplateContent(mode);
+    if (!defaults) {
+      return;
+    }
+    const currentLabel = catalogue?.music_modes.find(
+      (candidate) => candidate.id === current.mode,
+    )?.label;
+    const generatedName =
+      source.kind === "new" &&
+      currentLabel !== undefined &&
+      this.model.name === `New ${currentLabel} effect`;
+    const content: MusicProfileContent = {
+      ...defaults,
+      sensitivity: current.sensitivity,
+      colour: current.colour === null ? null : [...current.colour],
+    };
+    if (generatedName) {
+      this.model.patch({ name: `New ${selected.label} effect` });
+    }
+    this.installEditedContent(content, "committed");
+  }
+
   public videoContentChanged(content: VideoProfileContent, interaction?: LivePreviewInteraction): void {
     this.installEditedContent(cloneVideoProfileContent(content), interaction);
   }

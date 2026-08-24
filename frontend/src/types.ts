@@ -65,6 +65,7 @@ export interface DeviceCapabilities {
   };
   readback: string;
   effect_categories: string[];
+  preview_health: PreviewHealthStatus;
   active_state: ObservedEffectState | null;
 }
 
@@ -451,6 +452,25 @@ export interface PreviewStatus {
     | "may_have_started"
     | "completed"
     | "unknown";
+  persist_default: boolean;
+  scene_id: number | null;
+  effect_id: number | null;
+  default_action: "set" | "reset" | null;
+}
+
+export interface PreviewHealthStatus {
+  config_entry_id: string;
+  revision: number;
+  phase: "healthy" | "checking" | "degraded";
+  incident_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  write_disposition:
+    | "not_started"
+    | "may_have_started"
+    | "completed"
+    | "unknown";
+  checked_at: string;
 }
 
 interface SceneCategory {

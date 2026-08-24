@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import {
+  INFO_GLYPH,
   popoverPosition,
   rectIntersectsViewport,
   type ViewportBounds,
@@ -43,24 +44,21 @@ export class GoveeInfoControl extends LitElement {
         popovertarget=${nativePopover ? "information" : nothing}
         @click=${nativePopover ? nothing : this.toggleFallback}
       >
-        <svg
-          class=${this.variant}
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="18"
-          height="18"
-        >
-          <circle cx="12" cy="12" r="9"></circle>
-          ${this.variant === "error"
-            ? html`
+        ${this.variant === "error"
+          ? html`
+              <svg
+                class="error"
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+              >
+                <circle cx="12" cy="12" r="9"></circle>
                 <path d="M12 7.5v6"></path>
                 <circle class="info-dot" cx="12" cy="16.5" r="0.75"></circle>
-              `
-            : html`
-                <path d="M12 10.75v6"></path>
-                <circle class="info-dot" cx="12" cy="7.25" r="0.75"></circle>
-              `}
-        </svg>
+              </svg>
+            `
+          : html`<span class="info-glyph" aria-hidden="true">${INFO_GLYPH}</span>`}
       </button>
       <div
         id="information"
@@ -72,6 +70,7 @@ export class GoveeInfoControl extends LitElement {
         @toggle=${this.popoverToggled}
       >
         ${this.text}
+        <slot name="actions"></slot>
       </div>
     `;
   }
@@ -300,6 +299,11 @@ export class GoveeInfoControl extends LitElement {
         stroke-width: 1.75;
       }
 
+      .info-glyph {
+        display: block;
+        line-height: 1;
+      }
+
       .info-dot {
         fill: currentcolor;
         stroke: none;
@@ -333,6 +337,14 @@ export class GoveeInfoControl extends LitElement {
       .info-popover.fallback-open {
         z-index: var(--studio-z-popover);
       }
+
+      ::slotted([slot="actions"]) {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--studio-action-gap);
+        margin-top: var(--studio-control-gap);
+      }
+
     `,
   ];
 }

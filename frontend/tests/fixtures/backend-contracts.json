@@ -1086,6 +1086,16 @@
         ],
         "light_entity_id": "light.h617a_main",
         "model": "H617A",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h617a-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
         "profiles": {
           "music": "supported",
           "video": "unsupported"
@@ -1114,6 +1124,16 @@
         ],
         "light_entity_id": null,
         "model": "H6199",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h6199-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
         "profiles": {
           "music": "supported",
           "video": "supported"
@@ -1123,7 +1143,7 @@
       }
     ],
     "editor_info": {
-      "api_version": 8,
+      "api_version": 9,
       "compiler_version": 4,
       "effect_schema_version": 2,
       "limits": {
@@ -1229,9 +1249,13 @@
       "confidence": "activation_match",
       "config_entry_id": "h617a-main",
       "content_kind": "h617a_painted",
+      "default_action": null,
+      "effect_id": null,
       "error_code": null,
       "error_message": null,
+      "persist_default": false,
       "phase": "confirmed",
+      "scene_id": null,
       "sequence": 4,
       "session_id": "fixture-session",
       "write_disposition": "unknown"

@@ -43,6 +43,8 @@ WS_PREVIEW_APPLY_SNAPSHOT = f"{DOMAIN}/editor/preview/apply_snapshot"
 WS_PREVIEW_APPLY_SCENE = f"{DOMAIN}/editor/preview/apply_scene"
 WS_PREVIEW_CANCEL = f"{DOMAIN}/editor/preview/cancel"
 WS_PREVIEW_SUBSCRIBE = f"{DOMAIN}/editor/preview/subscribe"
+WS_PREVIEW_HEALTH_SUBSCRIBE = f"{DOMAIN}/editor/preview/health/subscribe"
+WS_PREVIEW_HEALTH_CHECK = f"{DOMAIN}/editor/preview/health/check"
 
 
 def strict_int(value: object) -> int:

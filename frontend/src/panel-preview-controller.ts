@@ -41,6 +41,10 @@ export function previewStatusMessage(
 
 export class PanelPreviewController {
   private session?: EffectStudioPreviewSession;
+  private api?: EffectStudioApi;
+  private unsubscribeHealth?: () => void;
+  private lastSubmitted?: PanelPreviewRequest;
+  private retrying = false;
   private readonly progress = new LivePreviewProgressController({
     changed: (visible) => {
       this.model.patch({ previewProgressVisible: visible });
@@ -52,6 +56,7 @@ export class PanelPreviewController {
         this.model.liveApplyEnabled &&
         request.configEntryId === this.model.selectedDeviceId
       ) {
+        this.lastSubmitted = request;
         void this.session?.submit(request);
       }
     },
@@ -66,6 +71,18 @@ export class PanelPreviewController {
     api: EffectStudioApi,
     subscriptionFailed: (error: Error) => void,
   ): Promise<boolean> {
+    this.api = api;
+    this.unsubscribeHealth = await api.subscribePreviewHealth(
+      (health) => {
+        this.model.update((model) => {
+          model.previewHealth = {
+            ...model.previewHealth,
+            [health.config_entry_id]: health,
+          };
+        });
+      },
+      subscriptionFailed,
+    );
     const session = new EffectStudioPreviewSession(
       api,
       (status) => {
@@ -92,6 +109,8 @@ export class PanelPreviewController {
     const opened = await session.open();
     if (!opened || this.session !== session) {
       session.close();
+      this.unsubscribeHealth?.();
+      this.unsubscribeHealth = undefined;
       return false;
     }
     return true;
@@ -161,6 +180,64 @@ export class PanelPreviewController {
     this.scheduler.enable(this.currentRequest(true, scene));
   }
 
+  public canRetryCurrentChange(
+    scene?: ScenePreviewRequest,
+  ): boolean {
+    const health = this.model.selectedPreviewHealth;
+    const current = this.currentRequest(false, scene);
+    return Boolean(
+      health?.phase === "degraded" &&
+        this.lastSubmitted &&
+        current &&
+        current.configEntryId === this.lastSubmitted.configEntryId &&
+        current.fingerprint === this.lastSubmitted.fingerprint &&
+        current.persistDefault === this.lastSubmitted.persistDefault &&
+        !this.retrying,
+    );
+  }
+
+  public async checkHealth(): Promise<void> {
+    const configEntryId = this.model.selectedDeviceId;
+    if (!this.api || !configEntryId) {
+      return;
+    }
+    try {
+      const health = await this.api.checkPreviewHealth(configEntryId);
+      this.model.update((model) => {
+        model.previewHealth = {
+          ...model.previewHealth,
+          [configEntryId]: health,
+        };
+      });
+    } catch (error) {
+      this.model.patch({
+        notice: `Could not check the light: ${errorMessage(error)}`,
+      });
+    }
+  }
+
+  public async retryCurrentChange(
+    scene?: ScenePreviewRequest,
+  ): Promise<void> {
+    if (
+      !this.canRetryCurrentChange(scene) ||
+      !this.lastSubmitted ||
+      this.retrying
+    ) {
+      return;
+    }
+    this.retrying = true;
+    try {
+      await this.session?.submit({
+        ...this.lastSubmitted,
+        force: true,
+        committed: true,
+      });
+    } finally {
+      this.retrying = false;
+    }
+  }
+
   public async cancel(): Promise<void> {
     const session = this.session;
     if (!session) {
@@ -182,10 +259,15 @@ export class PanelPreviewController {
     this.progress.reset();
     this.session?.close();
     this.session = undefined;
+    this.unsubscribeHealth?.();
+    this.unsubscribeHealth = undefined;
+    this.api = undefined;
+    this.lastSubmitted = undefined;
     this.model.update((model) => {
       model.previewStatus = undefined;
       model.previewNotice = undefined;
       model.previewProgressVisible = false;
+      model.previewHealth = {};
     });
   }
 

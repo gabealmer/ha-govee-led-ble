@@ -36,6 +36,16 @@ const device = (
     video: "unsupported",
   },
   readback: "state",
+  preview_health: {
+    config_entry_id: id,
+    revision: 0,
+    phase: "healthy",
+    incident_id: null,
+    error_code: null,
+    error_message: null,
+    write_disposition: "not_started",
+    checked_at: "2026-08-24T00:00:00Z",
+  },
   effect_categories: [
     "scenes",
     "effects",

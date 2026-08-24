@@ -40,7 +40,13 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     effect_content_to_dict,
 )
 from custom_components.ha_govee_led_ble.effect_identity import ActiveEffectHint, ObservedDeviceState
-from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewStatus
+from custom_components.ha_govee_led_ble.effect_preview import (
+    PreviewHealthPhase,
+    PreviewHealthStatus,
+    PreviewPhase,
+    PreviewStatus,
+    PreviewWriteDisposition,
+)
 from custom_components.ha_govee_led_ble.effect_scenes import scene_catalogue_payload, scene_detail_payload
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import library_snapshot_payload
@@ -261,6 +267,16 @@ def rendered_data() -> str:
             light_entity_id="light.h617a_main" if model == "H617A" else None,
         ).to_dict()
         device["active_state"] = active_state.to_public_dict() if model == "H617A" else None
+        device["preview_health"] = PreviewHealthStatus(
+            config_entry_id=f"{model.lower()}-main",
+            revision=1,
+            phase=PreviewHealthPhase.HEALTHY,
+            incident_id=None,
+            error_code=None,
+            error_message=None,
+            write_disposition=PreviewWriteDisposition.COMPLETED,
+            checked_at=TIMESTAMP,
+        ).to_dict()
         devices.append(device)
     document = {
         "schema_version": 1,

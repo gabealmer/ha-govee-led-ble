@@ -224,7 +224,7 @@ describe("SceneBrowserWorkflow", () => {
       2,
     );
     expect(workflow.sceneDefaultDirty).toBe(true);
-    expect(workflow.state.hasDefault).toBe(false);
+    expect(workflow.state.hasDefault).toBe(true);
     expect(workflow.state.content?.speed_index).toBe(2);
     expect(workflow.state.saving).toBe(false);
 
@@ -232,6 +232,59 @@ describe("SceneBrowserWorkflow", () => {
     await saving;
 
     expect(workflow.state.notice).toBeUndefined();
+  });
+
+  test("accepted Live persistence shows Reset optimistically and rolls back a not-started failure", async () => {
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1, false)),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+    workflow.setSpeedIndex(2);
+
+    expect(workflow.previewRequest(true)).toMatchObject({
+      persistDefault: true,
+    });
+    workflow.previewStatusChanged({
+      session_id: "session-a",
+      sequence: 1,
+      config_entry_id: device.config_entry_id,
+      phase: "queued",
+      content_kind: "scene_builtin",
+      confidence: "unknown",
+      error_code: null,
+      error_message: null,
+      write_disposition: "not_started",
+      persist_default: true,
+      scene_id: firstScene.scene_id,
+      effect_id: firstScene.effect_id,
+      default_action: "set",
+    });
+
+    expect(workflow.state.hasDefault).toBe(true);
+    expect(workflow.defaultWritePending).toBe(true);
+
+    workflow.previewStatusChanged({
+      session_id: "session-a",
+      sequence: 1,
+      config_entry_id: device.config_entry_id,
+      phase: "failed",
+      content_kind: "scene_builtin",
+      confidence: "unknown",
+      error_code: "transport_failed",
+      error_message: "Not started",
+      write_disposition: "not_started",
+      persist_default: true,
+      scene_id: firstScene.scene_id,
+      effect_id: firstScene.effect_id,
+      default_action: "set",
+    });
+
+    expect(workflow.state.hasDefault).toBe(false);
+    expect(workflow.state.speedIndex).toBe(1);
+    expect(workflow.defaultWritePending).toBe(false);
   });
 
   test("rapid auto-save speed changes stay interactive and coalesce to the latest request", async () => {
@@ -295,7 +348,7 @@ describe("SceneBrowserWorkflow", () => {
     expect(api.resetScene).toHaveBeenCalledWith(device.config_entry_id, firstScene);
     expect(workflow.state.speedIndex).toBe(firstScene.speed?.default_index);
     expect(workflow.state.content?.speed_index).toBe(firstScene.speed?.default_index);
-    expect(workflow.state.hasDefault).toBe(true);
+    expect(workflow.state.hasDefault).toBe(false);
     expect(workflow.sceneDefaultDirty).toBe(true);
     expect(workflow.state.saving).toBe(false);
 
@@ -387,7 +440,7 @@ describe("SceneBrowserWorkflow", () => {
 
     expect(workflow.state.speedIndex).toBe(2);
     expect(workflow.state.content?.speed_index).toBe(2);
-    expect(workflow.state.hasDefault).toBe(false);
+    expect(workflow.state.hasDefault).toBe(true);
 
     save.resolve(detail(firstScene, 2, true));
     await saving;

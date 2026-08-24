@@ -47,6 +47,10 @@ export class GoveeSingleColourField extends LitElement {
       :host {
         display: block;
       }
+
+      .parameter-group {
+        width: min(460px, 100%);
+      }
     `,
   ];
 }

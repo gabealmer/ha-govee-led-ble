@@ -1,11 +1,19 @@
 import { expect, test } from "vitest";
 
 import {
+  INFO_GLYPH,
   popoverPosition,
   rectIntersectsViewport,
 } from "../../src/info-control-model";
 
 const viewport = { left: 0, top: 0, width: 400, height: 600 };
+
+test("info glyph uses the text presentation code points", () => {
+  expect([...INFO_GLYPH].map((character) => character.codePointAt(0))).toEqual([
+    0x2139,
+    0xfe0e,
+  ]);
+});
 
 test("popover is centred below its trigger when space permits", () => {
   expect(

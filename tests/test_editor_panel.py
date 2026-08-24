@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from homeassistant.components import frontend
@@ -260,6 +261,7 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
 def test_manifest_selects_stable_advanced_asset() -> None:
     manifest = json.loads(_EDITOR_MANIFEST.read_text())
     filename = manifest["bootstrap"]
+    module_url = urlparse(EDITOR_LOADER_MODULE_URL)
 
     assert filename == "effect-studio-bootstrap.js"
     assert manifest["asset_version"] == EDITOR_ASSET_VERSION
@@ -267,7 +269,23 @@ def test_manifest_selects_stable_advanced_asset() -> None:
     assert manifest["effect_schema_version"] == EFFECT_SCHEMA_VERSION
     assert manifest["compiler_version"] == EFFECT_COMPILER_VERSION
     assert (_EDITOR_STATIC_PATH / filename).is_file()
+    assert module_url.path == f"/{DOMAIN}_static/editor-loader.js"
+    assert parse_qs(module_url.query) == {"asset_version": [str(EDITOR_ASSET_VERSION)]}
     assert _editor_module_url() == EDITOR_LOADER_MODULE_URL
+
+
+def test_loader_uses_deterministic_version_guard_before_bootstrap() -> None:
+    source = (_EDITOR_STATIC_PATH / "editor-loader.js").read_text()
+
+    assert "Date.now" not in source
+    assert "__HA_GOVEE_LED_BLE_EDITOR_LOADED_ASSET_VERSION__" in source
+    assert "manifest?.asset_version !== expectedAssetVersion" in source
+    assert "loadedAssetVersion === undefined && customElements.get(editorElementName)" in source
+    assert "else if (loadedAssetVersion === undefined)" in source
+    assert "globalThis[loadedAssetVersionKey] = expectedAssetVersion" in source
+    assert source.index("showUpgradeOverlay();") < source.index("await loadEditor();")
+    assert "Effect Studio was updated" in source
+    assert "window.location.reload()" in source
 
 
 def test_invalid_manifest_falls_back_to_stable_editor(

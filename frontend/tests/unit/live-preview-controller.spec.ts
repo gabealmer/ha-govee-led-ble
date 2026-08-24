@@ -258,6 +258,10 @@ function status(
       error_code: null,
       error_message: null,
       write_disposition: "unknown",
+      persist_default: false,
+      scene_id: null,
+      effect_id: null,
+      default_action: null,
     };
 }
 

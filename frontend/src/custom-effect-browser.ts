@@ -37,6 +37,9 @@ export class GoveeCustomEffectBrowser extends LitElement {
   public templateSelection?: string;
 
   @property({ type: Boolean })
+  public newSelected = false;
+
+  @property({ type: Boolean })
   public isAdmin = false;
 
   protected render() {
@@ -57,8 +60,11 @@ export class GoveeCustomEffectBrowser extends LitElement {
         ${canCreate
           ? html`
               <button
-                class="selector item new-effect-action"
+                class="selector item new-effect-action ${this.newSelected
+                  ? "selected"
+                  : ""}"
                 type="button"
+                aria-pressed=${String(this.newSelected)}
                 ?disabled=${!this.isAdmin}
                 @click=${this.requestNew}
               >
@@ -84,6 +90,7 @@ export class GoveeCustomEffectBrowser extends LitElement {
       <button
         class="selector item ${selected ? "selected" : ""}"
         type="button"
+        aria-pressed=${String(selected)}
         ?disabled=${entry.kind !== "saved" && !this.isAdmin}
         @click=${() => {
           this.dispatchEvent(

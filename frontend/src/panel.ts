@@ -18,6 +18,7 @@ import {
 } from "./effect-editor-model";
 import { customEffectCategories } from "./custom-effect-workflow";
 import type { LivePreviewInteraction } from "./live-preview-controller";
+import type { MusicModeChange } from "./music-profile-editor";
 import "./music-profile-editor";
 import "./palette-editor";
 import "./painted-segment-editor";
@@ -57,7 +58,7 @@ import type {
   VideoProfileContent,
 } from "./types";
 import {
-  brightnessFillGeometry,
+  brightnessFillPercentage,
   classifyLightEntityState,
   compareLabels,
   integrationSettingsPath,
@@ -355,7 +356,7 @@ export class GoveeLedEffectStudio extends LitElement {
       state,
       entity?.attributes?.brightness,
     );
-    const fill = brightnessFillGeometry(
+    const fillPercentage = brightnessFillPercentage(
       presentation.brightnessLevel ?? 0,
     );
     return html`
@@ -364,26 +365,10 @@ export class GoveeLedEffectStudio extends LitElement {
         type="button"
         aria-label=${presentation.accessibleName}
         title=${presentation.accessibleName}
+        style=${`--native-light-fill: ${fillPercentage}%`}
         @click=${() => this.showLightControls(entityId)}
       >
         <svg aria-hidden="true" viewBox="0 0 24 24">
-          <defs>
-            <clipPath id="native-light-brightness-fill">
-              <circle cx="12" cy="12" r="6"></circle>
-            </clipPath>
-          </defs>
-          ${presentation.brightnessLevel === undefined
-            ? nothing
-            : html`
-                <rect
-                  class="native-light-brightness-fill"
-                  x="6"
-                  y=${fill.y}
-                  width="12"
-                  height=${fill.height}
-                  clip-path="url(#native-light-brightness-fill)"
-                ></rect>
-              `}
           <path
             class="native-light-brightness-ring"
             fill-rule="evenodd"
@@ -512,7 +497,16 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderPreviewIssue() {
-    const message = this.model.previewNotice;
+    const health = this.model.selectedPreviewHealth;
+    const healthIncident =
+      health &&
+      (health.phase === "degraded" ||
+        (health.phase === "checking" && health.incident_id !== null));
+    const message = healthIncident
+      ? health.error_message ??
+        "Effect Studio is checking the latest Live change."
+      : this.model.previewNotice;
+    const scene = this.currentScenePreviewRequest();
     return message
       ? html`
           <govee-info-control
@@ -520,7 +514,36 @@ export class GoveeLedEffectStudio extends LitElement {
             variant="error"
             label="Live change details"
             .text=${message}
-          ></govee-info-control>
+          >
+            ${healthIncident
+              ? html`
+                  <div slot="actions" class="preview-health-actions">
+                    <button
+                      class="secondary"
+                      type="button"
+                      ?disabled=${health.phase === "checking"}
+                      @click=${() => void this.preview.checkHealth()}
+                    >
+                      ${health.phase === "checking"
+                        ? "Checking..."
+                        : "Check again"}
+                    </button>
+                    ${this.preview.canRetryCurrentChange(scene)
+                      ? html`
+                          <button
+                            class="secondary"
+                            type="button"
+                            @click=${() =>
+                              void this.preview.retryCurrentChange(scene)}
+                          >
+                            Retry current change
+                          </button>
+                        `
+                      : nothing}
+                  </div>
+                `
+              : nothing}
+          </govee-info-control>
         `
       : nothing;
   }
@@ -581,6 +604,7 @@ export class GoveeLedEffectStudio extends LitElement {
         .category=${this.model.customEffectCategory}
         .currentItemId=${this.currentItem?.id}
         .templateSelection=${this.model.templateSelection}
+        .newSelected=${this.model.newCustomEffectSelected}
         .isAdmin=${this.isAdmin}
         @custom-entry-requested=${(
           event: CustomEvent<CustomEffectBrowserEntryRequest>,
@@ -717,6 +741,9 @@ export class GoveeLedEffectStudio extends LitElement {
         .content=${this.content}
         .catalogue=${this.model.modelCatalogue}
         .disabled=${this.editorReadOnly}
+        .modeSelectionEnabled=${this.model.showReactiveEffectSelector}
+        @mode-changed=${(event: CustomEvent<MusicModeChange>) =>
+          this.editor.musicModeChanged(event.detail.mode)}
         @content-changed=${(
           event: CustomEvent<{
             content: MusicProfileContent;
@@ -1237,9 +1264,9 @@ export class GoveeLedEffectStudio extends LitElement {
                 </button>
               `
             : nothing}
+          ${this.renderEditorDeleteButton()}
           ${options.save === false ? nothing : this.renderSaveAction()}
           ${options.save === false ? nothing : this.renderSaveAsAction()}
-          ${this.renderEditorDeleteButton()}
         </div>
       </div>
     `;
@@ -1469,6 +1496,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       <button
         class="danger"
+        style="margin-inline-end: var(--studio-action-gap)"
         type="button"
         ?disabled=${this.model.deletingItemId !== undefined ||
         this.model.saving}

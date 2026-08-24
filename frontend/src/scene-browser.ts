@@ -7,7 +7,6 @@ import type { SegmentedControlChange } from "./segmented-control";
 import "./segmented-control";
 import {
   nativeSceneActions,
-  previewMayChangeSceneDefault,
   sceneBrowserCategories,
   sceneBrowserEntries,
   sceneHasParameterSurface,
@@ -163,9 +162,9 @@ export class GoveeSceneBrowser extends LitElement {
     }
     if (
       changed.has("previewStatus") &&
-      previewMayChangeSceneDefault(this.previewStatus, this.device?.config_entry_id)
+      this.previewStatus
     ) {
-      void this.workflow.refreshSelectedDefault();
+      this.workflow.previewStatusChanged(this.previewStatus);
     }
   }
 
@@ -331,6 +330,18 @@ export class GoveeSceneBrowser extends LitElement {
                 this.workflow.defaultWritePending,
               ).map((action) => this.renderNativeAction(action))
             : html`
+                ${state.selectedItem
+                  ? html`
+                      <button
+                        class="danger"
+                        type="button"
+                        ?disabled=${!this.isAdmin || state.saving}
+                        @click=${this.requestDelete}
+                      >
+                        Delete
+                      </button>
+                    `
+                  : nothing}
                 <button
                   class=${layered ? "secondary" : "primary"}
                   type="button"
@@ -348,18 +359,6 @@ export class GoveeSceneBrowser extends LitElement {
                         ? "Save As"
                         : "Save"}
                 </button>
-                ${state.selectedItem
-                  ? html`
-                      <button
-                        class="danger"
-                        type="button"
-                        ?disabled=${!this.isAdmin || state.saving}
-                        @click=${this.requestDelete}
-                      >
-                        Delete
-                      </button>
-                    `
-                  : nothing}
               `}
         </div>
       </header>
@@ -379,7 +378,9 @@ export class GoveeSceneBrowser extends LitElement {
       <button
         class=${action.style}
         type="button"
-        ?disabled=${!this.isAdmin || !this.workflow.hasCurrentSceneContent()}
+        ?disabled=${!this.isAdmin ||
+        !this.workflow.hasCurrentSceneContent() ||
+        action.disabled === true}
         @click=${click}
       >
         ${action.label}

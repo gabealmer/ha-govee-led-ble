@@ -21,14 +21,25 @@ export type SceneInitialSelection =
   | { kind: "saved"; itemId: string }
   | { kind: "native"; effect: string };
 export type ScenePreviewRequest =
-  | { kind: "scene"; scene: SceneSummary; speedIndex: number | null }
-  | { kind: "snapshot"; name: string; content: SceneContent };
+  | {
+      kind: "scene";
+      scene: SceneSummary;
+      speedIndex: number | null;
+      persistDefault?: boolean;
+    }
+  | {
+      kind: "snapshot";
+      name: string;
+      content: SceneContent;
+      persistDefault?: boolean;
+    };
 export type NativeSceneActionId = "set-default" | "reset-default" | "edit";
 
 export interface NativeSceneAction {
   id: NativeSceneActionId;
   label: string;
   style: "primary" | "secondary";
+  disabled?: boolean;
 }
 
 export interface SceneBrowserViewState {
@@ -170,8 +181,13 @@ export function nativeSceneActions(
   if (!defaultWritePending && !autoSaveEnabled && defaultDirty) {
     actions.push({ id: "set-default", label: "Set as Default", style: "primary" });
   }
-  if (!defaultWritePending && hasDefault) {
-    actions.push({ id: "reset-default", label: "Reset to Defaults", style: "secondary" });
+  if (hasDefault) {
+    actions.push({
+      id: "reset-default",
+      label: "Reset",
+      style: "secondary",
+      ...(defaultWritePending ? { disabled: true } : {}),
+    });
   }
   actions.push({ id: "edit", label: "Edit", style: "secondary" });
   return actions;

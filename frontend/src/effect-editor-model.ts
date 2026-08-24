@@ -60,6 +60,17 @@ export type LibraryItemSyncResult =
 export const PAINTED_SEGMENT_COUNT = 15;
 export type PaintedSegmentDraft = PaintedContent["segments"][number];
 
+export function reactiveParameterValueText(
+  parameter: string,
+  value: number,
+): string | undefined {
+  return parameter === "point" ||
+    parameter === "key_count" ||
+    parameter === "segment_count"
+    ? String(value)
+    : undefined;
+}
+
 export function effectOriginDescription(
   origin: LibraryOrigin | undefined,
   sourceName?: string,

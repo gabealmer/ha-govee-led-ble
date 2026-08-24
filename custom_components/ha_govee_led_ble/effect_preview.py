@@ -8,6 +8,7 @@ import logging
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from typing import Any
@@ -31,7 +32,7 @@ from .effect_compiler import (
 )
 from .effect_deployments import ObservationConfidence
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
-from .effect_domain import LayeredScene, LibraryItem, PaletteScene, effect_content_to_dict
+from .effect_domain import JsonValue, LayeredScene, LibraryItem, PaletteScene, effect_content_to_dict
 from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_REQUESTS_PER_SECOND, MAX_PREVIEW_SEQUENCE
 from .effect_runtime import async_apply_compiled_profile, async_write_packets, resolve_diy_code
@@ -43,7 +44,7 @@ from .native_scenes import encode_authored_scene_body, resolve_native_scene_body
 
 PREVIEW_WRITE_CADENCE = 0.25
 PREVIEW_VERIFY_DELAY = 0.75
-PREVIEW_VERIFY_TIMEOUT = 2.0
+PREVIEW_VERIFY_TIMEOUT = 4.0
 PREVIEW_CONNECT_TIMEOUT = 8.0
 PREVIEW_FAILURE_COOLDOWN = 2.0
 
@@ -95,6 +96,12 @@ class PreviewWriteDisposition(StrEnum):
     UNKNOWN = "unknown"
 
 
+class PreviewHealthPhase(StrEnum):
+    HEALTHY = "healthy"
+    CHECKING = "checking"
+    DEGRADED = "degraded"
+
+
 @dataclass(frozen=True, slots=True)
 class PreviewStatus:
     session_id: str
@@ -106,8 +113,12 @@ class PreviewStatus:
     error_code: str | None
     error_message: str | None = None
     write_disposition: PreviewWriteDisposition = PreviewWriteDisposition.UNKNOWN
+    persist_default: bool = False
+    scene_id: int | None = None
+    effect_id: int | None = None
+    default_action: str | None = None
 
-    def to_dict(self) -> dict[str, str | int | None]:
+    def to_dict(self) -> dict[str, JsonValue]:
         return {
             "session_id": self.session_id,
             "config_entry_id": self.config_entry_id,
@@ -118,6 +129,34 @@ class PreviewStatus:
             "error_code": self.error_code,
             "error_message": self.error_message,
             "write_disposition": self.write_disposition.value,
+            "persist_default": self.persist_default,
+            "scene_id": self.scene_id,
+            "effect_id": self.effect_id,
+            "default_action": self.default_action,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PreviewHealthStatus:
+    config_entry_id: str
+    revision: int
+    phase: PreviewHealthPhase
+    incident_id: str | None
+    error_code: str | None
+    error_message: str | None
+    write_disposition: PreviewWriteDisposition
+    checked_at: str
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        return {
+            "config_entry_id": self.config_entry_id,
+            "revision": self.revision,
+            "phase": self.phase.value,
+            "incident_id": self.incident_id,
+            "error_code": self.error_code,
+            "error_message": self.error_message,
+            "write_disposition": self.write_disposition.value,
+            "checked_at": self.checked_at,
         }
 
 
@@ -157,13 +196,20 @@ class _PreviewRequest:
     generation: int
     correlation_id: str
     reassert: bool
-    committed: bool
+    persist_default: bool
     content_kind: str
     item: LibraryItem | None = None
     diy_code: int | None = None
     scene: ResolvedScene | None = None
     speed_index: int | None = None
     canonical_body: bytes | None = None
+    default_action: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _HealthTarget:
+    expectations: Mapping[str, Any]
+    confirmed_confidence: ObservationConfidence
 
 
 @dataclass(slots=True)
@@ -230,6 +276,10 @@ class EffectPreviewManager:
         self._failure_cooldown = failure_cooldown
         self._sessions: dict[str, _PreviewSession] = {}
         self._devices: dict[str, _DeviceWorker] = {}
+        self._health: dict[str, PreviewHealthStatus] = {}
+        self._health_targets: dict[str, _HealthTarget] = {}
+        self._health_listeners: dict[object, Callable[[PreviewHealthStatus], None]] = {}
+        self._health_revision = 0
         self._blocked_devices: set[str] = set()
         self._generation = 0
         self._lock = asyncio.Lock()
@@ -266,6 +316,34 @@ class EffectPreviewManager:
 
         return unsubscribe
 
+    def subscribe_health(
+        self,
+        *,
+        subscription_id: object,
+        listener: Callable[[PreviewHealthStatus], None],
+    ) -> Callable[[], None]:
+        self._health_listeners[subscription_id] = listener
+
+        def unsubscribe() -> None:
+            self._health_listeners.pop(subscription_id, None)
+
+        return unsubscribe
+
+    def health(self, config_entry_id: str) -> PreviewHealthStatus:
+        return self._health.get(config_entry_id) or PreviewHealthStatus(
+            config_entry_id=config_entry_id,
+            revision=0,
+            phase=PreviewHealthPhase.HEALTHY,
+            incident_id=None,
+            error_code=None,
+            error_message=None,
+            write_disposition=PreviewWriteDisposition.NOT_STARTED,
+            checked_at=datetime.now(UTC).isoformat(),
+        )
+
+    def health_snapshot(self) -> tuple[PreviewHealthStatus, ...]:
+        return tuple(self._health.values())
+
     def require_owner(self, session_id: str, owner: object) -> None:
         session = self._sessions.get(session_id)
         if session is None:
@@ -283,7 +361,7 @@ class EffectPreviewManager:
         updated_at: str,
         item: LibraryItem,
         reassert: bool = False,
-        committed: bool = False,
+        persist_default: bool = False,
     ) -> PreviewAcceptance:
         self.require_owner(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
@@ -301,10 +379,11 @@ class EffectPreviewManager:
             generation=0,
             correlation_id=str(uuid4()),
             reassert=reassert,
-            committed=committed,
+            persist_default=persist_default,
             content_kind=str(effect_content_to_dict(item.content)["kind"]),
             item=item,
             diy_code=diy_code,
+            default_action=(_snapshot_default_action(item) if persist_default else None),
         )
         return await self._async_accept(owner, request)
 
@@ -319,7 +398,7 @@ class EffectPreviewManager:
         scene_id: int,
         effect_id: int,
         speed_index: int | None,
-        committed: bool = False,
+        persist_default: bool = False,
     ) -> PreviewAcceptance:
         self.require_owner(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
@@ -349,11 +428,20 @@ class EffectPreviewManager:
             generation=0,
             correlation_id=str(uuid4()),
             reassert=True,
-            committed=committed,
+            persist_default=persist_default,
             content_kind="scene_builtin",
             scene=resolved,
             speed_index=resolved_speed,
             canonical_body=canonical_body or None,
+            default_action=(
+                _scene_default_action(
+                    resolved.entry,
+                    canonical_body,
+                    resolved_speed,
+                )
+                if persist_default
+                else None
+            ),
         )
         return await self._async_accept(owner, request)
 
@@ -390,7 +478,7 @@ class EffectPreviewManager:
             worker.latest_accepted_generation = request.generation
             if request.reassert:
                 worker.cooldown_until = 0
-            if worker.verification_task is not None and not worker.verification_observing:
+            if worker.verification_task is not None:
                 worker.verification_task.cancel()
                 worker.verification_task = None
                 worker.verification_request = None
@@ -403,6 +491,16 @@ class EffectPreviewManager:
             worker.wake.set()
         if superseded is not None:
             self._publish(superseded, PreviewPhase.CANCELLED, error_code="superseded")
+        current_health = self.health(request.config_entry_id)
+        if current_health.phase is PreviewHealthPhase.DEGRADED:
+            self._set_health(
+                request.config_entry_id,
+                PreviewHealthPhase.CHECKING,
+                error_code=current_health.error_code,
+                error_message=current_health.error_message,
+                write_disposition=current_health.write_disposition,
+                incident_id=current_health.incident_id,
+            )
         self._publish(request, PreviewPhase.QUEUED)
         return PreviewAcceptance(True, request.session_id, request.config_entry_id, request.sequence)
 
@@ -430,7 +528,6 @@ class EffectPreviewManager:
                 if (
                     worker.verification_request is not None
                     and worker.verification_request.session_id == session_id
-                    and not worker.verification_observing
                     and worker.verification_task is not None
                 ):
                     worker.verification_task.cancel()
@@ -439,6 +536,16 @@ class EffectPreviewManager:
                 worker.wake.set()
         for request in cancelled:
             self._publish(request, PreviewPhase.CANCELLED, error_code="session_cancelled")
+            current_health = self.health(request.config_entry_id)
+            if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
+                self._set_health(
+                    request.config_entry_id,
+                    PreviewHealthPhase.DEGRADED,
+                    error_code=current_health.error_code,
+                    error_message=current_health.error_message,
+                    write_disposition=current_health.write_disposition,
+                    incident_id=current_health.incident_id,
+                )
 
     async def async_close_session(self, session_id: str, owner: object) -> None:
         self.require_owner(session_id, owner)
@@ -454,6 +561,8 @@ class EffectPreviewManager:
             self._blocked_devices.add(config_entry_id)
             worker = self._devices.get(config_entry_id)
             if worker is None:
+                self._health.pop(config_entry_id, None)
+                self._health_targets.pop(config_entry_id, None)
                 return
             worker.closing = True
             if worker.pending is not None:
@@ -466,7 +575,7 @@ class EffectPreviewManager:
             worker.wake.set()
             task = worker.task
             verification_task = worker.verification_task
-            if verification_task is not None and not worker.verification_observing:
+            if verification_task is not None:
                 verification_task.cancel()
                 worker.verification_task = None
                 worker.verification_request = None
@@ -478,6 +587,8 @@ class EffectPreviewManager:
             await asyncio.gather(verification_task, return_exceptions=True)
         async with self._lock:
             self._devices.pop(config_entry_id, None)
+            self._health.pop(config_entry_id, None)
+            self._health_targets.pop(config_entry_id, None)
 
     async def async_load_device(self, config_entry_id: str) -> None:
         async with self._lock:
@@ -504,7 +615,7 @@ class EffectPreviewManager:
                     if worker.active is not None:
                         worker.cancelled_generations.add(worker.active.generation)
                     worker.wake.set()
-                    if worker.verification_task is not None and not worker.verification_observing:
+                    if worker.verification_task is not None:
                         worker.verification_task.cancel()
                     tasks.extend(task for task in (worker.task, worker.verification_task) if task is not None)
         if tasks:
@@ -512,6 +623,8 @@ class EffectPreviewManager:
         async with self._lock:
             self._devices.clear()
             self._sessions.clear()
+            self._health.clear()
+            self._health_targets.clear()
 
     async def async_wait_idle(self, config_entry_id: str) -> None:
         while True:
@@ -602,8 +715,24 @@ class EffectPreviewManager:
                 error_message="The effect could not be prepared. Review its settings before trying again.",
                 write_disposition=PreviewWriteDisposition.NOT_STARTED,
             )
+            current_health = self.health(request.config_entry_id)
+            if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
+                self._set_health(
+                    request.config_entry_id,
+                    PreviewHealthPhase.DEGRADED,
+                    error_code=current_health.error_code,
+                    error_message=current_health.error_message,
+                    write_disposition=current_health.write_disposition,
+                    incident_id=current_health.incident_id,
+                )
             return
 
+        expectations = _verification_expectations(coordinator, request, compiled)
+        if expectations is not None:
+            self._health_targets[request.config_entry_id] = _HealthTarget(
+                expectations=dict(expectations),
+                confirmed_confidence=_confirmed_confidence(request, compiled),
+            )
         writer: _PreviewWriter | None = None
         try:
             await coordinator.async_preview_preflight(timeout=self._connect_timeout)
@@ -651,6 +780,17 @@ class EffectPreviewManager:
                     else PreviewWriteDisposition.NOT_STARTED
                 ),
             )
+            self._set_health(
+                request.config_entry_id,
+                PreviewHealthPhase.DEGRADED,
+                error_code="shutdown_incomplete",
+                error_message="Home Assistant stopped before the Live change completed.",
+                write_disposition=(
+                    PreviewWriteDisposition.MAY_HAVE_STARTED
+                    if writer is not None and writer.started
+                    else PreviewWriteDisposition.NOT_STARTED
+                ),
+            )
             return
         except Exception as exc:
             async with self._lock:
@@ -679,12 +819,25 @@ class EffectPreviewManager:
                     PreviewWriteDisposition.MAY_HAVE_STARTED if started else PreviewWriteDisposition.NOT_STARTED
                 ),
             )
+            self._set_health(
+                request.config_entry_id,
+                PreviewHealthPhase.DEGRADED,
+                error_code="transport_failed",
+                error_message=(
+                    "The light could not be reached before the Live change started."
+                    if not started
+                    else "The connection stopped while writing. The light may have changed."
+                ),
+                write_disposition=(
+                    PreviewWriteDisposition.MAY_HAVE_STARTED if started else PreviewWriteDisposition.NOT_STARTED
+                ),
+            )
             return
 
         self._invalidate_observed_match(request)
         coordinator.async_update_listeners()
 
-        if request.committed:
+        if request.persist_default:
             try:
                 await self._async_persist_scene_default(request)
             except Exception as exc:
@@ -703,6 +856,16 @@ class EffectPreviewManager:
                     error_message="The light changed, but its scene default could not be saved.",
                     write_disposition=PreviewWriteDisposition.COMPLETED,
                 )
+                current_health = self.health(request.config_entry_id)
+                if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
+                    self._set_health(
+                        request.config_entry_id,
+                        PreviewHealthPhase.DEGRADED,
+                        error_code=current_health.error_code,
+                        error_message=current_health.error_message,
+                        write_disposition=current_health.write_disposition,
+                        incident_id=current_health.incident_id,
+                    )
                 return
 
         if await self._async_request_status_is_live(request):
@@ -712,7 +875,6 @@ class EffectPreviewManager:
                 confidence=ObservationConfidence.WRITE_COMPLETED,
                 write_disposition=PreviewWriteDisposition.COMPLETED,
             )
-        expectations = _verification_expectations(coordinator, request, compiled)
         async with self._lock:
             worker = self._devices.get(request.config_entry_id)
             if (
@@ -741,6 +903,16 @@ class EffectPreviewManager:
                 config_entry_id=request.config_entry_id,
                 details={"sequence": request.sequence},
             )
+            current_health = self.health(request.config_entry_id)
+            if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
+                self._set_health(
+                    request.config_entry_id,
+                    PreviewHealthPhase.DEGRADED,
+                    error_code=current_health.error_code,
+                    error_message=current_health.error_message,
+                    write_disposition=current_health.write_disposition,
+                    incident_id=current_health.incident_id,
+                )
 
     async def _async_persist_scene_default(self, request: _PreviewRequest) -> None:
         if request.scene is not None:
@@ -810,20 +982,20 @@ class EffectPreviewManager:
             await asyncio.sleep(self._verify_delay)
             if not await self._async_verification_is_current(request):
                 return
-            async with coordinator._control_lock:
-                if not await self._async_verification_is_current(request):
+            if not await self._async_verification_is_current(request):
+                return
+            async with self._lock:
+                worker = self._devices.get(request.config_entry_id)
+                if worker is None:
                     return
-                async with self._lock:
-                    worker = self._devices.get(request.config_entry_id)
-                    if worker is None:
-                        return
-                    worker.verification_observing = True
-                    observing = True
-                async with asyncio.timeout(self._verify_timeout):
-                    result = await coordinator.async_preview_observe(
-                        expectations,
-                        timeout=self._verify_timeout,
-                    )
+                worker.verification_observing = True
+                observing = True
+            result, _reconnected = await self._async_observe_with_reconnect(
+                request.config_entry_id,
+                coordinator,
+                expectations,
+                request=request,
+            )
         except TimeoutError:
             result = None
         except asyncio.CancelledError:
@@ -854,16 +1026,59 @@ class EffectPreviewManager:
             confidence = confirmed_confidence
             error_code = None
             error_message = None
+            self._set_health(
+                request.config_entry_id,
+                PreviewHealthPhase.HEALTHY,
+                write_disposition=PreviewWriteDisposition.COMPLETED,
+            )
+            self._diagnostics.record(
+                DiagnosticStage.VERIFICATION,
+                DiagnosticOutcome.SUCCEEDED,
+                "preview_health_confirmed",
+                correlation_id=request.correlation_id,
+                config_entry_id=request.config_entry_id,
+                details={"sequence": request.sequence},
+            )
         elif result is False:
             phase = PreviewPhase.UNCONFIRMED
             confidence = ObservationConfidence.UNKNOWN
             error_code = "device_state_mismatch"
             error_message = "The light accepted the write, but its reported state did not match the requested change."
+            self._set_health(
+                request.config_entry_id,
+                PreviewHealthPhase.DEGRADED,
+                error_code=error_code,
+                error_message=error_message,
+                write_disposition=PreviewWriteDisposition.COMPLETED,
+            )
+            self._diagnostics.record(
+                DiagnosticStage.VERIFICATION,
+                DiagnosticOutcome.FAILED,
+                "preview_health_mismatch",
+                correlation_id=request.correlation_id,
+                config_entry_id=request.config_entry_id,
+                details={"sequence": request.sequence},
+            )
         else:
             phase = PreviewPhase.UNCONFIRMED
             confidence = ObservationConfidence.UNKNOWN
             error_code = "device_readback_unknown"
             error_message = "The light accepted the write, but did not provide state readback to confirm it."
+            self._set_health(
+                request.config_entry_id,
+                PreviewHealthPhase.DEGRADED,
+                error_code=error_code,
+                error_message=error_message,
+                write_disposition=PreviewWriteDisposition.COMPLETED,
+            )
+            self._diagnostics.record(
+                DiagnosticStage.VERIFICATION,
+                DiagnosticOutcome.FAILED,
+                "preview_health_unconfirmed",
+                correlation_id=request.correlation_id,
+                config_entry_id=request.config_entry_id,
+                details={"sequence": request.sequence},
+            )
         self._publish(
             request,
             phase,
@@ -949,12 +1164,202 @@ class EffectPreviewManager:
             error_code,
             error_message,
             write_disposition,
+            request.persist_default,
+            *_preview_scene_identity(request),
+            request.default_action,
         )
         for listener in tuple(session.listeners.values()):
             try:
                 listener(status)
             except Exception:
                 _LOGGER.debug("Preview status listener failed", exc_info=True)
+
+    def _set_health(
+        self,
+        config_entry_id: str,
+        phase: PreviewHealthPhase,
+        *,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        write_disposition: PreviewWriteDisposition = PreviewWriteDisposition.UNKNOWN,
+        incident_id: str | None = None,
+    ) -> PreviewHealthStatus:
+        current = self._health.get(config_entry_id)
+        self._health_revision += 1
+        if phase is PreviewHealthPhase.HEALTHY:
+            incident_id = None
+            error_code = None
+            error_message = None
+        elif incident_id is None:
+            incident_id = (
+                current.incident_id if current is not None and current.incident_id is not None else str(uuid4())
+            )
+        health = PreviewHealthStatus(
+            config_entry_id=config_entry_id,
+            revision=self._health_revision,
+            phase=phase,
+            incident_id=incident_id,
+            error_code=error_code,
+            error_message=error_message,
+            write_disposition=write_disposition,
+            checked_at=datetime.now(UTC).isoformat(),
+        )
+        self._health[config_entry_id] = health
+        for listener in tuple(self._health_listeners.values()):
+            try:
+                listener(health)
+            except Exception:
+                _LOGGER.debug("Preview health listener failed", exc_info=True)
+        return health
+
+    async def async_check_health(self, config_entry_id: str) -> PreviewHealthStatus:
+        target = self._health_targets.get(config_entry_id)
+        if target is None:
+            raise PreviewError("no Live verification target is available for this device")
+        current = self.health(config_entry_id)
+        async with self._lock:
+            worker = self._devices.get(config_entry_id)
+            if worker is not None and (worker.pending is not None or worker.active is not None):
+                raise PreviewError("a Live change is still in progress")
+            generation = worker.latest_accepted_generation if worker is not None else 0
+        self._set_health(
+            config_entry_id,
+            PreviewHealthPhase.CHECKING,
+            error_code=current.error_code,
+            error_message=current.error_message,
+            write_disposition=current.write_disposition,
+            incident_id=current.incident_id,
+        )
+        coordinator = self._loaded_coordinator(config_entry_id)
+        result, reconnected = await self._async_observe_with_reconnect(
+            config_entry_id,
+            coordinator,
+            target.expectations,
+            health_generation=generation,
+        )
+        if not await self._async_health_check_is_current(
+            config_entry_id,
+            generation,
+        ):
+            return self.health(config_entry_id)
+        if result is True:
+            self._diagnostics.record(
+                DiagnosticStage.VERIFICATION,
+                DiagnosticOutcome.SUCCEEDED,
+                "preview_health_confirmed",
+                config_entry_id=config_entry_id,
+                details={"attempts": 3, "reconnected": reconnected},
+            )
+            return self._set_health(
+                config_entry_id,
+                PreviewHealthPhase.HEALTHY,
+                write_disposition=PreviewWriteDisposition.COMPLETED,
+            )
+        error_code = "device_state_mismatch" if result is False else "device_readback_unknown"
+        error_message = (
+            "The light replied, but its state did not match the latest Live change."
+            if result is False
+            else "The light did not provide state readback for the latest Live change."
+        )
+        self._diagnostics.record(
+            DiagnosticStage.VERIFICATION,
+            DiagnosticOutcome.FAILED,
+            "preview_health_unconfirmed",
+            config_entry_id=config_entry_id,
+            details={
+                "attempts": 3,
+                "reconnected": reconnected,
+                "result": "mismatch" if result is False else "silent",
+            },
+        )
+        return self._set_health(
+            config_entry_id,
+            PreviewHealthPhase.DEGRADED,
+            error_code=error_code,
+            error_message=error_message,
+            write_disposition=PreviewWriteDisposition.COMPLETED,
+            incident_id=current.incident_id,
+        )
+
+    async def _async_observe_with_reconnect(
+        self,
+        config_entry_id: str,
+        coordinator: Any,
+        expectations: Mapping[str, Any],
+        *,
+        request: _PreviewRequest | None = None,
+        health_generation: int | None = None,
+    ) -> tuple[bool | None, bool]:
+        result = await coordinator.async_preview_observe(
+            expectations,
+            timeout=self._verify_timeout,
+        )
+        if result is not None:
+            return result, False
+        self._diagnostics.record(
+            DiagnosticStage.VERIFICATION,
+            DiagnosticOutcome.FAILED,
+            "preview_health_silent",
+            correlation_id=request.correlation_id if request is not None else None,
+            config_entry_id=config_entry_id,
+            details={"attempts": 3, "reconnected": False},
+        )
+        if request is not None and not await self._async_verification_is_current(request):
+            return None, False
+        if health_generation is not None and not await self._async_health_check_is_current(
+            config_entry_id,
+            health_generation,
+        ):
+            return None, False
+        try:
+            await coordinator.disconnect()
+            if request is not None and not await self._async_verification_is_current(request):
+                return None, True
+            if health_generation is not None and not await self._async_health_check_is_current(
+                config_entry_id,
+                health_generation,
+            ):
+                return None, True
+            await coordinator.async_preview_preflight(
+                timeout=min(self._connect_timeout, 2.0),
+            )
+            if request is not None and not await self._async_verification_is_current(request):
+                return None, True
+            if health_generation is not None and not await self._async_health_check_is_current(
+                config_entry_id,
+                health_generation,
+            ):
+                return None, True
+            return (
+                await coordinator.async_preview_observe(
+                    expectations,
+                    timeout=self._verify_timeout,
+                ),
+                True,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self._diagnostics.record(
+                DiagnosticStage.VERIFICATION,
+                DiagnosticOutcome.FAILED,
+                "preview_health_reconnect_failed",
+                correlation_id=request.correlation_id if request is not None else None,
+                config_entry_id=config_entry_id,
+                details={"error_type": type(exc).__name__, "reconnected": True},
+            )
+            return None, True
+
+    async def _async_health_check_is_current(
+        self,
+        config_entry_id: str,
+        generation: int,
+    ) -> bool:
+        async with self._lock:
+            worker = self._devices.get(config_entry_id)
+            return worker is None or (
+                worker.latest_accepted_generation == generation and worker.pending is None and worker.active is None
+            )
 
     async def _async_handle_hass_stop(self, _event: Event) -> None:
         await self.async_shutdown()
@@ -978,6 +1383,50 @@ def _required_item(request: _PreviewRequest) -> LibraryItem:
     if request.item is None:
         raise RuntimeError("snapshot preview request has no effect content")
     return request.item
+
+
+def _preview_scene_identity(
+    request: _PreviewRequest,
+) -> tuple[int | None, int | None]:
+    if request.scene is not None:
+        return request.scene.entry.scene_id, request.scene.entry.effect_id
+    if request.item is not None and isinstance(
+        request.item.content,
+        PaletteScene | LayeredScene,
+    ):
+        template = request.item.content.template
+        return template.scene_id, template.effect_id
+    return None, None
+
+
+def _scene_default_action(
+    scene: Any,
+    canonical_body: bytes,
+    speed_index: int | None,
+) -> str | None:
+    if scene.scene_type == 0 or not canonical_body:
+        return None
+    catalogue_body, catalogue_speed = resolve_native_scene_body(scene)
+    return "reset" if canonical_body == catalogue_body and speed_index == catalogue_speed else "set"
+
+
+def _snapshot_default_action(item: LibraryItem) -> str | None:
+    if not isinstance(item.content, PaletteScene | LayeredScene):
+        return None
+    scene = resolve_scene(
+        item.content.template.sku,
+        item.content.template.scene_id,
+        item.content.template.effect_id,
+    )
+    canonical_body, speed_index = encode_authored_scene_body(
+        item.content,
+        scene.entry,
+    )
+    return _scene_default_action(
+        scene.entry,
+        canonical_body,
+        speed_index,
+    )
 
 
 def _install_effect_state(coordinator: Any, compiled: CompiledEffect) -> None:

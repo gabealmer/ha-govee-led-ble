@@ -34,6 +34,8 @@ from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
 from custom_components.ha_govee_led_ble.effect_preview import (
     EffectPreviewManager,
     PreviewError,
+    PreviewHealthPhase,
+    PreviewHealthStatus,
     PreviewOwnershipError,
     PreviewPhase,
     PreviewRateLimitError,
@@ -67,6 +69,7 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         async_update_listeners=MagicMock(),
     )
     coordinator.async_preview_preflight = AsyncMock()
+    coordinator.disconnect = AsyncMock()
 
     async def write(packet: bytes) -> None:
         coordinator.writes.append(packet)
@@ -218,7 +221,8 @@ async def test_newest_request_can_return_to_the_active_state(
     coordinator.async_preview_write.side_effect = write
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
-    session_id = _open(manager, owner, [])
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
     compiled_names: list[str] = []
     from custom_components.ha_govee_led_ble import effect_preview
 
@@ -438,7 +442,7 @@ async def test_committed_scene_snapshot_persists_the_written_canonical_body(
         sequence=1,
         updated_at="2026-08-17T00:00:00Z",
         item=LibraryItem.new("Edited scene", content),
-        committed=True,
+        persist_default=True,
     )
     await manager.async_wait_idle("entry-a")
 
@@ -457,7 +461,8 @@ async def test_committed_catalogue_default_removes_the_stored_override(
     coordinator = _coordinator()
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
-    session_id = _open(manager, owner, [])
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
     scene = next(
         entry
         for entry in SCENE_ENTRIES["H617A"]
@@ -477,10 +482,14 @@ async def test_committed_catalogue_default_removes_the_stored_override(
         sequence=1,
         updated_at="2026-08-17T00:00:00Z",
         item=LibraryItem.new("Edited scene", changed),
-        committed=True,
+        persist_default=True,
     )
     await manager.async_wait_idle("entry-a")
     assert manager._scene_defaults.get("entry-a", scene.scene_id, scene.effect_id) is not None
+    assert (
+        next(event for event in events if event.sequence == 1 and event.phase is PreviewPhase.QUEUED).default_action
+        == "set"
+    )
 
     await manager.async_queue_snapshot(
         session_id=session_id,
@@ -489,11 +498,15 @@ async def test_committed_catalogue_default_removes_the_stored_override(
         sequence=2,
         updated_at="2026-08-17T00:00:01Z",
         item=LibraryItem.new("Catalogue scene", content),
-        committed=True,
+        persist_default=True,
     )
     await manager.async_wait_idle("entry-a")
 
     assert manager._scene_defaults.get("entry-a", scene.scene_id, scene.effect_id) is None
+    assert (
+        next(event for event in events if event.sequence == 2 and event.phase is PreviewPhase.QUEUED).default_action
+        == "reset"
+    )
     await manager.async_shutdown()
 
 
@@ -525,7 +538,7 @@ async def test_failed_committed_scene_snapshot_does_not_persist(
         sequence=1,
         updated_at="2026-08-17T00:00:00Z",
         item=LibraryItem.new("Edited scene", content),
-        committed=True,
+        persist_default=True,
     )
     await manager.async_wait_idle("entry-a")
 
@@ -566,7 +579,7 @@ async def test_scene_default_storage_failure_is_reported_after_transport(
         sequence=1,
         updated_at="2026-08-17T00:00:00Z",
         item=LibraryItem.new("Edited scene", content),
-        committed=True,
+        persist_default=True,
     )
     await manager.async_wait_idle("entry-a")
 
@@ -602,7 +615,7 @@ async def test_selector_only_scene_preview_never_creates_a_default(
         scene_id=scene.scene_id,
         effect_id=scene.effect_id,
         speed_index=None,
-        committed=True,
+        persist_default=True,
     )
     await manager.async_wait_idle("entry-a")
 
@@ -716,7 +729,7 @@ async def test_explicit_reassert_bypasses_transport_cooldown(
     await manager.async_shutdown()
 
 
-async def test_latest_verification_is_read_only_and_owns_control_lock(
+async def test_latest_verification_is_read_only_without_holding_control_lock(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -724,7 +737,7 @@ async def test_latest_verification_is_read_only_and_owns_control_lock(
 
     async def observe(_expectations, *, timeout):
         assert timeout == 0.1
-        assert coordinator._control_lock.locked()
+        assert not coordinator._control_lock.locked()
         coordinator.send_command.assert_not_awaited()
         return True
 
@@ -749,6 +762,102 @@ async def test_latest_verification_is_read_only_and_owns_control_lock(
         event.phase is PreviewPhase.CONFIRMED and event.confidence is ObservationConfidence.ACTIVATION_MATCH
         for event in events
     )
+
+
+async def test_silent_preview_latches_health_until_read_only_check_confirms(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator(readable=True)
+    coordinator.async_preview_observe.side_effect = [None, None, True]
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=_item("silent"),
+    )
+    await manager.async_wait_idle("entry-a")
+
+    degraded = manager.health("entry-a")
+    assert degraded.phase is PreviewHealthPhase.DEGRADED
+    assert degraded.error_code == "device_readback_unknown"
+    coordinator.disconnect.assert_awaited_once()
+
+    confirmed = await manager.async_check_health("entry-a")
+
+    assert confirmed.phase is PreviewHealthPhase.HEALTHY
+    assert confirmed.error_code is None
+    assert coordinator.async_preview_write.await_count > 0
+    assert coordinator.async_preview_observe.await_count == 3
+
+
+async def test_health_mints_a_new_incident_after_recovery(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, _cache = await _manager(
+        hass,
+        monkeypatch,
+        _coordinator(),
+    )
+
+    first = manager._set_health(
+        "entry-a",
+        PreviewHealthPhase.DEGRADED,
+        error_code="device_readback_unknown",
+    )
+    manager._set_health(
+        "entry-a",
+        PreviewHealthPhase.HEALTHY,
+    )
+    second = manager._set_health(
+        "entry-a",
+        PreviewHealthPhase.DEGRADED,
+        error_code="device_readback_unknown",
+    )
+
+    assert first.incident_id is not None
+    assert second.incident_id is not None
+    assert second.incident_id != first.incident_id
+
+
+async def test_health_subscriptions_use_independent_tokens(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, _cache = await _manager(
+        hass,
+        monkeypatch,
+        _coordinator(),
+    )
+    left: list[PreviewHealthStatus] = []
+    right: list[PreviewHealthStatus] = []
+    unsubscribe_left = manager.subscribe_health(
+        subscription_id=object(),
+        listener=left.append,
+    )
+    manager.subscribe_health(
+        subscription_id=object(),
+        listener=right.append,
+    )
+
+    manager._set_health("entry-a", PreviewHealthPhase.DEGRADED)
+    unsubscribe_left()
+    manager._set_health("entry-a", PreviewHealthPhase.HEALTHY)
+
+    assert [status.phase for status in left] == [
+        PreviewHealthPhase.DEGRADED,
+    ]
+    assert [status.phase for status in right] == [
+        PreviewHealthPhase.DEGRADED,
+        PreviewHealthPhase.HEALTHY,
+    ]
     await manager.async_shutdown()
 
 
@@ -1229,7 +1338,7 @@ async def test_pending_verification_is_cancelled_by_new_work_cancel_unload_and_s
         generation=1,
         correlation_id="correlation",
         reassert=False,
-        committed=False,
+        persist_default=False,
         content_kind="h617a_single",
         item=_item("pending"),
     )

@@ -7,6 +7,7 @@ import type {
   HomeAssistant,
   LibraryItem,
   LibrarySnapshot,
+  PreviewHealthStatus,
   PreviewStatus,
   SceneCatalogue,
   SceneDetail,
@@ -19,6 +20,7 @@ import {
   decodeEffectUserState,
   decodeLibraryItem,
   decodeLibrarySnapshot,
+  decodePreviewHealthStatus,
   decodePreviewStatus,
   decodeSceneCatalogue,
   decodeSceneDetail,
@@ -148,7 +150,7 @@ export class EffectStudioApi {
     name: string,
     content: EffectContent,
     force = false,
-    committed = false,
+    persistDefault = false,
   ): Promise<void> {
     await this.call("preview/apply_snapshot", {
       session_id: sessionId,
@@ -158,7 +160,7 @@ export class EffectStudioApi {
       content: effectContentToWire(content),
       updated_at: new Date().toISOString(),
       force,
-      committed,
+      persist_default: persistDefault,
     });
   }
 
@@ -169,7 +171,7 @@ export class EffectStudioApi {
     scene: SceneSummary,
     speedIndex: number | null,
     force = false,
-    committed = false,
+    persistDefault = false,
   ): Promise<void> {
     await this.call("preview/apply_scene", {
       session_id: sessionId,
@@ -180,7 +182,7 @@ export class EffectStudioApi {
       ...(speedIndex === null ? {} : { speed_index: speedIndex }),
       updated_at: new Date().toISOString(),
       force,
-      committed,
+      persist_default: persistDefault,
     });
   }
 
@@ -279,6 +281,33 @@ export class EffectStudioApi {
         session_id: sessionId,
       },
     );
+  }
+
+  public subscribePreviewHealth(
+    callback: (status: PreviewHealthStatus) => void,
+    onError?: (error: Error) => void,
+  ): Promise<() => void> {
+    return this.hass.connection.subscribeMessage(
+      (status) => {
+        try {
+          callback(decodePreviewHealthStatus(status));
+        } catch (error) {
+          onError?.(asError(error));
+        }
+      },
+      {
+        type: `${PREFIX}/preview/health/subscribe`,
+      },
+    );
+  }
+
+  public async checkPreviewHealth(
+    configEntryId: string,
+  ): Promise<PreviewHealthStatus> {
+    const result = await this.call("preview/health/check", {
+      config_entry_id: configEntryId,
+    });
+    return decodePreviewHealthStatus(resultField(result, "health"));
   }
 
   private call<T>(

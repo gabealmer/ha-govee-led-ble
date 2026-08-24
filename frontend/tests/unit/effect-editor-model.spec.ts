@@ -11,6 +11,7 @@ import {
   libraryKindPriority,
   mergedPaintBrushes,
   PAINTED_SEGMENT_COUNT,
+  reactiveParameterValueText,
   serialiseEditable,
   uniquePaintedPalette,
   upsertSummary,
@@ -243,4 +244,15 @@ test("effect origins retain both provenance and source names", () => {
       { kind: "imported", source_id: "backup" },
     ),
   ).toBe("Imported from backup");
+});
+
+test("Reactive numeric labels expose only Point, Key count, and Segment count", () => {
+  expect(reactiveParameterValueText("point", 3)).toBe("3");
+  expect(reactiveParameterValueText("key_count", 12)).toBe("12");
+  expect(reactiveParameterValueText("segment_count", 6)).toBe("6");
+  expect(reactiveParameterValueText("sensitivity", 80)).toBeUndefined();
+  expect(reactiveParameterValueText("speed", 20)).toBeUndefined();
+  expect(
+    reactiveParameterValueText("relative_brightness", 40),
+  ).toBeUndefined();
 });

@@ -19,6 +19,8 @@ export interface PopoverPosition {
   top: number;
 }
 
+export const INFO_GLYPH = "\u2139\uFE0E";
+
 export function rectIntersectsViewport(
   rect: RectLike,
   viewport: ViewportBounds,

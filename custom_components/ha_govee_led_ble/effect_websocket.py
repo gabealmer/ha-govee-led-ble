@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 from uuid import UUID
 
@@ -34,6 +35,7 @@ from .effect_limits import (
 )
 from .effect_preview import (
     PreviewError,
+    PreviewHealthStatus,
     PreviewOwnershipError,
     PreviewRateLimitError,
     PreviewSequenceError,
@@ -87,6 +89,8 @@ from .effect_websocket_schema import (
     WS_PREVIEW_APPLY_SNAPSHOT,
     WS_PREVIEW_CANCEL,
     WS_PREVIEW_CLOSE,
+    WS_PREVIEW_HEALTH_CHECK,
+    WS_PREVIEW_HEALTH_SUBSCRIBE,
     WS_PREVIEW_OPEN,
     WS_PREVIEW_SUBSCRIBE,
     WS_SCENE_APPLY,
@@ -101,6 +105,7 @@ from .effect_websocket_schema import (
 )
 
 BACKEND_DATA_KEY = "effect_backend"
+_LOGGER = logging.getLogger(__name__)
 
 
 @websocket_command({vol.Required("type"): WS_INFO})
@@ -178,6 +183,7 @@ async def _async_device_payload(
         effect_categories=tuple(coordinator.effect_categories),
     ).to_dict()
     device["active_state"] = observed.to_public_dict()
+    device["preview_health"] = backend.preview.health(entry.entry_id).to_dict()
     return device
 
 
@@ -504,6 +510,7 @@ async def ws_preview_close(
         vol.Required("content"): EFFECT_CONTENT,
         vol.Optional("force", default=False): STRICT_BOOL,
         vol.Optional("committed", default=False): STRICT_BOOL,
+        vol.Optional("persist_default", default=False): STRICT_BOOL,
     }
 )
 @require_admin
@@ -528,7 +535,7 @@ async def ws_preview_apply_snapshot(
             updated_at=msg["updated_at"],
             item=item,
             reassert=msg["force"],
-            committed=msg["committed"],
+            persist_default=msg["persist_default"],
         )
     except Exception as exc:
         _send_preview_error(connection, msg["id"], exc)
@@ -548,6 +555,7 @@ async def ws_preview_apply_snapshot(
         vol.Optional("speed_index"): SPEED_INDEX,
         vol.Optional("force", default=False): STRICT_BOOL,
         vol.Optional("committed", default=False): STRICT_BOOL,
+        vol.Optional("persist_default", default=False): STRICT_BOOL,
     }
 )
 @require_admin
@@ -569,7 +577,7 @@ async def ws_preview_apply_scene(
             scene_id=msg["scene_id"],
             effect_id=msg["effect_id"],
             speed_index=msg.get("speed_index"),
-            committed=msg["committed"],
+            persist_default=msg["persist_default"],
         )
     except Exception as exc:
         _send_preview_error(connection, msg["id"], exc)
@@ -636,6 +644,54 @@ def ws_preview_subscribe(
         _send_preview_error(connection, msg["id"], exc)
         return
     connection.send_result(msg["id"])
+
+
+@websocket_command({vol.Required("type"): WS_PREVIEW_HEALTH_SUBSCRIBE})
+@require_admin
+@callback
+def ws_preview_health_subscribe(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    preview = _backend(hass).preview
+    subscription_token = object()
+
+    @callback
+    def forward(status: PreviewHealthStatus) -> None:
+        connection.send_event(msg["id"], status.to_dict())
+
+    connection.subscriptions[msg["id"]] = preview.subscribe_health(
+        subscription_id=subscription_token,
+        listener=forward,
+    )
+    connection.send_result(msg["id"])
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.state is ConfigEntryState.LOADED:
+            forward(preview.health(entry.entry_id))
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_PREVIEW_HEALTH_CHECK,
+        vol.Required("config_entry_id"): IDENTIFIER,
+    }
+)
+@require_admin
+@async_response
+async def ws_preview_health_check(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    try:
+        status = await _backend(hass).preview.async_check_health(
+            msg["config_entry_id"],
+        )
+    except Exception as exc:
+        _send_preview_error(connection, msg["id"], exc)
+        return
+    connection.send_result(msg["id"], {"health": status.to_dict()})
 
 
 @websocket_command({vol.Required("type"): WS_LIBRARY_LIST})
@@ -1009,6 +1065,8 @@ def async_register_effect_websocket(
     websocket_api.async_register_command(hass, ws_preview_apply_scene)
     websocket_api.async_register_command(hass, ws_preview_cancel)
     websocket_api.async_register_command(hass, ws_preview_subscribe)
+    websocket_api.async_register_command(hass, ws_preview_health_subscribe)
+    websocket_api.async_register_command(hass, ws_preview_health_check)
     websocket_api.async_register_command(hass, ws_library_list)
     websocket_api.async_register_command(hass, ws_library_get)
     websocket_api.async_register_command(hass, ws_library_create)
@@ -1034,21 +1092,30 @@ def _send_preview_error(
 ) -> None:
     if isinstance(error, PreviewOwnershipError):
         code = "unauthorized"
+        message = "The preview session belongs to another connection."
     elif isinstance(error, PreviewSessionNotFoundError):
         code = "not_found"
+        message = "The preview session was not found."
     elif isinstance(error, PreviewSequenceError):
         code = "invalid_sequence"
+        message = "The preview sequence is invalid."
     elif isinstance(error, PreviewRateLimitError):
         code = "rate_limited"
+        message = "Too many preview requests were submitted."
     elif isinstance(error, PreviewShutdownError):
         code = "shutdown"
+        message = "Home Assistant is stopping."
     elif isinstance(error, EffectValidationError):
         code = "invalid_format"
+        message = "The preview effect is invalid."
     elif isinstance(error, PreviewError):
         code = "not_found" if "not loaded" in str(error) or "unloading" in str(error) else "invalid_format"
+        message = str(error)
     else:
         code = "preview_failed"
-    connection.send_error(message_id, code, str(error))
+        message = "The preview request failed."
+        _LOGGER.exception("Unexpected Effect Studio preview request failure", exc_info=error)
+    connection.send_error(message_id, code, message)
 
 
 async def _async_close_preview_session(

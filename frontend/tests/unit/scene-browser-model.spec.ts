@@ -56,12 +56,21 @@ test("speed glyphs retain clear accessible labels", () => {
 test("native default actions precede the stable Edit action without progress labels", () => {
   expect(nativeSceneActions(true, true, false)).toEqual([
     { id: "set-default", label: "Set as Default", style: "primary" },
-    { id: "reset-default", label: "Reset to Defaults", style: "secondary" },
+    { id: "reset-default", label: "Reset", style: "secondary" },
     { id: "edit", label: "Edit", style: "secondary" },
   ]);
   expect(nativeSceneActions(true, true, true).map((action) => action.label)).toEqual([
-    "Reset to Defaults",
+    "Reset",
     "Edit",
+  ]);
+  expect(nativeSceneActions(true, true, false, true)).toEqual([
+    {
+      id: "reset-default",
+      label: "Reset",
+      style: "secondary",
+      disabled: true,
+    },
+    { id: "edit", label: "Edit", style: "secondary" },
   ]);
   expect(nativeSceneActions(true, true, false).some((action) => action.label.includes("Saving"))).toBe(false);
 });
@@ -89,6 +98,10 @@ test("settled scene preview statuses trigger an authoritative default refresh", 
     error_code: null,
     error_message: null,
     write_disposition: "completed" as const,
+    persist_default: true,
+    scene_id: 1,
+    effect_id: 2,
+    default_action: "set" as const,
   };
 
   expect(previewMayChangeSceneDefault(status, "entry-a")).toBe(false);

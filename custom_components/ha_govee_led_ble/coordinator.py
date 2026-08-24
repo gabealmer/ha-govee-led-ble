@@ -1128,7 +1128,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self,
         expectations: Mapping[str, Any],
         *,
-        timeout: float = 2.0,
+        timeout: float = 4.0,
+        attempts: int = 3,
     ) -> bool | None:
         if not self.profile.state_readable or not expectations:
             return None
@@ -1167,31 +1168,46 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 }
             )
         )
+        attempts = max(1, attempts)
+        observed = False
         field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
-        async with self._lock:
-            client = self._client
-            if client is None or not client.is_connected:
-                return None
-            ok = await self._send_state_queries(
-                query_power=query_power,
-                query_brightness=query_brightness,
-                query_color_mode=query_color,
-                query_white_balance=query_white_balance,
-                query_blank_screen=query_blank_screen,
-                query_relative_brightness=query_relative_brightness,
-            )
-        if not ok:
-            return None
+        field_revisions = dict(field_baselines)
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if self._client is not client:
+        for attempt in range(attempts):
+            async with self._control_lock:
+                async with self._lock:
+                    client = self._client
+                    if client is None or not client.is_connected:
+                        return None
+                    ok = await self._send_state_queries(
+                        query_power=query_power,
+                        query_brightness=query_brightness,
+                        query_color_mode=query_color,
+                        query_white_balance=query_white_balance,
+                        query_blank_screen=query_blank_screen,
+                        query_relative_brightness=query_relative_brightness,
+                    )
+            if not ok:
                 return None
-            if all(self._field_revisions.get(field, 0) > baseline for field, baseline in field_baselines.items()):
-                return all(getattr(self, field) == expected for field, expected in expectations.items())
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                await asyncio.sleep(min(0.05, remaining))
-        return None
+            attempt_deadline = min(
+                deadline,
+                time.monotonic() + max(0.1, (deadline - time.monotonic()) / (attempts - attempt)),
+            )
+            while time.monotonic() < attempt_deadline:
+                if self._client is not client:
+                    return None
+                if all(self._field_revisions.get(field, 0) > field_revisions[field] for field in expectations):
+                    observed = True
+                    field_revisions = {field: self._field_revisions.get(field, 0) for field in expectations}
+                    if all(getattr(self, field) == expected for field, expected in expectations.items()):
+                        return True
+                    break
+                remaining = attempt_deadline - time.monotonic()
+                if remaining > 0:
+                    await asyncio.sleep(min(0.05, remaining))
+            if time.monotonic() >= deadline:
+                break
+        return False if observed else None
 
     def _start_keep_alive(self) -> None:
         self._stop_keep_alive()

@@ -25,7 +25,36 @@ export interface EditorActionVisibility {
   delete: boolean;
 }
 
+export type EditorAction = keyof EditorActionVisibility;
+
 export const NO_EDITOR_SOURCE: EditorSource = { kind: "none" };
+
+export function newEditorSourceSelected(
+  source: EditorSource,
+  category: CustomEffectCategory,
+): boolean {
+  return (
+    source.kind === "new" &&
+    source.owner.section === "custom" &&
+    source.owner.category === category
+  );
+}
+
+export function reactiveEffectSelectorVisible(source: EditorSource): boolean {
+  return (
+    (source.kind === "new" || source.kind === "saved") &&
+    source.owner.section === "custom" &&
+    source.owner.category === "music"
+  );
+}
+
+export function editorActionOrder(
+  visibility: EditorActionVisibility,
+): EditorAction[] {
+  return (["reset", "cancel", "delete", "save", "saveAs"] as const).filter(
+    (action) => visibility[action],
+  );
+}
 
 export function editorOwnerMatches(
   source: EditorSource,

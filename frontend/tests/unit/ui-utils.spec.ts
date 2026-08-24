@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
 import {
-  brightnessFillGeometry,
+  brightnessFillPercentage,
   classifyLightEntityState,
   clamp,
   clampInteger,
@@ -37,6 +37,16 @@ function device(lightEntityId: string | null): DeviceCapabilities {
       video: "unsupported",
     },
     readback: "diy_code_only",
+    preview_health: {
+      config_entry_id: "entry-a",
+      revision: 0,
+      phase: "healthy",
+      incident_id: null,
+      error_code: null,
+      error_message: null,
+      write_disposition: "not_started",
+      checked_at: "2026-08-24T00:00:00Z",
+    },
     effect_categories: [
       "scenes",
       "effects",
@@ -139,23 +149,12 @@ test("native light presentation follows reactive Home Assistant state", () => {
 });
 
 test("native light fill rises bottom-up in proportion to raw brightness", () => {
-  expect(brightnessFillGeometry(0)).toEqual({
-    height: 0,
-    y: 18,
-  });
-
-  const fortyFivePercent = brightnessFillGeometry(
+  expect(brightnessFillPercentage(0)).toBe(0);
+  expect(brightnessFillPercentage(51)).toBe(20);
+  const fortyFivePercent = brightnessFillPercentage(
     Math.round(255 * 0.45),
   );
-  expect(fortyFivePercent.height / 12).toBeCloseTo(0.45, 2);
-  expect(fortyFivePercent.y).toBeCloseTo(
-    18 - fortyFivePercent.height,
-  );
-
-  const midpoint = brightnessFillGeometry(128);
-  expect(midpoint.height / 12).toBeCloseTo(0.5, 2);
-  expect(brightnessFillGeometry(255)).toEqual({
-    height: 12,
-    y: 6,
-  });
+  expect(fortyFivePercent).toBeCloseTo(45.1, 1);
+  expect(brightnessFillPercentage(128)).toBeCloseTo(50, 0);
+  expect(brightnessFillPercentage(255)).toBe(100);
 });

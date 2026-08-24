@@ -6,6 +6,7 @@ import type { CheckboxControlChange } from "./checkbox-control";
 import "./checkbox-control";
 import { recentColour } from "./colour-picker";
 import type { LivePreviewInteraction } from "./live-preview-controller";
+import { reactiveParameterValueText } from "./effect-editor-model";
 import "./single-colour-field";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
@@ -49,6 +50,10 @@ const FOUNTAIN_DIRECTIONS: ReadonlyArray<{
   { id: "counterclockwise", label: "Counterclockwise" },
 ];
 
+export interface MusicModeChange {
+  mode: string;
+}
+
 export class GoveeMusicProfileEditor extends LitElement {
   @property({ attribute: false })
   public content?: MusicProfileContent;
@@ -58,6 +63,9 @@ export class GoveeMusicProfileEditor extends LitElement {
 
   @property({ type: Boolean })
   public disabled = false;
+
+  @property({ type: Boolean })
+  public modeSelectionEnabled = false;
 
   private lastFixedColour?: RGB;
   private interaction: LivePreviewInteraction = "committed";
@@ -85,11 +93,13 @@ export class GoveeMusicProfileEditor extends LitElement {
     return html`
       <section class="card">
         <div class="parameter-stack">
+          ${this.renderModeSelector()}
           ${this.renderRangeField(
             "Sensitivity",
             sensitivity,
             sensitivityMinimum,
             sensitivityMaximum,
+            undefined,
             (value) =>
               this.updateContent((content) => {
                 content.sensitivity = value;
@@ -180,6 +190,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     value: number,
     min: number,
     max: number,
+    parameter: OwnedMusicParameterKey | undefined,
     commit: (value: number) => void,
   ) {
     return html`
@@ -188,6 +199,9 @@ export class GoveeMusicProfileEditor extends LitElement {
         .value=${value}
         .minimum=${min}
         .maximum=${max}
+        .valueText=${parameter
+          ? reactiveParameterValueText(parameter, value)
+          : undefined}
         .disabled=${this.disabled}
         @value-changed=${(event: CustomEvent<SliderControlChange>) => {
           this.interaction = event.detail.interaction;
@@ -198,6 +212,42 @@ export class GoveeMusicProfileEditor extends LitElement {
           }
         }}
       ></govee-slider-control>
+    `;
+  }
+
+  private renderModeSelector() {
+    if (!this.modeSelectionEnabled || !this.content || !this.catalogue) {
+      return nothing;
+    }
+    const knownMode = this.catalogue.music_modes.some(
+      (mode) => mode.id === this.content!.mode,
+    );
+    return html`
+      <label class="field">
+        <span>Reactive effect</span>
+        <select
+          aria-label="Reactive effect"
+          .value=${live(this.content.mode)}
+          ?disabled=${this.disabled}
+          @change=${(event: Event) =>
+            this.dispatchEvent(
+              new CustomEvent<MusicModeChange>("mode-changed", {
+                detail: {
+                  mode: (event.target as HTMLSelectElement).value,
+                },
+                bubbles: true,
+                composed: true,
+              }),
+            )}
+        >
+          ${knownMode
+            ? nothing
+            : html`<option value=${this.content.mode}>${this.content.mode}</option>`}
+          ${this.catalogue.music_modes.map(
+            (mode) => html`<option value=${mode.id}>${mode.label}</option>`,
+          )}
+        </select>
+      </label>
     `;
   }
 
@@ -223,7 +273,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     const gradient = booleanParameter(parameters, "gradient", true);
 
     return html`
-      ${this.renderRangeField("Point", point, 1, 5, (value) =>
+      ${this.renderRangeField("Point", point, 1, 5, "point", (value) =>
         this.updateParameter("point", value))}
       ${this.renderCheckboxField("Gradient", gradient, (checked) =>
         this.updateParameter("gradient", checked))}
@@ -245,6 +295,7 @@ export class GoveeMusicProfileEditor extends LitElement {
         relativeBrightness,
         0,
         50,
+        "relative_brightness",
         (value) => this.updateParameter("relative_brightness", value),
       )}
     `;
@@ -254,7 +305,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     const keyCount = numberParameter(parameters, "key_count", 15, 8, 15);
 
     return html`
-      ${this.renderRangeField("Key count", keyCount, 8, 15, (value) =>
+      ${this.renderRangeField("Key count", keyCount, 8, 15, "key_count", (value) =>
         this.updateParameter("key_count", value))}
     `;
   }
@@ -301,9 +352,10 @@ export class GoveeMusicProfileEditor extends LitElement {
         segmentCount,
         1,
         7,
+        "segment_count",
         (value) => this.updateParameter("segment_count", value),
       )}
-      ${this.renderRangeField("Speed", speed, 1, 50, (value) =>
+      ${this.renderRangeField("Speed", speed, 1, 50, "speed", (value) =>
         this.updateParameter("speed", value))}
       ${this.renderCheckboxField("Gradient", gradient, (checked) =>
         this.updateParameter("gradient", checked))}
