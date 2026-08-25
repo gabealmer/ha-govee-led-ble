@@ -1143,7 +1143,7 @@
       }
     ],
     "editor_info": {
-      "api_version": 10,
+      "api_version": 11,
       "compiler_version": 4,
       "effect_schema_version": 2,
       "limits": {
@@ -1152,7 +1152,6 @@
         "effect_document_bytes": 65536,
         "effect_name": 128,
         "library_items": 256,
-        "preview_requests_per_second": 10,
         "preview_sequence": 9007199254740991,
         "scene_catalogue_entries": 512
       }

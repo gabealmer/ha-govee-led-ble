@@ -21,7 +21,6 @@ import type { StudioSection } from "./studio-navigation";
 import type {
   CustomEffectCatalogue, DeviceCapabilities, DiyEffectFamily, EffectContent, EffectUserState, LibraryItem, LibrarySnapshot,
   LibrarySummary, HomeAssistant, ModelEffectCatalogue, ModelSku, PreviewStatus, RGB,
-  PreviewHealthStatus,
 } from "./types";
 
 export type DeleteCandidate = Pick<LibrarySummary, "id" | "version" | "updated_at" | "name"> & {
@@ -59,7 +58,6 @@ export class PanelModel {
   public autoSaveEnabled = false;
   public autoSaveFailed = false;
   public previewStatus?: PreviewStatus;
-  public previewHealth: Record<string, PreviewHealthStatus> = {};
   public previewNotice?: string;
   public previewProgressVisible = false;
   public savedBaseline?: string;
@@ -91,13 +89,6 @@ export class PanelModel {
     return this.devices.find(
       (device) => device.config_entry_id === this.selectedDeviceId,
     );
-  }
-
-  public get selectedPreviewHealth(): PreviewHealthStatus | undefined {
-    const device = this.selectedDevice;
-    return device
-      ? this.previewHealth[device.config_entry_id] ?? device.preview_health
-      : undefined;
   }
 
   public get selectedModel(): ModelSku | undefined {

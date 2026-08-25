@@ -38,11 +38,11 @@ from .effect_preview import (
     PreviewError,
     PreviewHealthStatus,
     PreviewOwnershipError,
-    PreviewRateLimitError,
     PreviewSequenceError,
     PreviewSessionNotFoundError,
     PreviewShutdownError,
     PreviewStatus,
+    PreviewTargetUnavailableError,
 )
 from .effect_scenes import (
     async_apply_scene,
@@ -93,7 +93,6 @@ from .effect_websocket_schema import (
     WS_PREVIEW_CLOSE,
     WS_PREVIEW_HEALTH_CHECK,
     WS_PREVIEW_HEALTH_SUBSCRIBE,
-    WS_PREVIEW_OPEN,
     WS_PREVIEW_SUBSCRIBE,
     WS_SCENE_APPLY,
     WS_SCENE_CATALOGUE_GET,
@@ -107,6 +106,9 @@ from .effect_websocket_schema import (
 )
 
 BACKEND_DATA_KEY = "effect_backend"
+PREVIEW_SESSION_NOT_FOUND_CODE = "preview_session_not_found"
+PREVIEW_SESSION_UNAUTHORIZED_CODE = "preview_session_unauthorized"
+PREVIEW_TARGET_UNAVAILABLE_CODE = "preview_target_unavailable"
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -524,33 +526,6 @@ async def ws_scene_default_set(
     )
 
 
-@websocket_command({vol.Required("type"): WS_PREVIEW_OPEN})
-@require_admin
-@callback
-def ws_preview_open(
-    hass: HomeAssistant,
-    connection: ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    backend = _backend(hass)
-
-    try:
-        session_id = backend.preview.open_session(owner=connection)
-    except PreviewShutdownError as exc:
-        connection.send_error(msg["id"], "shutdown", str(exc))
-        return
-
-    @callback
-    def close_session() -> None:
-        hass.async_create_task(
-            _async_close_preview_session(backend, session_id, connection),
-            name=f"{DOMAIN} close preview session",
-        )
-
-    connection.subscriptions[msg["id"]] = close_session
-    connection.send_result(msg["id"], {"session_id": session_id})
-
-
 @websocket_command(
     {
         vol.Required("type"): WS_PREVIEW_CLOSE,
@@ -570,10 +545,10 @@ async def ws_preview_close(
             connection,
         )
     except PreviewOwnershipError as exc:
-        connection.send_error(msg["id"], "unauthorized", str(exc))
+        connection.send_error(msg["id"], PREVIEW_SESSION_UNAUTHORIZED_CODE, str(exc))
         return
     except PreviewSessionNotFoundError as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        connection.send_error(msg["id"], PREVIEW_SESSION_NOT_FOUND_CODE, str(exc))
         return
     connection.send_result(msg["id"], {"closed": True})
 
@@ -587,8 +562,6 @@ async def ws_preview_close(
         vol.Required("updated_at"): TIMESTAMP,
         vol.Required("name"): EFFECT_NAME,
         vol.Required("content"): EFFECT_CONTENT,
-        vol.Optional("force", default=False): STRICT_BOOL,
-        vol.Optional("committed", default=False): STRICT_BOOL,
         vol.Optional("persist_default", default=False): STRICT_BOOL,
     }
 )
@@ -601,7 +574,7 @@ async def ws_preview_apply_snapshot(
 ) -> None:
     backend = _backend(hass)
     try:
-        backend.preview.require_owner(msg["session_id"], connection)
+        backend.preview.ensure_session(msg["session_id"], connection)
         item = backend.application.new_authored_item(
             name=msg["name"],
             content=msg["content"],
@@ -613,7 +586,6 @@ async def ws_preview_apply_snapshot(
             sequence=msg["sequence"],
             updated_at=msg["updated_at"],
             item=item,
-            reassert=msg["force"],
             persist_default=msg["persist_default"],
         )
     except Exception as exc:
@@ -632,8 +604,6 @@ async def ws_preview_apply_snapshot(
         vol.Required("scene_id"): SCENE_ID,
         vol.Required("effect_id"): SCENE_ID,
         vol.Optional("speed_index"): SPEED_INDEX,
-        vol.Optional("force", default=False): STRICT_BOOL,
-        vol.Optional("committed", default=False): STRICT_BOOL,
         vol.Optional("persist_default", default=False): STRICT_BOOL,
     }
 )
@@ -646,7 +616,7 @@ async def ws_preview_apply_scene(
 ) -> None:
     backend = _backend(hass)
     try:
-        backend.preview.require_owner(msg["session_id"], connection)
+        backend.preview.ensure_session(msg["session_id"], connection)
         acceptance = await backend.preview.async_queue_scene(
             session_id=msg["session_id"],
             owner=connection,
@@ -685,10 +655,10 @@ async def ws_preview_cancel(
             config_entry_id=msg.get("config_entry_id"),
         )
     except PreviewOwnershipError as exc:
-        connection.send_error(msg["id"], "unauthorized", str(exc))
+        connection.send_error(msg["id"], PREVIEW_SESSION_UNAUTHORIZED_CODE, str(exc))
         return
     except PreviewSessionNotFoundError as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        connection.send_error(msg["id"], PREVIEW_SESSION_NOT_FOUND_CODE, str(exc))
         return
     connection.send_result(msg["id"], {"cancelled": True})
 
@@ -723,6 +693,8 @@ def ws_preview_subscribe(
         _send_preview_error(connection, msg["id"], exc)
         return
     connection.send_result(msg["id"])
+    if latest := backend.preview.latest_status(msg["session_id"], connection):
+        forward(latest)
 
 
 @websocket_command({vol.Required("type"): WS_PREVIEW_HEALTH_SUBSCRIBE})
@@ -1151,7 +1123,6 @@ def async_register_effect_websocket(
     websocket_api.async_register_command(hass, ws_scene_apply)
     websocket_api.async_register_command(hass, ws_scene_default_set)
     websocket_api.async_register_command(hass, ws_scene_reset)
-    websocket_api.async_register_command(hass, ws_preview_open)
     websocket_api.async_register_command(hass, ws_preview_close)
     websocket_api.async_register_command(hass, ws_preview_apply_snapshot)
     websocket_api.async_register_command(hass, ws_preview_apply_scene)
@@ -1183,17 +1154,17 @@ def _send_preview_error(
     error: Exception,
 ) -> None:
     if isinstance(error, PreviewOwnershipError):
-        code = "unauthorized"
+        code = PREVIEW_SESSION_UNAUTHORIZED_CODE
         message = "The preview session belongs to another connection."
     elif isinstance(error, PreviewSessionNotFoundError):
-        code = "not_found"
+        code = PREVIEW_SESSION_NOT_FOUND_CODE
         message = "The preview session was not found."
+    elif isinstance(error, PreviewTargetUnavailableError):
+        code = PREVIEW_TARGET_UNAVAILABLE_CODE
+        message = "The target light is not loaded."
     elif isinstance(error, PreviewSequenceError):
         code = "invalid_sequence"
         message = "The preview sequence is invalid."
-    elif isinstance(error, PreviewRateLimitError):
-        code = "rate_limited"
-        message = "Too many preview requests were submitted."
     elif isinstance(error, PreviewShutdownError):
         code = "shutdown"
         message = "Home Assistant is stopping."
@@ -1201,21 +1172,10 @@ def _send_preview_error(
         code = "invalid_format"
         message = "The preview effect is invalid."
     elif isinstance(error, PreviewError):
-        code = "not_found" if "not loaded" in str(error) or "unloading" in str(error) else "invalid_format"
+        code = "invalid_format"
         message = str(error)
     else:
         code = "preview_failed"
         message = "The preview request failed."
         _LOGGER.exception("Unexpected Effect Studio preview request failure", exc_info=error)
     connection.send_error(message_id, code, message)
-
-
-async def _async_close_preview_session(
-    backend: EffectBackend,
-    session_id: str,
-    connection: ActiveConnection,
-) -> None:
-    try:
-        await backend.preview.async_close_session(session_id, connection)
-    except PreviewSessionNotFoundError:
-        return

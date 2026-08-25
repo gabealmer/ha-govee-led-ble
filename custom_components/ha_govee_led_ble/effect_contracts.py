@@ -14,13 +14,12 @@ from .effect_limits import (
     MAX_EFFECT_DOCUMENT_BYTES,
     MAX_EFFECT_NAME_LENGTH,
     MAX_LIBRARY_ITEMS,
-    MAX_PREVIEW_REQUESTS_PER_SECOND,
     MAX_PREVIEW_SEQUENCE,
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 10
-EDITOR_ASSET_VERSION: Final = 12
+EDITOR_API_VERSION: Final = 11
+EDITOR_ASSET_VERSION: Final = 13
 EFFECT_COMPILER_VERSION: Final = 4
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -431,7 +430,6 @@ class EditorApiInfo:
                 "deployment_records": MAX_DEPLOYMENT_RECORDS,
                 "scene_catalogue_entries": MAX_SCENE_CATALOGUE_ENTRIES,
                 "preview_sequence": MAX_PREVIEW_SEQUENCE,
-                "preview_requests_per_second": MAX_PREVIEW_REQUESTS_PER_SECOND,
             },
         }
 

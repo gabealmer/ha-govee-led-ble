@@ -527,6 +527,8 @@ export interface HomeAssistant {
       callback: (event: T) => void,
       message: Record<string, unknown>,
     ): Promise<() => void>;
+    addEventListener?(event: "ready", callback: () => void): void;
+    removeEventListener?(event: "ready", callback: () => void): void;
   };
   user?: {
     is_admin: boolean;

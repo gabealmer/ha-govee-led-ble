@@ -14,6 +14,7 @@ import {
   studioSelectorStyles,
   studioWorkspaceStyles,
 } from "./studio-styles";
+import { scrollSelectedIntoView } from "./ui-utils";
 
 export interface CustomEffectBrowserEntryRequest {
   entry: CustomEffectListEntry;
@@ -41,6 +42,25 @@ export class GoveeCustomEffectBrowser extends LitElement {
 
   @property({ type: Boolean })
   public isAdmin = false;
+
+  private lastSelectionIdentity?: string;
+
+  protected updated(changed: Map<PropertyKey, unknown>): void {
+    const selectionIdentity = this.selectionIdentity;
+    if (!selectionIdentity) {
+      this.lastSelectionIdentity = undefined;
+      return;
+    }
+    if (
+      (selectionIdentity !== this.lastSelectionIdentity ||
+        changed.has("category")) &&
+      scrollSelectedIntoView(
+        this.shadowRoot?.querySelector(".item-sidebar") ?? null,
+      )
+    ) {
+      this.lastSelectionIdentity = selectionIdentity;
+    }
+  }
 
   protected render() {
     const context = this.context;
@@ -78,6 +98,16 @@ export class GoveeCustomEffectBrowser extends LitElement {
         ${entries.map((entry) => this.entryButton(entry))}
       </aside>
     `;
+  }
+
+  private get selectionIdentity(): string | undefined {
+    if (this.newSelected) {
+      return "new";
+    }
+    if (this.currentItemId) {
+      return `saved:${this.currentItemId}`;
+    }
+    return this.templateSelection;
   }
 
   private entryButton(entry: CustomEffectListEntry) {

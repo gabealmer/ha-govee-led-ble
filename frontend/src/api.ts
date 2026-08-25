@@ -7,7 +7,6 @@ import type {
   HomeAssistant,
   LibraryItem,
   LibrarySnapshot,
-  PreviewHealthStatus,
   PreviewStatus,
   SceneCatalogue,
   SceneDetail,
@@ -20,7 +19,6 @@ import {
   decodeEffectUserState,
   decodeLibraryItem,
   decodeLibrarySnapshot,
-  decodePreviewHealthStatus,
   decodePreviewStatus,
   decodeSceneCatalogue,
   decodeSceneDetail,
@@ -147,15 +145,6 @@ export class EffectStudioApi {
     });
   }
 
-  public async openPreviewSession(): Promise<string> {
-    const result = await this.call("preview/session/open");
-    const sessionId = resultField(result, "session_id");
-    if (typeof sessionId !== "string" || sessionId.length < 1 || sessionId.length > 255) {
-      throw new Error("Malformed Effect Studio server payload: preview session ID is invalid.");
-    }
-    return sessionId;
-  }
-
   public async closePreviewSession(sessionId: string): Promise<void> {
     await this.call("preview/session/close", {
       session_id: sessionId,
@@ -168,7 +157,6 @@ export class EffectStudioApi {
     configEntryId: string,
     name: string,
     content: EffectContent,
-    force = false,
     persistDefault = false,
   ): Promise<void> {
     await this.call("preview/apply_snapshot", {
@@ -178,7 +166,6 @@ export class EffectStudioApi {
       name,
       content: effectContentToWire(content),
       updated_at: new Date().toISOString(),
-      force,
       persist_default: persistDefault,
     });
   }
@@ -189,7 +176,6 @@ export class EffectStudioApi {
     configEntryId: string,
     scene: SceneSummary,
     speedIndex: number | null,
-    force = false,
     persistDefault = false,
   ): Promise<void> {
     await this.call("preview/apply_scene", {
@@ -200,7 +186,6 @@ export class EffectStudioApi {
       effect_id: scene.effect_id,
       ...(speedIndex === null ? {} : { speed_index: speedIndex }),
       updated_at: new Date().toISOString(),
-      force,
       persist_default: persistDefault,
     });
   }
@@ -302,31 +287,13 @@ export class EffectStudioApi {
     );
   }
 
-  public subscribePreviewHealth(
-    callback: (status: PreviewHealthStatus) => void,
-    onError?: (error: Error) => void,
-  ): Promise<() => void> {
-    return this.hass.connection.subscribeMessage(
-      (status) => {
-        try {
-          callback(decodePreviewHealthStatus(status));
-        } catch (error) {
-          onError?.(asError(error));
-        }
-      },
-      {
-        type: `${PREFIX}/preview/health/subscribe`,
-      },
-    );
-  }
-
-  public async checkPreviewHealth(
-    configEntryId: string,
-  ): Promise<PreviewHealthStatus> {
-    const result = await this.call("preview/health/check", {
-      config_entry_id: configEntryId,
-    });
-    return decodePreviewHealthStatus(resultField(result, "health"));
+  public onConnectionReady(callback: () => void): () => void {
+    const connection = this.hass.connection;
+    if (!connection.addEventListener || !connection.removeEventListener) {
+      return () => undefined;
+    }
+    connection.addEventListener("ready", callback);
+    return () => connection.removeEventListener?.("ready", callback);
   }
 
   private call<T>(

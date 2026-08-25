@@ -40,13 +40,15 @@ from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewHealthStatus,
     PreviewOwnershipError,
     PreviewPhase,
-    PreviewRateLimitError,
     PreviewSequenceError,
+    PreviewSessionNotFoundError,
     PreviewShutdownError,
     PreviewStatus,
+    PreviewWriteDisposition,
 )
 from custom_components.ha_govee_led_ble.effect_runtime import resolve_diy_code
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
@@ -78,6 +80,25 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         coordinator.writes.append(packet)
 
     coordinator.async_preview_write = AsyncMock(side_effect=write)
+
+    async def write_effect_sequence(
+        packets,
+        *,
+        intent,
+        before_write=None,
+        attempt_started=None,
+        progress=None,
+    ) -> None:
+        if attempt_started is not None:
+            await attempt_started(1)
+        if before_write is not None:
+            await before_write()
+        for index, packet in enumerate(packets, start=1):
+            await coordinator.async_preview_write(packet)
+            if progress is not None:
+                await progress(index)
+
+    coordinator.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)
     coordinator.async_preview_observe = AsyncMock(return_value=True)
     coordinator.send_command = AsyncMock(side_effect=AssertionError("preview verification must not call send_command"))
     return coordinator
@@ -104,11 +125,10 @@ async def _manager(
         cache,
         scene_defaults,
         EffectDiagnosticHistory(),
-        write_cadence=timing.get("write_cadence", 0),
         verify_delay=timing.get("verify_delay", 0),
         verify_timeout=timing.get("verify_timeout", 0.1),
         connect_timeout=timing.get("connect_timeout", 0.1),
-        failure_cooldown=timing.get("failure_cooldown", 0),
+        channel_idle_timeout=timing.get("channel_idle_timeout", 300),
     )
     entry = SimpleNamespace(
         entry_id="entry-a",
@@ -270,7 +290,7 @@ async def test_newest_request_can_return_to_the_active_state(
     await manager.async_shutdown()
 
 
-async def test_session_ownership_and_acceptance_rate_are_enforced(
+async def test_session_ownership_is_enforced_without_rejecting_rapid_updates(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -282,24 +302,100 @@ async def test_session_ownership_and_acceptance_rate_are_enforced(
     with pytest.raises(PreviewOwnershipError):
         manager.require_owner(session_id, object())
 
-    for sequence in range(1, 11):
-        await manager.async_queue_snapshot(
+    for sequence in range(1, 101):
+        acceptance = await manager.async_queue_snapshot(
             session_id=session_id,
             owner=owner,
             config_entry_id="entry-a",
             sequence=sequence,
-            updated_at=f"2026-08-17T00:00:{sequence:02d}Z",
+            updated_at="2026-08-17T00:00:00Z",
             item=_item(f"request-{sequence}", sequence),
         )
-    with pytest.raises(PreviewRateLimitError):
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=11,
-            updated_at="2026-08-17T00:00:11Z",
-            item=_item("request-11", 11),
-        )
+        assert acceptance.accepted
+    await manager.async_wait_idle("entry-a")
+    await manager.async_shutdown()
+
+
+async def test_channel_reattaches_for_same_user_and_expires_when_idle(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, _cache = await _manager(
+        hass,
+        monkeypatch,
+        _coordinator(),
+        channel_idle_timeout=0.01,
+    )
+    session_id = str(uuid4())
+    first_connection = SimpleNamespace(user=SimpleNamespace(id="user-a"))
+    replacement_connection = SimpleNamespace(user=SimpleNamespace(id="user-a"))
+    other_user = SimpleNamespace(user=SimpleNamespace(id="user-b"))
+
+    first_listener = MagicMock()
+    replacement_listener = MagicMock()
+    unsubscribe = manager.subscribe(
+        session_id=session_id,
+        owner=first_connection,
+        subscription_id=1,
+        listener=first_listener,
+    )
+    unsubscribe_replacement = manager.subscribe(
+        session_id=session_id,
+        owner=replacement_connection,
+        subscription_id=1,
+        listener=replacement_listener,
+    )
+    with pytest.raises(PreviewOwnershipError):
+        manager.ensure_session(session_id, other_user)
+
+    unsubscribe()
+    assert manager._sessions[session_id].listeners[1] is replacement_listener
+    unsubscribe_replacement()
+    await asyncio.sleep(0.02)
+
+    with pytest.raises(PreviewSessionNotFoundError):
+        manager.require_owner(session_id, replacement_connection)
+    await manager.async_shutdown()
+
+
+async def test_failed_sequence_can_retry_same_desired_revision(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator()
+    coordinator.async_preview_write.side_effect = OSError("transport failed")
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+    item = _item("retry")
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=item,
+    )
+    await manager.async_wait_idle("entry-a")
+    failed_status = events[-1]
+    assert failed_status.phase is PreviewPhase.FAILED
+
+    coordinator.async_preview_write.side_effect = lambda packet: coordinator.writes.append(packet)
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:01Z",
+        item=item,
+    )
+    await manager.async_wait_idle("entry-a")
+
+    written_status = events[-1]
+    assert written_status.phase is PreviewPhase.WRITTEN
+    assert coordinator.writes
     await manager.async_shutdown()
 
 
@@ -331,55 +427,7 @@ async def test_status_subscription_is_filtered_to_its_session(
     await manager.async_shutdown()
 
 
-async def test_device_write_starts_respect_backend_cadence(
-    hass: HomeAssistant,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    coordinator = _coordinator()
-    manager, _cache = await _manager(
-        hass,
-        monkeypatch,
-        coordinator,
-        write_cadence=0.05,
-    )
-    owner = object()
-    writing_times = []
-
-    def record(event) -> None:
-        if event.phase is PreviewPhase.WRITING:
-            writing_times.append(asyncio.get_running_loop().time())
-
-    session_id = manager.open_session(owner=owner)
-    manager.subscribe(
-        session_id=session_id,
-        owner=owner,
-        subscription_id=object(),
-        listener=record,
-    )
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("first"),
-    )
-    await manager.async_wait_idle("entry-a")
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=2,
-        updated_at="2026-08-17T00:00:01Z",
-        item=_item("second", 60),
-    )
-    await manager.async_wait_idle("entry-a")
-
-    assert writing_times[1] - writing_times[0] >= 0.045
-    await manager.async_shutdown()
-
-
-async def test_native_scene_preview_uses_scene_speed_primitive_and_reasserts(
+async def test_native_scene_preview_uses_scene_speed_primitive_for_repeated_selection(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -392,13 +440,14 @@ async def test_native_scene_preview_uses_scene_speed_primitive_and_reasserts(
         *,
         speed_index,
         canonical_body,
-        writer,
+        before_write,
         verify,
         intent,
     ):
         async with coordinator._control_lock:
             applied.append((scene_name, speed_index, verify))
-            await writer(b"scene")
+            await before_write()
+            await coordinator.async_preview_write(b"scene")
 
     coordinator.async_apply_native_scene = AsyncMock(side_effect=apply_scene)
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
@@ -605,11 +654,20 @@ async def test_selector_only_scene_preview_never_creates_a_default(
 ) -> None:
     coordinator = _coordinator()
 
-    async def apply_scene(_scene_name, *, speed_index, canonical_body, writer, verify):
+    async def apply_scene(
+        _scene_name,
+        *,
+        speed_index,
+        canonical_body,
+        before_write,
+        verify,
+        intent,
+    ):
         assert speed_index is None
         assert canonical_body is None
         assert verify is False
-        await writer(b"scene")
+        await before_write()
+        await coordinator.async_preview_write(b"scene")
 
     coordinator.async_apply_native_scene = AsyncMock(side_effect=apply_scene)
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
@@ -634,36 +692,26 @@ async def test_selector_only_scene_preview_never_creates_a_default(
     await manager.async_shutdown()
 
 
-async def test_transport_failure_stops_sequence_and_retains_newest_request_through_cooldown(
+async def test_transport_failure_does_not_delay_newest_request(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     coordinator = _coordinator()
     failed_write_started = asyncio.Event()
     release_failure = asyncio.Event()
-    failed_at = 0.0
-    next_started_at = 0.0
     write_count = 0
 
     async def write(packet: bytes) -> None:
-        nonlocal failed_at, next_started_at, write_count
+        nonlocal write_count
         write_count += 1
         if write_count == 1:
             failed_write_started.set()
             await release_failure.wait()
-            failed_at = asyncio.get_running_loop().time()
             raise OSError("transport failed")
-        if next_started_at == 0:
-            next_started_at = asyncio.get_running_loop().time()
         coordinator.writes.append(packet)
 
     coordinator.async_preview_write.side_effect = write
-    manager, _cache = await _manager(
-        hass,
-        monkeypatch,
-        coordinator,
-        failure_cooldown=0.05,
-    )
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
@@ -685,58 +733,13 @@ async def test_transport_failure_stops_sequence_and_retains_newest_request_throu
         item=_item("retained", 60),
     )
     release_failure.set()
-    await manager.async_wait_idle("entry-a")
-
-    assert next_started_at - failed_at >= 0.045
-    assert any(event.sequence == 1 and event.error_code == "transport_failed" for event in events)
-    assert any(event.sequence == 2 and event.phase is PreviewPhase.WRITTEN for event in events)
-    await manager.async_shutdown()
-
-
-async def test_explicit_reassert_bypasses_transport_cooldown(
-    hass: HomeAssistant,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    coordinator = _coordinator()
-    attempts = 0
-
-    async def write(packet: bytes) -> None:
-        nonlocal attempts
-        attempts += 1
-        if attempts == 1:
-            raise OSError("transport failed")
-        coordinator.writes.append(packet)
-
-    coordinator.async_preview_write.side_effect = write
-    manager, _cache = await _manager(
-        hass,
-        monkeypatch,
-        coordinator,
-        failure_cooldown=10,
-    )
-    owner = object()
-    session_id = _open(manager, owner, [])
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("fails"),
-    )
-    await manager.async_wait_idle("entry-a")
-
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=2,
-        updated_at="2026-08-17T00:00:01Z",
-        item=_item("reassert"),
-        reassert=True,
-    )
     async with asyncio.timeout(0.2):
         await manager.async_wait_idle("entry-a")
+
+    assert any(event.sequence == 1 and event.error_code == "transport_failed" for event in events)
+    assert any(event.sequence == 2 and event.phase is PreviewPhase.WRITTEN for event in events)
+    assert coordinator.writes[0] == build_power(True, "H617A")
+    assert coordinator.is_on is True
     await manager.async_shutdown()
 
 
@@ -775,15 +778,16 @@ async def test_latest_verification_is_read_only_without_holding_control_lock(
     )
 
 
-async def test_silent_preview_latches_health_until_read_only_check_confirms(
+async def test_silent_preview_remains_written_until_read_only_check_confirms(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     coordinator = _coordinator(readable=True)
-    coordinator.async_preview_observe.side_effect = [None, None, True]
+    coordinator.async_preview_observe.side_effect = [None, True]
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
-    session_id = _open(manager, owner, [])
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
 
     await manager.async_queue_snapshot(
         session_id=session_id,
@@ -795,17 +799,18 @@ async def test_silent_preview_latches_health_until_read_only_check_confirms(
     )
     await manager.async_wait_idle("entry-a")
 
-    degraded = manager.health("entry-a")
-    assert degraded.phase is PreviewHealthPhase.DEGRADED
-    assert degraded.error_code == "device_readback_unknown"
-    coordinator.disconnect.assert_awaited_once()
+    health = manager.health("entry-a")
+    assert health.phase is PreviewHealthPhase.HEALTHY
+    assert health.error_code is None
+    coordinator.disconnect.assert_not_awaited()
+    assert events[-1].phase is PreviewPhase.WRITTEN
 
     confirmed = await manager.async_check_health("entry-a")
 
     assert confirmed.phase is PreviewHealthPhase.HEALTHY
     assert confirmed.error_code is None
     assert coordinator.async_preview_write.await_count > 0
-    assert coordinator.async_preview_observe.await_count == 3
+    assert coordinator.async_preview_observe.await_count == 2
 
 
 async def test_health_mints_a_new_incident_after_recovery(
@@ -1116,7 +1121,7 @@ async def test_config_unload_waits_for_atomic_write_and_drops_pending_work(
     await manager.async_shutdown()
 
 
-async def test_higher_intent_finishes_upload_then_skips_preview_activation(
+async def test_higher_intent_waits_for_complete_atomic_preview_sequence(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1161,10 +1166,65 @@ async def test_higher_intent_finishes_upload_then_skips_preview_activation(
     assert foreground is not None
     await foreground
 
-    assert coordinator.writes == list(compiled.upload_packets)
-    assert compiled.activation_packet not in coordinator.writes
-    assert any(event.phase is PreviewPhase.CANCELLED and event.error_code == "superseded" for event in events)
+    assert coordinator.writes == list(compiled.packets)
+    assert any(
+        event.phase is PreviewPhase.CANCELLED
+        and event.error_code == "superseded"
+        and event.write_disposition is PreviewWriteDisposition.COMPLETED
+        for event in events
+    )
     assert "entry-a" not in manager._health_targets
+    await manager.async_shutdown()
+
+
+async def test_preview_admitted_during_foreground_intent_applies_after_release(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator(readable=True)
+    arbiter = BLEControlArbiter()
+    coordinator._control_arbiter = arbiter
+    coordinator._control_lock = arbiter
+    coordinator.admit_preview = arbiter.admit_preview
+    coordinator.invalidate_previews = arbiter.invalidate_previews
+    original_sequence = coordinator.async_write_effect_sequence.side_effect
+    foreground_acquired = asyncio.Event()
+    release_foreground = asyncio.Event()
+
+    async def write_sequence(*args, intent, **kwargs) -> None:
+        async with arbiter.hold(intent):
+            await original_sequence(*args, intent=intent, **kwargs)
+
+    async def hold_foreground() -> None:
+        async with arbiter.hold(ControlIntent.USER):
+            foreground_acquired.set()
+            await release_foreground.wait()
+
+    coordinator.async_write_effect_sequence.side_effect = write_sequence
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+    foreground = asyncio.create_task(hold_foreground())
+    await foreground_acquired.wait()
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=_item("after foreground"),
+    )
+    await asyncio.sleep(0)
+    coordinator.async_preview_write.assert_not_awaited()
+
+    release_foreground.set()
+    await foreground
+    await manager.async_wait_idle("entry-a")
+
+    assert coordinator.async_preview_write.await_count > 0
+    assert any(event.phase is PreviewPhase.CONFIRMED for event in events)
     await manager.async_shutdown()
 
 
@@ -1255,7 +1315,12 @@ async def test_shutdown_marks_active_sequence_incomplete_and_rejects_new_session
     release_write.set()
     await shutdown
 
-    assert any(event.phase is PreviewPhase.FAILED and event.error_code == "shutdown_incomplete" for event in events)
+    assert any(
+        event.phase is PreviewPhase.FAILED
+        and event.error_code == "shutdown_incomplete"
+        and event.write_disposition is PreviewWriteDisposition.COMPLETED
+        for event in events
+    )
     with pytest.raises(PreviewShutdownError):
         manager.open_session(owner=object())
 
@@ -1323,14 +1388,23 @@ async def test_preview_acceptance_rejects_stale_unloading_and_incompatible_reque
         updated_at="2026-08-17T00:00:00Z",
         item=_item("first"),
     )
-    with pytest.raises(PreviewSequenceError, match="increase"):
+    retry = await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:01Z",
+        item=_item("same physical state"),
+    )
+    assert retry.accepted
+    with pytest.raises(PreviewSequenceError, match="different desired states"):
         await manager.async_queue_snapshot(
             session_id=session_id,
             owner=owner,
             config_entry_id="entry-a",
             sequence=1,
             updated_at="2026-08-17T00:00:01Z",
-            item=_item("stale"),
+            item=_item("different", 60),
         )
     await manager.async_wait_idle("entry-a")
 
@@ -1400,7 +1474,6 @@ async def test_pending_verification_is_cancelled_by_new_work_cancel_unload_and_s
         fingerprint="pending",
         generation=1,
         correlation_id="correlation",
-        reassert=False,
         persist_default=False,
         content_kind="h617a_single",
         item=_item("pending"),
@@ -1499,7 +1572,6 @@ async def test_external_supersession_clears_pending_health_and_publishes_reason(
         fingerprint="pending",
         generation=1,
         correlation_id="correlation",
-        reassert=False,
         persist_default=False,
         content_kind="h617a_single",
         item=_item("pending"),
@@ -1522,26 +1594,23 @@ async def test_external_supersession_clears_pending_health_and_publishes_reason(
 
 
 @pytest.mark.parametrize(
-    ("observation", "error_code"),
+    ("observation", "phase", "error_code"),
     [
-        (False, "device_state_mismatch"),
-        (RuntimeError("read failed"), "device_readback_unknown"),
-        ("timeout", "device_readback_unknown"),
+        (False, PreviewPhase.UNCONFIRMED, "device_state_mismatch"),
+        (RuntimeError("read failed"), PreviewPhase.WRITTEN, None),
+        ("timeout", PreviewPhase.WRITTEN, None),
     ],
 )
 async def test_preview_verification_reports_non_successful_readback(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     observation: object,
-    error_code: str,
+    phase: PreviewPhase,
+    error_code: str | None,
 ) -> None:
     coordinator = _coordinator(readable=True)
     if observation == "timeout":
-
-        async def observe(*_args, **_kwargs):
-            await asyncio.sleep(1)
-
-        coordinator.async_preview_observe.side_effect = observe
+        coordinator.async_preview_observe.side_effect = TimeoutError
     elif isinstance(observation, Exception):
         coordinator.async_preview_observe.side_effect = observation
     else:
@@ -1566,5 +1635,6 @@ async def test_preview_verification_reports_non_successful_readback(
     )
     await manager.async_wait_idle("entry-a")
 
-    assert any(event.phase is PreviewPhase.UNCONFIRMED and event.error_code == error_code for event in events)
+    assert events[-1].phase is phase
+    assert events[-1].error_code == error_code
     await manager.async_shutdown()

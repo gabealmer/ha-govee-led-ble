@@ -169,6 +169,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         speed_index: int | None = None,
         canonical_body: bytes | None = None,
         writer: Callable[[bytes], Awaitable[None]] | None = None,
+        before_write: Callable[[], Awaitable[None]] | None = None,
+        progress: Callable[[int], Awaitable[None]] | None = None,
         verify: bool = True,
         intent: ControlIntent = ControlIntent.USER,
     ) -> None:
@@ -178,7 +180,10 @@ class _ActiveModeMixin(_CoordinatorBase):
                 speed_index=speed_index,
                 canonical_body=canonical_body,
                 writer=writer,
+                before_write=before_write,
+                progress=progress,
                 verify=verify,
+                intent=intent,
             )
 
     async def _async_apply_native_scene_locked(
@@ -188,7 +193,10 @@ class _ActiveModeMixin(_CoordinatorBase):
         speed_index: int | None = None,
         canonical_body: bytes | None = None,
         writer: Callable[[bytes], Awaitable[None]] | None = None,
+        before_write: Callable[[], Awaitable[None]] | None = None,
+        progress: Callable[[int], Awaitable[None]] | None = None,
         verify: bool,
+        intent: ControlIntent,
     ) -> None:
         scene = MODEL_SCENES[self.model].get(scene_name)
         if scene is None:
@@ -200,20 +208,38 @@ class _ActiveModeMixin(_CoordinatorBase):
             canonical_body=canonical_body,
         )
 
-        send = self.send_command if writer is None else writer
+        power_in_sequence = False
         if not self.is_on:
-            await send(build_power(True, self.model))
-            self.is_on = True
+            power = build_power(True, self.model)
+            if writer is not None:
+                await writer(power)
+            elif verify:
+                await self.send_command(power)
+            else:
+                packets.insert(0, power)
+                power_in_sequence = True
+            if not power_in_sequence:
+                self.is_on = True
             if verify and self.profile.state_readable and not await self.refresh_state(expected_on=True):
-                await send(build_power(True, self.model))
+                await self.send_command(power)
                 if not await self.refresh_state(expected_on=True):
                     raise RuntimeError(f"Failed to confirm power-on before selecting scene {scene_name!r}")
 
         async def apply() -> None:
-            for packet in packets:
-                await send(packet)
+            if writer is not None:
+                for packet in packets:
+                    await writer(packet)
+                return
+            await self.async_write_effect_sequence(
+                packets,
+                intent=intent,
+                before_write=before_write,
+                progress=progress,
+            )
 
         await apply()
+        if power_in_sequence:
+            self.is_on = True
         if verify and self.profile.state_readable and not await self.refresh_state(expected_effect=scene_name):
             await apply()
             if not await self.refresh_state(expected_effect=scene_name):

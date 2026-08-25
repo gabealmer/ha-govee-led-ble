@@ -38,6 +38,7 @@ import type {
   PreviewStatus,
   SceneSummary,
 } from "./types";
+import { scrollSelectedIntoView } from "./ui-utils";
 
 export type { SceneInitialSelection, ScenePreviewRequest } from "./scene-browser-model";
 
@@ -92,6 +93,7 @@ export class GoveeSceneBrowser extends LitElement {
   private viewState: SceneBrowserViewState;
 
   private readonly workflow: SceneBrowserWorkflow;
+  private lastScrolledSelectionKey?: string;
 
   public constructor() {
     super();
@@ -178,6 +180,20 @@ export class GoveeSceneBrowser extends LitElement {
       this.previewStatus
     ) {
       this.workflow.previewStatusChanged(this.previewStatus);
+    }
+    const selectedKey = sceneSelectionKey(this.viewState);
+    if (!selectedKey) {
+      this.lastScrolledSelectionKey = undefined;
+      return;
+    }
+    if (
+      (selectedKey !== this.lastScrolledSelectionKey ||
+        (changed.has("initialSelection") && this.initialSelection)) &&
+      scrollSelectedIntoView(
+        this.shadowRoot?.querySelector(".scene-list") ?? null,
+      )
+    ) {
+      this.lastScrolledSelectionKey = selectedKey;
     }
   }
 

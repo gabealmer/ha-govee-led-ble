@@ -71,10 +71,6 @@ class BLEControlArbiter:
         return self._owner is not None
 
     def admit_preview(self) -> PreviewAdmission:
-        if (self._active_intent is not None and self._active_intent > ControlIntent.PREVIEW) or any(
-            waiter.intent > ControlIntent.PREVIEW for waiter in self._waiters
-        ):
-            return PreviewAdmission(self, -1)
         self._preview_generation += 1
         return PreviewAdmission(self, self._preview_generation)
 

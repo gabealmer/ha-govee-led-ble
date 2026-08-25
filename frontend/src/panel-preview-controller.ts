@@ -1,6 +1,5 @@
 import { EffectStudioApi } from "./api";
 import {
-  LivePreviewController,
   LivePreviewProgressController,
   type LivePreviewInteraction,
 } from "./live-preview-controller";
@@ -25,7 +24,7 @@ export function previewStatusMessage(
   }
   switch (status.error_code) {
     case "transport_failed":
-      return "Live apply could not reach the light. Tap Live to try again.";
+      return "Live apply could not reach the light. Turn Live off and on to try again.";
     case "compilation_failed":
       return "Live apply could not prepare this effect.";
     case "storage_failed":
@@ -41,48 +40,17 @@ export function previewStatusMessage(
 
 export class PanelPreviewController {
   private session?: EffectStudioPreviewSession;
-  private api?: EffectStudioApi;
-  private unsubscribeHealth?: () => void;
-  private lastSubmitted?: PanelPreviewRequest;
-  private retrying = false;
   private readonly progress = new LivePreviewProgressController({
     changed: (visible) => {
       this.model.patch({ previewProgressVisible: visible });
     },
   });
-  private readonly scheduler = new LivePreviewController<PanelPreviewRequest>({
-    submit: (request) => {
-      if (
-        this.model.liveApplyEnabled &&
-        request.configEntryId === this.model.selectedDeviceId
-      ) {
-        this.lastSubmitted = request;
-        void this.session?.submit(request);
-      }
-    },
-    cancel: () => {
-      void this.cancel();
-    },
-  });
-
   public constructor(private readonly model: PanelModel) {}
 
   public async open(
     api: EffectStudioApi,
     subscriptionFailed: (error: Error) => void,
   ): Promise<boolean> {
-    this.api = api;
-    this.unsubscribeHealth = await api.subscribePreviewHealth(
-      (health) => {
-        this.model.update((model) => {
-          model.previewHealth = {
-            ...model.previewHealth,
-            [health.config_entry_id]: health,
-          };
-        });
-      },
-      subscriptionFailed,
-    );
     const session = new EffectStudioPreviewSession(
       api,
       (status) => {
@@ -103,14 +71,20 @@ export class PanelPreviewController {
         });
       },
       subscriptionFailed,
+      (error) => {
+        this.progress.clear();
+        this.model.patch({
+          previewStatus: undefined,
+          previewNotice: `Live request was not accepted: ${errorMessage(error)}`,
+          previewProgressVisible: false,
+        });
+      },
     );
     this.session = session;
     this.progress.reset();
     const opened = await session.open();
     if (!opened || this.session !== session) {
       session.close();
-      this.unsubscribeHealth?.();
-      this.unsubscribeHealth = undefined;
       return false;
     }
     return true;
@@ -119,11 +93,10 @@ export class PanelPreviewController {
   public beginEditorTransition(cancelBackend = true): number {
     const editorTransitionEpoch = this.model.editorTransitionEpoch + 1;
     if (cancelBackend) {
-      this.scheduler.reset();
+      void this.cancel();
     } else {
-      this.scheduler.transition();
+      this.session?.transition();
     }
-    this.session?.transition();
     this.progress.clear();
     this.model.patch({
       editorTransitionEpoch,
@@ -135,19 +108,19 @@ export class PanelPreviewController {
   }
 
   public scheduleEdited(
-    interaction: LivePreviewInteraction = "committed",
+    _interaction: LivePreviewInteraction = "committed",
     scene?: ScenePreviewRequest,
   ): void {
-    const request = this.currentRequest(false, scene);
+    const request = this.currentRequest(scene);
     if (request) {
-      this.scheduler.schedule(request, interaction);
+      this.submit(request);
     }
   }
 
   public scheduleTemplateSelection(): void {
-    const request = this.currentRequest(false);
+    const request = this.currentRequest();
     if (request) {
-      this.scheduler.scheduleSelection(request);
+      this.submit(request);
     }
   }
 
@@ -156,10 +129,7 @@ export class PanelPreviewController {
     if (!this.model.liveApplyEnabled || !deviceId) {
       return;
     }
-    this.scheduler.schedule(
-      scenePreviewRequest(request, deviceId, true),
-      "committed",
-    );
+    this.submit(scenePreviewRequest(request, deviceId));
   }
 
   public toggle(scene?: ScenePreviewRequest): void {
@@ -171,70 +141,15 @@ export class PanelPreviewController {
         model.previewProgressVisible = false;
       });
       this.progress.clear();
-      this.scheduler.disable();
+      void this.cancel();
       return;
     }
     this.model.update((model) => {
       model.liveApplyEnabled = true;
     });
-    this.scheduler.enable(this.currentRequest(true, scene));
-  }
-
-  public canRetryCurrentChange(
-    scene?: ScenePreviewRequest,
-  ): boolean {
-    const health = this.model.selectedPreviewHealth;
-    const current = this.currentRequest(false, scene);
-    return Boolean(
-      health?.phase === "degraded" &&
-        this.lastSubmitted &&
-        current &&
-        current.configEntryId === this.lastSubmitted.configEntryId &&
-        current.fingerprint === this.lastSubmitted.fingerprint &&
-        current.persistDefault === this.lastSubmitted.persistDefault &&
-        !this.retrying,
-    );
-  }
-
-  public async checkHealth(): Promise<void> {
-    const configEntryId = this.model.selectedDeviceId;
-    if (!this.api || !configEntryId) {
-      return;
-    }
-    try {
-      const health = await this.api.checkPreviewHealth(configEntryId);
-      this.model.update((model) => {
-        model.previewHealth = {
-          ...model.previewHealth,
-          [configEntryId]: health,
-        };
-      });
-    } catch (error) {
-      this.model.patch({
-        notice: `Could not check the light: ${errorMessage(error)}`,
-      });
-    }
-  }
-
-  public async retryCurrentChange(
-    scene?: ScenePreviewRequest,
-  ): Promise<void> {
-    if (
-      !this.canRetryCurrentChange(scene) ||
-      !this.lastSubmitted ||
-      this.retrying
-    ) {
-      return;
-    }
-    this.retrying = true;
-    try {
-      await this.session?.submit({
-        ...this.lastSubmitted,
-        force: true,
-        committed: true,
-      });
-    } finally {
-      this.retrying = false;
+    const request = this.currentRequest(scene);
+    if (request) {
+      this.submit(request);
     }
   }
 
@@ -248,7 +163,7 @@ export class PanelPreviewController {
     try {
       await session.cancel(configEntryId);
     } catch (error) {
-      if (errorCode(error) !== "not_found") {
+      if (errorCode(error) !== "preview_session_not_found") {
         this.model.update((model) => {
           model.notice = `Could not cancel Live: ${errorMessage(error)}`;
         });
@@ -257,24 +172,26 @@ export class PanelPreviewController {
   }
 
   public dispose(): void {
-    this.scheduler.dispose();
     this.progress.reset();
     this.session?.close();
     this.session = undefined;
-    this.unsubscribeHealth?.();
-    this.unsubscribeHealth = undefined;
-    this.api = undefined;
-    this.lastSubmitted = undefined;
     this.model.update((model) => {
       model.previewStatus = undefined;
       model.previewNotice = undefined;
       model.previewProgressVisible = false;
-      model.previewHealth = {};
     });
   }
 
+  private submit(request: PanelPreviewRequest): void {
+    if (
+      this.model.liveApplyEnabled &&
+      request.configEntryId === this.model.selectedDeviceId
+    ) {
+      this.session?.submit(request);
+    }
+  }
+
   private currentRequest(
-    force: boolean,
     scene?: ScenePreviewRequest,
   ): PanelPreviewRequest | undefined {
     if (!this.model.liveApplyEnabled || !this.model.selectedDeviceId) {
@@ -282,7 +199,7 @@ export class PanelPreviewController {
     }
     if (this.model.section === "scenes") {
       return scene
-        ? scenePreviewRequest(scene, this.model.selectedDeviceId, force)
+        ? scenePreviewRequest(scene, this.model.selectedDeviceId)
         : undefined;
     }
     if (
@@ -296,7 +213,6 @@ export class PanelPreviewController {
       this.model.selectedDeviceId,
       this.model.name.trim() || "Live preview",
       this.model.content,
-      force,
     );
   }
 

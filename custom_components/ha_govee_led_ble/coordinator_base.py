@@ -1,11 +1,12 @@
 """Shared typed base for the coordinator and its write mixins."""
 
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import ModelProfile
-from .control_arbiter import BLEControlArbiter
+from .control_arbiter import BLEControlArbiter, ControlIntent
 from .coordinator_status import ParsedMode
 
 if TYPE_CHECKING:
@@ -46,6 +47,16 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     if TYPE_CHECKING:
 
         async def send_command(self, packet: bytes) -> None: ...
+
+        async def async_write_effect_sequence(
+            self,
+            packets: Sequence[bytes],
+            *,
+            intent: ControlIntent,
+            before_write: Callable[[], Awaitable[None]] | None = None,
+            attempt_started: Callable[[int], Awaitable[None]] | None = None,
+            progress: Callable[[int], Awaitable[None]] | None = None,
+        ) -> None: ...
 
         async def refresh_state(
             self,

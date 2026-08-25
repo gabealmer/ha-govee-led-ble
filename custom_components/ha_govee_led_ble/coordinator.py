@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any, cast
 
@@ -57,6 +57,9 @@ from .native_profile_controls import (
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES
 from .transport import READ_UUID, WRITE_UUID
+
+EFFECT_SEQUENCE_ATTEMPTS = 3
+EFFECT_SEQUENCE_CONNECT_TIMEOUT = 8.0
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1168,10 +1171,40 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     async def async_preview_preflight(self, *, timeout: float = 8.0) -> None:
         if self.hass.is_stopping:
             raise RuntimeError("Home Assistant is stopping")
-        async with asyncio.timeout(timeout):
-            async with async_control_intent(self, ControlIntent.PREVIEW):
-                async with self._lock:
-                    await self._ensure_connected()
+        deadline = asyncio.get_running_loop().time() + timeout
+
+        async def disconnect_failed_client(client: BleakClient) -> None:
+            try:
+                async with asyncio.timeout_at(deadline):
+                    await client.disconnect()
+            except BleakError, TimeoutError:
+                pass
+
+        attempt_timeout = timeout / 2
+        for attempt in range(2):
+            cleanup_task: asyncio.Task[None] | None = None
+            try:
+                attempt_deadline = min(
+                    deadline,
+                    asyncio.get_running_loop().time() + attempt_timeout,
+                )
+                async with asyncio.timeout_at(attempt_deadline):
+                    async with async_control_intent(self, ControlIntent.PREVIEW):
+                        async with self._lock:
+                            try:
+                                await self._ensure_connected()
+                            except BleakError, TimeoutError, asyncio.CancelledError:
+                                failed_client = self._client
+                                self._clear_client_state(failed_client)
+                                if failed_client is not None and failed_client.is_connected:
+                                    cleanup_task = self.hass.async_create_task(disconnect_failed_client(failed_client))
+                                raise
+                return
+            except BleakError, TimeoutError:
+                if cleanup_task is not None:
+                    await asyncio.shield(cleanup_task)
+                if attempt == 1 or asyncio.get_running_loop().time() >= deadline:
+                    raise
 
     def admit_preview(self) -> PreviewAdmission:
         return self._control_arbiter.admit_preview()
@@ -1217,12 +1250,56 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 self._arm_expected(packet)
                 await client.write_gatt_char(WRITE_UUID, packet, response=False)
 
+    async def async_write_effect_sequence(
+        self,
+        packets: Sequence[bytes],
+        *,
+        intent: ControlIntent,
+        before_write: Callable[[], Awaitable[None]] | None = None,
+        attempt_started: Callable[[int], Awaitable[None]] | None = None,
+        progress: Callable[[int], Awaitable[None]] | None = None,
+    ) -> None:
+        """Write one complete effect transaction, restarting from frame zero after reconnect."""
+        if self.hass.is_stopping:
+            raise RuntimeError("Home Assistant is stopping")
+        if not packets:
+            raise ValueError("effect sequence must contain at least one packet")
+        async with async_control_intent(self, intent):
+            async with self._lock:
+                for attempt in range(1, EFFECT_SEQUENCE_ATTEMPTS + 1):
+                    try:
+                        async with asyncio.timeout(EFFECT_SEQUENCE_CONNECT_TIMEOUT):
+                            client = await self._ensure_connected()
+                        if attempt_started is not None:
+                            await attempt_started(attempt)
+                        if before_write is not None:
+                            await before_write()
+                        for index, packet in enumerate(packets, start=1):
+                            self._record_packet("tx", packet)
+                            self._arm_expected(packet)
+                            await client.write_gatt_char(
+                                WRITE_UUID,
+                                packet,
+                                response=False,
+                            )
+                            if progress is not None:
+                                await progress(index)
+                        return
+                    except (BleakError, TimeoutError) as err:
+                        await self._disconnect_locked()
+                        if self.hass.is_stopping:
+                            raise RuntimeError("Home Assistant is stopping") from err
+                        if attempt == EFFECT_SEQUENCE_ATTEMPTS:
+                            raise
+                        error = str(err).lower()
+                        if isinstance(err, TimeoutError) or "already shutdown" in error or "not found" in error:
+                            await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
+
     async def async_preview_observe(
         self,
         expectations: Mapping[str, Any],
         *,
         timeout: float = 4.0,
-        attempts: int = 3,
     ) -> bool | None:
         if not self.profile.state_readable or not expectations:
             return None
@@ -1261,40 +1338,29 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 }
             )
         )
-        attempts = min(2, max(1, attempts))
-        observed = False
-        deadline = time.monotonic() + timeout
-        for attempt in range(attempts):
-            field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
-            async with async_control_intent(self, ControlIntent.PREVIEW):
-                async with self._lock:
-                    client = self._client
-                    if client is None or not client.is_connected:
-                        return None
-                    ok = await self._send_state_queries(
-                        query_power=query_power,
-                        query_brightness=query_brightness,
-                        query_color_mode=query_color,
-                        query_white_balance=query_white_balance,
-                        query_blank_screen=query_blank_screen,
-                        query_relative_brightness=query_relative_brightness,
-                    )
-            if not ok:
-                await self._disconnect_if_current(client)
-                return None
-            attempt_deadline = min(
-                deadline,
-                deadline if attempt + 1 == attempts else time.monotonic() + max(0.0, (deadline - time.monotonic()) / 2),
-            )
-            if self._client is not client:
-                return None
-            if await self._wait_for_revisions(field_baselines, {}, attempt_deadline):
-                observed = True
-                if all(getattr(self, field) == expected for field, expected in expectations.items()):
-                    return True
-            if time.monotonic() >= deadline:
-                break
-        return False if observed else None
+        field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
+        async with async_control_intent(self, ControlIntent.PREVIEW):
+            async with self._lock:
+                client = self._client
+                if client is None or not client.is_connected:
+                    return None
+                ok = await self._send_state_queries(
+                    query_power=query_power,
+                    query_brightness=query_brightness,
+                    query_color_mode=query_color,
+                    query_white_balance=query_white_balance,
+                    query_blank_screen=query_blank_screen,
+                    query_relative_brightness=query_relative_brightness,
+                )
+        if not ok or self._client is not client:
+            return None
+        if not await self._wait_for_revisions(
+            field_baselines,
+            {},
+            time.monotonic() + timeout,
+        ):
+            return None
+        return all(getattr(self, field) == expected for field, expected in expectations.items())
 
     def _start_keep_alive(self) -> None:
         self._stop_keep_alive()

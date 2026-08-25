@@ -23,7 +23,6 @@ export function snapshotPreviewRequest(
   configEntryId: string,
   name: string,
   content: EffectContent,
-  force = false,
   persistDefault = false,
 ): PanelPreviewRequest {
   return {
@@ -32,7 +31,6 @@ export function snapshotPreviewRequest(
     name,
     content,
     fingerprint: JSON.stringify({ configEntryId, name, content }),
-    force,
     persistDefault,
   };
 }
@@ -40,14 +38,12 @@ export function snapshotPreviewRequest(
 export function scenePreviewRequest(
   request: ScenePreviewRequest,
   configEntryId: string,
-  force = false,
 ): PanelPreviewRequest {
   if (request.kind !== "scene") {
     return snapshotPreviewRequest(
       configEntryId,
       request.name,
       request.content,
-      force,
       request.persistDefault === true,
     );
   }
@@ -62,17 +58,71 @@ export function scenePreviewRequest(
       speedIndex: request.speedIndex,
       persistDefault: request.persistDefault === true,
     }),
-    force,
     persistDefault: request.persistDefault,
   };
 }
 
+interface PreviewSubmission {
+  request: PanelPreviewRequest;
+  sequence: number;
+}
+
+function isConnectionLost(error: unknown): boolean {
+  if (error === 3) {
+    return true;
+  }
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  if ("code" in error && error.code === 3) {
+    return true;
+  }
+  return (
+    "error" in error &&
+    typeof error.error === "object" &&
+    error.error !== null &&
+    "code" in error.error &&
+    error.error.code === 3
+  );
+}
+
+export function createPreviewChannelId(
+  randomUuid: (() => string) | null | undefined =
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID.bind(crypto)
+      : undefined,
+  randomValues: (values: Uint8Array) => Uint8Array = (values) =>
+    crypto.getRandomValues(values),
+): string {
+  if (randomUuid) {
+    return randomUuid();
+  }
+  const bytes = randomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0"));
+  return [
+    hex.slice(0, 4).join(""),
+    hex.slice(4, 6).join(""),
+    hex.slice(6, 8).join(""),
+    hex.slice(8, 10).join(""),
+    hex.slice(10).join(""),
+  ].join("-");
+}
+
 export class EffectStudioPreviewSession {
-  private sessionId?: string;
+  private readonly sessionId = createPreviewChannelId();
+  private readyState = false;
   private sequence = 0;
   private generation = 0;
   private latestStatusSequence = 0;
   private unsubscribe?: () => void;
+  private unsubscribeConnectionReady?: () => void;
+  private desired?: PreviewSubmission;
+  private inFlight?: PreviewSubmission;
+  private drainTask?: Promise<void>;
+  private waitingForConnection = false;
+  private connectionRevision = 0;
 
   public constructor(
     private readonly api: EffectStudioApi,
@@ -80,134 +130,54 @@ export class EffectStudioPreviewSession {
       status: PreviewStatus | undefined,
     ) => void,
     private readonly subscriptionFailed: (error: Error) => void,
+    private readonly requestFailed: (error: unknown) => void = () => undefined,
   ) {}
 
   public get ready(): boolean {
-    return this.sessionId !== undefined;
+    return this.readyState;
   }
 
   public async open(): Promise<boolean> {
     const generation = this.generation;
-    const sessionId = await this.api.openPreviewSession();
-    if (generation !== this.generation) {
-      await this.closeRemoteSession(sessionId);
-      return false;
-    }
-    this.sessionId = sessionId;
     const unsubscribe = await this.api.subscribePreview(
-      sessionId,
+      this.sessionId,
       (status) => this.acceptStatus(status),
       (error) => {
-        if (
-          generation === this.generation &&
-          sessionId === this.sessionId
-        ) {
+        if (this.readyState) {
           this.subscriptionFailed(error);
         }
       },
     );
-    if (generation !== this.generation || sessionId !== this.sessionId) {
+    if (generation !== this.generation) {
       unsubscribe();
-      await this.closeRemoteSession(sessionId);
+      await this.closeRemoteSession(this.sessionId);
       return false;
     }
     this.unsubscribe = unsubscribe;
+    this.unsubscribeConnectionReady = this.api.onConnectionReady(() => {
+      this.connectionRevision += 1;
+      this.waitingForConnection = false;
+      this.drain();
+    });
+    this.readyState = true;
     return true;
   }
 
-  public async submit(request: PanelPreviewRequest): Promise<void> {
-    const sessionId = this.sessionId;
-    if (!sessionId) {
+  public submit(request: PanelPreviewRequest): void {
+    if (!this.readyState) {
       return;
     }
-    const generation = this.generation;
-    const sequence = ++this.sequence;
-    this.acceptStatus({
-      session_id: sessionId,
-      sequence,
-      config_entry_id: request.configEntryId,
-      phase: "queued",
-      content_kind:
-        request.kind === "scene" ? "scene_builtin" : request.content.kind,
-      confidence: "unknown",
-      error_code: null,
-      error_message: null,
-      write_disposition: "not_started",
-      persist_default: false,
-      scene_id:
-        request.kind === "scene"
-          ? request.scene.scene.scene_id
-          : request.content.kind === "scene_palette" ||
-              request.content.kind === "scene_layered" ||
-              request.content.kind === "scene_builtin"
-            ? request.content.template.scene_id
-            : null,
-      effect_id:
-        request.kind === "scene"
-          ? request.scene.scene.effect_id
-          : request.content.kind === "scene_palette" ||
-              request.content.kind === "scene_layered" ||
-              request.content.kind === "scene_builtin"
-            ? request.content.template.effect_id
-            : null,
-      default_action: null,
-    });
-    try {
-      if (request.kind === "scene") {
-        await this.api.previewScene(
-          sessionId,
-          sequence,
-          request.configEntryId,
-          request.scene.scene,
-          request.scene.speedIndex,
-          request.force,
-          request.persistDefault,
-        );
-      } else {
-        await this.api.previewSnapshot(
-          sessionId,
-          sequence,
-          request.configEntryId,
-          request.name,
-          request.content,
-          request.force,
-          request.persistDefault,
-        );
-      }
-    } catch (error) {
-      if (
-        generation === this.generation &&
-        sessionId === this.sessionId &&
-        sequence >= this.latestStatusSequence
-      ) {
-        this.acceptStatus({
-          session_id: sessionId,
-          sequence,
-          config_entry_id: request.configEntryId,
-          phase: "failed",
-          content_kind:
-            request.kind === "scene" ? "scene_builtin" : request.content.kind,
-          confidence: "unknown",
-          error_code: errorCode(error) ?? "preview_failed",
-          error_message: "Effect Studio could not confirm whether the Live request reached the light.",
-          write_disposition: "unknown",
-          persist_default: false,
-          scene_id:
-            request.kind === "scene"
-              ? request.scene.scene.scene_id
-              : null,
-          effect_id:
-            request.kind === "scene"
-              ? request.scene.scene.effect_id
-              : null,
-          default_action: null,
-        });
-      }
-    }
+    this.desired = {
+      request,
+      sequence: ++this.sequence,
+    };
+    this.drain();
   }
 
   public async cancel(configEntryId?: string): Promise<void> {
     this.generation += 1;
+    this.desired = undefined;
+    this.waitingForConnection = false;
     this.latestStatusSequence = this.sequence + 1;
     this.statusChanged(undefined);
     const sessionId = this.sessionId;
@@ -217,6 +187,9 @@ export class EffectStudioPreviewSession {
   }
 
   public transition(): void {
+    this.generation += 1;
+    this.desired = undefined;
+    this.waitingForConnection = false;
     this.latestStatusSequence = Math.max(
       this.latestStatusSequence,
       this.sequence + 1,
@@ -226,14 +199,101 @@ export class EffectStudioPreviewSession {
 
   public close(): void {
     this.generation += 1;
+    this.readyState = false;
+    this.desired = undefined;
+    this.waitingForConnection = false;
     this.statusChanged(undefined);
+    this.unsubscribeConnectionReady?.();
+    this.unsubscribeConnectionReady = undefined;
     this.unsubscribe?.();
     this.unsubscribe = undefined;
-    const sessionId = this.sessionId;
-    this.sessionId = undefined;
-    if (sessionId) {
-      void this.closeRemoteSession(sessionId);
+    void this.closeRemoteSession(this.sessionId);
+  }
+
+  private drain(): void {
+    if (
+      !this.readyState ||
+      this.waitingForConnection ||
+      this.drainTask ||
+      !this.desired
+    ) {
+      return;
     }
+    const generation = this.generation;
+    const task = this.drainDesired(generation).finally(() => {
+      if (this.drainTask === task) {
+        this.drainTask = undefined;
+        if (
+          this.readyState &&
+          !this.waitingForConnection &&
+          this.desired
+        ) {
+          queueMicrotask(() => this.drain());
+        }
+      }
+    });
+    this.drainTask = task;
+  }
+
+  private async drainDesired(generation: number): Promise<void> {
+    while (
+      this.readyState &&
+      !this.waitingForConnection &&
+      generation === this.generation &&
+      this.desired
+    ) {
+      const submission = this.desired;
+      const connectionRevision = this.connectionRevision;
+      this.inFlight = submission;
+      try {
+        await this.send(submission);
+        if (this.desired === submission) {
+          this.desired = undefined;
+        }
+      } catch (error) {
+        if (generation !== this.generation) {
+          return;
+        }
+        if (isConnectionLost(error)) {
+          if (connectionRevision === this.connectionRevision) {
+            this.waitingForConnection = true;
+            return;
+          }
+          continue;
+        }
+        if (this.desired === submission) {
+          this.desired = undefined;
+        }
+        this.requestFailed(error);
+      } finally {
+        if (this.inFlight === submission) {
+          this.inFlight = undefined;
+        }
+      }
+    }
+  }
+
+  private async send(submission: PreviewSubmission): Promise<void> {
+    const { request, sequence } = submission;
+    if (request.kind === "scene") {
+      await this.api.previewScene(
+        this.sessionId,
+        sequence,
+        request.configEntryId,
+        request.scene.scene,
+        request.scene.speedIndex,
+        request.persistDefault,
+      );
+      return;
+    }
+    await this.api.previewSnapshot(
+      this.sessionId,
+      sequence,
+      request.configEntryId,
+      request.name,
+      request.content,
+      request.persistDefault,
+    );
   }
 
   private acceptStatus(status: PreviewStatus): void {
@@ -251,7 +311,7 @@ export class EffectStudioPreviewSession {
     try {
       await this.api.closePreviewSession(sessionId);
     } catch (error) {
-      if (errorCode(error) !== "not_found") {
+      if (errorCode(error) !== "preview_session_not_found") {
         console.warn("Could not close Effect Studio preview session", error);
       }
     }

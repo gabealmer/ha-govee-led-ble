@@ -97,6 +97,12 @@ def _make_coord(**ov) -> MagicMock:
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.unknown_scene_code = None
 
+    async def write_effect_sequence(packets, **_kwargs) -> None:
+        for packet in packets:
+            await c.send_command(packet)
+
+    c.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)
+
     async def _apply_native_scene_locked(*args, **kwargs) -> None:
         await GoveeBLECoordinator._async_apply_native_scene_locked(c, *args, **kwargs)
 

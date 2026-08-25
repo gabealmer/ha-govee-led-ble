@@ -202,57 +202,6 @@ test("derives selected-device and preview decisions from panel state", () => {
   expect(model.showDeviceSelector).toBe(true);
 });
 
-test("selected-device health remains latched until a confirmed health update", () => {
-  const model = new PanelModel(() => undefined);
-  model.devices = [device("entry-a", "H617A")];
-  model.selectedDeviceId = "entry-a";
-
-  expect(model.selectedPreviewHealth?.phase).toBe("healthy");
-
-  model.previewHealth = {
-    "entry-a": {
-      config_entry_id: "entry-a",
-      revision: 1,
-      phase: "degraded",
-      incident_id: "incident-a",
-      error_code: "device_readback_unknown",
-      error_message: "No readback",
-      write_disposition: "completed",
-      checked_at: "2026-08-24T00:01:00Z",
-    },
-  };
-  model.previewStatus = {
-    session_id: "session-a",
-    sequence: 2,
-    config_entry_id: "entry-a",
-    phase: "queued",
-    content_kind: "h617a_single",
-    confidence: "unknown",
-    error_code: null,
-    error_message: null,
-    write_disposition: "not_started",
-    persist_default: false,
-    scene_id: null,
-    effect_id: null,
-    default_action: null,
-  };
-
-  expect(model.selectedPreviewHealth?.phase).toBe("degraded");
-
-  model.previewHealth = {
-    "entry-a": {
-      ...model.previewHealth["entry-a"],
-      revision: 2,
-      phase: "healthy",
-      incident_id: null,
-      error_code: null,
-      error_message: null,
-    },
-  };
-
-  expect(model.selectedPreviewHealth?.phase).toBe("healthy");
-});
-
 test("administrator state follows late Home Assistant user updates", () => {
   const changed = vi.fn();
   const model = new PanelModel(changed);

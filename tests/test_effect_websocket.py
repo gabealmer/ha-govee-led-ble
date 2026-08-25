@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import Mock
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -11,8 +12,17 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import DOMAIN
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
 from custom_components.ha_govee_led_ble.effect_domain import SingleEffect, effect_content_to_dict
+from custom_components.ha_govee_led_ble.effect_preview import (
+    PreviewOwnershipError,
+    PreviewSessionNotFoundError,
+    PreviewTargetUnavailableError,
+)
 from custom_components.ha_govee_led_ble.effect_websocket import (
+    PREVIEW_SESSION_NOT_FOUND_CODE,
+    PREVIEW_SESSION_UNAUTHORIZED_CODE,
+    PREVIEW_TARGET_UNAVAILABLE_CODE,
     WS_CUSTOM_CATALOGUE,
     WS_INFO,
     WS_LIBRARY_CREATE,
@@ -25,6 +35,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_USER_STATE_RECORD_COLOUR,
     WS_USER_STATE_UPDATE,
     _light_entity_id,
+    _send_preview_error,
     async_register_effect_websocket,
 )
 
@@ -95,7 +106,7 @@ async def test_authenticated_users_can_read_contracts(
     await client.send_json_auto_id({"type": WS_CUSTOM_CATALOGUE})
     catalogue = await client.receive_json()
 
-    assert info["result"]["api_version"] == 10
+    assert info["result"]["api_version"] == EDITOR_API_VERSION
     assert "drafts_per_owner" not in info["result"]["limits"]
     assert library["result"] == {"items": []}
     assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H617A", "H6199"]
@@ -246,3 +257,29 @@ async def test_user_state_contains_navigation_without_drafts(
     assert coloured["recent_colours"] == [[1, 2, 3]]
     assert fetched == coloured
     assert "preferences" not in fetched
+
+
+def test_preview_session_and_target_errors_have_distinct_codes() -> None:
+    connection = Mock()
+    cases = (
+        (
+            PreviewSessionNotFoundError("missing"),
+            PREVIEW_SESSION_NOT_FOUND_CODE,
+            "The preview session was not found.",
+        ),
+        (
+            PreviewOwnershipError("wrong owner"),
+            PREVIEW_SESSION_UNAUTHORIZED_CODE,
+            "The preview session belongs to another connection.",
+        ),
+        (
+            PreviewTargetUnavailableError("unloaded"),
+            PREVIEW_TARGET_UNAVAILABLE_CODE,
+            "The target light is not loaded.",
+        ),
+    )
+
+    for error, code, message in cases:
+        connection.reset_mock()
+        _send_preview_error(connection, 7, error)
+        connection.send_error.assert_called_once_with(7, code, message)

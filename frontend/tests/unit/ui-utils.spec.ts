@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   brightnessFillPercentage,
@@ -13,6 +13,7 @@ import {
   moreInfoDetail,
   relocatedIndex,
   sameRgb,
+  scrollSelectedIntoView,
   showHomeAssistantHeader,
   studioToolbarLayoutState,
 } from "../../src/ui-utils";
@@ -85,6 +86,29 @@ test("relocated indexes follow the moved item and shifted neighbours", () => {
   expect(relocatedIndex(2, 1, 3)).toBe(1);
   expect(relocatedIndex(2, 3, 1)).toBe(3);
   expect(relocatedIndex(undefined, 1, 3)).toBeUndefined();
+});
+
+test("selected list items scroll only their own container", () => {
+  const selected = {
+    getBoundingClientRect: () => ({
+      top: 280,
+      bottom: 340,
+    }),
+  };
+  const querySelector = vi.fn().mockReturnValue(selected);
+  const container = {
+    scrollTop: 40,
+    querySelector,
+    getBoundingClientRect: () => ({
+      top: 100,
+      bottom: 300,
+    }),
+  } as unknown as Element;
+
+  expect(scrollSelectedIntoView(container)).toBe(true);
+  expect(querySelector).toHaveBeenCalledWith(".selector.selected");
+  expect(container.scrollTop).toBe(80);
+  expect(scrollSelectedIntoView(null)).toBe(false);
 });
 
 test("Home Assistant header appears only when native navigation is unavailable", () => {

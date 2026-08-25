@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from uuid import UUID, uuid4
@@ -56,18 +56,6 @@ ACTIVATION_ATTEMPTS = 2
 VERIFICATION_ATTEMPTS = 2
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def async_write_packets(
-    packets: Sequence[bytes],
-    writer: Callable[[bytes], Awaitable[None]],
-    *,
-    progress: Callable[[int], Awaitable[None]] | None = None,
-) -> None:
-    for index, packet in enumerate(packets, start=1):
-        await writer(packet)
-        if progress is not None:
-            await progress(index)
 
 
 async def async_apply_compiled_profile(
@@ -343,30 +331,48 @@ class EffectDeploymentEngine:
                     await self._deployments.async_put(next_record, expected_version=None)
                     current = next_record
                     if isinstance(compiled, CompiledEffect):
+                        if compiled.activation_packet is None:
+                            raise RuntimeError("compiled activation verification has no activation packet")
+                        upload_count = len(compiled.upload_packets)
 
-                        async def record_upload_progress(index: int) -> None:
+                        async def attempt_started(attempt: int) -> None:
                             nonlocal current
-                            current = replace(current, progress_current=index)
+                            if attempt == 1:
+                                return
+                            current = replace(
+                                current,
+                                phase=(DeploymentPhase.UPLOADING if upload_count else DeploymentPhase.ACTIVATING),
+                                progress_current=0,
+                            )
                             await self._deployments.async_put(
                                 current,
                                 expected_version=None,
                                 durable=False,
                             )
 
-                        await async_write_packets(
-                            compiled.upload_packets,
-                            coordinator.send_command,
-                            progress=record_upload_progress,
-                        )
+                        async def record_sequence_progress(index: int) -> None:
+                            nonlocal current
+                            phase = DeploymentPhase.ACTIVATING if index >= upload_count else DeploymentPhase.UPLOADING
+                            current = replace(
+                                current,
+                                phase=phase,
+                                progress_current=index,
+                            )
+                            await self._deployments.async_put(
+                                current,
+                                expected_version=None,
+                                durable=False,
+                            )
 
-                        if compiled.activation_packet is None:
-                            raise RuntimeError("compiled activation verification has no activation packet")
-                        next_record = replace(current, phase=DeploymentPhase.ACTIVATING)
-                        await self._deployments.async_put(next_record, expected_version=None)
-                        current = next_record
-                        await self._async_activate(coordinator, compiled.activation_packet)
-                        current = replace(current, progress_current=current.progress_total)
-                        await self._deployments.async_put(current, expected_version=None)
+                        if upload_count == 0:
+                            current = replace(current, phase=DeploymentPhase.ACTIVATING)
+                            await self._deployments.async_put(current, expected_version=None)
+                        await coordinator.async_write_effect_sequence(
+                            compiled.packets,
+                            intent=ControlIntent.APPLY,
+                            attempt_started=attempt_started,
+                            progress=record_sequence_progress,
+                        )
                     else:
                         current = await self._async_apply_profile(coordinator, compiled, current)
 

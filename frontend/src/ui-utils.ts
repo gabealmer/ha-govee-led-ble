@@ -205,6 +205,22 @@ export function relocatedIndex(
   return current;
 }
 
+export function scrollSelectedIntoView(container: Element | null): boolean {
+  const selected =
+    container?.querySelector<HTMLElement>(".selector.selected");
+  if (!container || !selected) {
+    return false;
+  }
+  const containerRect = container.getBoundingClientRect();
+  const selectedRect = selected.getBoundingClientRect();
+  if (selectedRect.top < containerRect.top) {
+    container.scrollTop -= containerRect.top - selectedRect.top;
+  } else if (selectedRect.bottom > containerRect.bottom) {
+    container.scrollTop += selectedRect.bottom - containerRect.bottom;
+  }
+  return true;
+}
+
 export function errorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;

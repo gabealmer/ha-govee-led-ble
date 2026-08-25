@@ -484,6 +484,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 canonical_body=scene_default.canonical_body if scene_default is not None else None,
                 writer=None,
                 verify=False,
+                intent=ControlIntent.USER,
             )
             return
         if EFFECT_FAMILY_VIDEO in coordinator.effect_families:

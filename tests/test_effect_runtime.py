@@ -93,7 +93,7 @@ def _video_item() -> LibraryItem:
 
 
 def _coordinator(*, readable: bool = True):
-    return SimpleNamespace(
+    coordinator = SimpleNamespace(
         _control_lock=asyncio.Lock(),
         address="AA:BB:CC:DD:EE:FF",
         model="H617A",
@@ -113,6 +113,26 @@ def _coordinator(*, readable: bool = True):
         send_command=AsyncMock(),
         refresh_state=AsyncMock(return_value=True),
     )
+
+    async def write_effect_sequence(
+        packets,
+        *,
+        intent,
+        before_write=None,
+        attempt_started=None,
+        progress=None,
+    ) -> None:
+        if attempt_started is not None:
+            await attempt_started(1)
+        if before_write is not None:
+            await before_write()
+        for index, packet in enumerate(packets, start=1):
+            await coordinator.send_command(packet)
+            if progress is not None:
+                await progress(index)
+
+    coordinator.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)
+    return coordinator
 
 
 def _profile_coordinator(model: str):
@@ -348,7 +368,7 @@ async def test_verification_retry_only_repeats_safe_activation(
     assert coordinator.refresh_state.await_count == 3
 
 
-async def test_activation_retry_does_not_repeat_upload(
+async def test_non_transport_sequence_failure_is_not_retried(
     hass: HomeAssistant,
 ) -> None:
     repository, cache = await _repositories(hass)
@@ -358,21 +378,18 @@ async def test_activation_retry_does_not_repeat_upload(
     coordinator.send_command.side_effect = [
         *([None] * len(compiled.upload_packets)),
         RuntimeError("ambiguous activation write"),
-        None,
     ]
-    _confirm_on_call(coordinator, 2, 800)
 
-    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
-        coordinator,
-        item,
-        config_entry_id="entry-a",
-        updated_at="2026-08-11T00:00:00Z",
-    )
+    with pytest.raises(RuntimeError, match="ambiguous activation write"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            item,
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+        )
 
-    assert result.phase is DeploymentPhase.CONFIRMED
     assert coordinator.send_command.await_args_list == [
         *[call(packet) for packet in compiled.upload_packets],
-        call(compiled.activation_packet),
         call(compiled.activation_packet),
     ]
 

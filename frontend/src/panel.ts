@@ -55,6 +55,7 @@ import {
   lightControlEntityId,
   lightControlPresentation,
   moreInfoDetail,
+  scrollSelectedIntoView,
   showHomeAssistantHeader,
   studioToolbarLayoutState,
 } from "./ui-utils";
@@ -106,6 +107,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private readonly editor: PanelEditorController;
   private readonly controller: PanelController;
   private readonly requestedComponentGroups = new Set<ComponentGroup>();
+  private visibleVideoSelection?: string;
 
   public constructor() {
     super();
@@ -184,6 +186,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (changed.has("modelRevision")) {
       this.modal.syncScrollLock();
       this.syncSingleEffectSelects();
+      this.syncVideoSelectionVisibility();
     }
   }
 
@@ -536,12 +539,7 @@ export class GoveeLedEffectStudio extends LitElement {
     const pending =
       this.model.previewProgressVisible &&
       (phase === "queued" || phase === "writing");
-    const warning = phase === "failed" || phase === "unconfirmed";
-    const status = pending
-      ? "Applying changes"
-      : warning
-        ? this.model.previewNotice
-        : undefined;
+    const status = pending ? "Applying changes" : undefined;
     return html`
       <div class="live-apply-control">
         <button
@@ -571,16 +569,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderPreviewIssue() {
-    const health = this.model.selectedPreviewHealth;
-    const healthIncident =
-      health &&
-      (health.phase === "degraded" ||
-        (health.phase === "checking" && health.incident_id !== null));
-    const message = healthIncident
-      ? health.error_message ??
-        "Effect Studio is checking the latest Live change."
-      : this.model.previewNotice;
-    const scene = this.currentScenePreviewRequest();
+    const message = this.model.previewNotice;
     return message
       ? html`
           <govee-info-control
@@ -588,36 +577,7 @@ export class GoveeLedEffectStudio extends LitElement {
             variant="error"
             label="Live change details"
             .text=${message}
-          >
-            ${healthIncident
-              ? html`
-                  <div slot="actions" class="preview-health-actions">
-                    <button
-                      class="secondary"
-                      type="button"
-                      ?disabled=${health.phase === "checking"}
-                      @click=${() => void this.preview.checkHealth()}
-                    >
-                      ${health.phase === "checking"
-                        ? "Checking..."
-                        : "Check again"}
-                    </button>
-                    ${this.preview.canRetryCurrentChange(scene)
-                      ? html`
-                          <button
-                            class="secondary"
-                            type="button"
-                            @click=${() =>
-                              void this.preview.retryCurrentChange(scene)}
-                          >
-                            Retry current change
-                          </button>
-                        `
-                      : nothing}
-                  </div>
-                `
-              : nothing}
-          </govee-info-control>
+          ></govee-info-control>
         `
       : nothing;
   }
@@ -758,6 +718,28 @@ export class GoveeLedEffectStudio extends LitElement {
           `
         : this.renderPanelNotice()}
     `;
+  }
+
+  private syncVideoSelectionVisibility(): void {
+    if (this.section !== "video") {
+      this.visibleVideoSelection = undefined;
+      return;
+    }
+    const selection = this.currentItem
+      ? `saved:${this.currentItem.id}`
+      : this.model.templateSelection;
+    if (!selection || selection === this.visibleVideoSelection) {
+      return;
+    }
+    if (
+      scrollSelectedIntoView(
+        this.shadowRoot?.querySelector(
+          '.item-sidebar[aria-label="Video profiles"]',
+        ) ?? null,
+      )
+    ) {
+      this.visibleVideoSelection = selection;
+    }
   }
 
   private videoListButton(

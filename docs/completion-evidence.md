@@ -116,7 +116,7 @@ The public test harness covers ownership and restoration branches with subproces
 | Subsystem | Why the cases remain |
 | --- | --- |
 | Coordinator | BLE ordering, optimistic windows, stale replies, client replacement, reconnect, keep-alive, and lock ownership. |
-| Preview and durable runtime | Coalescing, cooldown, cancellation, shutdown, confirmation confidence, recovery, and partial-write handling. |
+| Preview and durable runtime | Latest desired-state reconciliation, foreground ordering, cancellation, shutdown, observational confirmation, atomic whole-sequence retry, and partial-write handling. |
 | Storage and migrations | Stable `6.4.x` plus `6.5.0-rc.1` through `rc.15` migration, atomicity, rollback, corruption, hard deletion, and bounded retention. |
 | Protocol and scene codecs | Captured byte structures, generated-parser rejection, round-trip encoding, raw unknown preservation, and model activation. |
 | WebSocket and services | Authentication, administrator-only mutation, schemas, stable UUID actions, and boundary error mapping. |
@@ -127,7 +127,7 @@ The public test harness covers ownership and restoration branches with subproces
 
 | Subsystem | Owner | Retained candidate | Why retained |
 | --- | --- | --- | --- |
-| Production runtime | `effect_preview.py` | Preview manager beside durable deployment engine | Preview coalescing/cancellation and durable recovery/audit have different state and safety contracts. |
+| Production runtime | `effect_preview.py` | Preview manager beside durable deployment engine | Preview latest-value reconciliation and durable recovery/audit have different state and safety contracts. |
 | Product contracts | `effect_contracts.py` | Release capability contract | Drives frontend workflow availability and diagnostics. |
 | Frontend boundary | `validation.ts` and focused validators | Backend response validation | Protects versioned API compatibility and malformed payload handling. |
 | Compatibility | Storage migration modules | Stable and prerelease store migrations | Required for stable `6.4.x` and published `rc.1` through `rc.15` upgrades. |

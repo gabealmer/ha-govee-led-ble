@@ -164,13 +164,13 @@ async def test_control_arbiter_prioritises_waiters_reenters_and_skips_background
     assert order == [ControlIntent.USER, ControlIntent.APPLY, ControlIntent.PREVIEW]
 
 
-async def test_control_arbiter_rejects_preview_admission_during_foreground_intent():
+async def test_control_arbiter_accepts_new_preview_during_foreground_intent():
     arbiter = BLEControlArbiter()
 
     async with arbiter.hold(ControlIntent.USER):
         admission = arbiter.admit_preview()
 
-    assert admission.is_current is False
+    assert admission.is_current is True
 
 
 async def test_initial_state_and_update(coord, h6199):
@@ -489,6 +489,72 @@ async def test_send_command(coord):
     with patch.object(coord, "_ensure_connected", return_value=c2), pytest.raises(BleakError):
         await coord.send_command(proto.build_power(True))
     assert c2.write_gatt_char.call_count == 3 and coord._client is None
+
+
+async def test_effect_sequence_reconnect_restarts_from_frame_zero(coord):
+    packets = [b"first", b"second", b"activation"]
+    attempted: list[bytes] = []
+
+    async def first_write(_uuid, packet, **_kwargs):
+        attempted.append(packet)
+        if packet == b"second":
+            raise BleakError("connection dropped")
+
+    async def replacement_write(_uuid, packet, **_kwargs):
+        attempted.append(packet)
+
+    first = _c(write_gatt_char=AsyncMock(side_effect=first_write))
+    replacement = _c(write_gatt_char=AsyncMock(side_effect=replacement_write))
+    attempts: list[int] = []
+    progress: list[int] = []
+
+    async def note_attempt(attempt: int) -> None:
+        attempts.append(attempt)
+
+    async def note_progress(index: int) -> None:
+        progress.append(index)
+
+    with patch.object(
+        coord,
+        "_ensure_connected",
+        new=AsyncMock(side_effect=[first, replacement]),
+    ):
+        await coord.async_write_effect_sequence(
+            packets,
+            intent=ControlIntent.PREVIEW,
+            attempt_started=note_attempt,
+            progress=note_progress,
+        )
+
+    assert attempted == [
+        b"first",
+        b"second",
+        b"first",
+        b"second",
+        b"activation",
+    ]
+    assert attempts == [1, 2]
+    assert progress == [1, 1, 2, 3]
+
+
+async def test_effect_sequence_does_not_reconnect_during_shutdown(coord):
+    async def fail_during_shutdown(_uuid, _packet, **_kwargs):
+        coord.hass.is_stopping = True
+        raise BleakError("connection dropped")
+
+    client = _c(write_gatt_char=AsyncMock(side_effect=fail_during_shutdown))
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)) as ensure_connected,
+        patch.object(coord, "_disconnect_locked", new_callable=AsyncMock) as disconnect,
+        pytest.raises(RuntimeError, match="Home Assistant is stopping"),
+    ):
+        await coord.async_write_effect_sequence(
+            [b"first", b"activation"],
+            intent=ControlIntent.PREVIEW,
+        )
+
+    assert ensure_connected.await_count == 1
+    disconnect.assert_awaited_once_with()
 
 
 async def test_foreground_command_waits_for_atomic_preview_packets(coord):
@@ -1638,6 +1704,28 @@ async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
     assert packets[1:] == build_native_scene_packets("H617A", SCENES["glacier"], speed_index=0)
 
 
+async def test_native_scene_power_state_waits_for_atomic_sequence(coord):
+    coord.is_on = False
+    coord.effect_families = frozenset()
+    with (
+        patch.object(
+            coord,
+            "async_write_effect_sequence",
+            new_callable=AsyncMock,
+            side_effect=BleakError("connection dropped"),
+        ) as write_sequence,
+        pytest.raises(BleakError, match="connection dropped"),
+    ):
+        await coord.async_apply_native_scene(
+            "glacier",
+            speed_index=0,
+            verify=False,
+        )
+
+    assert write_sequence.await_args.args[0][0] == proto.build_power(True, "H617A")
+    assert coord.is_on is False
+
+
 async def test_preview_observation_stays_read_only_when_device_is_silent(coord):
     coord._client = MagicMock(is_connected=True)
     with (
@@ -1651,7 +1739,7 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord):
         )
 
     assert result is None
-    assert query.await_count == 2
+    assert query.await_count == 1
     query.assert_awaited_with(
         query_power=False,
         query_brightness=False,
@@ -1662,6 +1750,103 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord):
     )
     disconnect.assert_not_awaited()
     send.assert_not_awaited()
+
+
+async def test_preview_preflight_retries_one_failed_connection_path(coord):
+    partial = _c(disconnect=AsyncMock())
+    replacement = _c()
+    attempts = 0
+
+    async def connect():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            coord._client = partial
+            raise TimeoutError
+        coord._client = replacement
+        return replacement
+
+    with patch.object(coord, "_ensure_connected", new=AsyncMock(side_effect=connect)) as ensure_connected:
+        await coord.async_preview_preflight(timeout=0.2)
+
+    assert ensure_connected.await_count == 2
+    partial.disconnect.assert_awaited_once_with()
+    assert coord._client is replacement
+    assert not coord._control_arbiter.locked()
+
+
+async def test_preview_preflight_bounds_partial_client_cleanup(coord):
+    never_disconnected = asyncio.Event()
+    partial = _c(disconnect=AsyncMock(side_effect=never_disconnected.wait))
+
+    async def connect():
+        coord._client = partial
+        await asyncio.Event().wait()
+
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(side_effect=connect)),
+        pytest.raises(TimeoutError),
+    ):
+        async with asyncio.timeout(0.2):
+            await coord.async_preview_preflight(timeout=0.02)
+
+    partial.disconnect.assert_awaited_once_with()
+    assert coord._client is None
+    assert not coord._control_arbiter.locked()
+
+
+async def test_preview_preflight_cancellation_finishes_detached_cleanup(coord):
+    connect_started = asyncio.Event()
+    disconnect_started = asyncio.Event()
+    release_disconnect = asyncio.Event()
+    disconnect_finished = asyncio.Event()
+
+    async def disconnect():
+        disconnect_started.set()
+        await release_disconnect.wait()
+        disconnect_finished.set()
+
+    partial = _c(disconnect=AsyncMock(side_effect=disconnect))
+
+    async def connect():
+        coord._client = partial
+        connect_started.set()
+        await asyncio.Event().wait()
+
+    with patch.object(coord, "_ensure_connected", new=AsyncMock(side_effect=connect)):
+        preflight = asyncio.create_task(coord.async_preview_preflight(timeout=1))
+        await connect_started.wait()
+        preflight.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await preflight
+
+    await disconnect_started.wait()
+    assert coord._client is None
+    assert not coord._control_arbiter.locked()
+    release_disconnect.set()
+    await disconnect_finished.wait()
+
+
+async def test_preview_preflight_timeout_includes_foreground_wait(coord):
+    foreground_started = asyncio.Event()
+    release_foreground = asyncio.Event()
+
+    async def hold_foreground() -> None:
+        async with coord._control_arbiter.hold(ControlIntent.USER):
+            foreground_started.set()
+            await release_foreground.wait()
+
+    foreground = asyncio.create_task(hold_foreground())
+    await foreground_started.wait()
+    with (
+        patch.object(coord, "_ensure_connected", new_callable=AsyncMock) as ensure_connected,
+        pytest.raises(TimeoutError),
+    ):
+        await coord.async_preview_preflight(timeout=0.02)
+
+    ensure_connected.assert_not_awaited()
+    release_foreground.set()
+    await foreground
 
 
 async def test_preview_observation_confirms_diy_code_readback(coord):
@@ -1694,17 +1879,11 @@ async def test_preview_observation_confirms_diy_code_readback(coord):
     sent.assert_awaited_once()
 
 
-async def test_preview_observation_retries_queries_until_fresh_state_arrives(coord):
+async def test_preview_observation_does_not_repeat_silent_query(coord):
     coord._client = MagicMock(is_connected=True)
     coord.effect = None
-    calls = 0
 
     async def query_state(**_kwargs) -> bool:
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            coord.effect = "glacier"
-            coord._field_revisions["effect"] = coord._field_revisions.get("effect", 0) + 1
         return True
 
     with patch.object(
@@ -1714,12 +1893,11 @@ async def test_preview_observation_retries_queries_until_fresh_state_arrives(coo
     ) as query:
         result = await coord.async_preview_observe(
             {"effect": "glacier"},
-            timeout=0.2,
-            attempts=3,
+            timeout=0.05,
         )
 
-    assert result is True
-    assert query.await_count == 2
+    assert result is None
+    assert query.await_count == 1
     assert not coord._control_lock.locked()
 
 

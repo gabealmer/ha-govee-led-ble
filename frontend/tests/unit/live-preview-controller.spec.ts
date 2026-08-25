@@ -1,136 +1,269 @@
 import { expect, test, vi } from "vitest";
 
-import {
-  LivePreviewController,
-  LivePreviewProgressController,
-  type LivePreviewRequest,
-} from "../../src/live-preview-controller";
 import type { EffectStudioApi } from "../../src/api";
+import { LivePreviewProgressController } from "../../src/live-preview-controller";
 import {
+  createPreviewChannelId,
   EffectStudioPreviewSession,
   type PanelPreviewRequest,
 } from "../../src/panel-preview";
 import { previewStatusMessage } from "../../src/panel-preview-controller";
 import type { PreviewStatus } from "../../src/types";
 
-interface Request extends LivePreviewRequest {
-  value: number;
+test("preview channels fall back to getRandomValues outside secure contexts", () => {
+  const channelId = createPreviewChannelId(
+    null,
+    (values) => {
+      values.forEach((_value, index) => {
+        values[index] = index;
+      });
+      return values;
+    },
+  );
+
+  expect(channelId).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
 }
 
-test("throttles changing values and always flushes the trailing value", () => {
-  let now = 0;
-  let nextTimer = 1;
-  const timers = new Map<number, () => void>();
-  const submitted: Request[] = [];
-  const controller = new LivePreviewController<Request>({
-    submit: (request) => submitted.push(request),
-    cancel: () => undefined,
-    now: () => now,
-    setTimer: (callback) => {
-      const id = nextTimer++;
-      timers.set(id, callback);
-      return id;
+function request(name: string): PanelPreviewRequest {
+  return {
+    kind: "snapshot",
+    configEntryId: "entry-a",
+    name,
+    content: {
+      kind: "h617a_single",
+      family: 0,
+      variant: 0,
+      speed: 50,
+      palette: [[255, 0, 0]],
     },
-    clearTimer: (id) => {
-      timers.delete(id);
-    },
-  });
+    fingerprint: name,
+  };
+}
 
-  controller.schedule({ fingerprint: "1", value: 1 }, "changing");
-  now = 40;
-  controller.schedule({ fingerprint: "2", value: 2 }, "changing");
-  now = 80;
-  controller.schedule({ fingerprint: "3", value: 3 }, "changing");
+function status(
+  sequence: number,
+  phase: PreviewStatus["phase"],
+  sessionId = "session-a",
+  configEntryId = "entry-a",
+): PreviewStatus {
+  return {
+    session_id: sessionId,
+    sequence,
+    config_entry_id: configEntryId,
+    phase,
+    content_kind: "advanced",
+    confidence: "unknown",
+    error_code: null,
+    error_message: null,
+    write_disposition: "unknown",
+    persist_default: false,
+    scene_id: null,
+    effect_id: null,
+    default_action: null,
+  };
+}
 
-  expect(submitted.map((request) => request.value)).toEqual([1]);
-  expect(timers.size).toBe(1);
+test("latest desired request replaces pending admissions without local statuses", async () => {
+  const first = deferred<void>();
+  const previewSnapshot = vi
+    .fn()
+    .mockReturnValueOnce(first.promise)
+    .mockResolvedValue(undefined);
+  const api = {
+    subscribePreview: vi.fn().mockResolvedValue(() => undefined),
+    onConnectionReady: vi.fn().mockReturnValue(() => undefined),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    previewSnapshot,
+  } as unknown as EffectStudioApi;
+  const statuses: (PreviewStatus | undefined)[] = [];
+  const session = new EffectStudioPreviewSession(
+    api,
+    (value) => statuses.push(value),
+    () => undefined,
+  );
+  await session.open();
 
-  now = 280;
-  [...timers.values()][0]();
-  expect(submitted.map((request) => request.value)).toEqual([1, 3]);
-  expect(submitted.map((request) => request.committed)).toEqual([
+  session.submit(request("First"));
+  session.submit(request("Second"));
+  session.submit(request("Third"));
+
+  expect(previewSnapshot).toHaveBeenCalledTimes(1);
+  expect(previewSnapshot).toHaveBeenNthCalledWith(
+    1,
+    expect.any(String),
+    1,
+    "entry-a",
+    "First",
+    expect.any(Object),
     undefined,
-    true,
-  ]);
+  );
+  expect(statuses).toEqual([]);
+
+  first.resolve();
+  await vi.waitFor(() => {
+    expect(previewSnapshot).toHaveBeenCalledTimes(2);
+  });
+  expect(previewSnapshot).toHaveBeenNthCalledWith(
+    2,
+    expect.any(String),
+    3,
+    "entry-a",
+    "Third",
+    expect.any(Object),
+    undefined,
+  );
 });
 
-test("rapid committed changes coalesce at the throttle boundary", () => {
-  let now = 0;
-  let nextTimer = 1;
-  const timers = new Map<number, () => void>();
-  const submitted: Request[] = [];
-  const controller = new LivePreviewController<Request>({
-    submit: (request) => submitted.push(request),
-    cancel: () => undefined,
-    now: () => now,
-    setTimer: (callback) => {
-      const id = nextTimer++;
-      timers.set(id, callback);
-      return id;
-    },
-    clearTimer: (id) => {
-      timers.delete(id);
-    },
+test("connection loss retains and resubmits the same desired revision", async () => {
+  let ready!: () => void;
+  const connectionLost = {
+    type: "result",
+    success: false,
+    error: { code: 3, message: "Connection lost" },
+  };
+  const previewSnapshot = vi
+    .fn()
+    .mockRejectedValueOnce(connectionLost)
+    .mockResolvedValueOnce(undefined);
+  const api = {
+    subscribePreview: vi.fn().mockResolvedValue(() => undefined),
+    onConnectionReady: vi.fn().mockImplementation((callback: () => void) => {
+      ready = callback;
+      return () => undefined;
+    }),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    previewSnapshot,
+  } as unknown as EffectStudioApi;
+  const requestFailed = vi.fn();
+  const session = new EffectStudioPreviewSession(
+    api,
+    () => undefined,
+    () => undefined,
+    requestFailed,
+  );
+  await session.open();
+  session.submit(request("Reconnect"));
+  await vi.waitFor(() => {
+    expect(previewSnapshot).toHaveBeenCalledTimes(1);
   });
 
-  controller.schedule({ fingerprint: "same", value: 1 }, "committed");
-  now = 20;
-  controller.schedule({ fingerprint: "same", value: 1 }, "committed");
-  now = 40;
-  controller.schedule({ fingerprint: "next", value: 2 }, "committed");
-
-  expect(submitted.map((request) => request.value)).toEqual([1]);
-  expect(timers.size).toBe(1);
-  now = 150;
-  [...timers.values()][0]();
-  expect(submitted.map((request) => request.value)).toEqual([1, 2]);
-  expect(submitted.every((request) => request.committed)).toBe(true);
-});
-
-test("persistence intent is part of preview deduplication", () => {
-  let now = 0;
-  let nextTimer = 1;
-  const timers = new Map<number, () => void>();
-  const submitted: Request[] = [];
-  const controller = new LivePreviewController<Request>({
-    submit: (request) => submitted.push(request),
-    cancel: () => undefined,
-    now: () => now,
-    setTimer: (callback) => {
-      const id = nextTimer++;
-      timers.set(id, callback);
-      return id;
-    },
-    clearTimer: (id) => {
-      timers.delete(id);
-    },
+  ready();
+  await vi.waitFor(() => {
+    expect(previewSnapshot).toHaveBeenCalledTimes(2);
   });
 
-  controller.schedule(
-    { fingerprint: "same", value: 1, persistDefault: false },
-    "committed",
-  );
-  controller.schedule(
-    { fingerprint: "same", value: 1, persistDefault: true },
-    "committed",
-  );
-  now = 150;
-  [...timers.values()][0]();
-
-  expect(submitted).toHaveLength(2);
-  expect(submitted.map((request) => request.persistDefault)).toEqual([
-    false,
-    true,
-  ]);
+  const first = previewSnapshot.mock.calls[0];
+  const second = previewSnapshot.mock.calls[1];
+  expect(second.slice(0, 2)).toEqual(first.slice(0, 2));
+  expect(requestFailed).not.toHaveBeenCalled();
 });
 
-test("a settled single changing value is not submitted twice", () => {
+test("definite admission rejection is surfaced without a fabricated status", async () => {
+  const rejection = {
+    code: "invalid_format",
+    message: "The preview effect is invalid.",
+  };
+  const api = {
+    subscribePreview: vi.fn().mockResolvedValue(() => undefined),
+    onConnectionReady: vi.fn().mockReturnValue(() => undefined),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    previewSnapshot: vi.fn().mockRejectedValue(rejection),
+  } as unknown as EffectStudioApi;
+  const statuses: (PreviewStatus | undefined)[] = [];
+  const requestFailed = vi.fn();
+  const session = new EffectStudioPreviewSession(
+    api,
+    (value) => statuses.push(value),
+    () => undefined,
+    requestFailed,
+  );
+  await session.open();
+  session.submit(request("Invalid"));
+
+  await vi.waitFor(() => {
+    expect(requestFailed).toHaveBeenCalledWith(rejection);
+  });
+  expect(statuses).toEqual([]);
+});
+
+test("editor transitions reject late status from the stable channel", async () => {
+  let subscribed!: (status: PreviewStatus) => void;
+  let channelId!: string;
+  const api = {
+    subscribePreview: vi.fn().mockImplementation(
+      async (
+        sessionId: string,
+        callback: (value: PreviewStatus) => void,
+      ) => {
+        channelId = sessionId;
+        subscribed = callback;
+        return () => undefined;
+      },
+    ),
+    onConnectionReady: vi.fn().mockReturnValue(() => undefined),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    previewSnapshot: vi.fn().mockResolvedValue(undefined),
+  } as unknown as EffectStudioApi;
+  const statuses: (PreviewStatus | undefined)[] = [];
+  const session = new EffectStudioPreviewSession(
+    api,
+    (value) => statuses.push(value),
+    () => undefined,
+  );
+  await session.open();
+  session.submit(request("Preview"));
+  const failed = {
+    ...status(1, "failed", channelId),
+    error_code: "transport_failed",
+  };
+
+  subscribed(failed);
+  session.transition();
+  subscribed(failed);
+
+  expect(statuses).toEqual([failed, undefined]);
+  session.close();
+  expect(api.closePreviewSession).toHaveBeenCalledWith(channelId);
+});
+
+test("closing an expired preview channel does not log a warning", async () => {
+  const api = {
+    subscribePreview: vi.fn().mockResolvedValue(() => undefined),
+    onConnectionReady: vi.fn().mockReturnValue(() => undefined),
+    closePreviewSession: vi.fn().mockRejectedValue({
+      code: "preview_session_not_found",
+    }),
+  } as unknown as EffectStudioApi;
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  const session = new EffectStudioPreviewSession(
+    api,
+    () => undefined,
+    () => undefined,
+  );
+  await session.open();
+
+  session.close();
+  await vi.waitFor(() => {
+    expect(api.closePreviewSession).toHaveBeenCalledOnce();
+  });
+  expect(warning).not.toHaveBeenCalled();
+  warning.mockRestore();
+});
+
+test("slow writes show delayed progress and terminal statuses clear it", () => {
   let nextTimer = 1;
   const timers = new Map<number, () => void>();
-  const submitted: Request[] = [];
-  const controller = new LivePreviewController<Request>({
-    submit: (request) => submitted.push(request),
-    cancel: () => undefined,
+  const visible: boolean[] = [];
+  const progress = new LivePreviewProgressController({
+    changed: (value) => visible.push(value),
     now: () => 0,
     setTimer: (callback) => {
       const id = nextTimer++;
@@ -142,296 +275,39 @@ test("a settled single changing value is not submitted twice", () => {
     },
   });
 
-  controller.schedule({ fingerprint: "same", value: 1 }, "changing");
-  [...timers.values()][0]();
-
-  expect(submitted).toEqual([{ fingerprint: "same", value: 1 }]);
-});
-
-test("toggle-on forces the current state and toggle-off cancels pending work", () => {
-  const submitted: Request[] = [];
-  let cancellations = 0;
-  const controller = new LivePreviewController<Request>({
-    submit: (request) => submitted.push(request),
-    cancel: () => {
-      cancellations += 1;
-    },
-  });
-
-  controller.schedule({ fingerprint: "same", value: 1 }, "committed");
-  controller.disable();
-  controller.enable({ fingerprint: "same", value: 1 });
-
-  expect(cancellations).toBe(1);
-  expect(submitted).toEqual([
-    { fingerprint: "same", value: 1, committed: true },
-    { fingerprint: "same", value: 1, force: true, committed: true },
-  ]);
-});
-
-test("reset disengages without changing the enabled preference", () => {
-  let cancellations = 0;
-  const controller = new LivePreviewController<Request>({
-    submit: () => undefined,
-    cancel: () => {
-      cancellations += 1;
-    },
-  });
-
-  controller.schedule({ fingerprint: "1", value: 1 }, "committed");
-  controller.reset();
-
-  expect(controller.enabled).toBe(true);
-  expect(controller.engaged).toBe(false);
-  expect(cancellations).toBe(1);
-});
-
-test("selection transitions clear trailing work and dedupe without backend cancellation", () => {
-  let now = 0;
-  let nextTimer = 1;
-  const timers = new Map<number, () => void>();
-  const submitted: Request[] = [];
-  let cancellations = 0;
-  const controller = new LivePreviewController<Request>({
-    submit: (request) => submitted.push(request),
-    cancel: () => {
-      cancellations += 1;
-    },
-    now: () => now,
-    setTimer: (callback) => {
-      const id = nextTimer++;
-      timers.set(id, callback);
-      return id;
-    },
-    clearTimer: (id) => {
-      timers.delete(id);
-    },
-  });
-
-  controller.schedule({ fingerprint: "old", value: 1 }, "changing");
-  controller.transition();
-  expect(timers.size).toBe(0);
-  expect(cancellations).toBe(0);
-
-  now = 200;
-  controller.scheduleSelection({ fingerprint: "same", value: 2 });
-  controller.transition();
-  now = 400;
-  controller.scheduleSelection({ fingerprint: "same", value: 2 });
-
-  expect(submitted.map((request) => request.value)).toEqual([1, 2, 2]);
-  expect(cancellations).toBe(0);
-});
-
-test("rapid explicit selections coalesce to the final committed request", () => {
-  let now = 0;
-  let nextTimer = 1;
-  const timers = new Map<number, () => void>();
-  const submitted: Request[] = [];
-  const controller = new LivePreviewController<Request>({
-    submit: (request) => submitted.push(request),
-    cancel: () => undefined,
-    now: () => now,
-    setTimer: (callback) => {
-      const id = nextTimer++;
-      timers.set(id, callback);
-      return id;
-    },
-    clearTimer: (id) => {
-      timers.delete(id);
-    },
-  });
-
-  controller.scheduleSelection({ fingerprint: "first", value: 1 });
-  now = 25;
-  controller.scheduleSelection({ fingerprint: "second", value: 2 });
-  now = 50;
-  controller.scheduleSelection({ fingerprint: "third", value: 3 });
-
-  expect(submitted.map((request) => request.value)).toEqual([1]);
+  progress.accept(status(1, "queued"));
   expect(timers.size).toBe(1);
-  [...timers.values()][0]();
-  expect(submitted.map((request) => request.value)).toEqual([1, 3]);
-  expect(submitted.every((request) => request.committed)).toBe(true);
+  const [timerId, showProgress] = [...timers.entries()][0];
+  timers.delete(timerId);
+  showProgress();
+  expect(visible).toEqual([true]);
+  progress.accept(status(1, "written"));
+  expect(visible).toEqual([true, false]);
+
+  progress.accept(status(2, "queued"));
+  progress.accept(status(2, "failed"));
+  expect(timers.size).toBe(0);
 });
 
-test("toggle-on without a current target still enables later edits", () => {
-  const submitted: Request[] = [];
-  const controller = new LivePreviewController<Request>({
-    submit: (request) => submitted.push(request),
-    cancel: () => undefined,
+test("device changes reset progress ownership", () => {
+  let nextTimer = 1;
+  const timers = new Map<number, () => void>();
+  const progress = new LivePreviewProgressController({
+    changed: () => undefined,
+    setTimer: (callback) => {
+      const id = nextTimer++;
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimer: (id) => {
+      timers.delete(id);
+    },
   });
 
-  controller.disable();
-  controller.enable();
-  controller.schedule({ fingerprint: "later", value: 2 }, "committed");
+  progress.accept(status(1, "queued", "session-a", "entry-a"));
+  progress.accept(status(2, "queued", "session-a", "entry-b"));
 
-  expect(controller.enabled).toBe(true);
-  expect(submitted).toEqual([
-    { fingerprint: "later", value: 2, committed: true },
-  ]);
-});
-
-function status(
-    sequence: number,
-    phase: PreviewStatus["phase"],
-    configEntryId = "entry-a",
-  ): PreviewStatus {
-    return {
-      session_id: "session-a",
-      sequence,
-      config_entry_id: configEntryId,
-      phase,
-      content_kind: "advanced",
-      confidence: "unknown",
-      error_code: null,
-      error_message: null,
-      write_disposition: "unknown",
-      persist_default: false,
-      scene_id: null,
-      effect_id: null,
-      default_action: null,
-    };
-}
-
-test("shows delayed progress for the first slow write", () => {
-    let now = 0;
-    let nextTimer = 1;
-    const timers = new Map<number, () => void>();
-    const visible: boolean[] = [];
-    const progress = new LivePreviewProgressController({
-      changed: (value) => visible.push(value),
-      now: () => now,
-      setTimer: (callback) => {
-        const id = nextTimer++;
-        timers.set(id, callback);
-        return id;
-      },
-      clearTimer: (id) => {
-        timers.delete(id);
-      },
-    });
-
-    progress.accept(status(1, "queued"));
-    expect(visible).toEqual([]);
-    expect(timers.size).toBe(1);
-    [...timers.values()][0]();
-    expect(visible).toEqual([true]);
-
-    now += 1_100;
-    progress.accept(status(1, "written"));
-    expect(visible).toEqual([true, false]);
-});
-
-test("fast writes, failures, cancellation, and device changes clear delayed progress", () => {
-    let now = 0;
-    let nextTimer = 1;
-    const timers = new Map<number, () => void>();
-    const visible: boolean[] = [];
-    const progress = new LivePreviewProgressController({
-      changed: (value) => visible.push(value),
-      now: () => now,
-      setTimer: (callback) => {
-        const id = nextTimer++;
-        timers.set(id, callback);
-        return id;
-      },
-      clearTimer: (id) => {
-        timers.delete(id);
-      },
-    });
-
-    progress.accept(status(1, "queued"));
-    expect(timers.size).toBe(1);
-    progress.accept(status(1, "failed"));
-    expect(timers.size).toBe(0);
-
-    progress.accept(status(7, "queued"));
-    progress.accept(status(7, "cancelled"));
-    expect(timers.size).toBe(0);
-
-    progress.accept(status(8, "queued", "entry-b"));
-    expect(timers.size).toBe(1);
-    expect(visible).toEqual([]);
-});
-
-test("writing and queued statuses both use delayed progress", () => {
-    let now = 0;
-    let nextTimer = 1;
-    const timers = new Map<number, () => void>();
-    const progress = new LivePreviewProgressController({
-      changed: () => undefined,
-      now: () => now,
-      setTimer: (callback) => {
-        const id = nextTimer++;
-        timers.set(id, callback);
-        return id;
-      },
-      clearTimer: (id) => {
-        timers.delete(id);
-      },
-    });
-
-    for (let sequence = 1; sequence <= 6; sequence += 1) {
-      progress.accept(status(sequence, "writing"));
-      now += 2_000;
-      progress.accept(status(sequence, "written"));
-    }
-
-    progress.accept(status(7, "queued"));
-    expect(timers.size).toBe(1);
-});
-
-test("editor transitions reject a late status when no successor request exists", async () => {
-  let subscribed!: (status: PreviewStatus) => void;
-  const api = {
-    openPreviewSession: vi.fn().mockResolvedValue("session-a"),
-    subscribePreview: vi.fn().mockImplementation(
-      async (
-        _sessionId: string,
-        callback: (status: PreviewStatus) => void,
-      ) => {
-        subscribed = callback;
-        return () => undefined;
-      },
-    ),
-    closePreviewSession: vi.fn().mockResolvedValue(undefined),
-    previewSnapshot: vi.fn().mockResolvedValue(undefined),
-  } as unknown as EffectStudioApi;
-  const statuses: (PreviewStatus | undefined)[] = [];
-  const session = new EffectStudioPreviewSession(
-    api,
-    (value) => statuses.push(value),
-    () => undefined,
-  );
-  await expect(session.open()).resolves.toBe(true);
-  await session.submit({
-    kind: "snapshot",
-    configEntryId: "entry-a",
-    name: "Preview",
-    content: {
-      kind: "h617a_single",
-      family: 0,
-      variant: 0,
-      speed: 50,
-      palette: [[255, 0, 0]],
-    },
-    fingerprint: "preview-a",
-  } satisfies PanelPreviewRequest);
-  const failed = {
-    ...status(1, "failed"),
-    error_code: "transport_failed",
-  };
-
-  subscribed(failed);
-  session.transition();
-  subscribed(failed);
-
-  expect(statuses).toEqual([
-    expect.objectContaining({ sequence: 1, phase: "queued" }),
-    failed,
-    undefined,
-  ]);
+  expect(timers.size).toBe(1);
 });
 
 test("preview failure messages distinguish failures from unconfirmed readback", () => {
@@ -440,7 +316,9 @@ test("preview failure messages distinguish failures from unconfirmed readback", 
       ...status(1, "failed"),
       error_code: "transport_failed",
     }),
-  ).toBe("Live apply could not reach the light. Tap Live to try again.");
+  ).toBe(
+    "Live apply could not reach the light. Turn Live off and on to try again.",
+  );
   expect(
     previewStatusMessage({
       ...status(2, "unconfirmed"),
