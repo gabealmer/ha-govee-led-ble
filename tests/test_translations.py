@@ -1,6 +1,7 @@
 """Consistency checks for the user-facing metadata."""
 
 import ast
+import json
 from pathlib import Path
 
 _COMPONENT = Path(__file__).resolve().parents[1] / "custom_components" / "ha_govee_led_ble"
@@ -10,6 +11,19 @@ _EN = _COMPONENT / "translations" / "en.json"
 
 def test_strings_and_en_are_byte_identical():
     assert _STRINGS.read_bytes() == _EN.read_bytes()
+
+
+def test_effect_category_options_have_direct_labels():
+    strings = json.loads(_STRINGS.read_text(encoding="utf-8"))
+
+    assert strings["options"]["step"]["init"]["data"] == {
+        "scenes": "Scenes",
+        "video": "Video",
+        "effects": "Effects",
+        "multi_layered": "Multi-Layered",
+        "reactive": "Reactive",
+        "advanced": "Advanced",
+    }
 
 
 def test_home_assistant_exceptions_declare_translation_metadata():

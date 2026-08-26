@@ -132,7 +132,12 @@
         "title": "Effects",
         "description": "Choose which Effect Studio categories appear in the Studio and on the light entity.",
         "data": {
-          "effect_categories": "Effect Studio"
+          "scenes": "Scenes",
+          "video": "Video",
+          "effects": "Effects",
+          "multi_layered": "Multi-Layered",
+          "reactive": "Reactive",
+          "advanced": "Advanced"
         }
       }
     }

@@ -130,6 +130,7 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
     hass.data.setdefault(DOMAIN, {})[AVAILABILITY_UNAVAILABLE_DATA_KEY] = {entry.unique_id}
     backend = MagicMock()
     backend.scene_defaults.async_delete_device = AsyncMock()
+    backend.active_workspaces.async_delete_device = AsyncMock()
     backend.device_cache.async_delete_device = AsyncMock()
     backend.deployments.async_delete_device = AsyncMock()
     backend.user_state.async_clear_config_entry = AsyncMock()
@@ -141,6 +142,7 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
         await async_remove_entry(hass, entry)
 
     backend.scene_defaults.async_delete_device.assert_awaited_once_with(entry.entry_id)
+    backend.active_workspaces.async_delete_device.assert_awaited_once_with(entry.entry_id)
     backend.device_cache.async_delete_device.assert_awaited_once_with(entry.entry_id)
     backend.deployments.async_delete_device.assert_awaited_once_with(entry.entry_id)
     backend.user_state.async_clear_config_entry.assert_awaited_once_with(entry.entry_id)

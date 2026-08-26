@@ -19,6 +19,7 @@ from .effect_domain import (
     JsonValue,
     LayeredEffect,
     LibraryItem,
+    Origin,
     WorkshopEffect,
     effect_content_from_dict,
 )
@@ -210,8 +211,13 @@ class EffectStudioApplication:
         *,
         name: str,
         content: Mapping[str, Any],
+        origin: Origin | None = None,
     ) -> LibraryItem:
-        return LibraryItem.new(name, _authored_content_from_dict(content))
+        return LibraryItem.new(
+            name,
+            _authored_content_from_dict(content),
+            origin=origin,
+        )
 
 
 def _authored_content_from_dict(raw: Mapping[str, Any]) -> EffectContent:

@@ -1,6 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import backendContracts from "../fixtures/backend-contracts.json";
+import { EffectStudioApi } from "../../src/api";
 import {
   decodeCustomCatalogue,
   decodeDevices,
@@ -16,6 +17,7 @@ import {
   effectContentToWire,
   isCompatibleEditorInfo,
 } from "../../src/validation";
+import type { HomeAssistant } from "../../src/types";
 
 type JsonObject = Record<string, unknown>;
 
@@ -89,6 +91,38 @@ test("canonical backend responses decode through the production validators", () 
   }
 });
 
+test("snapshot previews pass catalogue provenance through the API boundary", async () => {
+  const callWS = vi.fn().mockResolvedValue(undefined);
+  const api = new EffectStudioApi({
+    callWS,
+    callService: vi.fn(),
+    connection: {
+      subscribeMessage: vi.fn(),
+    },
+  } as unknown as HomeAssistant);
+
+  await api.previewSnapshot(
+    "session-a",
+    1,
+    "entry-a",
+    "Flow",
+    decodeEffectContent(contentSamples.h617a_painted),
+    false,
+    {
+      origin_kind: "catalogue_template",
+      origin_id: "template:single:1:0",
+    },
+  );
+
+  expect(callWS).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "ha_govee_led_ble/editor/preview/apply_snapshot",
+      origin_kind: "catalogue_template",
+      origin_id: "template:single:1:0",
+    }),
+  );
+});
+
 test.each(knownContentFamilies)(
   "canonical %s content decodes and preserves its wire form",
   (family) => {
@@ -120,6 +154,34 @@ describe("focused response mutations", () => {
     expect(() => decodeDevices(invalid)).toThrow(
       "devices[0].light_entity_id must identify a light entity",
     );
+  });
+
+  test("devices accept an optional active workspace without requiring it", () => {
+    const payload = structuredClone(responses.devices) as JsonObject[];
+    payload[0].active_workspace = {
+      config_entry_id: payload[0].config_entry_id,
+      model: payload[0].model,
+      selector_label: "Flow",
+      content: contentSamples.h617a_painted,
+      content_hash: "a".repeat(64),
+      origin: { kind: "catalogue_template", source_id: "template:single:1:0" },
+      observable_signature: "custom:800",
+      updated_at: "2026-08-25T00:00:00Z",
+      generation: 1,
+      confidence: "write_completed",
+    };
+
+    const devices = decodeDevices(payload);
+
+    expect(devices[0].active_workspace).toMatchObject({
+      selector_label: "Flow",
+      content: { kind: "h617a_painted" },
+      origin: {
+        kind: "catalogue_template",
+        source_id: "template:single:1:0",
+      },
+    });
+    expect(devices[1].active_workspace).toBeUndefined();
   });
 
   test("API version drift is incompatible without making the payload malformed", () => {

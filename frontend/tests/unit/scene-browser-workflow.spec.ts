@@ -156,6 +156,91 @@ describe("SceneBrowserWorkflow", () => {
     expect(initialSelectionFinished).toHaveBeenCalledWith(true);
   });
 
+  test("Spring category restoration reveals Candlelight and explicit clearing removes it", async () => {
+    const spring = {
+      ...firstScene,
+      name: "Spring",
+      display_name: "Spring",
+    };
+    const candlelight = {
+      ...secondScene,
+      category_id: 2,
+      category: "Cosy",
+      name: "Candlelight",
+      display_name: "Candlelight",
+    };
+    const categorisedCatalogue: SceneCatalogue = {
+      ...catalogue,
+      categories: [
+        { id: 1, name: "Spring" },
+        { id: 2, name: "Cosy" },
+      ],
+      scenes: [spring, candlelight],
+    };
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(categorisedCatalogue),
+      sceneDetail: vi.fn(
+        async (_deviceId: string, sceneId: number) =>
+          detail(sceneId === spring.scene_id ? spring : candlelight),
+      ),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    workflow.setCategory(spring.category_id);
+    await workflow.selectBuiltin(spring);
+
+    workflow.setInitialSelection({ kind: "native", effect: "Candlelight" });
+    await workflow.openInitialSelection();
+
+    expect(workflow.state.category).toBe(candlelight.category_id);
+    expect(workflow.state.selectedScene).toEqual(candlelight);
+
+    workflow.setInitialSelection({ kind: "none" });
+    await workflow.openInitialSelection();
+
+    expect(workflow.state.category).toBe(candlelight.category_id);
+    expect(workflow.state.selectedScene).toBeUndefined();
+    expect(workflow.state.content).toBeUndefined();
+  });
+
+  test("a subscription reload cannot replace edits made while its detail is loading", async () => {
+    const original = {
+      ...libraryItem("saved-a", firstScene),
+      content: content(firstScene, 1),
+    };
+    const remote = {
+      ...original,
+      version: 2,
+      updated_at: "2026-08-18T00:00:01Z",
+      name: "Remote name",
+    };
+    const remoteItem = deferred<LibraryItem>();
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      item: vi
+        .fn()
+        .mockResolvedValueOnce(original)
+        .mockReturnValueOnce(remoteItem.promise),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene)),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    workflow.setLibrary({ items: [summary(original)] });
+    await workflow.loadCatalogue();
+    await workflow.selectCustom(summary(original));
+
+    workflow.setLibrary({ items: [summary(remote)] });
+    workflow.setName("Local edit");
+    remoteItem.resolve(remote);
+    await vi.waitFor(() => expect(api.sceneDetail).toHaveBeenCalledTimes(2));
+    await Promise.resolve();
+
+    expect(workflow.state.selectedItem?.version).toBe(original.version);
+    expect(workflow.state.name).toBe("Local edit");
+    expect(workflow.state.notice).toBe(
+      "This custom scene changed elsewhere. Reload it before saving.",
+    );
+  });
+
   test("saving owns persistence payloads and commits the returned library item", async () => {
     const saved = libraryItem("saved-copy", firstScene, "Glacier custom");
     const createItem = vi.fn().mockResolvedValue(saved);

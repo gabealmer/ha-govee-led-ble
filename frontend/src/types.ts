@@ -67,6 +67,7 @@ export interface DeviceCapabilities {
   effect_categories: string[];
   preview_health: PreviewHealthStatus;
   active_state: ObservedEffectState | null;
+  active_workspace?: ActiveEffectWorkspace | null;
 }
 
 export interface EffectUserState {
@@ -100,6 +101,19 @@ export interface ObservedEffectState {
   native_mode: string | null;
   matched_operation_id: string | null;
   active_effect: ActiveEffectHint | null;
+}
+
+export interface ActiveEffectWorkspace {
+  config_entry_id: string;
+  model: string;
+  selector_label: string;
+  content: EffectContent;
+  content_hash: string;
+  origin: LibraryOrigin;
+  observable_signature: string;
+  updated_at: string;
+  generation: number;
+  confidence: ObservationConfidence;
 }
 
 export interface PaintedContent {
@@ -456,6 +470,11 @@ export interface PreviewStatus {
   scene_id: number | null;
   effect_id: number | null;
   default_action: "set" | "reset" | null;
+}
+
+export interface PreviewSnapshotProvenance {
+  origin_kind: "catalogue_template";
+  origin_id: string;
 }
 
 export interface PreviewHealthStatus {

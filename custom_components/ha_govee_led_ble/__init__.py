@@ -229,6 +229,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
     if effect_backend is not None:
         await asyncio.gather(
             effect_backend.scene_defaults.async_delete_device(entry.entry_id),
+            effect_backend.active_workspaces.async_delete_device(entry.entry_id),
             effect_backend.device_cache.async_delete_device(entry.entry_id),
             effect_backend.deployments.async_delete_device(entry.entry_id),
             effect_backend.user_state.async_clear_config_entry(entry.entry_id),

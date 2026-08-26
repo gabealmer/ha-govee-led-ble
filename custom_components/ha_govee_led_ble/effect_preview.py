@@ -19,6 +19,7 @@ from homeassistant.core import Event, HomeAssistant
 
 from .const import DOMAIN
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
+from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
 from .effect_catalogue import H6199_PALETTE_DIY_APPLY_CODE, H6199_WORKSHOP_APPLY_CODE
 from .effect_compiler import (
     ActivationMode,
@@ -32,10 +33,25 @@ from .effect_compiler import (
 )
 from .effect_deployments import ObservationConfidence
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
-from .effect_domain import JsonValue, LayeredScene, LibraryItem, PaletteScene, effect_content_to_dict
+from .effect_domain import (
+    EffectContent,
+    JsonValue,
+    LayeredScene,
+    LibraryItem,
+    PaletteScene,
+    effect_content_to_dict,
+)
 from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_SEQUENCE
-from .effect_runtime import async_apply_compiled_profile, resolve_diy_code
+from .effect_protocol_decoder import (
+    UnsupportedA3EffectError,
+    decode_a3_effect_frames,
+)
+from .effect_runtime import (
+    async_apply_compiled_profile,
+    observable_signature_for_state,
+    resolve_diy_code,
+)
 from .effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
 from .effect_scenes import ResolvedScene, resolve_scene, resolve_scene_application_body
 from .generated_protocol_adapter import build_power
@@ -261,6 +277,7 @@ class EffectPreviewManager:
         scene_defaults: NativeSceneDefaultRepository,
         diagnostics: EffectDiagnosticHistory,
         *,
+        active_workspaces: ActiveEffectWorkspaceRepository | None = None,
         verify_delay: float = PREVIEW_VERIFY_DELAY,
         verify_timeout: float = PREVIEW_VERIFY_TIMEOUT,
         connect_timeout: float = PREVIEW_CONNECT_TIMEOUT,
@@ -268,6 +285,7 @@ class EffectPreviewManager:
     ) -> None:
         self._hass = hass
         self._device_cache = device_cache
+        self._active_workspaces = active_workspaces
         self._scene_defaults = scene_defaults
         self._diagnostics = diagnostics
         self._verify_delay = verify_delay
@@ -973,6 +991,29 @@ class EffectPreviewManager:
             )
             return
 
+        if request.item is not None and self._active_workspaces is not None:
+            signature = observable_signature_for_state(
+                coordinator,
+                mode=_active_mode_for_workspace(coordinator),
+                diy_code=coordinator.diy_code,
+                effect=coordinator.effect,
+            )
+            if signature is not None:
+                self._active_workspaces.set(
+                    ActiveEffectWorkspace(
+                        config_entry_id=request.config_entry_id,
+                        model=coordinator.model,
+                        selector_label=request.item.name,
+                        content=_active_workspace_content(
+                            request.item.content,
+                            compiled,
+                        ),
+                        origin=request.item.origin,
+                        observable_signature=signature,
+                        updated_at=request.updated_at,
+                        generation=self._active_workspaces.next_generation(),
+                    )
+                )
         self._invalidate_observed_match(request)
         coordinator.async_update_listeners()
 
@@ -1174,6 +1215,19 @@ class EffectPreviewManager:
                 config_entry_id=request.config_entry_id,
                 details={"sequence": request.sequence},
             )
+            if self._active_workspaces is not None:
+                workspace = self._active_workspaces.get(request.config_entry_id)
+                if (
+                    workspace is not None
+                    and request.item is not None
+                    and workspace.updated_at == request.updated_at
+                    and workspace.selector_label == request.item.name
+                ):
+                    self._active_workspaces.update_confidence(
+                        request.config_entry_id,
+                        workspace.generation,
+                        confidence,
+                    )
         elif result is False:
             phase = PreviewPhase.UNCONFIRMED
             confidence = ObservationConfidence.UNKNOWN
@@ -1489,6 +1543,34 @@ def _required_item(request: _PreviewRequest) -> LibraryItem:
     if request.item is None:
         raise RuntimeError("snapshot preview request has no effect content")
     return request.item
+
+
+def _active_workspace_content(
+    source: EffectContent,
+    compiled: CompiledApplication | None,
+) -> EffectContent:
+    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
+        return source
+    try:
+        decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
+    except UnsupportedA3EffectError:
+        return source
+    return decoded if type(decoded) is type(source) else source
+
+
+def _active_mode_for_workspace(coordinator: Any) -> str:
+    mode = getattr(coordinator, "active_mode", None)
+    if isinstance(mode, str):
+        return mode
+    if getattr(coordinator, "diy_code", None) is not None:
+        return "custom"
+    if getattr(coordinator, "effect", None) is not None:
+        return "scene"
+    if getattr(coordinator, "music_mode", None) not in {None, "off"}:
+        return "music"
+    if getattr(coordinator, "video_mode", None) not in {None, "off"}:
+        return "video"
+    return "colour"
 
 
 def _preview_scene_identity(

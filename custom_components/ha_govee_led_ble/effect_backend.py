@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from homeassistant.core import HomeAssistant
 
+from .effect_active_workspace import ActiveEffectWorkspaceRepository
 from .effect_application import EffectStudioApplication
 from .effect_deployment_diagnostics import EffectDeploymentDiagnosticBridge
 from .effect_deployments import EffectDeploymentRepository
@@ -24,6 +25,7 @@ class EffectBackend:
     library: EffectLibraryRepository
     deployments: EffectDeploymentRepository
     device_cache: EffectDeviceCache
+    active_workspaces: ActiveEffectWorkspaceRepository
     user_state: EffectUserStateRepository
     scene_defaults: NativeSceneDefaultRepository
     application: EffectStudioApplication
@@ -39,6 +41,7 @@ class EffectBackend:
         library = EffectLibraryRepository(hass)
         deployments = EffectDeploymentRepository(hass)
         device_cache = EffectDeviceCache(hass)
+        active_workspaces = ActiveEffectWorkspaceRepository(hass)
         user_state = EffectUserStateRepository(hass)
         scene_defaults = NativeSceneDefaultRepository(hass)
         loaded = False
@@ -46,6 +49,7 @@ class EffectBackend:
             library_snapshot = await library.async_load()
             deployment_snapshot = await deployments.async_load()
             await device_cache.async_load()
+            await active_workspaces.async_load()
             await deployments.async_reconcile_library_hashes(library_snapshot.items)
             await device_cache.async_reconcile_library_hashes(library_snapshot.items)
             deployment_snapshot = deployments.snapshot()
@@ -56,11 +60,16 @@ class EffectBackend:
             if not loaded:
                 await migration_backup.async_rollback()
         diagnostics = EffectDiagnosticHistory()
-        engine = EffectDeploymentEngine(deployments, device_cache)
+        engine = EffectDeploymentEngine(
+            deployments,
+            device_cache,
+            active_workspaces,
+        )
         return cls(
             library=library,
             deployments=deployments,
             device_cache=device_cache,
+            active_workspaces=active_workspaces,
             user_state=user_state,
             scene_defaults=scene_defaults,
             application=EffectStudioApplication(library, deployments, user_state, device_cache),
@@ -70,6 +79,7 @@ class EffectBackend:
                 device_cache,
                 scene_defaults,
                 diagnostics,
+                active_workspaces=active_workspaces,
             ),
             diagnostics=diagnostics,
             _diagnostic_bridge=EffectDeploymentDiagnosticBridge(

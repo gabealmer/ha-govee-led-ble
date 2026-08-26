@@ -23,6 +23,7 @@ import type {
   ModelEffectCatalogue,
   MusicProfileContent,
   PaintedContent,
+  PaletteDiyEffectContent,
 } from "../../src/types";
 
 function device(
@@ -184,6 +185,110 @@ function editor(model: PanelModel): PanelEditorController {
     editorTransitionStarted: () => undefined,
     contentCommitted: () => undefined,
   });
+}
+
+function flowWorkspaceDevice(id: string): DeviceCapabilities {
+  const selected = device(id, "H6199");
+  selected.custom_effects.palette_diy = "supported";
+  const content: PaletteDiyEffectContent = {
+    kind: "palette_diy",
+    model: "H6199",
+    family: 1,
+    variant: 0,
+    speed: 73,
+    palette: [[12, 34, 56]],
+  };
+  selected.active_state = {
+    config_entry_id: selected.config_entry_id,
+    mode: "custom",
+    observed_at: "2026-08-25T00:00:00Z",
+    confidence: "write_completed",
+    diy_code: 601,
+    effect: null,
+    native_mode: null,
+    matched_operation_id: "operation-flow",
+    active_effect: {
+      source_kind: "snapshot",
+      selector_label: "Flow",
+      content_hash: "a".repeat(64),
+      origin: {
+        kind: "catalogue_template",
+        source_id: "template:single:1:0",
+      },
+      observable_signature: "custom:601",
+      confidence: "write_completed",
+      item_id: null,
+      item_version: null,
+    },
+  };
+  selected.active_workspace = {
+    config_entry_id: selected.config_entry_id,
+    model: selected.model,
+    selector_label: "Flow",
+    content,
+    content_hash: "a".repeat(64),
+    origin: {
+      kind: "catalogue_template",
+      source_id: "template:single:1:0",
+    },
+    observable_signature: "custom:601",
+    updated_at: "2026-08-25T00:00:00Z",
+    generation: 1,
+    confidence: "write_completed",
+  };
+  return selected;
+}
+
+function installFlowCatalogue(model: PanelModel): void {
+  installH6199Catalogue(model);
+  model.customCatalogue!.models.H6199.effects[0] = {
+    ...model.customCatalogue!.models.H6199.effects[0],
+    id: "flow",
+    label: "Flow",
+  };
+}
+
+function panelControllerHarness(model: PanelModel) {
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  return { controller, editorController, preview };
+}
+
+function workspaceModel(selected: DeviceCapabilities): PanelModel {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.userState = {
+    owner_id: "user-a",
+    recent_colours: [],
+    selected_config_entry_id: selected.config_entry_id,
+    navigation: { section: "scenes" },
+  };
+  installFlowCatalogue(model);
+  return model;
 }
 
 test("derives selected-device and preview decisions from panel state", () => {
@@ -919,6 +1024,357 @@ test("late device restoration cannot clear newer editor work", async () => {
   expect(model.customEffectCategory).toBe("advanced");
   expect(model.editorSource.kind).toBe("new");
   expect(model.content.kind).toBe("advanced");
+});
+
+test("Flow selection and edits survive Effects to Scenes to Effects navigation", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const selected = device("entry-a", "H617A");
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  installH6199Catalogue(model);
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  editorController.openEditableTemplate(
+    "Flow",
+    painted(),
+    "template:single:1:0",
+    { section: "custom", category: "single-layer" },
+  );
+  editorController.updatePaintedContent({ speed: 73 }, "committed");
+
+  await controller.selectSection("scenes");
+
+  expect(model.section).toBe("scenes");
+  expect(model.sceneInitialSelection).toEqual({ kind: "none" });
+  expect(model.editorOwnedByActiveView).toBe(false);
+
+  await controller.selectSection("custom", "single-layer");
+
+  expect(model.section).toBe("custom");
+  expect(model.templateSelection).toBe("template:single:1:0");
+  expect(model.catalogueSourceLabel).toBe("Flow");
+  expect(model.content).toMatchObject({ kind: "h617a_painted", speed: 73 });
+  expect(model.editorOwnedByActiveView).toBe(true);
+});
+
+test("edited Flow workspace restores on initial load with catalogue Reset defaults", async () => {
+  const model = workspaceModel(flowWorkspaceDevice("entry-a"));
+  const { controller, editorController, preview } =
+    panelControllerHarness(model);
+  const templatePreview = vi.spyOn(preview, "scheduleTemplateSelection");
+  const editedPreview = vi.spyOn(preview, "scheduleEdited");
+
+  await controller.openInitialContext();
+
+  expect(model.section).toBe("custom");
+  expect(model.customEffectCategory).toBe("single-layer");
+  expect(model.templateSelection).toBe("template:single:1:0");
+  expect(model.catalogueSourceLabel).toBe("Flow");
+  expect(model.content).toMatchObject({
+    kind: "palette_diy",
+    family: 1,
+    variant: 0,
+    speed: 73,
+    palette: [[12, 34, 56]],
+  });
+  expect(model.resetBaseline).toMatchObject({
+    kind: "palette_diy",
+    family: 1,
+    variant: 0,
+    speed: 50,
+  });
+  expect(templatePreview).not.toHaveBeenCalled();
+  expect(editedPreview).not.toHaveBeenCalled();
+
+  editorController.resetContent();
+  expect(model.content).toMatchObject({
+    kind: "palette_diy",
+    family: 1,
+    variant: 0,
+    speed: 50,
+  });
+});
+
+test("Effects to Scenes to Effects reopens the active Flow workspace", async () => {
+  const model = workspaceModel(flowWorkspaceDevice("entry-a"));
+  const { controller } = panelControllerHarness(model);
+  await controller.openInitialContext();
+
+  await controller.selectSection("scenes");
+  if (model.content.kind !== "palette_diy") {
+    throw new Error("Flow workspace content changed kind");
+  }
+  model.content = {
+    ...model.content,
+    speed: 99,
+  };
+  await controller.selectSection("custom", "single-layer");
+
+  expect(model.section).toBe("custom");
+  expect(model.templateSelection).toBe("template:single:1:0");
+  expect(model.content).toMatchObject({
+    kind: "palette_diy",
+    speed: 73,
+    palette: [[12, 34, 56]],
+  });
+});
+
+test("device switching opens the target device Flow workspace", async () => {
+  const first = device("entry-a", "H6199");
+  const second = flowWorkspaceDevice("entry-b");
+  const model = workspaceModel(first);
+  model.devices = [first, second];
+  const { controller, preview } = panelControllerHarness(model);
+  const templatePreview = vi.spyOn(preview, "scheduleTemplateSelection");
+  controller.api = {
+    subscribeDevice: vi.fn().mockResolvedValue(() => undefined),
+    updateUserState: vi.fn().mockResolvedValue(model.userState),
+  } as unknown as EffectStudioApi;
+
+  await controller.deviceChanged(second.config_entry_id);
+
+  expect(model.selectedDeviceId).toBe(second.config_entry_id);
+  expect(model.section).toBe("custom");
+  expect(model.templateSelection).toBe("template:single:1:0");
+  expect(model.content).toMatchObject({
+    kind: "palette_diy",
+    speed: 73,
+  });
+  expect(templatePreview).not.toHaveBeenCalled();
+});
+
+test("page-style controller reinitialisation recovers the same Flow workspace", async () => {
+  const payload = flowWorkspaceDevice("entry-a");
+  const firstModel = workspaceModel(structuredClone(payload));
+  const first = panelControllerHarness(firstModel);
+  await first.controller.openInitialContext();
+
+  const reloadedModel = workspaceModel(structuredClone(payload));
+  const reloaded = panelControllerHarness(reloadedModel);
+  const templatePreview = vi.spyOn(
+    reloaded.preview,
+    "scheduleTemplateSelection",
+  );
+  await reloaded.controller.openInitialContext();
+
+  expect(reloadedModel.templateSelection).toBe("template:single:1:0");
+  expect(reloadedModel.content).toEqual(firstModel.content);
+  expect(reloadedModel.resetBaseline).toEqual(firstModel.resetBaseline);
+  expect(templatePreview).not.toHaveBeenCalled();
+});
+
+test("workspace recovery infers only unambiguous structural identity", async () => {
+  const inferredDevice = flowWorkspaceDevice("entry-a");
+  if (!inferredDevice.active_workspace) {
+    throw new Error("Flow device is missing its active workspace");
+  }
+  inferredDevice.active_workspace.origin = {
+    kind: "authored",
+    source_id: null,
+  };
+  const inferredModel = workspaceModel(inferredDevice);
+  const inferred = panelControllerHarness(inferredModel);
+  await inferred.controller.openInitialContext();
+  expect(inferredModel.templateSelection).toBe("template:single:1:0");
+
+  const invalidDevice = flowWorkspaceDevice("entry-b");
+  if (!invalidDevice.active_workspace) {
+    throw new Error("Flow device is missing its active workspace");
+  }
+  invalidDevice.active_workspace.origin.source_id =
+    "template:single:999:0";
+  const invalidModel = workspaceModel(invalidDevice);
+  const invalid = panelControllerHarness(invalidModel);
+  await invalid.controller.openInitialContext();
+
+  expect(invalidModel.editorSource.kind).toBe("none");
+  expect(invalidModel.name).toBe("");
+});
+
+test("active workspace does not open a category disabled by options", async () => {
+  const selected = flowWorkspaceDevice("entry-a");
+  selected.effect_categories = ["scenes"];
+  const model = workspaceModel(selected);
+  const { controller } = panelControllerHarness(model);
+
+  await controller.openInitialContext();
+
+  expect(model.section).toBe("scenes");
+  expect(model.customEffectsAvailable).toBe(false);
+  expect(model.editorSource.kind).toBe("none");
+  expect(model.name).toBe("");
+});
+
+test("initial load and device switching navigate to each active context", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const first = device("entry-a", "H6199");
+  first.profiles.video = "supported";
+  first.active_state = {
+    config_entry_id: first.config_entry_id,
+    mode: "video",
+    observed_at: "2026-08-25T00:00:00Z",
+    confidence: "unknown",
+    diy_code: null,
+    effect: null,
+    native_mode: "movie",
+    matched_operation_id: null,
+    active_effect: null,
+  };
+  const second = device("entry-b", "H6199");
+  second.active_state = {
+    config_entry_id: second.config_entry_id,
+    mode: "scene",
+    observed_at: "2026-08-25T00:00:01Z",
+    confidence: "unknown",
+    diy_code: null,
+    effect: "Candlelight",
+    native_mode: "Candlelight",
+    matched_operation_id: null,
+    active_effect: null,
+  };
+  model.devices = [first, second];
+  model.selectedDeviceId = first.config_entry_id;
+  model.userState = {
+    owner_id: "user-a",
+    recent_colours: [],
+    selected_config_entry_id: first.config_entry_id,
+    navigation: { section: "scenes" },
+  };
+  installH6199Catalogue(model);
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  controller.api = {
+    subscribeDevice: vi.fn().mockResolvedValue(() => undefined),
+    updateUserState: vi.fn().mockResolvedValue(model.userState),
+  } as unknown as EffectStudioApi;
+
+  await controller.openInitialContext();
+
+  expect(model.section).toBe("video");
+  expect(model.templateSelection).toBe("template:video:movie");
+
+  await controller.deviceChanged(second.config_entry_id);
+
+  expect(model.section).toBe("scenes");
+  expect(model.sceneInitialSelection).toEqual({
+    kind: "native",
+    effect: "Candlelight",
+  });
+  expect(model.editorSource.kind).toBe("none");
+});
+
+test("a library subscription reload cannot clobber a mid-flight local edit", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let controller!: PanelController;
+  const editorController = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
+    contentCommitted: () => undefined,
+  });
+  controller = new PanelController(
+    model,
+    editorController,
+    preview,
+    modal,
+    {
+      connected: () => true,
+      pathname: () => "/ha-govee-led-ble",
+      replacePath: () => undefined,
+    },
+  );
+  const source = item(painted());
+  editorController.applyLibraryItem(source);
+  let resolveRemote!: (value: LibraryItem) => void;
+  const remoteItem = new Promise<LibraryItem>((resolve) => {
+    resolveRemote = resolve;
+  });
+  controller.api = {
+    item: vi.fn().mockReturnValue(remoteItem),
+  } as unknown as EffectStudioApi;
+  const remote = {
+    ...source,
+    version: source.version + 1,
+    updated_at: "2026-08-25T00:00:00Z",
+    content: { ...source.content, speed: 55 },
+  };
+
+  const reload = controller.libraryChanged({
+    items: [
+      {
+        id: remote.id,
+        version: remote.version,
+        updated_at: remote.updated_at,
+        name: remote.name,
+        kind: remote.content.kind,
+        content_hash: remote.content_hash,
+        origin: remote.origin,
+      },
+    ],
+  });
+  await Promise.resolve();
+  editorController.updatePaintedContent({ speed: 73 }, "committed");
+  resolveRemote(remote);
+  await reload;
+
+  expect(model.currentItem?.version).toBe(source.version);
+  expect(model.content).toMatchObject({ kind: "h617a_painted", speed: 73 });
+  expect(model.notice).toBe(
+    "This effect changed elsewhere. Reload it before saving.",
+  );
 });
 
 test("automatic saved restoration reads without applying, previewing, or saving", async () => {

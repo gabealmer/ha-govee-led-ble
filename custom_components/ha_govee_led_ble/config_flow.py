@@ -13,7 +13,6 @@ from homeassistant.components.bluetooth import BluetoothServiceInfo
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
-from homeassistant.helpers import config_validation as cv
 
 from .ble_connection import async_validate_ble_connection
 from .const import (
@@ -122,8 +121,7 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
             return self.async_abort(reason="not_supported")
         supported = supported_effect_categories(model)
         if user_input is not None:
-            selected = set(user_input[CONF_EFFECT_CATEGORIES]) & set(supported)
-            ordered = [category for category in supported if category in selected]
+            ordered = [category for category in supported if user_input[category]]
             options = {key: value for key, value in self.config_entry.options.items() if key != CONF_EFFECT_FAMILIES}
             options[CONF_EFFECT_CATEGORIES] = ordered
             return self.async_create_entry(data=options)
@@ -132,21 +130,9 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
             CONF_EFFECT_CATEGORIES,
             list(defaults),
         )
-        choices = {
-            "scenes": "Scenes",
-            "video": "Video",
-            "effects": "Effects",
-            "multi_layered": "Multi-Layered",
-            "reactive": "Reactive",
-            "advanced": "Advanced",
-        }
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_EFFECT_CATEGORIES, default=current): cv.multi_select(
-                        {category: choices[category] for category in supported}
-                    ),
-                }
+                {vol.Required(category, default=category in current): bool for category in supported}
             ),
         )

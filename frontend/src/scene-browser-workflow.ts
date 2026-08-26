@@ -15,6 +15,8 @@ import {
   sceneContentAtSpeed,
   sceneIsDirty,
   sceneKey,
+  visibleCategoryForBuiltin,
+  visibleCategoryForCustom,
   type CategorySelection,
   type SceneBrowserViewState,
   type SceneContent,
@@ -239,7 +241,7 @@ export class SceneBrowserWorkflow {
   public setLibrary(library: LibrarySnapshot): void {
     this.library = library;
     const selectedItem = this.stateValue.selectedItem;
-    if (!selectedItem) {
+    if (!selectedItem || this.stateValue.saving) {
       return;
     }
     const sync = libraryItemSyncResult(selectedItem, library.items, this.sceneDirty);
@@ -256,7 +258,7 @@ export class SceneBrowserWorkflow {
     } else if (sync.action === "conflict") {
       this.patch({ notice: "This custom scene changed elsewhere. Reload it before saving." });
     } else if (sync.action === "reload") {
-      void this.selectCustom(sync.summary);
+      void this.reloadSelectedCustom(sync.summary, selectedItem);
     }
   }
 
@@ -343,6 +345,11 @@ export class SceneBrowserWorkflow {
     if (!this.api || !this.device) {
       return false;
     }
+    const category = visibleCategoryForBuiltin(this.stateValue.category, scene);
+    if (category !== this.stateValue.category) {
+      this.invalidateRequests();
+      this.patch({ category });
+    }
     const identity = sceneKey(scene);
     const request = this.beginRequest(identity);
     this.patch({
@@ -381,6 +388,11 @@ export class SceneBrowserWorkflow {
       return false;
     }
     const catalogue = this.stateValue.catalogue;
+    const category = visibleCategoryForCustom(this.stateValue.category);
+    if (category !== this.stateValue.category) {
+      this.invalidateRequests();
+      this.patch({ category });
+    }
     const request = this.beginRequest(`custom:${summary.id}`);
     this.patch({
       notice: undefined,
@@ -432,17 +444,21 @@ export class SceneBrowserWorkflow {
       return;
     }
     const key =
-      selection.kind === "saved"
-        ? `saved:${selection.itemId}`
-        : `native:${normaliseSceneName(selection.effect)}`;
+      selection.kind === "none"
+        ? "none"
+        : selection.kind === "saved"
+          ? `saved:${selection.itemId}`
+          : `native:${normaliseSceneName(selection.effect)}`;
     if (this.openedInitialSelection === key) {
       return;
     }
     this.openedInitialSelection = key;
     const opened =
-      selection.kind === "saved"
-        ? await this.openInitialSavedScene(selection.itemId)
-        : await this.openInitialNativeScene(selection.effect);
+      selection.kind === "none"
+        ? this.clearSelection()
+        : selection.kind === "saved"
+          ? await this.openInitialSavedScene(selection.itemId)
+          : await this.openInitialNativeScene(selection.effect);
     if (this.initialSelection === selection) {
       this.effects.initialSelectionFinished(opened);
     }
@@ -853,9 +869,75 @@ export class SceneBrowserWorkflow {
     return scene ? this.selectBuiltin(scene) : false;
   }
 
+  private clearSelection(): boolean {
+    this.invalidateRequests();
+    this.patch({
+      selectedScene: undefined,
+      selectedItem: undefined,
+      content: undefined,
+      name: "",
+      speedIndex: null,
+      hasDefault: false,
+      editingCopy: false,
+      notice: undefined,
+    });
+    return true;
+  }
+
+  private async reloadSelectedCustom(
+    summary: LibrarySummary,
+    expectedItem: LibraryItem,
+  ): Promise<void> {
+    if (!this.api || !this.device || !this.stateValue.catalogue) {
+      return;
+    }
+    const request = this.captureRequest();
+    const catalogue = this.stateValue.catalogue;
+    try {
+      const item = await request.api.item(summary.id);
+      if (!isSceneContent(item.content)) {
+        throw new Error("This custom scene uses an unsupported definition.");
+      }
+      const content = item.content;
+      if (content.template.sku !== catalogue.sku) {
+        throw new Error(`This custom scene targets ${content.template.sku}, not ${catalogue.sku}.`);
+      }
+      const scene = findCatalogueScene(catalogue, content);
+      if (!scene) {
+        throw new Error("The source scene is not in this device catalogue.");
+      }
+      const detail = await request.api.sceneDetail(
+        request.deviceId,
+        content.template.scene_id,
+        content.template.effect_id,
+      );
+      const currentItem = this.stateValue.selectedItem;
+      if (
+        !this.requestIsCurrent(request) ||
+        this.stateValue.saving ||
+        this.sceneDirty ||
+        currentItem?.id !== expectedItem.id ||
+        currentItem.version !== expectedItem.version ||
+        sceneKey(detail.scene) !== sceneKey(scene)
+      ) {
+        if (currentItem?.id === expectedItem.id && this.sceneDirty) {
+          this.patch({ notice: "This custom scene changed elsewhere. Reload it before saving." });
+        }
+        return;
+      }
+      this.commitCustomSelection(item, scene, content);
+      this.patch({ notice: undefined });
+    } catch (error) {
+      if (this.requestIsCurrent(request)) {
+        this.patch({ notice: errorMessage(error) });
+      }
+    }
+  }
+
   private commitCustomSelection(item: LibraryItem, scene: SceneSummary, content: SceneContent): void {
     const selectedContent = cloneSceneContent(content);
     this.patch({
+      category: visibleCategoryForCustom(this.stateValue.category),
       selectedScene: scene,
       selectedItem: item,
       editingCopy: false,

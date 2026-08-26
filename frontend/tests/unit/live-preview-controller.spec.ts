@@ -4,7 +4,9 @@ import type { EffectStudioApi } from "../../src/api";
 import { LivePreviewProgressController } from "../../src/live-preview-controller";
 import {
   createPreviewChannelId,
+  editorSnapshotProvenance,
   EffectStudioPreviewSession,
+  snapshotPreviewRequest,
   type PanelPreviewRequest,
 } from "../../src/panel-preview";
 import { previewStatusMessage } from "../../src/panel-preview-controller";
@@ -24,6 +26,48 @@ test("preview channels fall back to getRandomValues outside secure contexts", ()
   expect(channelId).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
 });
 
+test("snapshot provenance uses only exact catalogue template identity", () => {
+  const catalogueSource = {
+    kind: "catalogue" as const,
+    owner: { section: "custom" as const, category: "single-layer" as const },
+    selectionIdentity: "template:single:1:0",
+    label: "Flow",
+  };
+  const provenance = editorSnapshotProvenance(catalogueSource);
+  const request = snapshotPreviewRequest(
+    "entry-a",
+    "Flow",
+    {
+      kind: "h617a_single",
+      family: 1,
+      variant: 0,
+      speed: 50,
+      palette: [[255, 0, 0]],
+    },
+    false,
+    provenance,
+  );
+
+  expect(provenance).toEqual({
+    origin_kind: "catalogue_template",
+    origin_id: catalogueSource.selectionIdentity,
+  });
+  expect(request).toMatchObject({ provenance });
+  expect(
+    editorSnapshotProvenance({
+      kind: "saved",
+      owner: catalogueSource.owner,
+      itemId: "saved-a",
+    }),
+  ).toBeUndefined();
+  expect(
+    editorSnapshotProvenance({
+      kind: "new",
+      owner: catalogueSource.owner,
+    }),
+  ).toBeUndefined();
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((complete) => {
@@ -32,7 +76,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function request(name: string): PanelPreviewRequest {
+function request(name: string): PanelPreviewRequest & { kind: "snapshot" } {
   return {
     kind: "snapshot",
     configEntryId: "entry-a",
@@ -104,6 +148,7 @@ test("latest desired request replaces pending admissions without local statuses"
     "First",
     expect.any(Object),
     undefined,
+    undefined,
   );
   expect(statuses).toEqual([]);
 
@@ -119,6 +164,42 @@ test("latest desired request replaces pending admissions without local statuses"
     "Third",
     expect.any(Object),
     undefined,
+    undefined,
+  );
+});
+
+test("catalogue provenance reaches snapshot admission unchanged", async () => {
+  const previewSnapshot = vi.fn().mockResolvedValue(undefined);
+  const api = {
+    subscribePreview: vi.fn().mockResolvedValue(() => undefined),
+    onConnectionReady: vi.fn().mockReturnValue(() => undefined),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    previewSnapshot,
+  } as unknown as EffectStudioApi;
+  const session = new EffectStudioPreviewSession(
+    api,
+    () => undefined,
+    () => undefined,
+  );
+  await session.open();
+  const provenance = {
+    origin_kind: "catalogue_template" as const,
+    origin_id: "template:single:1:0",
+  };
+  session.submit({
+    ...request("Flow"),
+    provenance,
+  });
+
+  await vi.waitFor(() => expect(previewSnapshot).toHaveBeenCalledOnce());
+  expect(previewSnapshot).toHaveBeenCalledWith(
+    expect.any(String),
+    1,
+    "entry-a",
+    "Flow",
+    expect.any(Object),
+    undefined,
+    provenance,
   );
 });
 

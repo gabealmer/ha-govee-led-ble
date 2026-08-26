@@ -13,6 +13,8 @@ import {
   sceneKey,
   sceneSpeedOptions,
   sameSceneDeviceIdentity,
+  visibleCategoryForBuiltin,
+  visibleCategoryForCustom,
 } from "../../src/scene-browser-model";
 import type {
   LibrarySummary,
@@ -200,6 +202,15 @@ test("scene categories and entries are derived without DOM state", () => {
     "Aurora custom",
     "Glacier",
   ]);
+});
+
+test("restored selections move only to categories that contain them", () => {
+  expect(visibleCategoryForBuiltin("all", scene)).toBe("all");
+  expect(visibleCategoryForBuiltin(scene.category_id, scene)).toBe(scene.category_id);
+  expect(visibleCategoryForBuiltin(9, scene)).toBe(scene.category_id);
+  expect(visibleCategoryForCustom("all")).toBe("all");
+  expect(visibleCategoryForCustom("custom")).toBe("custom");
+  expect(visibleCategoryForCustom(scene.category_id)).toBe("custom");
 });
 
 test("preview requests use the current selection identity and editable speed", () => {

@@ -16,6 +16,9 @@ from homeassistant.core import HomeAssistant
 from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENES
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.effect_active_workspace import (
+    ActiveEffectWorkspaceRepository,
+)
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     WORKSHOP_PROTOCOL_FIXTURES,
@@ -120,11 +123,14 @@ async def _manager(
     await cache.async_load()
     scene_defaults = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
     await scene_defaults.async_load()
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await active_workspaces.async_load()
     manager = EffectPreviewManager(
         hass,
         cache,
         scene_defaults,
         EffectDiagnosticHistory(),
+        active_workspaces=active_workspaces,
         verify_delay=timing.get("verify_delay", 0),
         verify_timeout=timing.get("verify_timeout", 0.1),
         connect_timeout=timing.get("connect_timeout", 0.1),
@@ -1059,6 +1065,13 @@ async def test_successful_unsaved_preview_invalidates_persistent_observed_match(
     assert observed is not None
     assert observed.matched_operation_id is None
     assert observed.confidence is ObservationConfidence.UNKNOWN
+    assert manager._active_workspaces is not None  # noqa: SLF001
+    workspace = manager._active_workspaces.get("entry-a")  # noqa: SLF001
+    assert workspace is not None
+    assert workspace.selector_label == "invalidate"
+    assert workspace.content == _item("invalidate").content
+    assert workspace.observable_signature == f"custom:{coordinator.diy_code}"
+    assert workspace.confidence is ObservationConfidence.WRITE_COMPLETED
     coordinator.async_update_listeners.assert_called_once()
     await manager.async_shutdown()
 

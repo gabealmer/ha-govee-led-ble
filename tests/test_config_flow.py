@@ -238,18 +238,41 @@ def test_extract_model(name, expected):
 @pytest.mark.parametrize(
     ("model", "expected"),
     [
-        ("H617A", {"scenes", "effects", "multi_layered", "reactive", "advanced"}),
-        ("H6199", {"scenes", "video", "effects", "reactive", "advanced"}),
+        ("H617A", ["scenes", "effects", "multi_layered", "reactive", "advanced"]),
+        ("H6199", ["scenes", "video", "effects", "reactive", "advanced"]),
     ],
 )
-async def test_options_flow_model_defaults(hass: HomeAssistant, model: str, expected: set[str]):
+async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssistant, model: str, expected: list[str]):
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: model}, unique_id="AA:BB:CC:DD:EE:FF")
     entry.add_to_hass(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.FORM
     schema = result["data_schema"]
     assert schema is not None
-    assert set(schema({})[CONF_EFFECT_CATEGORIES]) == expected
+    assert [marker.schema for marker in schema.schema] == expected
+    assert schema({}) == dict.fromkeys(expected, True)
+
+
+async def test_options_flow_uses_stored_category_list_for_checkbox_defaults(hass: HomeAssistant):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_MODEL: "H6199"},
+        options={CONF_EFFECT_CATEGORIES: ["scenes", "reactive"]},
+        unique_id="AA:BB:CC:DD:EE:FF",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    schema = result["data_schema"]
+    assert schema is not None
+    assert schema({}) == {
+        "scenes": True,
+        "video": False,
+        "effects": False,
+        "reactive": True,
+        "advanced": False,
+    }
 
 
 async def test_options_flow_aborts_for_unsupported_model(hass: HomeAssistant):
@@ -269,7 +292,13 @@ async def test_options_flow_saves_ordered_studio_categories(hass: HomeAssistant)
     with patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock):
         saved = await hass.config_entries.options.async_configure(
             result["flow_id"],
-            {CONF_EFFECT_CATEGORIES: ["scenes", "reactive"]},
+            {
+                "scenes": True,
+                "video": False,
+                "effects": False,
+                "reactive": True,
+                "advanced": False,
+            },
         )
     assert saved["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {CONF_EFFECT_CATEGORIES: ["scenes", "reactive"]}

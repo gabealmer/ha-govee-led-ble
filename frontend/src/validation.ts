@@ -209,6 +209,17 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
               device.active_state,
               `devices[${index}].active_state`,
             ),
+      ...(device.active_workspace === undefined
+        ? {}
+        : {
+            active_workspace:
+              device.active_workspace === null
+                ? null
+                : decodeActiveEffectWorkspace(
+                    device.active_workspace,
+                    `devices[${index}].active_workspace`,
+                  ),
+          }),
     };
   });
   requireUnique(devices, (device) => device.config_entry_id, "device IDs");
@@ -271,6 +282,7 @@ function decodeObservedEffectState(value: unknown, name: string) {
   if (activeEffect !== null && activeEffect.confidence !== confidence) {
     invalid(`${name} active-effect confidence does not match the observation`);
   }
+
   return {
     config_entry_id: boundedString(
       state.config_entry_id,
@@ -302,6 +314,50 @@ function decodeObservedEffectState(value: unknown, name: string) {
             MAX_IDENTIFIER_LENGTH,
           ),
     active_effect: activeEffect,
+  };
+}
+
+function decodeActiveEffectWorkspace(value: unknown, name: string) {
+  const workspace = objectValue(value, name);
+  return {
+    config_entry_id: boundedString(
+      workspace.config_entry_id,
+      `${name}.config_entry_id`,
+      MAX_IDENTIFIER_LENGTH,
+    ),
+    model: boundedString(
+      workspace.model,
+      `${name}.model`,
+      MAX_IDENTIFIER_LENGTH,
+    ),
+    selector_label: boundedString(
+      workspace.selector_label,
+      `${name}.selector_label`,
+      MAX_EFFECT_NAME_LENGTH,
+    ),
+    content: decodeEffectContent(workspace.content),
+    content_hash: contentHash(
+      workspace.content_hash,
+      `${name}.content_hash`,
+    ),
+    origin: decodeOrigin(workspace.origin),
+    observable_signature: boundedString(
+      workspace.observable_signature,
+      `${name}.observable_signature`,
+      MAX_IDENTIFIER_LENGTH,
+    ),
+    updated_at: timestampString(workspace.updated_at, `${name}.updated_at`),
+    generation: integerValue(
+      workspace.generation,
+      `${name}.generation`,
+      1,
+      MAX_SAFE_REVISION,
+    ),
+    confidence: enumString(
+      workspace.confidence,
+      VERIFICATION_CONFIDENCE,
+      `${name}.confidence`,
+    ),
   };
 }
 

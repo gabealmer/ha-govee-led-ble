@@ -8,6 +8,7 @@ import type {
   LibraryItem,
   LibrarySnapshot,
   PreviewStatus,
+  PreviewSnapshotProvenance,
   SceneCatalogue,
   SceneDetail,
   SceneSummary,
@@ -158,6 +159,7 @@ export class EffectStudioApi {
     name: string,
     content: EffectContent,
     persistDefault = false,
+    provenance?: PreviewSnapshotProvenance,
   ): Promise<void> {
     await this.call("preview/apply_snapshot", {
       session_id: sessionId,
@@ -167,6 +169,7 @@ export class EffectStudioApi {
       content: effectContentToWire(content),
       updated_at: new Date().toISOString(),
       persist_default: persistDefault,
+      ...(provenance ?? {}),
     });
   }
 

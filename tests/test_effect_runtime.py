@@ -11,6 +11,10 @@ from uuid import uuid4
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.ha_govee_led_ble.effect_active_workspace import (
+    ActiveEffectWorkspace,
+    ActiveEffectWorkspaceRepository,
+)
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
@@ -320,8 +324,25 @@ async def test_failed_layered_scene_recovers_prior_state(
     content = decode_catalogue_layered_scene("H617A", entry)
     assert content is not None
     item = LibraryItem.new("Layered scene", content)
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await active_workspaces.async_load()
+    prior_workspace = ActiveEffectWorkspace(
+        config_entry_id="entry-a",
+        model="H617A",
+        selector_label="Flow",
+        content=SingleEffect(9, 9, 50, ((255, 0, 0),)),
+        origin=item.origin,
+        observable_signature="scene:sunrise",
+        updated_at="2026-08-10T00:00:00Z",
+        generation=1,
+    )
+    active_workspaces.set(prior_workspace)
 
-    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+    result = await EffectDeploymentEngine(
+        repository,
+        cache,
+        active_workspaces,
+    ).async_apply_saved(
         coordinator,
         item,
         config_entry_id="entry-a",
@@ -333,6 +354,35 @@ async def test_failed_layered_scene_recovers_prior_state(
         result.prior_state,
         overwritten_diy_code=-1,
     )
+    assert active_workspaces.get("entry-a") == prior_workspace
+
+
+async def test_failed_snapshot_does_not_publish_the_rolled_back_state(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.effect = "sunrise"
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.scene_type == 2 and scene.param)
+    content = decode_catalogue_layered_scene("H617A", entry)
+    assert content is not None
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await active_workspaces.async_load()
+
+    result = await EffectDeploymentEngine(
+        repository,
+        cache,
+        active_workspaces,
+    ).async_apply_snapshot(
+        coordinator,
+        LibraryItem.new("Layered scene", content),
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.FAILED
+    assert active_workspaces.get("entry-a") is None
 
 
 async def test_verification_retry_only_repeats_safe_activation(
@@ -1150,7 +1200,13 @@ async def test_unsaved_music_profile_persists_the_applied_snapshot(
     coordinator.async_select_music_slug = select_music
     coordinator.async_apply_music_params = AsyncMock()
     item = _music_item("H6199")
-    result = await EffectDeploymentEngine(repository, cache).async_apply_snapshot(
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await active_workspaces.async_load()
+    result = await EffectDeploymentEngine(
+        repository,
+        cache,
+        active_workspaces,
+    ).async_apply_snapshot(
         coordinator,
         item,
         config_entry_id="entry-a",
@@ -1163,6 +1219,13 @@ async def test_unsaved_music_profile_persists_the_applied_snapshot(
     assert persisted.source_content_hash == item.content_hash
     assert persisted.item_id is None
     assert persisted.content_kind == "music_profile"
+    workspace = active_workspaces.get("entry-a")
+    assert workspace is not None
+    assert workspace.selector_label == item.name
+    assert workspace.content == item.content
+    assert isinstance(workspace.content, MusicProfile)
+    assert workspace.observable_signature == f"music:{workspace.content.mode}"
+    assert workspace.confidence is ObservationConfidence.SETTINGS_MATCH
 
 
 async def test_music_profile_retries_the_complete_writer_before_confirmation(

@@ -186,9 +186,15 @@ export class GoveeSceneBrowser extends LitElement {
       this.lastScrolledSelectionKey = undefined;
       return;
     }
+    const previousViewState = changed.get("viewState") as
+      | SceneBrowserViewState
+      | undefined;
     if (
       (selectedKey !== this.lastScrolledSelectionKey ||
-        (changed.has("initialSelection") && this.initialSelection)) &&
+        (changed.has("initialSelection") && this.initialSelection) ||
+        changed.has("library") ||
+        previousViewState?.category !== this.viewState.category ||
+        previousViewState?.catalogue !== this.viewState.catalogue) &&
       scrollSelectedIntoView(
         this.shadowRoot?.querySelector(".scene-list") ?? null,
       )

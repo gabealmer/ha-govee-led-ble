@@ -174,6 +174,41 @@ def parse_command(frame: bytes, model: str = "H617A") -> Any | None:
     return parsed
 
 
+def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
+    """Parse one validated, padded A3 effect envelope through its generated root."""
+    if not isinstance(envelope, bytes):
+        raise TypeError("A3 effect envelope must be bytes")
+    if len(envelope) < A3_CHUNK_SIZE or len(envelope) % A3_CHUNK_SIZE:
+        raise ValueError("A3 effect envelope must contain complete 17-byte chunks")
+    if envelope[0] != 0x01:
+        raise ValueError("A3 effect envelope has an invalid marker")
+    if envelope[1] != len(envelope) // A3_CHUNK_SIZE:
+        raise ValueError("A3 effect envelope does not match its chunk count")
+
+    if model == "H617A":
+        root_type = {
+            0x01: SceneType1Body,
+            0x02: SceneBody,
+            0x03: DiyType03,
+            0x04: DiyType04,
+        }.get(envelope[2])
+        if root_type is None:
+            raise ValueError(f"H617A A3 body type 0x{envelope[2]:02x} is not supported")
+    elif model == "H6199":
+        root_type = H6199EffectUpload
+    else:
+        raise ValueError(f"{model} has no generated A3 effect grammar")
+
+    try:
+        parsed = root_type(KaitaiStream(io.BytesIO(envelope)))
+        parsed._read()
+    except KaitaiStructError as error:
+        raise ValueError(f"invalid {model} A3 effect envelope") from error
+    if not parsed._io.is_eof():
+        raise ValueError(f"{model} A3 effect grammar did not consume the envelope")
+    return parsed
+
+
 def _command_types(model: str) -> tuple[Any, Any, Any]:
     if model == "H6199":
         return (

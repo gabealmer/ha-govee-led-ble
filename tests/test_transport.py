@@ -2,7 +2,11 @@
 
 import pytest
 
-from custom_components.ha_govee_led_ble.transport import fragment_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import (
+    fragment_a3,
+    reassemble_a3,
+    xor_checksum,
+)
 
 H = bytes.fromhex
 
@@ -47,3 +51,53 @@ def test_plain_final_frame_can_carry_data() -> None:
     frames = fragment_a3(0x02, bytes(range(1, 81)))
     assert [frame[1] for frame in frames] == [0, 1, 2, 3, 0xFF]
     assert any(frames[-1][2:19])
+
+
+def test_a3_reassembler_returns_the_padded_generated_envelope() -> None:
+    frames = fragment_a3(0x04, H("09093206ff00000000ff"))
+
+    envelope = reassemble_a3(frames)
+
+    assert envelope == H("01020409093206ff00000000ff") + bytes(21)
+    assert len(envelope) == envelope[1] * 17
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda frames: [frames[0][:-1], *frames[1:]], "exactly 20 bytes"),
+        (
+            lambda frames: [bytes([0xA2]) + frames[0][1:], *frames[1:]],
+            "invalid prefix",
+        ),
+        (
+            lambda frames: [frames[0][:-1] + bytes([frames[0][-1] ^ 1]), *frames[1:]],
+            "invalid checksum",
+        ),
+        (
+            lambda frames: [
+                frames[0][:1]
+                + b"\x01"
+                + frames[0][2:-1]
+                + bytes([xor_checksum(frames[0][:1] + b"\x01" + frames[0][2:-1])]),
+                *frames[1:],
+            ],
+            "index 1, expected 0",
+        ),
+        (
+            lambda frames: [
+                frames[0][:3]
+                + b"\x03"
+                + frames[0][4:-1]
+                + bytes([xor_checksum(frames[0][:3] + b"\x03" + frames[0][4:-1])]),
+                *frames[1:],
+            ],
+            "declares 3 frames, received 2",
+        ),
+    ],
+)
+def test_a3_reassembler_rejects_invalid_generated_frames(mutate, message: str) -> None:
+    frames = fragment_a3(0x04, H("09093206ff00000000ff"))
+
+    with pytest.raises(ValueError, match=message):
+        reassemble_a3(mutate(frames))

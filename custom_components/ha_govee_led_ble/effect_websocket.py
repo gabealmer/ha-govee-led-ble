@@ -29,6 +29,8 @@ from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
     EffectValidationError,
     OpaqueContent,
+    Origin,
+    SourceKind,
 )
 from .effect_limits import (
     MAX_EDITOR_DEVICES,
@@ -187,8 +189,26 @@ def _device_payload(
         effect_categories=tuple(coordinator.effect_categories),
     ).to_dict()
     device["active_state"] = observed.to_public_dict()
+    workspace = backend.active_workspaces.get(entry.entry_id)
+    device["active_workspace"] = (
+        workspace.to_dict()
+        if workspace is not None
+        and workspace.model == coordinator.model
+        and workspace.observable_signature == _observed_signature(observed)
+        else None
+    )
     device["preview_health"] = backend.preview.health(entry.entry_id).to_dict()
     return device
+
+
+def _observed_signature(observed: Any) -> str | None:
+    if observed.mode == "custom" and observed.diy_code is not None:
+        return f"custom:{observed.diy_code}"
+    if observed.mode == "scene" and observed.effect is not None:
+        return f"scene:{observed.effect}"
+    if observed.mode in {"music", "video"} and observed.native_mode is not None:
+        return f"{observed.mode}:{observed.native_mode}"
+    return None
 
 
 def _light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str | None:
@@ -562,6 +582,8 @@ async def ws_preview_close(
         vol.Required("updated_at"): TIMESTAMP,
         vol.Required("name"): EFFECT_NAME,
         vol.Required("content"): EFFECT_CONTENT,
+        vol.Optional("origin_kind"): vol.In([SourceKind.CATALOGUE_TEMPLATE.value]),
+        vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("persist_default", default=False): STRICT_BOOL,
     }
 )
@@ -575,9 +597,19 @@ async def ws_preview_apply_snapshot(
     backend = _backend(hass)
     try:
         backend.preview.ensure_session(msg["session_id"], connection)
+        if "origin_id" in msg and "origin_kind" not in msg:
+            raise EffectValidationError("origin ID requires an origin kind")
         item = backend.application.new_authored_item(
             name=msg["name"],
             content=msg["content"],
+            origin=(
+                Origin(
+                    SourceKind(msg["origin_kind"]),
+                    msg.get("origin_id"),
+                )
+                if "origin_kind" in msg
+                else None
+            ),
         )
         acceptance = await backend.preview.async_queue_snapshot(
             session_id=msg["session_id"],
@@ -1062,6 +1094,8 @@ async def ws_apply(
         vol.Required("name"): EFFECT_NAME,
         vol.Required("content"): EFFECT_CONTENT,
         vol.Required("updated_at"): TIMESTAMP,
+        vol.Optional("origin_kind"): vol.In([SourceKind.CATALOGUE_TEMPLATE.value]),
+        vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("operation_id"): UUID_TEXT,
     }
 )
@@ -1078,6 +1112,8 @@ async def ws_apply_snapshot(
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
     try:
+        if "origin_id" in msg and "origin_kind" not in msg:
+            raise EffectValidationError("origin ID requires an origin kind")
         await backend.preview.async_supersede_device(
             entry.entry_id,
             reason="committed_apply",
@@ -1085,6 +1121,14 @@ async def ws_apply_snapshot(
         item = backend.application.new_authored_item(
             name=msg["name"],
             content=msg["content"],
+            origin=(
+                Origin(
+                    SourceKind(msg["origin_kind"]),
+                    msg.get("origin_id"),
+                )
+                if "origin_kind" in msg
+                else None
+            ),
         )
         result = await backend.engine.async_apply_snapshot(
             entry.runtime_data,

@@ -1,6 +1,7 @@
 """BLE transport framing shared by commands and effect uploads."""
 
 import math
+from collections.abc import Sequence
 
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
@@ -45,3 +46,29 @@ def fragment_a3_envelope(envelope: bytes) -> list[bytes]:
         raise ValueError("A3 envelope does not match its chunk count")
     chunks = [envelope[index : index + A3_CHUNK_SIZE] for index in range(0, len(envelope), A3_CHUNK_SIZE)]
     return [_a3_frame(index if index + 1 < len(chunks) else 0xFF, chunk) for index, chunk in enumerate(chunks)]
+
+
+def reassemble_a3(frames: Sequence[bytes]) -> bytes:
+    """Validate generated A3 frames and return their padded Kaitai envelope."""
+    if not frames:
+        raise ValueError("A3 reassembly requires a non-empty frame sequence")
+
+    chunks: list[bytes] = []
+    for position, frame in enumerate(frames):
+        if not isinstance(frame, bytes) or len(frame) != 20:
+            raise ValueError(f"A3 frame {position} must be exactly 20 bytes")
+        if frame[0] != _A3_FRAME_PREFIX:
+            raise ValueError(f"A3 frame {position} has an invalid prefix")
+        if xor_checksum(frame[:19]) != frame[19]:
+            raise ValueError(f"A3 frame {position} has an invalid checksum")
+        expected_index = 0xFF if position + 1 == len(frames) else position
+        if frame[1] != expected_index:
+            raise ValueError(f"A3 frame {position} has index {frame[1]}, expected {expected_index}")
+        chunks.append(frame[2:19])
+
+    envelope = b"".join(chunks)
+    if envelope[0] != 0x01:
+        raise ValueError("A3 envelope has an invalid marker")
+    if envelope[1] != len(frames):
+        raise ValueError(f"A3 envelope declares {envelope[1]} frames, received {len(frames)}")
+    return envelope

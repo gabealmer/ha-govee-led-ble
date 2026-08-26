@@ -19,6 +19,7 @@ export type SceneListEntry =
   | { kind: "custom"; item: LibrarySummary; label: string }
   | { kind: "builtin"; scene: SceneSummary; label: string };
 export type SceneInitialSelection =
+  | { kind: "none" }
   | { kind: "saved"; itemId: string }
   | { kind: "native"; effect: string };
 export type ScenePreviewRequest =
@@ -143,6 +144,21 @@ export function sceneBrowserEntries(
     ...custom.map((item): SceneListEntry => ({ kind: "custom", item, label: item.name })),
     ...builtin.map((scene): SceneListEntry => ({ kind: "builtin", scene, label: scene.display_name })),
   ].sort((left, right) => compareLabels(left.label, right.label));
+}
+
+export function visibleCategoryForBuiltin(
+  category: CategorySelection,
+  scene: SceneSummary,
+): CategorySelection {
+  return category === "all" || category === scene.category_id
+    ? category
+    : scene.category_id;
+}
+
+export function visibleCategoryForCustom(
+  category: CategorySelection,
+): CategorySelection {
+  return category === "all" || category === "custom" ? category : "custom";
 }
 
 export function findCatalogueScene(catalogue: SceneCatalogue, content: SceneContent): SceneSummary | undefined {

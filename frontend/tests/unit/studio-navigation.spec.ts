@@ -164,6 +164,7 @@ test("active context requires exact available saved identity", () => {
     kind: "saved",
     item: saved,
   });
+
   active.active_state!.active_effect!.item_version = saved.version + 1;
   expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
     kind: "root",
@@ -177,8 +178,14 @@ test("active context requires exact available saved identity", () => {
   active.active_state!.active_effect!.confidence = "unknown";
   active.active_state!.confidence = "unknown";
   expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
+    kind: "saved",
+    item: saved,
+  });
+  active.active_state!.diy_code = 801;
+  expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
     kind: "root",
   });
+  active.active_state!.diy_code = 800;
   active.active_state!.active_effect!.confidence = "activation_match";
   active.active_state!.confidence = "activation_match";
   expect(activeStudioContext(active, [saved], () => false, catalogue)).toEqual({
@@ -195,6 +202,76 @@ test("active context requires exact available saved identity", () => {
   active.active_state!.native_mode = "rainbow";
   expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
     kind: "root",
+  });
+});
+
+test("exact saved identity precedes canonical active workspace recovery", () => {
+  const saved: LibrarySummary = {
+    id: "effect-a",
+    version: 1,
+    updated_at: "2026-08-17T00:00:00Z",
+    name: "Saved",
+    kind: "h617a_single",
+    content_hash: "a".repeat(64),
+    origin: { kind: "authored", source_id: null },
+  };
+  const active = device("entry-a", "supported");
+  const workspaceContent = {
+    kind: "h617a_single" as const,
+    family: 1,
+    variant: 0,
+    speed: 73,
+    palette: [[1, 2, 3]] as [[number, number, number]],
+  };
+  active.active_state = {
+    config_entry_id: active.config_entry_id,
+    mode: "custom",
+    observed_at: "2026-08-17T00:00:00Z",
+    confidence: "activation_match",
+    diy_code: 800,
+    effect: null,
+    native_mode: null,
+    matched_operation_id: "operation-a",
+    active_effect: {
+      source_kind: "saved_effect",
+      selector_label: saved.name,
+      content_hash: saved.content_hash,
+      origin: saved.origin,
+      observable_signature: "custom:800",
+      confidence: "activation_match",
+      item_id: saved.id,
+      item_version: saved.version,
+    },
+  };
+  active.active_workspace = {
+    config_entry_id: active.config_entry_id,
+    model: active.model,
+    selector_label: "Flow",
+    content: workspaceContent,
+    content_hash: "b".repeat(64),
+    origin: {
+      kind: "catalogue_template",
+      source_id: "template:single:1:0",
+    },
+    observable_signature: "custom:800",
+    updated_at: "2026-08-17T00:00:00Z",
+    generation: 1,
+    confidence: "write_completed",
+  };
+
+  expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
+    kind: "saved",
+    item: saved,
+  });
+
+  active.active_state.active_effect!.item_version = saved.version + 1;
+  expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
+    kind: "workspace",
+    section: "custom",
+    category: "single-layer",
+    content: workspaceContent,
+    origin: active.active_workspace.origin,
+    label: "Flow",
   });
 });
 

@@ -53,7 +53,8 @@ export class GoveeCustomEffectBrowser extends LitElement {
     }
     if (
       (selectionIdentity !== this.lastSelectionIdentity ||
-        changed.has("category")) &&
+        changed.has("category") ||
+        changed.has("context")) &&
       scrollSelectedIntoView(
         this.shadowRoot?.querySelector(".item-sidebar") ?? null,
       )

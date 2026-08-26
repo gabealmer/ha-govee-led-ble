@@ -1,7 +1,12 @@
 import { EffectStudioApi } from "./api";
 import type { LivePreviewRequest } from "./live-preview-controller";
 import type { ScenePreviewRequest } from "./scene-browser";
-import type { EffectContent, PreviewStatus } from "./types";
+import type { EditorSource } from "./editor-state";
+import type {
+  EffectContent,
+  PreviewSnapshotProvenance,
+  PreviewStatus,
+} from "./types";
 import { errorCode } from "./ui-utils";
 
 export type PanelPreviewRequest = LivePreviewRequest &
@@ -11,6 +16,7 @@ export type PanelPreviewRequest = LivePreviewRequest &
         configEntryId: string;
         name: string;
         content: EffectContent;
+        provenance?: PreviewSnapshotProvenance;
       }
     | {
         kind: "scene";
@@ -24,15 +30,28 @@ export function snapshotPreviewRequest(
   name: string,
   content: EffectContent,
   persistDefault = false,
+  provenance?: PreviewSnapshotProvenance,
 ): PanelPreviewRequest {
   return {
     kind: "snapshot",
     configEntryId,
     name,
     content,
-    fingerprint: JSON.stringify({ configEntryId, name, content }),
+    ...(provenance ? { provenance } : {}),
+    fingerprint: JSON.stringify({ configEntryId, name, content, provenance }),
     persistDefault,
   };
+}
+
+export function editorSnapshotProvenance(
+  source: EditorSource,
+): PreviewSnapshotProvenance | undefined {
+  return source.kind === "catalogue"
+    ? {
+        origin_kind: "catalogue_template",
+        origin_id: source.selectionIdentity,
+      }
+    : undefined;
 }
 
 export function scenePreviewRequest(
@@ -293,6 +312,7 @@ export class EffectStudioPreviewSession {
       request.name,
       request.content,
       request.persistDefault,
+      request.provenance,
     );
   }
 

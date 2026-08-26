@@ -35,6 +35,12 @@ interface AutoSaveTarget {
   content: EditableEffectContent;
 }
 
+interface LibraryReloadGuard {
+  itemId: string;
+  version: number;
+  document: string;
+}
+
 interface PanelControllerOptions {
   connected(): boolean;
   pathname(): string;
@@ -166,7 +172,7 @@ export class PanelController {
       rootEpoch === this.model.editorTransitionEpoch &&
       selectedDeviceId === this.model.selectedDeviceId
     ) {
-      await this.restoreActiveSelection(rootEpoch);
+      await this.restoreActiveSelection(rootEpoch, true);
     }
   }
 
@@ -186,6 +192,7 @@ export class PanelController {
       section === "custom" && customEffectCategory !== undefined
         ? customEffectCategory
         : this.model.customEffectCategory;
+    const previousSection = this.model.section;
     const navigationChanged =
       section !== this.model.section ||
       (section === "custom" &&
@@ -209,18 +216,28 @@ export class PanelController {
       customEffectCategory: nextCategory,
       notice: undefined,
     });
-    this.editor.clearSelection(transitionEpoch);
+    const preserveWhileBrowsingScenes =
+      section === "scenes" && this.model.editorSource.kind !== "scene";
+    const returningToRetainedSelection =
+      previousSection === "scenes" && this.model.editorOwnedByActiveView;
+    if (
+      this.model.editorSource.kind === "scene" ||
+      (!preserveWhileBrowsingScenes && !returningToRetainedSelection)
+    ) {
+      this.editor.clearSelection(transitionEpoch);
+    }
     this.remember();
     await this.restoreActiveSelection(transitionEpoch);
   }
 
   public async openInitialContext(): Promise<void> {
     this.openRootCreateView();
-    await this.restoreActiveSelection(this.model.editorTransitionEpoch);
+    await this.restoreActiveSelection(this.model.editorTransitionEpoch, true);
   }
 
   private async restoreActiveSelection(
     transitionEpoch: number,
+    navigateToContext = false,
   ): Promise<void> {
     const device = this.model.selectedDevice;
     if (
@@ -239,12 +256,43 @@ export class PanelController {
       this.model.modelCatalogue,
     );
     if (context.kind === "native-scene") {
+      if (!this.model.scenesAvailable) {
+        return;
+      }
+      if (navigateToContext) {
+        this.model.patch({
+          section: "scenes",
+          sceneEditorOpen: false,
+          notice: undefined,
+        });
+      }
       if (this.model.section === "scenes") {
         this.model.patch({ sceneInitialSelection: { kind: "native", effect: context.effect } });
       }
       return;
     }
+    if (this.model.section === "scenes") {
+      this.model.patch({ sceneInitialSelection: { kind: "none" } });
+    }
     if (context.kind === "native-profile") {
+      if (
+        (context.section === "video" && !this.model.videoAvailable) ||
+        (context.section === "custom" &&
+          (!context.category ||
+            !this.model.customEffectCategoryAvailable(context.category)))
+      ) {
+        return;
+      }
+      if (navigateToContext) {
+        this.model.patch({
+          section: context.section,
+          ...(context.section === "custom" && context.category
+            ? { customEffectCategory: context.category }
+            : {}),
+          sceneEditorOpen: false,
+          notice: undefined,
+        });
+      }
       if (
         context.section !== this.model.section ||
         (context.section === "custom" &&
@@ -269,15 +317,81 @@ export class PanelController {
       }
       return;
     }
+    if (context.kind === "workspace") {
+      if (
+        (context.section === "video" && !this.model.videoAvailable) ||
+        (context.section === "custom" &&
+          (!context.category ||
+            !this.model.customEffectCategoryAvailable(context.category)))
+      ) {
+        return;
+      }
+      if (navigateToContext) {
+        this.model.patch({
+          section: context.section,
+          ...(context.section === "custom" && context.category
+            ? { customEffectCategory: context.category }
+            : {}),
+          sceneEditorOpen: false,
+          notice: undefined,
+        });
+      }
+      if (
+        context.section !== this.model.section ||
+        (context.section === "custom" &&
+          context.category !== this.model.customEffectCategory)
+      ) {
+        return;
+      }
+      if (!this.editor.openActiveWorkspace(context, transitionEpoch)) {
+        this.editor.clearSelection(transitionEpoch);
+      }
+      return;
+    }
     if (context.kind === "root") {
       return;
     }
     const item = context.item;
     if (item.kind === "scene_builtin" || item.kind === "scene_palette" || item.kind === "scene_layered") {
+      if (!this.model.scenesAvailable) {
+        return;
+      }
+      if (navigateToContext) {
+        this.model.patch({
+          section: "scenes",
+          sceneEditorOpen: false,
+          notice: undefined,
+        });
+      }
       if (this.model.section === "scenes") {
         this.model.patch({ sceneInitialSelection: { kind: "saved", itemId: item.id } });
       }
       return;
+    }
+    if (
+      (item.kind === "video_profile" && !this.model.videoAvailable) ||
+      (item.kind !== "video_profile" &&
+        !this.model.customEffectCategoryAvailable(
+          this.categoryForKind(item.kind),
+        ))
+    ) {
+      return;
+    }
+    if (navigateToContext) {
+      this.model.patch(
+        item.kind === "video_profile"
+          ? {
+              section: "video",
+              sceneEditorOpen: false,
+              notice: undefined,
+            }
+          : {
+              section: "custom",
+              customEffectCategory: this.categoryForKind(item.kind),
+              sceneEditorOpen: false,
+              notice: undefined,
+            },
+      );
     }
     if (
       (item.kind === "video_profile" && this.model.section !== "video") ||
@@ -299,7 +413,6 @@ export class PanelController {
 
   public sceneInitialSelectionFailed(): void {
     this.model.patch({ sceneInitialSelection: undefined });
-    this.openRootCreateView();
   }
 
   public remember(): void {
@@ -349,15 +462,7 @@ export class PanelController {
 
   public async libraryChanged(snapshot: LibrarySnapshot): Promise<void> {
     this.model.patch({ library: snapshot });
-    if (
-      this.model.saving &&
-      this.model.currentItem &&
-      snapshot.items.some(
-        (item) =>
-          item.id === this.model.currentItem!.id &&
-          item.version > this.model.currentItem!.version,
-      )
-    ) {
+    if (this.model.saving) {
       return;
     }
     const sync = libraryItemSyncResult(this.model.currentItem, snapshot.items, this.model.dirty, this.model.deletingItemId);
@@ -370,14 +475,30 @@ export class PanelController {
       this.model.patch({ notice: "This effect changed elsewhere. Reload it before saving." });
       return;
     }
+    const currentItem = this.model.currentItem;
+    if (!currentItem) {
+      return;
+    }
+    const guard: LibraryReloadGuard = {
+      itemId: currentItem.id,
+      version: currentItem.version,
+      document: this.currentEditorDocument(),
+    };
     const transitionEpoch = this.editor.beginTransition();
     const selected = await this.selectItem(
       sync.summary.id,
       transitionEpoch,
       false,
+      guard,
     );
     if (selected && transitionEpoch === this.model.editorTransitionEpoch) {
       this.model.patch({ notice: undefined });
+    } else if (
+      transitionEpoch === this.model.editorTransitionEpoch &&
+      this.model.currentItem?.id === guard.itemId &&
+      this.currentEditorDocument() !== guard.document
+    ) {
+      this.model.patch({ notice: "This effect changed elsewhere. Reload it before saving." });
     }
   }
 
@@ -389,6 +510,7 @@ export class PanelController {
     itemId: string,
     existingTransitionEpoch?: number,
     applyLive = true,
+    reloadGuard?: LibraryReloadGuard,
   ): Promise<boolean> {
     const transitionEpoch =
       existingTransitionEpoch ?? this.editor.beginSelectionTransition();
@@ -397,6 +519,11 @@ export class PanelController {
       const item = await this.api.item(itemId);
       if (
         transitionEpoch !== this.model.editorTransitionEpoch ||
+        (reloadGuard !== undefined &&
+          (this.model.saving ||
+            this.model.currentItem?.id !== reloadGuard.itemId ||
+            this.model.currentItem.version !== reloadGuard.version ||
+            this.currentEditorDocument() !== reloadGuard.document)) ||
         !this.editor.applyLibraryItem(item)
       ) {
         return false;
@@ -728,6 +855,13 @@ export class PanelController {
       custom_category: this.model.customEffectCategory,
       auto_save: this.model.autoSaveEnabled,
     };
+  }
+
+  private currentEditorDocument(): string {
+    return JSON.stringify({
+      name: this.model.name,
+      content: this.model.content,
+    });
   }
 
   private categoryForKind(kind: string): CustomEffectCategory {

@@ -13,8 +13,15 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import STORAGE_DIR, Store, get_internal_store_manager
 
+from custom_components.ha_govee_led_ble.effect_active_workspace import (
+    ActiveEffectWorkspace,
+    ActiveEffectWorkspaceRepository,
+)
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
-from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
+from custom_components.ha_govee_led_ble.effect_deployments import (
+    EffectDeploymentRepository,
+    ObservationConfidence,
+)
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     Origin,
@@ -82,6 +89,67 @@ async def test_current_only_library_creates_updates_and_hard_deletes() -> None:
     with pytest.raises(EffectNotFoundError):
         repository.get(item.id)
     assert store.data == {"items": {}}
+
+
+async def test_active_workspace_keeps_only_the_latest_generation() -> None:
+    store = InMemoryVersionedDocumentStore()
+    repository = ActiveEffectWorkspaceRepository(store)
+    assert await repository.async_load() == ()
+    newest = ActiveEffectWorkspace(
+        config_entry_id="entry-a",
+        model="H617A",
+        selector_label="Flow",
+        content=SingleEffect(0, 0, 50, ((255, 0, 0),)),
+        origin=Origin(SourceKind.CATALOGUE_TEMPLATE, "template:single:0:0"),
+        observable_signature="custom:24",
+        updated_at=TIMESTAMP,
+        generation=2,
+    )
+    older = replace(
+        newest,
+        content=replace(newest.content, speed=25),
+        generation=1,
+    )
+
+    assert repository.set(newest) is True
+    assert repository.set(older) is False
+    assert repository.get("entry-a") == newest
+    assert repository.update_confidence(
+        "entry-a",
+        2,
+        ObservationConfidence.ACTIVATION_MATCH,
+    )
+    assert repository.get("entry-a") == replace(
+        newest,
+        confidence=ObservationConfidence.ACTIVATION_MATCH,
+    )
+
+    await store.async_fire_delayed_save()
+    restored = ActiveEffectWorkspaceRepository(store)
+    assert await restored.async_load() == (replace(newest, confidence=ObservationConfidence.ACTIVATION_MATCH),)
+
+
+async def test_active_workspace_rejects_content_hash_tampering() -> None:
+    store = InMemoryVersionedDocumentStore()
+    repository = ActiveEffectWorkspaceRepository(store)
+    await repository.async_load()
+    workspace = ActiveEffectWorkspace(
+        config_entry_id="entry-a",
+        model="H617A",
+        selector_label="Flow",
+        content=SingleEffect(0, 0, 50, ((255, 0, 0),)),
+        origin=Origin(),
+        observable_signature="custom:24",
+        updated_at=TIMESTAMP,
+        generation=1,
+    )
+    raw = workspace.to_dict()
+    raw["content_hash"] = "0" * 64
+
+    with pytest.raises(EffectStorageError, match="content hash"):
+        await ActiveEffectWorkspaceRepository(
+            InMemoryVersionedDocumentStore({"devices": {"entry-a": raw}})
+        ).async_load()
 
 
 @pytest.mark.parametrize(

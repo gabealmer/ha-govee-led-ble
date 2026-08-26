@@ -1,6 +1,8 @@
 import type {
   DeviceCapabilities,
+  EffectContent,
   EffectUserState,
+  LibraryOrigin,
   LibrarySummary,
   ModelEffectCatalogue,
 } from "./types";
@@ -22,6 +24,14 @@ export type ActiveStudioContext =
       section: "video" | "custom";
       category?: "music";
       mode: string;
+      label: string;
+    }
+  | {
+      kind: "workspace";
+      section: "video" | "custom";
+      category?: CustomEffectCategory;
+      content: EffectContent;
+      origin: LibraryOrigin;
       label: string;
     }
   | { kind: "root" };
@@ -112,23 +122,41 @@ export function activeStudioContext(
 ): ActiveStudioContext {
   const active = device?.active_state;
   const hint = active?.active_effect;
-  if (hint) {
-    if (
-      hint.source_kind === "saved_effect" &&
-      hint.item_id &&
-      hint.confidence !== "unknown"
-    ) {
-      const item = items.find(
-        (candidate) =>
-          candidate.id === hint.item_id &&
-          candidate.version === hint.item_version &&
-          candidate.content_hash === hint.content_hash &&
-          itemAvailable(candidate),
-      );
-      if (item) {
-        return { kind: "saved", item };
-      }
+  const observedSignature = active ? activeStateSignature(active) : undefined;
+  if (
+    hint?.source_kind === "saved_effect" &&
+    hint.item_id &&
+    (hint.confidence !== "unknown" ||
+      observedSignature === hint.observable_signature)
+  ) {
+    const item = items.find(
+      (candidate) =>
+        candidate.id === hint.item_id &&
+        candidate.version === hint.item_version &&
+        candidate.content_hash === hint.content_hash &&
+        itemAvailable(candidate),
+    );
+    if (item) {
+      return { kind: "saved", item };
     }
+  }
+  const workspace = device?.active_workspace;
+  const workspaceLocation =
+    workspace &&
+    workspace.config_entry_id === device.config_entry_id &&
+    workspace.model === device.model
+      ? workspaceStudioLocation(workspace.content)
+      : undefined;
+  if (workspace && workspaceLocation) {
+    return {
+      kind: "workspace",
+      ...workspaceLocation,
+      content: workspace.content,
+      origin: workspace.origin,
+      label: workspace.selector_label,
+    };
+  }
+  if (hint) {
     return { kind: "root" };
   }
   const nativeMode = active?.native_mode;
@@ -169,4 +197,50 @@ export function activeStudioContext(
       : { kind: "root" };
   }
   return { kind: "root" };
+}
+
+function activeStateSignature(
+  active: NonNullable<DeviceCapabilities["active_state"]>,
+): string | undefined {
+  if (active.mode === "custom" && active.diy_code !== null) {
+    return `custom:${active.diy_code}`;
+  }
+  if (active.mode === "scene" && active.effect) {
+    return `scene:${active.effect}`;
+  }
+  if (
+    (active.mode === "music" || active.mode === "video") &&
+    active.native_mode
+  ) {
+    return `${active.mode}:${active.native_mode}`;
+  }
+  return undefined;
+}
+
+function workspaceStudioLocation(
+  content: EffectContent,
+): Pick<
+  Extract<ActiveStudioContext, { kind: "workspace" }>,
+  "section" | "category"
+> | undefined {
+  if (content.kind === "video_profile") {
+    return { section: "video" };
+  }
+  if (content.kind === "music_profile") {
+    return { section: "custom", category: "music" };
+  }
+  if (
+    content.kind === "h617a_painted" ||
+    content.kind === "h617a_single" ||
+    content.kind === "palette_diy"
+  ) {
+    return { section: "custom", category: "single-layer" };
+  }
+  if (content.kind === "h617a_multi") {
+    return { section: "custom", category: "multi-layer" };
+  }
+  if (content.kind === "advanced" || content.kind === "workshop") {
+    return { section: "custom", category: "advanced" };
+  }
+  return undefined;
 }

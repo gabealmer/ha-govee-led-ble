@@ -28,6 +28,7 @@ import { PanelModel } from "./panel-model";
 import { PanelPreviewController } from "./panel-preview-controller";
 import { cloneMusicProfileContent, cloneVideoProfileContent } from "./profile-model";
 import type { ScenePreviewRequest } from "./scene-browser";
+import type { ActiveStudioContext } from "./studio-navigation";
 import type {
   AdvancedContent,
   CustomEffectContent,
@@ -62,6 +63,16 @@ interface EditorReturnState {
   paintBrushOff: boolean;
   savedBaseline?: string;
   resetBaseline?: EditableEffectContent;
+}
+
+type ActiveWorkspaceContext = Extract<
+  ActiveStudioContext,
+  { kind: "workspace" }
+>;
+
+interface WorkspaceTemplate {
+  selectionIdentity: string;
+  resetContent: EditableEffectContent;
 }
 
 export class PanelEditorController {
@@ -203,6 +214,59 @@ export class PanelEditorController {
     if (explicit) {
       this.preview.scheduleTemplateSelection();
     }
+  }
+
+  public openActiveWorkspace(
+    context: ActiveWorkspaceContext,
+    existingTransitionEpoch: number,
+  ): boolean {
+    if (
+      existingTransitionEpoch !== this.model.editorTransitionEpoch ||
+      !isEditableEffectContent(context.content)
+    ) {
+      return false;
+    }
+    const template = this.workspaceTemplate(context);
+    const owner: EditorOwner =
+      context.section === "video"
+        ? { section: "video" }
+        : {
+            section: "custom",
+            category: context.category ?? "single-layer",
+          };
+    const recoverAsNew =
+      !template &&
+      context.origin.kind !== "catalogue_template" &&
+      owner.section === "custom" &&
+      ["multi-layer", "advanced"].includes(owner.category);
+    if (!template && !recoverAsNew) {
+      return false;
+    }
+    this.clearReturnTarget();
+    this.model.patch({
+      currentItem: undefined,
+      sceneEditorOpen: false,
+      editorSource: template
+        ? {
+            kind: "catalogue",
+            owner,
+            selectionIdentity: template.selectionIdentity,
+            label: context.label,
+          }
+        : { kind: "new", owner },
+      name: context.label,
+      content: cloneEditableEffect(context.content),
+      paintBrushOff:
+        context.content.kind === "h617a_painted"
+          ? false
+          : this.model.paintBrushOff,
+      savedBaseline: undefined,
+      resetBaseline: template
+        ? cloneEditableEffect(template.resetContent)
+        : undefined,
+      notice: undefined,
+    });
+    return true;
   }
 
   public openMusicTemplate(
@@ -748,5 +812,105 @@ export class PanelEditorController {
       calm: ["rhythm", "bloom", "shiny"].includes(mode) ? false : null,
       parameters: {},
     };
+  }
+
+  private workspaceTemplate(
+    context: ActiveWorkspaceContext,
+  ): WorkspaceTemplate | undefined {
+    const inferred = this.structuralWorkspaceTemplate(context.content);
+    const sourceId =
+      context.origin.kind === "catalogue_template"
+        ? context.origin.source_id
+        : null;
+    if (sourceId !== null) {
+      return inferred?.selectionIdentity === sourceId ? inferred : undefined;
+    }
+    return inferred;
+  }
+
+  private structuralWorkspaceTemplate(
+    content: ActiveWorkspaceContext["content"],
+  ): WorkspaceTemplate | undefined {
+    const catalogue = this.model.modelCatalogue;
+    const selectedModel = this.model.selectedModel;
+    if (!catalogue || !selectedModel) {
+      return undefined;
+    }
+    if (
+      content.kind === "h617a_painted" &&
+      selectedModel === "H617A" &&
+      this.model.customEffectKindAvailable(content.kind)
+    ) {
+      return {
+        selectionIdentity: "template:paint",
+        resetContent: blankPainted(),
+      };
+    }
+    if (
+      (content.kind === "h617a_single" && selectedModel === "H617A") ||
+      (content.kind === "palette_diy" && content.model === selectedModel)
+    ) {
+      const matches = catalogue.effects.flatMap((family) =>
+        family.family === content.family
+          ? family.variations
+              .filter((variation) => variation.variant === content.variant)
+              .map((variation) => ({ family, variation }))
+          : [],
+      );
+      if (matches.length !== 1) {
+        return undefined;
+      }
+      const [{ family, variation }] = matches;
+      const resetContent =
+        content.kind === "h617a_single"
+          ? {
+              ...blankCustomEffect("h617a_single", catalogue),
+              family: family.family,
+              variant: variation.variant,
+            }
+          : blankPaletteDiy(
+              catalogue,
+              selectedModel,
+              family.family,
+              variation.variant,
+            );
+      return {
+        selectionIdentity: `template:single:${family.family}:${variation.variant}`,
+        resetContent,
+      };
+    }
+    if (
+      content.kind === "music_profile" &&
+      content.model === selectedModel
+    ) {
+      const modes = catalogue.music_modes.filter(
+        (mode) => mode.id === content.mode,
+      );
+      const resetContent =
+        modes.length === 1
+          ? this.musicTemplateContent(modes[0].id)
+          : undefined;
+      return resetContent
+        ? {
+            selectionIdentity: `template:music:${modes[0].id}`,
+            resetContent,
+          }
+        : undefined;
+    }
+    if (
+      content.kind === "video_profile" &&
+      selectedModel === "H6199"
+    ) {
+      const modes = catalogue.video_modes.filter(
+        (mode) => mode.id === content.mode,
+      );
+      return modes.length === 1
+        ? {
+            selectionIdentity: `template:video:${modes[0].id}`,
+            resetContent: blankVideoProfile(modes[0].id),
+          }
+        : undefined;
+    }
+    return undefined;
   }
 }

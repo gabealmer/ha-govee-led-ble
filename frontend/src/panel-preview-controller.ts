@@ -4,7 +4,13 @@ import {
   type LivePreviewInteraction,
 } from "./live-preview-controller";
 import { PanelModel } from "./panel-model";
-import { EffectStudioPreviewSession, scenePreviewRequest, snapshotPreviewRequest, type PanelPreviewRequest } from "./panel-preview";
+import {
+  editorSnapshotProvenance,
+  EffectStudioPreviewSession,
+  scenePreviewRequest,
+  snapshotPreviewRequest,
+  type PanelPreviewRequest,
+} from "./panel-preview";
 import type { ScenePreviewRequest } from "./scene-browser";
 import { isEditableEffectContent } from "./effect-editor-model";
 import { errorCode, errorMessage } from "./ui-utils";
@@ -213,6 +219,8 @@ export class PanelPreviewController {
       this.model.selectedDeviceId,
       this.model.name.trim() || "Live preview",
       this.model.content,
+      false,
+      editorSnapshotProvenance(this.model.editorSource),
     );
   }
 

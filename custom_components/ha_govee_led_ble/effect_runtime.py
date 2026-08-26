@@ -12,6 +12,10 @@ from uuid import UUID, uuid4
 from .const import MUSIC_MODE_SLUGS
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
+from .effect_active_workspace import (
+    ActiveEffectWorkspace,
+    ActiveEffectWorkspaceRepository,
+)
 from .effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
     H617A_WORKSHOP_APPLY_CODE,
@@ -34,6 +38,7 @@ from .effect_deployments import (
     PriorControlState,
 )
 from .effect_domain import (
+    EffectContent,
     LibraryItem,
     MultiEffect,
     MusicProfile,
@@ -44,6 +49,10 @@ from .effect_domain import (
     WorkshopEffect,
 )
 from .effect_identity import ActiveEffectHint, EffectDeviceCache, ObservedDeviceState
+from .effect_protocol_decoder import (
+    UnsupportedA3EffectError,
+    decode_a3_effect_frames,
+)
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .native_profile_controls import (
     apply_active_video_mode,
@@ -153,9 +162,11 @@ class EffectDeploymentEngine:
         self,
         deployments: EffectDeploymentRepository,
         device_cache: EffectDeviceCache | None = None,
+        active_workspaces: ActiveEffectWorkspaceRepository | None = None,
     ) -> None:
         self._deployments = deployments
         self._device_cache = device_cache
+        self._active_workspaces = active_workspaces
         self._operation_locks_guard = asyncio.Lock()
         self._operation_locks: dict[UUID, asyncio.Lock] = {}
         self._operation_lock_users: dict[UUID, int] = {}
@@ -180,7 +191,10 @@ class EffectDeploymentEngine:
             source_item=item,
             source_kind="saved_effect",
         )
-        return await self._async_apply(coordinator, compiled, record)
+        result = await self._async_apply(coordinator, compiled, record)
+        if self._active_workspaces is not None and result.phase is DeploymentPhase.CONFIRMED:
+            self._active_workspaces.clear(config_entry_id)
+        return result
 
     async def async_apply_snapshot(
         self,
@@ -202,7 +216,27 @@ class EffectDeploymentEngine:
             source_item=item,
             source_kind="snapshot",
         )
-        return await self._async_apply(coordinator, compiled, record)
+        result = await self._async_apply(coordinator, compiled, record)
+        if self._active_workspaces is not None and result.phase is DeploymentPhase.CONFIRMED:
+            signature = observable_signature_for_coordinator(coordinator)
+            if signature is not None:
+                self._active_workspaces.set(
+                    ActiveEffectWorkspace(
+                        config_entry_id=config_entry_id,
+                        model=coordinator.model,
+                        selector_label=item.name,
+                        content=_active_workspace_content(
+                            item.content,
+                            compiled,
+                        ),
+                        origin=item.origin,
+                        observable_signature=signature,
+                        updated_at=updated_at,
+                        generation=self._active_workspaces.next_generation(),
+                        confidence=result.verification_confidence,
+                    )
+                )
+        return result
 
     async def async_reconcile(
         self,
@@ -910,6 +944,19 @@ def observable_signature_for_state(
         video_mode = getattr(coordinator, "video_mode", None)
         return f"video:{video_mode}" if isinstance(video_mode, str) and video_mode != "off" else None
     return None
+
+
+def _active_workspace_content(
+    source: EffectContent,
+    compiled: CompiledApplication,
+) -> EffectContent:
+    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
+        return source
+    try:
+        decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
+    except UnsupportedA3EffectError:
+        return source
+    return decoded if type(decoded) is type(source) else source
 
 
 def observable_signature_for_coordinator(
