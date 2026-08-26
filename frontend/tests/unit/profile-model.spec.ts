@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import {
   cloneMusicProfileContent,
   cloneVideoProfileContent,
+  MUSIC_STYLE_HELP,
   musicStyleCalm,
   musicStyleValue,
   videoCaptureAreaFullScreen,
@@ -65,4 +66,12 @@ test("binary profile controls use stable select values", () => {
   expect(videoCaptureAreaValue(false)).toBe("part");
   expect(videoCaptureAreaFullScreen("full")).toBe(true);
   expect(videoCaptureAreaFullScreen("part")).toBe(false);
+});
+
+test("music Style help distinguishes both options in project wording", () => {
+  expect(MUSIC_STYLE_HELP.label).toBe("Style information");
+  expect(MUSIC_STYLE_HELP.text).toContain("Dynamic");
+  expect(MUSIC_STYLE_HELP.text).toContain("Calm");
+  expect(MUSIC_STYLE_HELP.text).toContain("active response");
+  expect(MUSIC_STYLE_HELP.text).toContain("restrained response");
 });

@@ -8,6 +8,11 @@ import { cloneRgb } from "./ui-utils";
 export type MusicStyleValue = "dynamic" | "calm";
 export type VideoCaptureAreaValue = "full" | "part";
 
+export const MUSIC_STYLE_HELP = {
+  label: "Style information",
+  text: "Dynamic uses the effect's more active response.  Calm uses a more restrained response.",
+} as const;
+
 export function musicStyleValue(calm: boolean | null): MusicStyleValue {
   return calm === true ? "calm" : "dynamic";
 }

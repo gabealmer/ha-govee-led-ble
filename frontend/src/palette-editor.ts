@@ -46,12 +46,16 @@ export class GoveePaletteEditor extends LitElement {
   @state()
   private editingIndex?: number;
 
+  @state()
+  private colourInteractionActive = false;
+
   private readonly windowPointerDown = (event: PointerEvent): void => {
     if (
       this.editingIndex !== undefined &&
-      !event.composedPath().includes(this)
+      !event.composedPath().includes(this) &&
+      !this.colourInteractionActive
     ) {
-      this.editingIndex = undefined;
+      this.closePicker();
     }
   };
 
@@ -71,7 +75,7 @@ export class GoveePaletteEditor extends LitElement {
       this.editingIndex !== undefined &&
       this.editingIndex >= this.palette.length
     ) {
-      this.editingIndex = undefined;
+      this.closePicker();
     }
   }
 
@@ -102,12 +106,14 @@ export class GoveePaletteEditor extends LitElement {
         .addDisabled=${this.disabled}
         .addHidden=${this.palette.length >= this.maxColours}
         .reorderDisabled=${this.disabled || this.persistentPicker}
+        .popoverDismissDisabled=${this.colourInteractionActive}
         @item-selected=${(event: CustomEvent<{ index: number }>) =>
           this.swatchClicked(event.detail.index)}
         @items-reordered=${(
           event: CustomEvent<{ from: number; to: number }>,
         ) => this.reorder(event.detail.from, event.detail.to)}
         @item-added=${this.addColour}
+        @item-popover-dismissed=${this.dismissPicker}
         @keydown=${this.paletteKeyPressed}
         @focusout=${this.paletteFocusOut}
       >
@@ -164,8 +170,10 @@ export class GoveePaletteEditor extends LitElement {
       <govee-colour-picker
         .colour=${colour}
         .disabled=${this.disabled}
-        @colour-changing=${(event: CustomEvent<{ colour: RGB }>) =>
-          this.updateColour(index, event.detail.colour, "changing")}
+        @colour-changing=${(event: CustomEvent<{ colour: RGB }>) => {
+          this.colourInteractionActive = true;
+          this.updateColour(index, event.detail.colour, "changing");
+        }}
         @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
           this.commitColour(index, event.detail.colour)}
       ></govee-colour-picker>
@@ -173,11 +181,12 @@ export class GoveePaletteEditor extends LitElement {
   }
 
   private commitColour(index: number, colour: RGB): void {
+    this.colourInteractionActive = false;
     this.updateColour(index, colour, "committed");
     if (this.persistentPicker) {
       return;
     }
-    this.editingIndex = undefined;
+    this.closePicker();
     this.focusSwatchAfterUpdate(index);
   }
 
@@ -217,7 +226,7 @@ export class GoveePaletteEditor extends LitElement {
       .filter((_colour, colourIndex) => colourIndex !== index)
       .map((colour) => [...colour] as RGB);
     const focusIndex = Math.min(index, palette.length - 1);
-    this.editingIndex = undefined;
+    this.closePicker();
     this.emitPalette(palette, "committed");
     this.focusSwatchAfterUpdate(focusIndex);
   }
@@ -257,7 +266,7 @@ export class GoveePaletteEditor extends LitElement {
     }
     event.preventDefault();
     event.stopPropagation();
-    this.editingIndex = undefined;
+    this.closePicker();
     this.focusSwatchAfterUpdate(index);
   }
 
@@ -268,8 +277,22 @@ export class GoveePaletteEditor extends LitElement {
       !(event.relatedTarget instanceof Node &&
         strip.contains(event.relatedTarget))
     ) {
-      this.editingIndex = undefined;
+      if (this.colourInteractionActive) {
+        return;
+      }
+      this.closePicker();
     }
+  }
+
+  private readonly dismissPicker = (): void => {
+    if (!this.colourInteractionActive) {
+      this.closePicker();
+    }
+  };
+
+  private closePicker(): void {
+    this.colourInteractionActive = false;
+    this.editingIndex = undefined;
   }
 
   private swatchClicked(index: number): void {
@@ -285,7 +308,7 @@ export class GoveePaletteEditor extends LitElement {
       return;
     }
     if (this.editingIndex === index) {
-      this.editingIndex = undefined;
+      this.closePicker();
       return;
     }
     this.editingIndex = index;
@@ -294,13 +317,17 @@ export class GoveePaletteEditor extends LitElement {
 
   private focusPickerAfterUpdate(): void {
     void this.updateComplete.then(() => {
-      const picker =
-        this.shadowRoot?.querySelector<GoveeColourPicker>(
-          ".colour-popover govee-colour-picker",
-        );
-      picker?.shadowRoot
-        ?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled)")
-        ?.focus();
+      requestAnimationFrame(() => {
+        const picker =
+          this.shadowRoot?.querySelector<GoveeColourPicker>(
+            ".colour-popover govee-colour-picker",
+          );
+        picker?.shadowRoot
+          ?.querySelector<HTMLElement>(
+            "button:not(:disabled), input:not(:disabled)",
+          )
+          ?.focus();
+      });
     });
   }
 

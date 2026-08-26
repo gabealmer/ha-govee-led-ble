@@ -513,9 +513,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                       `${label} distance ${value}.`,
                     ),
                   this.disabled,
-                  0,
-                  255,
-                  "icsPerStep",
+                  {
+                    help: "icsPerStep",
+                  },
                 )}
                 <label class="field">
                   <span>Direction</span>

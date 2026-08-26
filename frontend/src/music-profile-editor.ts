@@ -4,6 +4,7 @@ import { live } from "lit/directives/live.js";
 
 import type { CheckboxControlChange } from "./checkbox-control";
 import "./checkbox-control";
+import "./info-control";
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import { reactiveParameterValueText } from "./effect-editor-model";
 import { recentColour } from "./recent-colours";
@@ -13,6 +14,7 @@ import "./slider-control";
 import {
   cloneJsonObject,
   cloneMusicProfileContent,
+  MUSIC_STYLE_HELP,
   musicStyleCalm,
   musicStyleValue,
 } from "./profile-model";
@@ -149,7 +151,13 @@ export class GoveeMusicProfileEditor extends LitElement {
           ${isStyleMode(this.content.mode)
             ? html`
                 <label class="field">
-                  <span>Style</span>
+                  <span class="field-label-with-help">
+                    <span>Style</span>
+                    <govee-info-control
+                      .label=${MUSIC_STYLE_HELP.label}
+                      .text=${MUSIC_STYLE_HELP.text}
+                    ></govee-info-control>
+                  </span>
                   <select
                     aria-label="Style"
                     ?disabled=${this.disabled}
@@ -458,6 +466,13 @@ export class GoveeMusicProfileEditor extends LitElement {
     css`
       :host {
         display: block;
+      }
+
+      .field-label-with-help {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--studio-compact-gap);
+        justify-self: start;
       }
 
     `,

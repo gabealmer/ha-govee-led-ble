@@ -9,6 +9,7 @@ import {
   KNOWN_SELECTION_TYPES,
 } from "./advanced-effect-model";
 import {
+  DISTRIBUTION_COLOUR_FIELDS,
   FILL_PATTERN_LABELS,
   fillPatternParameters,
 } from "./advanced-effect-editor-model";
@@ -55,8 +56,14 @@ export function renderFillPatternControls(
           `)}
         </select>
       </label>
-      ${parameters.map(([key, label]) =>
-        renderNumberField(label, selection[key], (value) => update({ [key]: value }), disabled),
+      ${parameters.map(([key, label, help]) =>
+        renderNumberField(
+          label,
+          selection[key],
+          (value) => update({ [key]: value }),
+          disabled,
+          { help },
+        ),
       )}
     </div>
   `;
@@ -107,19 +114,14 @@ export function renderDistribution(
             `
           : nothing}
         <div class="parameter-grid">
-          ${renderRangeField(
-            "Colour Speed",
-            layer.colour_speed,
-            (value) => updateLayer({ colour_speed: value }),
-            disabled,
-            "colourSpeed",
-          )}
-          ${renderRangeField(
-            "Colour Retention",
-            layer.colour_retention,
-            (value) => updateLayer({ colour_retention: value }),
-            disabled,
-            "colourRetention",
+          ${DISTRIBUTION_COLOUR_FIELDS.map((field) =>
+            renderRangeField(
+              field.label,
+              layer[field.key],
+              (value) => updateLayer({ [field.key]: value }),
+              disabled,
+              field.help,
+            ),
           )}
         </div>
       </div>
@@ -152,8 +154,21 @@ export function renderRangeField(
 }
 
 export function renderNumberField(
-  label: string, value: number, changed: (value: number) => void, disabled: boolean, minimum = 0, maximum = 255, help?: AdvancedHelpKey,
+  label: string,
+  value: number,
+  changed: (value: number) => void,
+  disabled: boolean,
+  options: {
+    minimum?: number;
+    maximum?: number;
+    help?: AdvancedHelpKey;
+  } = {},
 ): TemplateResult {
+  const {
+    minimum = 0,
+    maximum = 255,
+    help,
+  } = options;
   return html`
     <label class="field">
       ${renderFieldLabel(label, help)}

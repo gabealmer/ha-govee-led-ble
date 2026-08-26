@@ -1,4 +1,5 @@
 import { isKnownSelectionType } from "./advanced-effect-model";
+import type { AdvancedHelpKey } from "./advanced-help";
 import type { ReorderableStripItem } from "./reorderable-strip-model";
 import type { SelectionType } from "./types";
 
@@ -17,13 +18,14 @@ export type FillPatternParameterKey = "param_1" | "param_2";
 export type FillPatternParameter = readonly [
   FillPatternParameterKey,
   string,
+  AdvancedHelpKey?,
 ];
 
 export const FILL_PATTERN_PARAMETERS: Record<
   SelectionType,
   readonly FillPatternParameter[]
 > = {
-  0: [["param_2", "Segment Count"]],
+  0: [["param_2", "Segment Count", "segmentCount"]],
   1: [["param_2", "LED Count"]],
   2: [
     ["param_2", "Minimum LED Count"],
@@ -34,6 +36,23 @@ export const FILL_PATTERN_PARAMETERS: Record<
     ["param_2", "Gap"],
   ],
 };
+
+export const DISTRIBUTION_COLOUR_FIELDS = [
+  {
+    key: "colour_retention",
+    label: "Colour Retention",
+    help: "colourRetention",
+  },
+  {
+    key: "colour_speed",
+    label: "Colour Speed",
+    help: "colourSpeed",
+  },
+] as const satisfies ReadonlyArray<{
+  key: "colour_retention" | "colour_speed";
+  label: string;
+  help: AdvancedHelpKey;
+}>;
 
 export type AdvancedLayerActionKind = "copy" | "delete";
 

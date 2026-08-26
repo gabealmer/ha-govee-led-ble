@@ -7,6 +7,10 @@ export const ADVANCED_HELP_CONTENT = {
     label: "Fill pattern information",
     text: "Controls how LEDs inside the applied area take part in the effect.",
   },
+  segmentCount: {
+    label: "Segment Count information",
+    text: "Sets how many repeated sections divide the applied area for the Segmented fill pattern.",
+  },
   distribution: {
     label: "Distribution information",
     text: "Controls whether participating LEDs share colours or receive colours by IC or segment.",

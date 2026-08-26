@@ -6,6 +6,7 @@ test("Advanced help registry covers supported evidence without time units", () =
   expect(Object.keys(ADVANCED_HELP_CONTENT)).toEqual([
     "appliedArea",
     "fillPattern",
+    "segmentCount",
     "distribution",
     "distributionMethod",
     "colourSpeed",
@@ -28,6 +29,9 @@ test("Advanced help registry covers supported evidence without time units", () =
   );
   expect(ADVANCED_HELP_CONTENT.fillPattern.text).toContain(
     "inside the applied area",
+  );
+  expect(ADVANCED_HELP_CONTENT.segmentCount.text).toBe(
+    "Sets how many repeated sections divide the applied area for the Segmented fill pattern.",
   );
   expect(ADVANCED_HELP_CONTENT.distributionMethod.text).toContain(
     "Unified gives",

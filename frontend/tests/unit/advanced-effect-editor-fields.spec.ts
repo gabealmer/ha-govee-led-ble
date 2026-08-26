@@ -4,6 +4,7 @@ import {
   advancedBrightnessPatternItems,
   advancedLayerActions,
   advancedLayerItems,
+  DISTRIBUTION_COLOUR_FIELDS,
   FILL_PATTERN_LABELS,
   fillPatternParameters,
 } from "../../src/advanced-effect-editor-model";
@@ -16,7 +17,7 @@ test("fill pattern labels retain the wire selection mappings", () => {
     3: "Custom",
   });
   expect(fillPatternParameters(0)).toEqual([
-    ["param_2", "Segment Count"],
+    ["param_2", "Segment Count", "segmentCount"],
   ]);
   expect(fillPatternParameters(1)).toEqual([
     ["param_2", "LED Count"],
@@ -28,6 +29,21 @@ test("fill pattern labels retain the wire selection mappings", () => {
   expect(fillPatternParameters(3)).toEqual([
     ["param_1", "Lit Length"],
     ["param_2", "Gap"],
+  ]);
+});
+
+test("Distribution presents retention before speed with matching help", () => {
+  expect(DISTRIBUTION_COLOUR_FIELDS).toEqual([
+    {
+      key: "colour_retention",
+      label: "Colour Retention",
+      help: "colourRetention",
+    },
+    {
+      key: "colour_speed",
+      label: "Colour Speed",
+      help: "colourSpeed",
+    },
   ]);
 });
 

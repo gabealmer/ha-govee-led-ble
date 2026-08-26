@@ -7,6 +7,11 @@ import {
   type ReorderableStripItem,
   type ReorderableStripItemRole,
 } from "./reorderable-strip-model";
+import {
+  anchoredPopoverLayout,
+  rectIntersectsViewport,
+  type ViewportBounds,
+} from "./info-control-model";
 import { studioBaseStyles } from "./studio-styles";
 
 export type { ReorderableStripItem } from "./reorderable-strip-model";
@@ -39,6 +44,9 @@ export class GoveeReorderableStrip extends LitElement {
   @property({ type: Boolean })
   public separateActions = false;
 
+  @property({ type: Boolean })
+  public popoverDismissDisabled = false;
+
   private draggedIndex?: number;
   private pointerId?: number;
   private pointerIndex?: number;
@@ -47,6 +55,48 @@ export class GoveeReorderableStrip extends LitElement {
   private pointerY = 0;
   private pointerMoved = false;
   private suppressClick = false;
+  private popoverTracking = false;
+  private positionFrame?: number;
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    window.addEventListener("resize", this.viewportResized, {
+      passive: true,
+    });
+    window.visualViewport?.addEventListener(
+      "resize",
+      this.viewportResized,
+      { passive: true },
+    );
+    window.visualViewport?.addEventListener(
+      "scroll",
+      this.viewportResized,
+      { passive: true },
+    );
+  }
+
+  public disconnectedCallback(): void {
+    this.stopPopoverTracking();
+    window.removeEventListener("resize", this.viewportResized);
+    window.visualViewport?.removeEventListener(
+      "resize",
+      this.viewportResized,
+    );
+    window.visualViewport?.removeEventListener(
+      "scroll",
+      this.viewportResized,
+    );
+    super.disconnectedCallback();
+  }
+
+  protected updated(): void {
+    if (this.popoverElement) {
+      this.startPopoverTracking();
+      this.schedulePopoverPosition();
+    } else {
+      this.stopPopoverTracking();
+    }
+  }
 
   protected render() {
     const model = reorderableStripModel(
@@ -162,6 +212,132 @@ export class GoveeReorderableStrip extends LitElement {
         ?.querySelectorAll<HTMLButtonElement>(".item")
         [index]?.focus();
     });
+  }
+
+  private startPopoverTracking(): void {
+    if (this.popoverTracking) {
+      return;
+    }
+    window.addEventListener("scroll", this.viewportScrolled, {
+      capture: true,
+      passive: true,
+    });
+    this.popoverTracking = true;
+  }
+
+  private stopPopoverTracking(): void {
+    if (this.positionFrame !== undefined) {
+      cancelAnimationFrame(this.positionFrame);
+      this.positionFrame = undefined;
+    }
+    if (!this.popoverTracking) {
+      return;
+    }
+    window.removeEventListener("scroll", this.viewportScrolled, true);
+    this.popoverTracking = false;
+  }
+
+  private readonly viewportResized = (): void => {
+    this.schedulePopoverPosition();
+  };
+
+  private readonly viewportScrolled = (): void => {
+    if (!this.mobilePopover || !this.activeItem) {
+      return;
+    }
+    if (!rectIntersectsViewport(
+      this.activeItem.getBoundingClientRect(),
+      this.viewportBounds(),
+    )) {
+      if (!this.popoverDismissDisabled) {
+        this.dispatchEvent(
+          new CustomEvent("item-popover-dismissed", {
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      }
+      return;
+    }
+    this.schedulePopoverPosition();
+  };
+
+  private schedulePopoverPosition(): void {
+    if (this.positionFrame !== undefined) {
+      cancelAnimationFrame(this.positionFrame);
+    }
+    this.positionFrame = requestAnimationFrame(() => {
+      this.positionFrame = undefined;
+      this.positionPopover();
+    });
+  }
+
+  private positionPopover(): void {
+    const popover = this.popoverElement;
+    const trigger = this.activeItem;
+    if (!popover || !trigger) {
+      return;
+    }
+    if (!this.mobilePopover) {
+      this.resetPopoverPosition(popover);
+      return;
+    }
+
+    popover.classList.remove("mobile-positioned");
+    popover.style.left = "0";
+    popover.style.top = "0";
+    popover.style.maxHeight = "none";
+    const rect = popover.getBoundingClientRect();
+    const naturalHeight =
+      popover.scrollHeight + popover.offsetHeight - popover.clientHeight;
+    const layout = anchoredPopoverLayout(
+      trigger.getBoundingClientRect(),
+      {
+        width: rect.width,
+        height: Math.max(rect.height, naturalHeight),
+      },
+      this.viewportBounds(),
+      8,
+      12,
+    );
+    popover.style.left = `${layout.left}px`;
+    popover.style.top = `${layout.top}px`;
+    popover.style.maxHeight = `${layout.maxHeight}px`;
+    popover.classList.add("mobile-positioned");
+  }
+
+  private resetPopoverPosition(popover: HTMLElement): void {
+    popover.classList.remove("mobile-positioned");
+    popover.style.removeProperty("left");
+    popover.style.removeProperty("top");
+    popover.style.removeProperty("max-height");
+  }
+
+  private viewportBounds(): ViewportBounds {
+    const viewport = window.visualViewport;
+    return {
+      left: viewport?.offsetLeft ?? 0,
+      top: viewport?.offsetTop ?? 0,
+      width: viewport?.width ?? window.innerWidth,
+      height: viewport?.height ?? window.innerHeight,
+    };
+  }
+
+  private get mobilePopover(): boolean {
+    return window.matchMedia("(max-width: 600px)").matches;
+  }
+
+  private get activeItem(): HTMLButtonElement | undefined {
+    if (this.activeIndex === undefined) {
+      return undefined;
+    }
+    return this.shadowRoot
+      ?.querySelectorAll<HTMLButtonElement>(".item")
+      [this.activeIndex];
+  }
+
+  private get popoverElement(): HTMLElement | null {
+    return this.querySelector<HTMLElement>(".strip-popover");
   }
 
   private itemClicked(index: number): void {
@@ -484,13 +660,20 @@ export class GoveeReorderableStrip extends LitElement {
 
       ::slotted(.strip-popover) {
         position: fixed;
-        top: 50%;
-        right: var(--studio-mobile-gutter);
-        left: var(--studio-mobile-gutter);
-        width: auto;
-        max-height: calc(100vh - var(--studio-dialog-viewport-gutter));
+        top: 0;
+        right: auto;
+        left: 0;
+        width: min(
+          var(--strip-popover-width, var(--strip-popover-default-width)),
+          calc(100vw - var(--studio-dialog-viewport-gutter))
+        );
         overflow: auto;
-        transform: translateY(-50%);
+        visibility: hidden;
+        transform: none;
+      }
+
+      ::slotted(.strip-popover.mobile-positioned) {
+        visibility: visible;
       }
     }
   `];

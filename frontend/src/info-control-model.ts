@@ -19,6 +19,11 @@ export interface PopoverPosition {
   top: number;
 }
 
+export interface AnchoredPopoverLayout extends PopoverPosition {
+  maxHeight: number;
+  placement: "above" | "below";
+}
+
 export const INFO_GLYPH = "\u2139\uFE0E";
 
 export function rectIntersectsViewport(
@@ -72,5 +77,52 @@ export function popoverPosition(
         ),
       ),
     ),
+  };
+}
+
+export function anchoredPopoverLayout(
+  trigger: RectLike,
+  popover: Pick<RectLike, "height" | "width">,
+  viewport: ViewportBounds,
+  gap: number,
+  gutter: number,
+): AnchoredPopoverLayout {
+  const viewportRight = viewport.left + viewport.width;
+  const viewportBottom = viewport.top + viewport.height;
+  const maximumLeft = Math.max(
+    viewport.left + gutter,
+    viewportRight - popover.width - gutter,
+  );
+  const left = Math.min(
+    maximumLeft,
+    Math.max(
+      viewport.left + gutter,
+      trigger.left + (trigger.width - popover.width) / 2,
+    ),
+  );
+  const spaceBelow = Math.max(
+    0,
+    viewportBottom - gutter - trigger.bottom - gap,
+  );
+  const spaceAbove = Math.max(
+    0,
+    trigger.top - gap - viewport.top - gutter,
+  );
+  const placement =
+    popover.height <= spaceBelow || spaceBelow >= spaceAbove
+      ? "below"
+      : "above";
+  const maxHeight = placement === "below" ? spaceBelow : spaceAbove;
+  const height = Math.min(popover.height, maxHeight);
+
+  return {
+    left: Math.round(left),
+    top: Math.round(
+      placement === "below"
+        ? trigger.bottom + gap
+        : trigger.top - gap - height,
+    ),
+    maxHeight: Math.floor(maxHeight),
+    placement,
   };
 }
