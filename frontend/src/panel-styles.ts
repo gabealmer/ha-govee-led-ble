@@ -770,7 +770,7 @@ export const effectStudioPanelStyles = [
       }
 
       .editor > .editor-heading > .editor-heading-title {
-        order: 99;
+        order: -1;
       }
 
       .editor .mobile-editable-heading {

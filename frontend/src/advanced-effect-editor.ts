@@ -425,14 +425,16 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   "brightnessScopeHigh",
                 )}
               </div>
-              ${renderRangeField(
-                "Changing Speed",
-                pattern.change_speed,
-                (value) =>
-                  this.updateBrightnessPattern({ change_speed: value }),
-                this.disabled,
-                "changingSpeed",
-              )}
+              <div class="parameter-grid">
+                ${renderRangeField(
+                  "Changing Speed",
+                  pattern.change_speed,
+                  (value) =>
+                    this.updateBrightnessPattern({ change_speed: value }),
+                  this.disabled,
+                  "changingSpeed",
+                )}
+              </div>
               <div class="parameter-grid">
                 ${renderRangeField(
                   "Brightest Retention",
