@@ -11,6 +11,11 @@ import { PanelModalController } from "../../src/panel-modal-controller";
 import { PanelModel } from "../../src/panel-model";
 import { PanelPreviewController } from "../../src/panel-preview-controller";
 import {
+  activeStudioContext,
+  synchroniseDeviceSelect,
+} from "../../src/studio-navigation";
+import {
+  blankPainted,
   blankVideoProfile,
   serialiseEditable,
 } from "../../src/effect-editor-model";
@@ -273,7 +278,7 @@ function panelControllerHarness(model: PanelModel) {
       replacePath: () => undefined,
     },
   );
-  return { controller, editorController, preview };
+  return { controller, editorController, preview, modal };
 }
 
 function workspaceModel(selected: DeviceCapabilities): PanelModel {
@@ -1200,6 +1205,25 @@ test("workspace recovery infers only unambiguous structural identity", async () 
   await inferred.controller.openInitialContext();
   expect(inferredModel.templateSelection).toBe("template:single:1:0");
 
+  const ambiguousDevice = flowWorkspaceDevice("entry-ambiguous");
+  ambiguousDevice.active_workspace!.origin = {
+    kind: "authored",
+    source_id: null,
+  };
+  ambiguousDevice.active_workspace!.selector_label = "Unsaved effect";
+  const ambiguousModel = workspaceModel(ambiguousDevice);
+  ambiguousModel.customCatalogue!.models.H6199.effects.push({
+    ...ambiguousModel.customCatalogue!.models.H6199.effects[0],
+    id: "duplicate-flow",
+    label: "Duplicate Flow",
+  });
+  const ambiguous = panelControllerHarness(ambiguousModel);
+  await ambiguous.controller.openInitialContext();
+  expect(ambiguousModel.editorSource.kind).toBe("new");
+  expect(ambiguousModel.templateSelection).toBeUndefined();
+  expect(ambiguousModel.currentItem).toBeUndefined();
+  expect(ambiguousModel.name).toBe("Unsaved effect");
+
   const invalidDevice = flowWorkspaceDevice("entry-b");
   if (!invalidDevice.active_workspace) {
     throw new Error("Flow device is missing its active workspace");
@@ -1212,6 +1236,48 @@ test("workspace recovery infers only unambiguous structural identity", async () 
 
   expect(invalidModel.editorSource.kind).toBe("none");
   expect(invalidModel.name).toBe("");
+});
+
+test("painted workspace restoration keeps variation content under the fixed Paint identity", async () => {
+  const selected = device("entry-painted", "H617A");
+  const workspaceContent: PaintedContent = {
+    ...painted(),
+    effect: "clockwise",
+    speed: 64,
+    brightness: 83,
+  };
+  selected.active_workspace = {
+    config_entry_id: selected.config_entry_id,
+    model: selected.model,
+    selector_label: "Clockwise",
+    content: workspaceContent,
+    content_hash: "painted-workspace",
+    origin: { kind: "authored", source_id: null },
+    observable_signature: "custom:1",
+    updated_at: "2026-08-26T00:00:00Z",
+    generation: 1,
+    confidence: "write_completed",
+  };
+  const model = workspaceModel(selected);
+  model.customCatalogue!.models.H617A.painted_effects = [
+    { id: "cycle", label: "Cycle" },
+    { id: "clockwise", label: "Clockwise" },
+    { id: "twinkle", label: "Twinkle" },
+  ];
+  const { controller } = panelControllerHarness(model);
+
+  await controller.openInitialContext();
+
+  expect(model.templateSelection).toBe("template:paint");
+  expect(model.editorSource).toMatchObject({
+    kind: "catalogue",
+    selectionIdentity: "template:paint",
+    label: "Paint",
+  });
+  expect(model.catalogueSourceLabel).toBe("Paint");
+  expect(model.name).toBe("Paint");
+  expect(model.content).toEqual(workspaceContent);
+  expect(model.resetBaseline).toEqual(blankPainted());
 });
 
 test("active workspace does not open a category disabled by options", async () => {
@@ -1808,4 +1874,529 @@ test("Save As keeps video profile copies in the Video section", async () => {
 
   expect(model.currentItem?.id).toBe("video-copy");
   expect(model.section).toBe("video");
+});
+
+test("dirty saved transitions prompt before mutation and Cancel is inert", async () => {
+  const selected = device("entry-a", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.liveApplyEnabled = true;
+  const { controller, editorController } = panelControllerHarness(model);
+  const saved = item(painted());
+  editorController.applyLibraryItem(saved);
+  editorController.updatePaintedContent({ speed: 67 }, "committed");
+  const before = {
+    epoch: model.editorTransitionEpoch,
+    section: model.section,
+    device: model.selectedDeviceId,
+    source: structuredClone(model.editorSource),
+    content: structuredClone(model.content),
+  };
+
+  await controller.selectSection("scenes");
+
+  expect(model.pendingTransitionDialog?.primaryLabel).toBe("Save");
+  expect(model.editorTransitionEpoch).toBe(before.epoch);
+  expect(model.section).toBe(before.section);
+  expect(model.selectedDeviceId).toBe(before.device);
+  expect(model.editorSource).toEqual(before.source);
+  expect(model.content).toEqual(before.content);
+
+  controller.cancelPendingTransition();
+
+  expect(model.pendingTransitionDialog).toBeUndefined();
+  expect(model.editorTransitionEpoch).toBe(before.epoch);
+  expect(model.section).toBe(before.section);
+  expect(model.editorSource).toEqual(before.source);
+  expect(model.content).toEqual(before.content);
+});
+
+test("Live-on No and reload present an authored Sena workspace as structural Flow", async () => {
+  const selected = flowWorkspaceDevice("entry-a");
+  selected.active_state!.active_effect = null;
+  selected.active_workspace = {
+    ...selected.active_workspace!,
+    selector_label: "Sena",
+    origin: { kind: "authored", source_id: null },
+  };
+  const model = workspaceModel(selected);
+  model.section = "custom";
+  model.customEffectCategory = "single-layer";
+  model.liveApplyEnabled = true;
+  const { controller, editorController } = panelControllerHarness(model);
+  const saved: LibraryItem = {
+    schema_version: 1,
+    id: "sena",
+    version: 4,
+    updated_at: "2026-08-25T00:00:00Z",
+    name: "Sena",
+    content: {
+      ...selected.active_workspace!.content,
+      speed: 68,
+    } as PaletteDiyEffectContent,
+    content_hash: "s".repeat(64),
+    origin: { kind: "authored", source_id: null },
+    extensions: {},
+  };
+  editorController.applyLibraryItem(saved);
+  if (model.content.kind !== "palette_diy") {
+    throw new Error("saved content changed kind");
+  }
+  editorController.customContentChanged(
+    { ...model.content, speed: 91 },
+    "committed",
+  );
+  const updateItem = vi.fn();
+  const applySavedEffect = vi.fn();
+  controller.api = {
+    updateItem,
+    applySavedEffect,
+    updateUserState: vi.fn().mockResolvedValue(model.userState),
+  } as unknown as EffectStudioApi;
+
+  await controller.selectSection("scenes");
+  await controller.declinePendingTransition();
+  await controller.selectSection("custom", "single-layer");
+
+  expect(updateItem).not.toHaveBeenCalled();
+  expect(applySavedEffect).not.toHaveBeenCalled();
+  expect(model.editorSource.kind).toBe("catalogue");
+  expect(model.templateSelection).toBe("template:single:1:0");
+  expect(model.name).toBe("Flow");
+  expect(model.catalogueSourceLabel).toBe("Flow");
+  expect(model.currentItem).toBeUndefined();
+  expect(model.content).toMatchObject({ speed: 73 });
+  expect(model.resetBaseline).toMatchObject({ speed: 50 });
+
+  const reloadedModel = workspaceModel(structuredClone(selected));
+  const reloaded = panelControllerHarness(reloadedModel);
+  await reloaded.controller.openInitialContext();
+
+  expect(reloadedModel.templateSelection).toBe("template:single:1:0");
+  expect(reloadedModel.editorSource).toMatchObject({
+    kind: "catalogue",
+    label: "Flow",
+    selectionIdentity: "template:single:1:0",
+  });
+  expect(reloadedModel.name).toBe("Flow");
+  expect(reloadedModel.currentItem).toBeUndefined();
+  expect(reloadedModel.content).toMatchObject({ speed: 73 });
+  expect(reloadedModel.resetBaseline).toMatchObject({ speed: 50 });
+});
+
+test("Save establishes saved identity before completing a pending transition", async () => {
+  const selected = device("entry-a", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.liveApplyEnabled = false;
+  const { controller, editorController } = panelControllerHarness(model);
+  const saved = item(painted());
+  editorController.applyLibraryItem(saved);
+  editorController.updatePaintedContent({ speed: 72 }, "committed");
+  const calls: string[] = [];
+  controller.api = {
+    updateItem: vi.fn().mockImplementation(async () => {
+      calls.push("save");
+      return {
+        ...saved,
+        version: saved.version + 1,
+        content: { ...painted(), speed: 72 },
+      };
+    }),
+    applySavedEffect: vi.fn().mockImplementation(async () => {
+      calls.push("apply");
+    }),
+    device: vi.fn().mockResolvedValue(selected),
+    updateUserState: vi.fn().mockImplementation(async () => {
+      calls.push("navigate");
+      return undefined;
+    }),
+  } as unknown as EffectStudioApi;
+
+  await controller.selectSection("scenes");
+  await controller.savePendingTransition();
+
+  expect(model.section).toBe("scenes");
+  expect(model.currentItem).toMatchObject({ id: saved.id, version: 3 });
+  expect(calls.slice(0, 2)).toEqual(["save", "apply"]);
+  expect(model.pendingTransitionDialog).toBeUndefined();
+});
+
+test("Live-off catalogue edits use Save As while Live catalogue work is recoverable", async () => {
+  const selected = device("entry-a", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  const { controller, editorController } = panelControllerHarness(model);
+  editorController.openEditableTemplate(
+    "Flow",
+    painted(),
+    "template:paint",
+    { section: "custom", category: "single-layer" },
+  );
+  editorController.updatePaintedContent({ speed: 81 }, "committed");
+
+  model.liveApplyEnabled = true;
+  await controller.selectSection("scenes");
+  expect(model.pendingTransitionDialog).toBeUndefined();
+  expect(model.section).toBe("scenes");
+
+  await controller.selectSection("custom", "single-layer");
+  model.liveApplyEnabled = false;
+  await controller.selectSection("scenes");
+  expect(model.pendingTransitionDialog).toMatchObject({
+    primaryLabel: "Save As",
+    saveName: "Flow",
+  });
+  const created = {
+    ...item(painted()),
+    id: "flow-copy",
+    version: 1,
+    name: "Flow",
+    content: { ...painted(), speed: 81 },
+  };
+  const createItem = vi.fn().mockResolvedValue(created);
+  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+  controller.api = {
+    createItem,
+    applySavedEffect,
+    device: vi.fn().mockResolvedValue(selected),
+  } as unknown as EffectStudioApi;
+
+  await controller.savePendingTransition();
+
+  expect(createItem).toHaveBeenCalled();
+  expect(applySavedEffect).toHaveBeenCalledWith(
+    selected.light_entity_id,
+    created.name,
+  );
+  expect(model.currentItem?.id).toBe(created.id);
+  expect(model.section).toBe("scenes");
+});
+
+test("automatic save flushes before navigation and exposes failures to the transition dialog", async () => {
+  const selected = device("entry-a", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.autoSaveEnabled = true;
+  model.liveApplyEnabled = false;
+  installH6199Catalogue(model);
+  model.customCatalogue!.models.H617A.painted_effects = [
+    { id: "cycle", label: "Cycle" },
+  ];
+  const { controller, editorController } = panelControllerHarness(model);
+  const saved = item(painted());
+  editorController.applyLibraryItem(saved);
+  let resolveSave!: (value: LibraryItem) => void;
+  const saving = new Promise<LibraryItem>((resolve) => {
+    resolveSave = resolve;
+  });
+  const updateItem = vi.fn().mockReturnValue(saving);
+  controller.api = { updateItem } as unknown as EffectStudioApi;
+  editorController.updatePaintedContent({ speed: 62 }, "committed");
+
+  const navigation = controller.selectSection("scenes");
+  expect(model.section).toBe("custom");
+  resolveSave({
+    ...saved,
+    version: 3,
+    content: { ...painted(), speed: 62 },
+  });
+  await navigation;
+
+  expect(model.section).toBe("scenes");
+  expect(model.pendingTransitionDialog).toBeUndefined();
+  expect(model.currentItem).toMatchObject({ id: saved.id, version: 3 });
+
+  await controller.selectSection("custom", "single-layer");
+  updateItem.mockRejectedValueOnce(new Error("storage unavailable"));
+  editorController.updatePaintedContent({ speed: 63 }, "committed");
+  controller.contentCommitted("committed");
+  await vi.waitFor(() => expect(model.autoSaveFailed).toBe(true));
+  expect(model.section).toBe("custom");
+  expect(model.dirty).toBe(true);
+  expect(model.localWorkNeedsProtection).toBe(true);
+  await controller.selectSection("scenes");
+
+  expect(model.section).toBe("custom");
+  expect(model.pendingTransitionDialog?.primaryLabel).toBe("Save");
+  expect(model.notice).toContain("storage unavailable");
+});
+
+test("unload protection covers only unrecoverable work", () => {
+  const model = new PanelModel(() => undefined);
+  const { controller, editorController } = panelControllerHarness(model);
+  model.isAdmin = true;
+  editorController.openEditableTemplate(
+    "Flow",
+    painted(),
+    "template:paint",
+    { section: "custom", category: "single-layer" },
+  );
+  editorController.updatePaintedContent({ speed: 75 }, "committed");
+
+  model.liveApplyEnabled = true;
+  expect(controller.unloadProtectionRequired).toBe(false);
+  model.liveApplyEnabled = false;
+  expect(controller.unloadProtectionRequired).toBe(true);
+
+  editorController.applyLibraryItem(item(painted()));
+  editorController.updatePaintedContent({ speed: 76 }, "committed");
+  model.liveApplyEnabled = true;
+  expect(controller.unloadProtectionRequired).toBe(true);
+});
+
+test("Live-off No discards local saved edits and reopens the clean active item", async () => {
+  const selected = device("entry-a", "H617A");
+  const saved = item(painted());
+  const summary = { ...saved, kind: saved.content.kind };
+  selected.active_state = {
+    config_entry_id: selected.config_entry_id,
+    mode: "custom",
+    observed_at: "2026-08-26T00:00:00Z",
+    confidence: "activation_match",
+    diy_code: 24,
+    effect: null,
+    native_mode: null,
+    matched_operation_id: "operation-sena",
+    active_effect: {
+      source_kind: "saved_effect",
+      selector_label: saved.name,
+      content_hash: saved.content_hash,
+      origin: saved.origin,
+      observable_signature: "custom:24",
+      confidence: "activation_match",
+      item_id: saved.id,
+      item_version: saved.version,
+    },
+  };
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.library = { items: [summary] };
+  model.liveApplyEnabled = false;
+  installH6199Catalogue(model);
+  model.customCatalogue!.models.H617A.painted_effects = [
+    { id: "cycle", label: "Cycle" },
+  ];
+  const { controller, editorController } = panelControllerHarness(model);
+  editorController.applyLibraryItem(saved);
+  editorController.updatePaintedContent({ speed: 92 }, "committed");
+  const loadItem = vi.fn().mockResolvedValue(saved);
+  controller.api = {
+    item: loadItem,
+    updateUserState: vi.fn().mockResolvedValue(undefined),
+  } as unknown as EffectStudioApi;
+
+  await controller.selectSection("scenes");
+  await controller.declinePendingTransition();
+  expect(model.libraryItemAvailable(summary)).toBe(true);
+  expect(
+    activeStudioContext(
+      selected,
+      model.library.items,
+      (candidate) => model.libraryItemAvailable(candidate),
+      model.modelCatalogue,
+    ).kind,
+  ).toBe("saved");
+  expect(model.section).toBe("scenes");
+  expect(model.customEffectsAvailable).toBe(true);
+  await controller.selectSection("custom", "single-layer");
+
+  expect(model.section).toBe("custom");
+  expect(loadItem).toHaveBeenCalledWith(saved.id);
+  expect(model.editorSource).toMatchObject({
+    kind: "saved",
+    itemId: saved.id,
+  });
+  expect(model.content).toMatchObject({ speed: 50 });
+  expect(model.dirty).toBe(false);
+});
+
+test("guarded Home Assistant navigation redispatches once after resolution", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const { controller, editorController } = panelControllerHarness(model);
+  editorController.applyLibraryItem(item(painted()));
+  editorController.updatePaintedContent({ speed: 84 }, "committed");
+  const redispatch = vi.fn();
+
+  await controller.requestTransition(redispatch);
+  expect(redispatch).not.toHaveBeenCalled();
+
+  controller.cancelPendingTransition();
+  expect(redispatch).not.toHaveBeenCalled();
+
+  await controller.requestTransition(redispatch);
+  await controller.declinePendingTransition();
+  expect(redispatch).toHaveBeenCalledOnce();
+});
+
+test("device, item, scene, and New transitions share the pre-mutation guard", async () => {
+  const first = device("entry-a", "H617A");
+  const second = device("entry-b", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.devices = [first, second];
+  model.selectedDeviceId = first.config_entry_id;
+  installH6199Catalogue(model);
+  model.customCatalogue!.models.H617A.painted_effects = [
+    { id: "cycle", label: "Cycle" },
+  ];
+  const { controller, editorController } = panelControllerHarness(model);
+  const saved = item(painted());
+  editorController.applyLibraryItem(saved);
+  editorController.updatePaintedContent({ speed: 86 }, "committed");
+  const epoch = model.editorTransitionEpoch;
+  const sceneSelection = vi.fn();
+  const requests = [
+    () => controller.deviceChanged(second.config_entry_id),
+    () =>
+      controller.selectCustomEffectEntry({
+        kind: "paint",
+        key: "template:paint",
+        label: "Paint",
+        category: "single-layer",
+      }),
+    () => controller.newCustomEffect("single-layer"),
+    () => controller.selectScene(sceneSelection),
+  ];
+
+  for (const request of requests) {
+    await request();
+    expect(model.pendingTransitionDialog?.primaryLabel).toBe("Save");
+    expect(model.editorTransitionEpoch).toBe(epoch);
+    expect(model.selectedDeviceId).toBe(first.config_entry_id);
+    expect(model.editorSource).toMatchObject({
+      kind: "saved",
+      itemId: saved.id,
+    });
+    expect(sceneSelection).not.toHaveBeenCalled();
+    controller.cancelPendingTransition();
+  }
+});
+
+test("video template selection is guarded and restores focus on Cancel", async () => {
+  const selected = device("entry-a", "H6199");
+  selected.profiles.video = "supported";
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.section = "video";
+  installH6199Catalogue(model);
+  const { controller, editorController } = panelControllerHarness(model);
+  const content = blankVideoProfile("movie");
+  const saved: LibraryItem = {
+    schema_version: 1,
+    id: "saved-video",
+    version: 2,
+    updated_at: "2026-08-26T00:00:00Z",
+    name: "Saved movie",
+    content,
+    content_hash: "video-hash",
+    origin: { kind: "authored", source_id: null },
+    extensions: {},
+  };
+  editorController.applyLibraryItem(saved);
+  editorController.videoContentChanged(
+    { ...content, saturation: 77 },
+    "committed",
+  );
+  const focus = vi.fn();
+  const returnFocus = {
+    isConnected: true,
+    focus,
+  } as unknown as HTMLElement;
+  const epoch = model.editorTransitionEpoch;
+
+  await controller.selectVideoTemplate("game", "Game", returnFocus);
+
+  expect(model.pendingTransitionDialog?.primaryLabel).toBe("Save");
+  expect(model.editorTransitionEpoch).toBe(epoch);
+  expect(model.content).toMatchObject({
+    kind: "video_profile",
+    mode: "movie",
+    saturation: 77,
+  });
+
+  controller.cancelPendingTransition();
+  await Promise.resolve();
+  expect(focus).toHaveBeenCalledOnce();
+
+  await controller.selectVideoTemplate("game", "Game", returnFocus);
+  await controller.declinePendingTransition();
+  expect(model.editorSource.kind).toBe("catalogue");
+  expect(model.templateSelection).toBe("template:video:game");
+  expect(model.content).toMatchObject({
+    kind: "video_profile",
+    mode: "game",
+  });
+});
+
+test("cancelled device selection restores the visible value and remains operable", async () => {
+  const first = device("entry-a", "H617A");
+  const second = device("entry-b", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.devices = [first, second];
+  model.selectedDeviceId = first.config_entry_id;
+  const { controller, editorController } = panelControllerHarness(model);
+  editorController.applyLibraryItem(item(painted()));
+  editorController.updatePaintedContent({ speed: 87 }, "committed");
+  const select = { value: second.config_entry_id };
+
+  await controller.deviceChanged(second.config_entry_id);
+  synchroniseDeviceSelect(select, model.selectedDeviceId);
+  expect(select.value).toBe(first.config_entry_id);
+  expect(model.pendingTransitionDialog).toBeDefined();
+
+  controller.cancelPendingTransition();
+  synchroniseDeviceSelect(select, model.selectedDeviceId);
+  expect(select.value).toBe(first.config_entry_id);
+
+  select.value = second.config_entry_id;
+  await controller.deviceChanged(second.config_entry_id);
+  synchroniseDeviceSelect(select, model.selectedDeviceId);
+  expect(select.value).toBe(first.config_entry_id);
+  await controller.declinePendingTransition();
+  synchroniseDeviceSelect(select, model.selectedDeviceId);
+  expect(select.value).toBe(second.config_entry_id);
+
+  await controller.deviceChanged(first.config_entry_id);
+  synchroniseDeviceSelect(select, model.selectedDeviceId);
+  expect(select.value).toBe(first.config_entry_id);
+});
+
+test("external editor teardown clears controller-owned pending transitions", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const { controller, editorController } = panelControllerHarness(model);
+  const saved = item(painted());
+  editorController.applyLibraryItem(saved);
+  editorController.updatePaintedContent({ speed: 88 }, "committed");
+
+  await controller.requestTransition(() => undefined);
+  expect(model.pendingTransitionDialog).toBeDefined();
+
+  editorController.beginTransition();
+  expect(model.pendingTransitionDialog).toBeUndefined();
+  editorController.applyLibraryItem(saved);
+
+  const navigate = vi.fn();
+  await controller.requestTransition(navigate);
+  expect(navigate).toHaveBeenCalledOnce();
 });

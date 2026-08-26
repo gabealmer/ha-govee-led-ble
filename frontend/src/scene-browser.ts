@@ -89,6 +89,12 @@ export class GoveeSceneBrowser extends LitElement {
   @property({ attribute: false })
   public previewStatus?: PreviewStatus;
 
+  @property({ attribute: false })
+  public requestTransition?: (
+    transition: () => void | Promise<void>,
+    returnFocus: HTMLElement,
+  ) => void;
+
   @state()
   private viewState: SceneBrowserViewState;
 
@@ -286,16 +292,28 @@ export class GoveeSceneBrowser extends LitElement {
     );
   }
 
-  private sceneButton(key: string, label: string, select: () => void) {
+  private sceneButton(
+    key: string,
+    label: string,
+    select: () => void | Promise<void>,
+  ) {
     const selected = sceneSelectionKey(this.viewState) === key;
     return html`
       <button
         class="selector scene ${selected ? "selected" : ""}"
         type="button"
         aria-pressed=${selected}
-        @click=${() => {
-          this.dismissExternalEdit();
-          select();
+        @click=${(event: Event) => {
+          const transition = async () => {
+            this.dismissExternalEdit();
+            await select();
+          };
+          const returnFocus = event.currentTarget as HTMLElement;
+          if (this.requestTransition) {
+            this.requestTransition(transition, returnFocus);
+          } else {
+            void transition();
+          }
         }}
       >
         <span>${label}</span>

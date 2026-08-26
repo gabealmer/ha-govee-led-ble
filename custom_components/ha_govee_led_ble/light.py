@@ -271,7 +271,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         hint = observed.active_effect if observed is not None else None
         if hint is None or hint.source_kind != "saved_effect" or hint.item_id is None:
             return None
-        if hint.observable_signature != observable_signature_for_coordinator(self.coordinator):
+        observable_signature = observable_signature_for_coordinator(self.coordinator)
+        active_workspaces = getattr(self._effect_backend, "active_workspaces", None)
+        workspace = active_workspaces.get(self._config_entry_id) if active_workspaces is not None else None
+        if (
+            workspace is not None
+            and workspace.model == self.coordinator.model
+            and workspace.observable_signature == observable_signature
+        ):
+            return None
+        if hint.observable_signature != observable_signature:
             return None
         item = next(
             (

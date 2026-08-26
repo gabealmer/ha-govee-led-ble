@@ -10,6 +10,7 @@ export class PanelModalController {
   private deleteReturnFocus?: HTMLElement;
   private saveNameReturnFocus?: HTMLElement;
   private scrollLock?: { bodyOverflow: string; documentOverflow: string };
+  private transitionDialogTeardown?: () => void;
 
   public constructor(
     private readonly model: PanelModel,
@@ -17,7 +18,11 @@ export class PanelModalController {
   ) {}
 
   public get open(): boolean {
-    return this.model.saveNameDialogOpen || this.model.deleteCandidate !== undefined;
+    return (
+      this.model.saveNameDialogOpen ||
+      this.model.deleteCandidate !== undefined ||
+      this.model.pendingTransitionDialog !== undefined
+    );
   }
 
   public get deleteCandidate(): DeleteCandidate | undefined {
@@ -25,9 +30,75 @@ export class PanelModalController {
   }
 
   public closeForEditorTransition(): void {
+    if (this.model.pendingTransitionDialog) {
+      this.transitionDialogTeardown?.();
+    }
     this.saveNameReturnFocus = undefined;
     this.model.saveNameDialogOpen = false;
     this.model.saveNameError = undefined;
+    this.model.pendingTransitionDialog = undefined;
+  }
+
+  public setTransitionDialogTeardown(callback: () => void): void {
+    this.transitionDialogTeardown = callback;
+  }
+
+  public requestTransition(
+    primaryLabel: "Save" | "Save As",
+    saveName: string,
+    returnFocus?: HTMLElement,
+  ): void {
+    if (this.open) {
+      return;
+    }
+    this.saveNameReturnFocus = returnFocus;
+    this.model.patch({
+      pendingTransitionDialog: {
+        primaryLabel,
+        saveName,
+        busy: false,
+      },
+    });
+    void this.host.updateComplete().then(() => {
+      const selector =
+        primaryLabel === "Save As"
+          ? ".transition-dialog input"
+          : ".transition-dialog .secondary";
+      this.host.root()?.querySelector<HTMLElement>(selector)?.focus();
+    });
+  }
+
+  public updateTransitionName(saveName: string): void {
+    const dialog = this.model.pendingTransitionDialog;
+    if (dialog) {
+      this.model.patch({
+        pendingTransitionDialog: {
+          ...dialog,
+          saveName,
+          error: undefined,
+        },
+      });
+    }
+  }
+
+  public updateTransition(
+    change: Partial<NonNullable<PanelModel["pendingTransitionDialog"]>>,
+  ): void {
+    const dialog = this.model.pendingTransitionDialog;
+    if (dialog) {
+      this.model.patch({
+        pendingTransitionDialog: { ...dialog, ...change },
+      });
+    }
+  }
+
+  public closeTransition(restoreFocus: boolean): void {
+    const returnFocus = this.saveNameReturnFocus;
+    this.saveNameReturnFocus = undefined;
+    this.model.patch({ pendingTransitionDialog: undefined });
+    if (restoreFocus) {
+      this.restoreFocus(returnFocus);
+    }
   }
 
   public requestDelete(candidate: DeleteCandidate, returnFocus: HTMLElement): void {

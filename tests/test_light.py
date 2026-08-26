@@ -1,26 +1,44 @@
 import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from hashlib import sha256
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from bleak import BleakError
 from homeassistant.components.light import ColorMode
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.effect_active_workspace import (
+    ActiveEffectWorkspace,
+    ActiveEffectWorkspaceRepository,
+)
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+from custom_components.ha_govee_led_ble.effect_deployments import (
+    DeploymentPhase,
+    DeploymentRecord,
+    EffectDeploymentRepository,
+    ObservationConfidence,
+)
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
+    Origin,
     RelativeBrightness,
     SingleEffect,
+    SourceKind,
     VideoProfile,
 )
+from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
+from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefault
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
+from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_h617a_scene,
@@ -41,6 +59,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.light_services import async_register_light_services
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENES
+from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
 @pytest.fixture
@@ -296,6 +315,7 @@ def test_active_saved_effect_uses_current_name_only_for_matching_content(
                     return_value=SimpleNamespace(active_effect=hint),
                 )
             ),
+            active_workspaces=SimpleNamespace(get=MagicMock(return_value=None)),
         ),
     )
     entity = GoveeBLELight(
@@ -322,6 +342,13 @@ def test_active_saved_effect_uses_current_name_only_for_matching_content(
     mock_coordinator.unknown_scene_code = None
     mock_coordinator.diy_code = 800
 
+    backend.active_workspaces.get.return_value = SimpleNamespace(
+        model="H617A",
+        observable_signature="custom:800",
+    )
+    assert entity.effect == "off"
+    backend.active_workspaces.get.return_value = None
+
     changed = replace(
         renamed,
         version=3,
@@ -332,6 +359,107 @@ def test_active_saved_effect_uses_current_name_only_for_matching_content(
     entity._library_updated(LibrarySnapshot((changed,)))
 
     assert entity.effect == "off"
+
+
+async def test_workspace_identity_agrees_between_device_payload_and_light_effect(
+    hass: HomeAssistant,
+    mock_coordinator,
+) -> None:
+    deployments = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    cache = EffectDeviceCache(InMemoryVersionedDocumentStore())
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await deployments.async_load()
+    await cache.async_load()
+    await active_workspaces.async_load()
+    sena = LibraryItem.new(
+        "Sena",
+        SingleEffect(9, 9, 50, ((255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), (0, 0, 255))),
+    )
+    await deployments.async_put(
+        DeploymentRecord(
+            operation_id=uuid4(),
+            config_entry_id="entry-a",
+            diy_code=24,
+            phase=DeploymentPhase.CONFIRMED,
+            compiler_version=1,
+            artifact_sha256=sha256(b"sena").hexdigest(),
+            updated_at="2026-08-26T00:00:00Z",
+            target_mode="custom",
+            source_kind="saved_effect",
+            selector_label=sena.name,
+            source_origin_kind=sena.origin.kind.value,
+            source_content_hash=sena.content_hash,
+            item_id=sena.id,
+            item_version=sena.version,
+            verification_confidence=ObservationConfidence.ACTIVATION_MATCH,
+        ),
+        expected_version=None,
+    )
+    workspace = ActiveEffectWorkspace(
+        config_entry_id="entry-a",
+        model="H617A",
+        selector_label="Flow",
+        content=SingleEffect(9, 9, 60, ((255, 0, 0), (255, 128, 0), (255, 255, 0), (0, 255, 0), (0, 0, 255))),
+        origin=Origin(SourceKind.CATALOGUE_TEMPLATE, "h617a:flow:clockwise"),
+        observable_signature="custom:24",
+        updated_at="2026-08-26T00:01:00Z",
+        generation=1,
+    )
+    active_workspaces.set(workspace)
+    mock_coordinator.is_on = True
+    mock_coordinator.diy_code = None
+    mock_coordinator.effect = None
+    mock_coordinator.unknown_scene_code = 24
+    mock_coordinator.effect_categories = frozenset({"custom", "scenes"})
+    engine = EffectDeploymentEngine(deployments, cache, active_workspaces)
+    observed = engine.reconcile_current(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-26T00:02:00Z",
+        refreshed=True,
+    )
+    preview_health = MagicMock()
+    preview_health.to_dict.return_value = {}
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(library_snapshot=MagicMock(return_value=LibrarySnapshot((sena,)))),
+            device_cache=cache,
+            active_workspaces=active_workspaces,
+            engine=engine,
+            preview=SimpleNamespace(health=MagicMock(return_value=preview_health)),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        runtime_data=mock_coordinator,
+        title="Govee H617A",
+    )
+
+    payload = _device_payload(hass, backend, entry)
+
+    assert observed.active_effect is None
+    assert payload["active_state"]["active_effect"] is None
+    assert payload["active_workspace"]["selector_label"] == "Flow"
+    assert entity.effect == "off"
+
+    mock_coordinator.unknown_scene_code = None
+    mock_coordinator.diy_code = 25
+    engine.reconcile_current(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-26T00:03:00Z",
+        refreshed=True,
+    )
+    suspended_payload = _device_payload(hass, backend, entry)
+
+    assert suspended_payload["active_workspace"] is None
+    assert active_workspaces.get("entry-a") == workspace
 
 
 async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):

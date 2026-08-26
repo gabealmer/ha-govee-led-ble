@@ -460,7 +460,8 @@ export const effectStudioPanelStyles = [
       line-height: var(--studio-body-line-height);
     }
 
-    .save-dialog .field {
+    .save-dialog .field,
+    .transition-dialog .field {
       margin-top: var(--studio-spacing-4xl);
     }
 

@@ -18,10 +18,12 @@ import { scrollSelectedIntoView } from "./ui-utils";
 
 export interface CustomEffectBrowserEntryRequest {
   entry: CustomEffectListEntry;
+  returnFocus: HTMLElement;
 }
 
 export interface CustomEffectBrowserCategoryRequest {
   category: CustomEffectCategory;
+  returnFocus: HTMLElement;
 }
 
 export class GoveeCustomEffectBrowser extends LitElement {
@@ -123,12 +125,15 @@ export class GoveeCustomEffectBrowser extends LitElement {
         type="button"
         aria-pressed=${String(selected)}
         ?disabled=${entry.kind !== "saved" && !this.isAdmin}
-        @click=${() => {
+        @click=${(event: Event) => {
           this.dispatchEvent(
             new CustomEvent<CustomEffectBrowserEntryRequest>(
               "custom-entry-requested",
               {
-                detail: { entry },
+                detail: {
+                  entry,
+                  returnFocus: event.currentTarget as HTMLElement,
+                },
                 bubbles: true,
                 composed: true,
               },
@@ -154,12 +159,15 @@ export class GoveeCustomEffectBrowser extends LitElement {
     `;
   }
 
-  private requestNew(): void {
+  private requestNew(event: Event): void {
     this.dispatchEvent(
       new CustomEvent<CustomEffectBrowserCategoryRequest>(
         "custom-new-requested",
         {
-          detail: { category: this.category },
+          detail: {
+            category: this.category,
+            returnFocus: event.currentTarget as HTMLElement,
+          },
           bubbles: true,
           composed: true,
         },

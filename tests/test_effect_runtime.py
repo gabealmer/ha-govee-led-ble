@@ -32,10 +32,12 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     MusicProfile,
+    Origin,
     PaintedEffect,
     PaletteDiyEffect,
     RelativeBrightness,
     SingleEffect,
+    SourceKind,
     VideoProfile,
 )
 from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
@@ -56,6 +58,75 @@ def _item() -> LibraryItem:
 
 def _type04_item() -> LibraryItem:
     return LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+
+
+def _sena_item() -> LibraryItem:
+    return LibraryItem.new(
+        "Sena",
+        SingleEffect(
+            9,
+            9,
+            50,
+            (
+                (255, 0, 0),
+                (255, 127, 0),
+                (255, 255, 0),
+                (0, 255, 0),
+                (0, 0, 255),
+                (75, 0, 130),
+                (148, 0, 211),
+            ),
+        ),
+    )
+
+
+def _flow_workspace(
+    *,
+    confidence: ObservationConfidence = ObservationConfidence.WRITE_COMPLETED,
+) -> ActiveEffectWorkspace:
+    return ActiveEffectWorkspace(
+        config_entry_id="entry-a",
+        model="H617A",
+        selector_label="Flow",
+        content=SingleEffect(
+            9,
+            9,
+            50,
+            (
+                (255, 0, 0),
+                (255, 128, 0),
+                (255, 255, 0),
+                (0, 255, 0),
+                (0, 0, 255),
+            ),
+        ),
+        origin=Origin(SourceKind.CATALOGUE_TEMPLATE, "h617a:flow:clockwise"),
+        observable_signature="custom:24",
+        updated_at="2026-08-26T00:01:00Z",
+        generation=1,
+        confidence=confidence,
+    )
+
+
+def _confirmed_saved_record(item: LibraryItem, *, diy_code: int = 24) -> DeploymentRecord:
+    return DeploymentRecord(
+        operation_id=uuid4(),
+        config_entry_id="entry-a",
+        diy_code=diy_code,
+        phase=DeploymentPhase.CONFIRMED,
+        compiler_version=1,
+        artifact_sha256=sha256(item.content_hash.encode()).hexdigest(),
+        updated_at="2026-08-26T00:00:00Z",
+        target_mode="custom",
+        source_kind="saved_effect",
+        selector_label=item.name,
+        source_origin_kind=item.origin.kind.value,
+        source_origin_id=item.origin.source_id,
+        source_content_hash=item.content_hash,
+        item_id=item.id,
+        item_version=item.version,
+        verification_confidence=ObservationConfidence.ACTIVATION_MATCH,
+    )
 
 
 def _h6199_item(*, family: int = 8, variant: int = 9) -> LibraryItem:
@@ -805,6 +876,150 @@ async def test_reconciliation_matches_only_latest_confirmed_selector(
     )
 
     assert changed.active_effect is None
+
+
+async def test_matching_flow_workspace_suppresses_saved_sena_selector_history(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    sena = _sena_item()
+    await repository.async_put(_confirmed_saved_record(sena), expected_version=None)
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await active_workspaces.async_load()
+    workspace = _flow_workspace(confidence=ObservationConfidence.ACTIVATION_MATCH)
+    active_workspaces.set(workspace)
+    coordinator = _coordinator()
+    coordinator.unknown_scene_code = 24
+    repository.latest_for_diy_code = MagicMock(wraps=repository.latest_for_diy_code)
+    repository.latest_for_effect = MagicMock(wraps=repository.latest_for_effect)
+    repository.latest_for_profile = MagicMock(wraps=repository.latest_for_profile)
+
+    observed = EffectDeploymentEngine(repository, cache, active_workspaces).reconcile_current(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-26T00:02:00Z",
+        refreshed=True,
+    )
+
+    assert observed.mode == "custom"
+    assert observed.diy_code == 24
+    assert observed.confidence is workspace.confidence
+    assert observed.matched_operation_id is None
+    assert observed.active_effect is None
+    assert cache.get("entry-a") == observed
+    assert active_workspaces.get("entry-a") == workspace
+    repository.latest_for_diy_code.assert_not_called()
+    repository.latest_for_effect.assert_not_called()
+    repository.latest_for_profile.assert_not_called()
+
+
+async def test_matching_flow_workspace_replaces_persisted_sena_hint_after_restart() -> None:
+    deployment_store = InMemoryVersionedDocumentStore()
+    cache_store = InMemoryVersionedDocumentStore()
+    workspace_store = InMemoryVersionedDocumentStore()
+    repository = EffectDeploymentRepository(deployment_store)
+    cache = EffectDeviceCache(cache_store)
+    active_workspaces = ActiveEffectWorkspaceRepository(workspace_store)
+    await repository.async_load()
+    await cache.async_load()
+    await active_workspaces.async_load()
+    sena = _sena_item()
+    await repository.async_put(_confirmed_saved_record(sena), expected_version=None)
+    coordinator = _coordinator()
+    coordinator.unknown_scene_code = 24
+    stale = EffectDeploymentEngine(repository, cache).reconcile_current(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-26T00:00:30Z",
+        refreshed=True,
+    )
+    assert stale.active_effect is not None
+    assert stale.active_effect.item_id == sena.id
+    await cache.async_flush()
+    active_workspaces.set(_flow_workspace())
+    await active_workspaces.async_flush()
+
+    restored_repository = EffectDeploymentRepository(deployment_store)
+    restored_cache = EffectDeviceCache(cache_store)
+    restored_workspaces = ActiveEffectWorkspaceRepository(workspace_store)
+    await restored_repository.async_load()
+    restored_states = await restored_cache.async_load()
+    await restored_workspaces.async_load()
+    assert restored_states[0].active_effect is not None
+    observed = EffectDeploymentEngine(
+        restored_repository,
+        restored_cache,
+        restored_workspaces,
+    ).reconcile_current(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-26T00:02:00Z",
+        refreshed=True,
+    )
+
+    assert observed.active_effect is None
+    assert observed.matched_operation_id is None
+    await restored_cache.async_flush()
+    reloaded_cache = EffectDeviceCache(cache_store)
+    assert (await reloaded_cache.async_load())[0].active_effect is None
+
+
+async def test_confirmed_saved_sena_reapply_clears_matching_flow_workspace(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await active_workspaces.async_load()
+    active_workspaces.set(_flow_workspace())
+    coordinator = _coordinator()
+    coordinator.diy_code = 24
+    _confirm_on_call(coordinator, 2, 24)
+    sena = _sena_item()
+
+    result = await EffectDeploymentEngine(
+        repository,
+        cache,
+        active_workspaces,
+    ).async_apply_saved(
+        coordinator,
+        sena,
+        config_entry_id="entry-a",
+        updated_at="2026-08-26T00:03:00Z",
+        diy_code=24,
+    )
+
+    observed = cache.get("entry-a")
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert active_workspaces.get("entry-a") is None
+    assert observed is not None
+    assert observed.active_effect is not None
+    assert observed.active_effect.item_id == sena.id
+    assert observed.active_effect.item_version == sena.version
+    assert observed.active_effect.content_hash == sena.content_hash
+
+
+async def test_workspace_signature_mismatch_suspends_without_clearing() -> None:
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    cache = EffectDeviceCache(InMemoryVersionedDocumentStore())
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await cache.async_load()
+    await active_workspaces.async_load()
+    workspace = _flow_workspace()
+    active_workspaces.set(workspace)
+    coordinator = _coordinator()
+    coordinator.diy_code = 25
+
+    observed = EffectDeploymentEngine(repository, cache, active_workspaces).reconcile_current(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-26T00:04:00Z",
+        refreshed=True,
+    )
+
+    assert observed.diy_code == 25
+    assert observed.active_effect is None
+    assert active_workspaces.get("entry-a") == workspace
 
 
 @pytest.mark.parametrize(

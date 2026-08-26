@@ -205,7 +205,7 @@ test("active context requires exact available saved identity", () => {
   });
 });
 
-test("exact saved identity precedes canonical active workspace recovery", () => {
+test("canonical active workspace defensively precedes an exact saved hint", () => {
   const saved: LibrarySummary = {
     id: "effect-a",
     version: 1,
@@ -260,8 +260,12 @@ test("exact saved identity precedes canonical active workspace recovery", () => 
   };
 
   expect(activeStudioContext(active, [saved], () => true, catalogue)).toEqual({
-    kind: "saved",
-    item: saved,
+    kind: "workspace",
+    section: "custom",
+    category: "single-layer",
+    content: workspaceContent,
+    origin: active.active_workspace.origin,
+    label: "Flow",
   });
 
   active.active_state.active_effect!.item_version = saved.version + 1;

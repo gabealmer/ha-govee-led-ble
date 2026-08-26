@@ -1,5 +1,6 @@
 import { EffectStudioApi } from "./api";
 import { AsyncRequestController, type AsyncRequestToken } from "./async-request-controller";
+import type { CustomEffectListEntry } from "./custom-effect-list";
 import {
   cloneEditableEffect, customEffectCategoryForKind, isEditableEffectContent,
   libraryItemSyncResult, sameLibraryItemVersion, serialiseEditable, upsertSummary, type CustomEffectCategory,
@@ -24,6 +25,7 @@ import type {
   LibraryItem,
   LibrarySnapshot,
 } from "./types";
+import type { SceneEditSelection } from "./scene-browser-workflow";
 import { errorCode, errorMessage } from "./ui-utils";
 import { isCompatibleEditorInfo } from "./validation";
 
@@ -41,6 +43,12 @@ interface LibraryReloadGuard {
   document: string;
 }
 
+interface PendingTransition {
+  epoch: number;
+  itemId?: string;
+  execute: () => void | Promise<void>;
+}
+
 interface PanelControllerOptions {
   connected(): boolean;
   pathname(): string;
@@ -54,6 +62,8 @@ export class PanelController {
   private unsubscribeDevice?: () => void;
   private autoSavePending?: AutoSaveTarget;
   private autoSaveRunning = false;
+  private autoSaveDrain?: Promise<boolean>;
+  private pendingTransition?: PendingTransition;
   private deviceRefresh?: {
     api: EffectStudioApi;
     configEntryId: string;
@@ -70,7 +80,11 @@ export class PanelController {
     private readonly preview: PanelPreviewController,
     private readonly modal: PanelModalController,
     private readonly options: PanelControllerOptions,
-  ) {}
+  ) {
+    this.modal.setTransitionDialogTeardown(() => {
+      this.pendingTransition = undefined;
+    });
+  }
 
   public async load(hass: HomeAssistant, isAdmin: boolean): Promise<void> {
     this.model.patch({
@@ -133,16 +147,28 @@ export class PanelController {
 
   public disconnect(): void {
     this.cancelPendingAutoSave();
+    this.pendingTransition = undefined;
+    this.modal.closeTransition(false);
     this.loadRequests.invalidate();
     this.stopSubscriptions();
     this.api = undefined;
   }
 
-  public async deviceChanged(selectedDeviceId: string): Promise<void> {
+  public async deviceChanged(
+    selectedDeviceId: string,
+    returnFocus?: HTMLElement,
+  ): Promise<void> {
     if (
       !selectedDeviceId || selectedDeviceId === this.model.selectedDeviceId ||
       !this.model.devices.some((device) => device.config_entry_id === selectedDeviceId)
     ) return;
+    await this.requestTransition(
+      () => this.performDeviceChange(selectedDeviceId),
+      returnFocus,
+    );
+  }
+
+  private async performDeviceChange(selectedDeviceId: string): Promise<void> {
     const previousDeviceId = this.model.selectedDeviceId;
     const transitionEpoch = this.editor.beginTransition();
     this.editor.clearSelection(transitionEpoch);
@@ -179,6 +205,7 @@ export class PanelController {
   public async selectSection(
     section: StudioSection,
     customEffectCategory?: CustomEffectCategory,
+    returnFocus?: HTMLElement,
   ): Promise<void> {
     if (
       (section === "scenes" && !this.model.scenesAvailable) ||
@@ -208,6 +235,17 @@ export class PanelController {
       }
       return;
     }
+    await this.requestTransition(() =>
+      this.performSectionChange(section, nextCategory, previousSection),
+      returnFocus,
+    );
+  }
+
+  private async performSectionChange(
+    section: StudioSection,
+    nextCategory: CustomEffectCategory,
+    previousSection: StudioSection,
+  ): Promise<void> {
     const transitionEpoch = this.editor.beginTransition();
     this.model.patch({
       sceneEditorOpen: false,
@@ -228,6 +266,76 @@ export class PanelController {
     }
     this.remember();
     await this.restoreActiveSelection(transitionEpoch);
+  }
+
+  public async selectCustomEffectEntry(
+    entry: CustomEffectListEntry,
+    returnFocus?: HTMLElement,
+  ): Promise<void> {
+    await this.requestTransition(
+      () => this.editor.selectCustomEffectEntry(entry),
+      returnFocus,
+    );
+  }
+
+  public async newCustomEffect(
+    category: CustomEffectCategory,
+    returnFocus?: HTMLElement,
+  ): Promise<void> {
+    await this.requestTransition(
+      () => this.editor.newCustomEffect(category),
+      returnFocus,
+    );
+  }
+
+  public async openSceneEditor(
+    detail: SceneEditSelection,
+    returnFocus?: HTMLElement,
+  ): Promise<void> {
+    await this.requestTransition(
+      () => this.editor.openSceneEditor(detail),
+      returnFocus,
+    );
+  }
+
+  public async selectVideoTemplate(
+    mode: string,
+    label: string,
+    returnFocus?: HTMLElement,
+  ): Promise<void> {
+    await this.requestTransition(
+      () => this.editor.openVideoTemplate(mode, label),
+      returnFocus,
+    );
+  }
+
+  public async selectItemFromList(
+    itemId: string,
+    returnFocus?: HTMLElement,
+  ): Promise<void> {
+    await this.requestTransition(
+      async () => {
+        await this.selectItem(
+          itemId,
+          this.editor.beginSelectionTransition(),
+        );
+      },
+      returnFocus,
+    );
+  }
+
+  public async selectScene(
+    selection: () => void | Promise<void>,
+    returnFocus?: HTMLElement,
+  ): Promise<void> {
+    await this.requestTransition(async () => {
+      if (this.model.editorSource.kind !== "none") {
+        const transitionEpoch = this.editor.beginTransition();
+        this.editor.clearSelection(transitionEpoch);
+        this.model.patch({ sceneEditorOpen: false });
+      }
+      await selection();
+    }, returnFocus);
   }
 
   public async openInitialContext(): Promise<void> {
@@ -452,12 +560,156 @@ export class PanelController {
       content: cloneEditableEffect(this.model.content),
     };
     if (!this.autoSaveRunning) {
-      void this.drainAutoSave();
+      this.autoSaveDrain = this.drainAutoSave();
     }
   }
 
   public cancelPendingAutoSave(): void {
     this.autoSavePending = undefined;
+  }
+
+  public get unloadProtectionRequired(): boolean {
+    return this.model.localWorkNeedsProtection;
+  }
+
+  public async requestTransition(
+    execute: () => void | Promise<void>,
+    returnFocus?: HTMLElement,
+  ): Promise<boolean> {
+    if (this.pendingTransition || this.modal.open) {
+      return false;
+    }
+    const owner: PendingTransition = {
+      epoch: this.model.editorTransitionEpoch,
+      itemId: this.model.currentItem?.id,
+      execute,
+    };
+    if (
+      this.model.editorSource.kind === "saved" &&
+      this.model.dirty &&
+      this.model.autoSaveEnabled &&
+      !this.model.autoSaveFailed
+    ) {
+      if (await this.flushAutoSave(owner)) {
+        await this.executeOwnedTransition(owner);
+        return true;
+      }
+      if (
+        owner.epoch !== this.model.editorTransitionEpoch ||
+        owner.itemId !== this.model.currentItem?.id
+      ) {
+        return false;
+      }
+    } else if (
+      !this.model.localWorkNeedsProtection &&
+      !(
+        this.model.editorSource.kind === "saved" &&
+        this.model.autoSaveFailed
+      )
+    ) {
+      await this.executeOwnedTransition(owner);
+      return true;
+    }
+    this.pendingTransition = owner;
+    this.modal.requestTransition(
+      this.model.currentItem ? "Save" : "Save As",
+      this.model.name.trim(),
+      returnFocus,
+    );
+    return false;
+  }
+
+  public cancelPendingTransition(): void {
+    if (!this.pendingTransition) {
+      return;
+    }
+    this.pendingTransition = undefined;
+    this.modal.closeTransition(true);
+  }
+
+  public async declinePendingTransition(): Promise<void> {
+    const pending = this.takePendingTransition();
+    if (
+      pending &&
+      pending.epoch === this.model.editorTransitionEpoch &&
+      pending.itemId === this.model.currentItem?.id
+    ) {
+      this.editor.clearSelection(pending.epoch);
+      await pending.execute();
+    }
+  }
+
+  public async savePendingTransition(): Promise<void> {
+    const pending = this.pendingTransition;
+    const dialog = this.model.pendingTransitionDialog;
+    if (!pending || !dialog || dialog.busy) {
+      return;
+    }
+    const name = dialog.saveName.trim();
+    if (dialog.primaryLabel === "Save As" && !name) {
+      this.modal.updateTransition({ error: "Enter an effect name." });
+      return;
+    }
+    this.modal.updateTransition({ busy: true, error: undefined });
+    const saved =
+      dialog.primaryLabel === "Save"
+        ? await this.save(true)
+        : await this.saveAs(name, true);
+    if (!saved) {
+      this.modal.updateTransition({
+        busy: false,
+        error: this.model.notice ?? "The effect could not be saved.",
+      });
+      return;
+    }
+    const owned = this.takePendingTransition();
+    if (owned?.epoch === this.model.editorTransitionEpoch) {
+      await owned.execute();
+    }
+  }
+
+  private takePendingTransition(): PendingTransition | undefined {
+    const pending = this.pendingTransition;
+    this.pendingTransition = undefined;
+    this.modal.closeTransition(false);
+    return pending;
+  }
+
+  private async executeOwnedTransition(
+    pending: PendingTransition,
+  ): Promise<void> {
+    if (
+      pending.epoch !== this.model.editorTransitionEpoch ||
+      pending.itemId !== this.model.currentItem?.id
+    ) {
+      return;
+    }
+    await pending.execute();
+  }
+
+  private async flushAutoSave(owner: PendingTransition): Promise<boolean> {
+    if (
+      !this.model.currentItem ||
+      !isEditableEffectContent(this.model.content)
+    ) {
+      return false;
+    }
+    this.autoSavePending = {
+      epoch: owner.epoch,
+      item: this.model.currentItem,
+      name: this.model.name.trim(),
+      content: cloneEditableEffect(this.model.content),
+    };
+    if (!this.autoSaveRunning) {
+      this.autoSaveDrain = this.drainAutoSave();
+    }
+    const succeeded = await this.autoSaveDrain;
+    return (
+      succeeded === true &&
+      owner.epoch === this.model.editorTransitionEpoch &&
+      owner.itemId === this.model.currentItem?.id &&
+      !this.model.dirty
+    );
   }
 
   public async libraryChanged(snapshot: LibrarySnapshot): Promise<void> {
@@ -512,8 +764,15 @@ export class PanelController {
     applyLive = true,
     reloadGuard?: LibraryReloadGuard,
   ): Promise<boolean> {
+    if (existingTransitionEpoch === undefined) {
+      let selected = false;
+      await this.requestTransition(async () => {
+        selected = await this.selectItem(itemId, this.editor.beginSelectionTransition(), applyLive, reloadGuard);
+      });
+      return selected;
+    }
     const transitionEpoch =
-      existingTransitionEpoch ?? this.editor.beginSelectionTransition();
+      existingTransitionEpoch;
     if (!this.api) return false;
     try {
       const item = await this.api.item(itemId);
@@ -570,15 +829,29 @@ export class PanelController {
     }
   }
 
-  public async save(): Promise<void> {
+  public async save(forceSavedIdentity = false): Promise<boolean> {
+    if (
+      forceSavedIdentity &&
+      this.model.currentItem &&
+      !this.model.canSaveCurrentDraft
+    ) {
+      const applied = await this.applySavedIdentity(
+        this.model.currentItem,
+        this.model.editorTransitionEpoch,
+      );
+      if (applied) {
+        this.model.patch({ autoSaveFailed: false, notice: undefined });
+      }
+      return applied;
+    }
     if (
       !this.api || !this.model.isAdmin || !this.model.canSaveCurrentDraft || this.model.saving ||
       this.model.deletingCurrentItem || !isEditableEffectContent(this.model.content)
-    ) return;
+    ) return false;
     const name = this.model.name.trim();
     if (!name) {
       this.model.patch({ notice: "Give this effect a name before saving." });
-      return;
+      return false;
     }
 
     const transitionEpoch = this.model.editorTransitionEpoch;
@@ -627,8 +900,11 @@ export class PanelController {
           autoSaveFailed: false,
         });
         if (savingSceneEditor && savedContent.kind === "scene_layered") this.remember();
-        if (this.model.liveApplyEnabled) {
-          await this.applySavedIdentity(result, transitionEpoch);
+        if (
+          (this.model.liveApplyEnabled || forceSavedIdentity) &&
+          !(await this.applySavedIdentity(result, transitionEpoch))
+        ) {
+          return false;
         }
       }
 
@@ -637,7 +913,11 @@ export class PanelController {
         sameLibraryItemVersion(this.model.currentItem, result) &&
         isEditableEffectContent(this.model.content) &&
         serialiseEditable(this.model.name, this.model.content) === serialiseEditable(result.name, savedContent);
-      if (savedResultIsCurrent) this.model.patch({ notice: undefined });
+      if (savedResultIsCurrent) {
+        this.model.patch({ notice: undefined });
+        return true;
+      }
+      return false;
     } catch (error) {
       if (errorCode(error) === "conflict") {
         const conflictNotice = "This effect or library changed elsewhere. Reload before saving.";
@@ -652,12 +932,13 @@ export class PanelController {
       } else if (transitionEpoch === this.model.editorTransitionEpoch) {
         this.model.patch({ notice: `Save failed: ${errorMessage(error)}` });
       }
+      return false;
     } finally {
       this.model.patch({ saving: false });
     }
   }
 
-  public async saveAs(name: string): Promise<void> {
+  public async saveAs(name: string, forceSavedIdentity = false): Promise<boolean> {
     if (
       !this.api ||
       !this.model.isAdmin ||
@@ -665,7 +946,7 @@ export class PanelController {
       this.model.deletingCurrentItem ||
       !isEditableEffectContent(this.model.content)
     ) {
-      return;
+      return false;
     }
     const content = cloneEditableEffect(this.model.content);
     const transitionEpoch = this.model.editorTransitionEpoch;
@@ -696,16 +977,22 @@ export class PanelController {
           autoSaveFailed: false,
         });
         this.remember();
-        if (this.model.liveApplyEnabled) {
-          await this.applySavedIdentity(result, transitionEpoch);
+        if (
+          (this.model.liveApplyEnabled || forceSavedIdentity) &&
+          !(await this.applySavedIdentity(result, transitionEpoch))
+        ) {
+          return false;
         }
+        return true;
       }
+      return false;
     } catch (error) {
       if (transitionEpoch === this.model.editorTransitionEpoch) {
         this.model.patch({
           notice: `Save As failed: ${errorMessage(error)}`,
         });
       }
+      return false;
     } finally {
       this.model.patch({ saving: false });
     }
@@ -768,22 +1055,28 @@ export class PanelController {
     }
   }
 
-  private async drainAutoSave(): Promise<void> {
+  private async drainAutoSave(): Promise<boolean> {
     this.autoSaveRunning = true;
+    let succeeded = true;
     try {
       while (this.autoSavePending) {
         const target = this.autoSavePending;
         this.autoSavePending = undefined;
-        await this.persistAutoSave(target);
+        if (!(await this.persistAutoSave(target))) {
+          succeeded = false;
+          break;
+        }
       }
     } finally {
       this.autoSaveRunning = false;
+      this.autoSaveDrain = undefined;
     }
+    return succeeded;
   }
 
-  private async persistAutoSave(target: AutoSaveTarget): Promise<void> {
+  private async persistAutoSave(target: AutoSaveTarget): Promise<boolean> {
     if (!this.api || !target.name) {
-      return;
+      return false;
     }
     const base = this.latestSavedItems.get(target.item.id) ?? target.item;
     this.model.patch({
@@ -827,9 +1120,13 @@ export class PanelController {
           serialiseEditable(this.model.name, this.model.content) ===
             savedBaseline
         ) {
-          await this.applySavedIdentity(result, target.epoch);
+          if (!(await this.applySavedIdentity(result, target.epoch))) {
+            this.model.patch({ autoSaveFailed: true });
+            return false;
+          }
         }
       }
+      return true;
     } catch (error) {
       if (
         target.epoch === this.model.editorTransitionEpoch &&
@@ -844,6 +1141,7 @@ export class PanelController {
         });
       }
       this.autoSavePending = undefined;
+      return false;
     } finally {
       this.model.patch({ saving: false });
     }
@@ -874,21 +1172,23 @@ export class PanelController {
   private async applySavedIdentity(
     item: LibraryItem,
     transitionEpoch: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const device = this.model.selectedDevice;
     const lightEntityId = device?.light_entity_id;
     if (!this.api || !device || !lightEntityId) {
-      return;
+      return false;
     }
     try {
       await this.api.applySavedEffect(lightEntityId, item.name);
       await this.refreshSelectedDevice(transitionEpoch);
+      return transitionEpoch === this.model.editorTransitionEpoch;
     } catch (error) {
       if (transitionEpoch === this.model.editorTransitionEpoch) {
         this.model.patch({
           notice: `Apply failed: ${errorMessage(error)}`,
         });
       }
+      return false;
     }
   }
 

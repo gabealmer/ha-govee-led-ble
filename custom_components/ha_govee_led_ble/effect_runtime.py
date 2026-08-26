@@ -816,23 +816,34 @@ class EffectDeploymentEngine:
         raw_scene_code = getattr(coordinator, "unknown_scene_code", None)
         diy_code = coordinator.diy_code if mode == "custom" else None
         effect = coordinator.effect if mode == "scene" else None
+        observable_signature = observable_signature_for_coordinator(coordinator)
+        workspace = self._active_workspaces.get(config_entry_id) if self._active_workspaces is not None else None
+        workspace_matches = (
+            workspace is not None
+            and workspace.model == coordinator.model
+            and workspace.observable_signature == observable_signature
+        )
+        if workspace_matches and raw_scene_code is not None:
+            mode = "custom"
+            diy_code = raw_scene_code
+            effect = None
         if raw_scene_code is not None:
-            if matched_record is None:
+            if matched_record is None and not workspace_matches:
                 latest = self._deployments.latest_for_diy_code(config_entry_id, raw_scene_code)
                 if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
                     matched_record = latest
             if matched_record is not None and matched_record.target_mode == ActivationMode.CUSTOM.value:
                 mode = "custom"
                 diy_code = raw_scene_code
-        if diy_code is not None and matched_record is None:
+        if diy_code is not None and matched_record is None and not workspace_matches:
             latest = self._deployments.latest_for_diy_code(config_entry_id, diy_code)
             if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
                 matched_record = latest
-        if effect is not None and matched_record is None:
+        if effect is not None and matched_record is None and not workspace_matches:
             latest = self._deployments.latest_for_effect(config_entry_id, effect)
             if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
                 matched_record = latest
-        if mode in {"music", "video"} and matched_record is None:
+        if mode in {"music", "video"} and matched_record is None and not workspace_matches:
             latest = self._deployments.latest_for_profile(config_entry_id, mode)
             if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
                 matched_record = latest
@@ -840,7 +851,10 @@ class EffectDeploymentEngine:
             (matched_record.content_kind == "music_profile" and mode == "music")
             or (matched_record.content_kind == "video_profile" and mode == "video")
         )
-        if profile_match and matched_record is not None:
+        if workspace_matches and matched_record is None:
+            assert workspace is not None
+            confidence = workspace.confidence
+        elif profile_match and matched_record is not None:
             confidence = matched_record.verification_confidence
         elif diy_code is not None or effect is not None:
             confidence = (
@@ -852,12 +866,6 @@ class EffectDeploymentEngine:
             confidence = ObservationConfidence.EXACT_SESSION
         else:
             confidence = ObservationConfidence.UNKNOWN
-        observable_signature = observable_signature_for_state(
-            coordinator,
-            mode=mode,
-            diy_code=diy_code,
-            effect=effect,
-        )
         active_effect = (
             ActiveEffectHint.from_record(
                 matched_record,
@@ -876,6 +884,7 @@ class EffectDeploymentEngine:
         )
         if (
             active_effect is None
+            and not workspace_matches
             and observable_signature is not None
             and previous is not None
             and previous.active_effect is not None

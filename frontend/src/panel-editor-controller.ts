@@ -72,6 +72,7 @@ type ActiveWorkspaceContext = Extract<
 
 interface WorkspaceTemplate {
   selectionIdentity: string;
+  label: string;
   resetContent: EditableEffectContent;
 }
 
@@ -236,13 +237,13 @@ export class PanelEditorController {
           };
     const recoverAsNew =
       !template &&
-      context.origin.kind !== "catalogue_template" &&
-      owner.section === "custom" &&
-      ["multi-layer", "advanced"].includes(owner.category);
+      context.origin.kind === "authored" &&
+      context.origin.source_id === null;
     if (!template && !recoverAsNew) {
       return false;
     }
     this.clearReturnTarget();
+    const label = template?.label ?? context.label;
     this.model.patch({
       currentItem: undefined,
       sceneEditorOpen: false,
@@ -251,10 +252,10 @@ export class PanelEditorController {
             kind: "catalogue",
             owner,
             selectionIdentity: template.selectionIdentity,
-            label: context.label,
+            label,
           }
         : { kind: "new", owner },
-      name: context.label,
+      name: label,
       content: cloneEditableEffect(context.content),
       paintBrushOff:
         context.content.kind === "h617a_painted"
@@ -843,6 +844,7 @@ export class PanelEditorController {
     ) {
       return {
         selectionIdentity: "template:paint",
+        label: "Paint",
         resetContent: blankPainted(),
       };
     }
@@ -876,6 +878,7 @@ export class PanelEditorController {
             );
       return {
         selectionIdentity: `template:single:${family.family}:${variation.variant}`,
+        label: family.label,
         resetContent,
       };
     }
@@ -893,8 +896,9 @@ export class PanelEditorController {
       return resetContent
         ? {
             selectionIdentity: `template:music:${modes[0].id}`,
-            resetContent,
-          }
+          label: modes[0].label,
+          resetContent,
+        }
         : undefined;
     }
     if (
@@ -907,6 +911,7 @@ export class PanelEditorController {
       return modes.length === 1
         ? {
             selectionIdentity: `template:video:${modes[0].id}`,
+            label: modes[0].label,
             resetContent: blankVideoProfile(modes[0].id),
           }
         : undefined;

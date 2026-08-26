@@ -27,6 +27,13 @@ export type DeleteCandidate = Pick<LibrarySummary, "id" | "version" | "updated_a
   discardsOpenEdits?: boolean;
 };
 
+export interface PendingTransitionDialog {
+  primaryLabel: "Save" | "Save As";
+  saveName: string;
+  busy: boolean;
+  error?: string;
+}
+
 export class PanelModel {
   public loading = true;
   public error?: string;
@@ -52,6 +59,7 @@ export class PanelModel {
   public saveNameMode: "save" | "copy" = "save";
   public saveNameValue = "";
   public saveNameError?: string;
+  public pendingTransitionDialog?: PendingTransitionDialog;
   public deleteCandidate?: DeleteCandidate;
   public deletingItemId?: string;
   public liveApplyEnabled = true;
@@ -178,6 +186,22 @@ export class PanelModel {
       isEditableEffectContent(this.content) &&
       this.savedBaseline !== serialiseEditable(this.name, this.content)
     );
+  }
+
+  public get localWorkNeedsProtection(): boolean {
+    if (
+      this.editorSource.kind === "saved" ||
+      this.editorSource.kind === "scene"
+    ) {
+      return this.dirty;
+    }
+    if (this.liveApplyEnabled) {
+      return false;
+    }
+    if (this.editorSource.kind === "catalogue") {
+      return this.resetDirty;
+    }
+    return this.editorSource.kind === "new" && (this.dirty || this.resetDirty);
   }
 
   public get canSaveCurrentDraft(): boolean {

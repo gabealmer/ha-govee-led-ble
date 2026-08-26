@@ -13,7 +13,7 @@ import type { LibrarySummary, ModelEffectCatalogue } from "../../src/types";
 
 const catalogue = {
   sku: "H617A",
-  painted_effects: [{ id: "cycle", label: "Paint" }],
+  painted_effects: [{ id: "cycle", label: "Cycle" }],
   effects: [
     {
       id: "jumping",

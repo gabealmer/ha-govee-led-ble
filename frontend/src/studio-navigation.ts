@@ -52,6 +52,13 @@ export function editorDevicePath(deviceId: string): string {
   return `${DEVICE_ROUTE}/${encodeURIComponent(deviceId)}`;
 }
 
+export function synchroniseDeviceSelect(
+  select: Pick<HTMLSelectElement, "value">,
+  selectedDeviceId: string | undefined,
+): void {
+  select.value = selectedDeviceId ?? "";
+}
+
 export function studioNavigationItems(
   scenesAvailable: boolean,
   videoAvailable: boolean,
@@ -123,6 +130,22 @@ export function activeStudioContext(
   const active = device?.active_state;
   const hint = active?.active_effect;
   const observedSignature = active ? activeStateSignature(active) : undefined;
+  const workspace = device?.active_workspace;
+  const workspaceLocation =
+    workspace &&
+    workspace.config_entry_id === device.config_entry_id &&
+    workspace.model === device.model
+      ? workspaceStudioLocation(workspace.content)
+      : undefined;
+  if (workspace && workspaceLocation) {
+    return {
+      kind: "workspace",
+      ...workspaceLocation,
+      content: workspace.content,
+      origin: workspace.origin,
+      label: workspace.selector_label,
+    };
+  }
   if (
     hint?.source_kind === "saved_effect" &&
     hint.item_id &&
@@ -139,22 +162,6 @@ export function activeStudioContext(
     if (item) {
       return { kind: "saved", item };
     }
-  }
-  const workspace = device?.active_workspace;
-  const workspaceLocation =
-    workspace &&
-    workspace.config_entry_id === device.config_entry_id &&
-    workspace.model === device.model
-      ? workspaceStudioLocation(workspace.content)
-      : undefined;
-  if (workspace && workspaceLocation) {
-    return {
-      kind: "workspace",
-      ...workspaceLocation,
-      content: workspace.content,
-      origin: workspace.origin,
-      label: workspace.selector_label,
-    };
   }
   if (hint) {
     return { kind: "root" };

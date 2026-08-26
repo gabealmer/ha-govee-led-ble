@@ -28,6 +28,7 @@ import type {
 } from "./scene-browser";
 import type { SliderControlChange } from "./slider-control";
 import {
+  synchroniseDeviceSelect,
   studioNavigationItems,
   type StudioNavigationItem,
 } from "./studio-navigation";
@@ -96,6 +97,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private readonly model = new PanelModel(() => {
     this.loadComponentsForCurrentView();
+    this.syncUnloadProtection();
     this.modelRevision += 1;
   });
   private readonly preview = new PanelPreviewController(this.model);
@@ -108,6 +110,8 @@ export class GoveeLedEffectStudio extends LitElement {
   private readonly controller: PanelController;
   private readonly requestedComponentGroups = new Set<ComponentGroup>();
   private visibleVideoSelection?: string;
+  private unloadListenerRegistered = false;
+  private redispatchingNavigation = false;
 
   public constructor() {
     super();
@@ -150,6 +154,8 @@ export class GoveeLedEffectStudio extends LitElement {
   public connectedCallback(): void {
     super.connectedCallback();
     this.addEventListener("keydown", this.keyDown);
+    window.addEventListener("click", this.navigationClick, true);
+    this.syncUnloadProtection();
     this.loadComponentsForCurrentView();
     this.model.syncAdmin(this.hass);
     if (this.hass && !this.controller.api) {
@@ -159,6 +165,8 @@ export class GoveeLedEffectStudio extends LitElement {
 
   public disconnectedCallback(): void {
     this.removeEventListener("keydown", this.keyDown);
+    window.removeEventListener("click", this.navigationClick, true);
+    this.setUnloadListener(false);
     this.modal.releaseScrollLock();
     super.disconnectedCallback();
     this.editor.beginTransition();
@@ -264,6 +272,9 @@ export class GoveeLedEffectStudio extends LitElement {
         : this.renderMissingDevice()}
       ${this.model.saveNameDialogOpen ? this.renderSaveNameDialog() : nothing}
       ${this.model.deleteCandidate ? this.renderDeleteConfirmation() : nothing}
+      ${this.model.pendingTransitionDialog
+        ? this.renderPendingTransitionDialog()
+        : nothing}
     `;
   }
 
@@ -334,6 +345,10 @@ export class GoveeLedEffectStudio extends LitElement {
           .autoSaveEnabled=${this.model.autoSaveEnabled}
           .savedSceneSelection=${this.model.savedSceneSelection}
           .initialSelection=${this.model.sceneInitialSelection}
+          .requestTransition=${(
+            transition: () => void | Promise<void>,
+            returnFocus: HTMLElement,
+          ) => void this.controller.selectScene(transition, returnFocus)}
           @library-item-saved=${this.sceneLibraryItemSaved}
           @library-item-delete-requested=${this.sceneLibraryItemDeleteRequested}
           @scene-edit-selected=${this.sceneTemplateSelected}
@@ -499,10 +514,18 @@ export class GoveeLedEffectStudio extends LitElement {
       <label class="device-selector">
         <select
           aria-label="Light"
-          @change=${(event: Event) =>
-            void this.controller.deviceChanged(
-              (event.target as HTMLSelectElement).value,
-            )}
+          .value=${this.model.selectedDeviceId ?? ""}
+          @change=${(event: Event) => {
+            const select = event.currentTarget as HTMLSelectElement;
+            void this.controller
+              .deviceChanged(select.value, select)
+              .finally(() =>
+                synchroniseDeviceSelect(
+                  select,
+                  this.model.selectedDeviceId,
+                ),
+              );
+          }}
         >
           ${selectedUnavailable
             ? html`
@@ -620,8 +643,12 @@ export class GoveeLedEffectStudio extends LitElement {
         class="selector ${selected ? "selected" : ""}"
         type="button"
         aria-current=${selected ? "page" : nothing}
-        @click=${() =>
-          void this.controller.selectSection(item.section, item.category)}
+        @click=${(event: Event) =>
+          void this.controller.selectSection(
+            item.section,
+            item.category,
+            event.currentTarget as HTMLElement,
+          )}
       >
         ${item.label}
       </button>
@@ -642,10 +669,18 @@ export class GoveeLedEffectStudio extends LitElement {
         .isAdmin=${this.isAdmin}
         @custom-entry-requested=${(
           event: CustomEvent<CustomEffectBrowserEntryRequest>,
-        ) => this.editor.selectCustomEffectEntry(event.detail.entry)}
+        ) =>
+          void this.controller.selectCustomEffectEntry(
+            event.detail.entry,
+            event.detail.returnFocus,
+          )}
         @custom-new-requested=${(
           event: CustomEvent<CustomEffectBrowserCategoryRequest>,
-        ) => this.editor.newCustomEffect(event.detail.category)}
+        ) =>
+          void this.controller.newCustomEffect(
+            event.detail.category,
+            event.detail.returnFocus,
+          )}
       ></govee-custom-effect-browser>
 
       ${hasEditor
@@ -696,14 +731,20 @@ export class GoveeLedEffectStudio extends LitElement {
           this.videoListButton(
             `template:video:${mode.id}`,
             mode.label,
-            () => this.editor.openVideoTemplate(mode.id, mode.label),
+            (returnFocus) =>
+              void this.controller.selectVideoTemplate(
+                mode.id,
+                mode.label,
+                returnFocus,
+              ),
           ),
         )}
         ${saved.map((item) =>
           this.videoListButton(
             `saved:${item.id}`,
             item.name,
-            () => void this.controller.selectItem(item.id),
+            (returnFocus) =>
+              void this.controller.selectItemFromList(item.id, returnFocus),
             item,
           ),
         )}
@@ -745,7 +786,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private videoListButton(
     key: string,
     label: string,
-    select: () => void,
+    select: (returnFocus: HTMLElement) => void,
     item?: LibrarySummary,
   ) {
     const selected = item
@@ -756,7 +797,8 @@ export class GoveeLedEffectStudio extends LitElement {
         class="selector item ${selected ? "selected" : ""}"
         type="button"
         ?disabled=${!item && !this.isAdmin}
-        @click=${select}
+        @click=${(event: Event) =>
+          select(event.currentTarget as HTMLElement)}
       >
         <span>${label}</span>
       </button>
@@ -943,6 +985,83 @@ export class GoveeLedEffectStudio extends LitElement {
             </button>
           </div>
         </form>
+      </div>
+    `;
+  }
+
+  private renderPendingTransitionDialog() {
+    const dialog = this.model.pendingTransitionDialog!;
+    return html`
+      <div
+        class="dialog-backdrop"
+        @click=${() => this.controller.cancelPendingTransition()}
+      >
+        <section
+          class="dialog-card transition-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pending-transition-title"
+          tabindex="-1"
+          @click=${(event: Event) => event.stopPropagation()}
+          @keydown=${(event: KeyboardEvent) =>
+            this.modal.dialogKeyDown(event, () =>
+              this.controller.cancelPendingTransition(),
+            )}
+        >
+          <h2 id="pending-transition-title">Save changes?</h2>
+          <p>
+            Save this effect before leaving it, or choose No to leave the
+            device unchanged.
+          </p>
+          ${dialog.primaryLabel === "Save As"
+            ? html`
+                <label class="field">
+                  <span>Name</span>
+                  <input
+                    aria-label="Name"
+                    maxlength="128"
+                    autocomplete="off"
+                    .value=${dialog.saveName}
+                    ?disabled=${dialog.busy}
+                    @input=${(event: Event) =>
+                      this.modal.updateTransitionName(
+                        (event.target as HTMLInputElement).value,
+                      )}
+                  />
+                </label>
+              `
+            : nothing}
+          ${dialog.error
+            ? html`<p class="dialog-error" role="alert">${dialog.error}</p>`
+            : nothing}
+          <div class="dialog-actions">
+            <button
+              class="secondary"
+              type="button"
+              ?disabled=${dialog.busy}
+              @click=${() => this.controller.cancelPendingTransition()}
+            >
+              Cancel
+            </button>
+            <button
+              class="secondary"
+              type="button"
+              ?disabled=${dialog.busy}
+              @click=${() =>
+                void this.controller.declinePendingTransition()}
+            >
+              No
+            </button>
+            <button
+              class="primary"
+              type="button"
+              ?disabled=${dialog.busy}
+              @click=${() => void this.controller.savePendingTransition()}
+            >
+              ${dialog.primaryLabel}
+            </button>
+          </div>
+        </section>
       </div>
     `;
   }
@@ -1518,7 +1637,82 @@ export class GoveeLedEffectStudio extends LitElement {
       name: string;
     }>,
   ): void {
-    this.editor.openSceneEditor(event.detail);
+    void this.controller.openSceneEditor(
+      event.detail,
+      this.eventReturnFocus(event),
+    );
+  }
+
+  private eventReturnFocus(event: Event): HTMLElement | undefined {
+    return event
+      .composedPath()
+      .find((candidate): candidate is HTMLElement =>
+        candidate instanceof HTMLElement &&
+        (candidate.matches("button, select, input") || candidate === this),
+      );
+  }
+
+  private navigationClick = (event: MouseEvent): void => {
+    if (
+      this.redispatchingNavigation ||
+      !this.controller.unloadProtectionRequired ||
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    const anchor = event
+      .composedPath()
+      .find(
+        (candidate): candidate is HTMLAnchorElement =>
+          candidate instanceof HTMLAnchorElement &&
+          candidate.href !== "" &&
+          candidate.target !== "_blank" &&
+          !candidate.hasAttribute("download"),
+      );
+    if (!anchor || anchor.href === window.location.href) {
+      return;
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void this.controller.requestTransition(
+      () => {
+        this.redispatchingNavigation = true;
+        try {
+          anchor.click();
+        } finally {
+          this.redispatchingNavigation = false;
+        }
+      },
+      anchor,
+    );
+  };
+
+  private beforeUnload = (event: BeforeUnloadEvent): void => {
+    event.preventDefault();
+    event.returnValue = "";
+  };
+
+  private syncUnloadProtection(): void {
+    this.setUnloadListener(
+      this.isConnected && this.controller?.unloadProtectionRequired === true,
+    );
+  }
+
+  private setUnloadListener(enabled: boolean): void {
+    if (enabled === this.unloadListenerRegistered) {
+      return;
+    }
+    this.unloadListenerRegistered = enabled;
+    if (enabled) {
+      window.addEventListener("beforeunload", this.beforeUnload);
+    } else {
+      window.removeEventListener("beforeunload", this.beforeUnload);
+    }
   }
 
   private sceneLibraryItemDeleteRequested(
