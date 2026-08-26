@@ -236,7 +236,6 @@ class _DeviceWorker:
     task: asyncio.Task[None] | None = None
     verification_task: asyncio.Task[None] | None = None
     verification_request: _PreviewRequest | None = None
-    verification_observing: bool = False
     cancelled_generations: set[int] = field(default_factory=set)
     latest_accepted_generation: int = 0
     closing: bool = False
@@ -383,9 +382,6 @@ class EffectPreviewManager:
             write_disposition=PreviewWriteDisposition.NOT_STARTED,
             checked_at=datetime.now(UTC).isoformat(),
         )
-
-    def health_snapshot(self) -> tuple[PreviewHealthStatus, ...]:
-        return tuple(self._health.values())
 
     def require_owner(self, session_id: str, owner: object) -> None:
         session = self._sessions.get(session_id)
@@ -1076,22 +1072,25 @@ class EffectPreviewManager:
                 )
                 worker.verification_request = request
         if expectations is None:
-            self._diagnostics.record_evidence_gap(
-                "preview_write_unverified",
-                correlation_id=request.correlation_id,
-                config_entry_id=request.config_entry_id,
-                details={"sequence": request.sequence},
+            self._mark_write_unverified(request)
+
+    def _mark_write_unverified(self, request: _PreviewRequest) -> None:
+        self._diagnostics.record_evidence_gap(
+            "preview_write_unverified",
+            correlation_id=request.correlation_id,
+            config_entry_id=request.config_entry_id,
+            details={"sequence": request.sequence},
+        )
+        current_health = self.health(request.config_entry_id)
+        if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
+            self._set_health(
+                request.config_entry_id,
+                PreviewHealthPhase.DEGRADED,
+                error_code=current_health.error_code,
+                error_message=current_health.error_message,
+                write_disposition=current_health.write_disposition,
+                incident_id=current_health.incident_id,
             )
-            current_health = self.health(request.config_entry_id)
-            if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
-                self._set_health(
-                    request.config_entry_id,
-                    PreviewHealthPhase.DEGRADED,
-                    error_code=current_health.error_code,
-                    error_message=current_health.error_message,
-                    write_disposition=current_health.write_disposition,
-                    incident_id=current_health.incident_id,
-                )
 
     async def _async_persist_scene_default(self, request: _PreviewRequest) -> None:
         if request.scene is not None:
@@ -1155,7 +1154,6 @@ class EffectPreviewManager:
         confirmed_confidence: ObservationConfidence,
     ) -> None:
         result: bool | None = None
-        observing = False
         try:
             await asyncio.sleep(self._verify_delay)
             if not await self._async_verification_is_current(request):
@@ -1166,8 +1164,6 @@ class EffectPreviewManager:
                 worker = self._devices.get(request.config_entry_id)
                 if worker is None:
                     return
-                worker.verification_observing = True
-                observing = True
             result = await self._async_observe(
                 coordinator,
                 expectations,
@@ -1190,8 +1186,6 @@ class EffectPreviewManager:
             async with self._lock:
                 worker = self._devices.get(request.config_entry_id)
                 if worker is not None:
-                    if observing:
-                        worker.verification_observing = False
                     if worker.verification_task is asyncio.current_task():
                         worker.verification_task = None
                         worker.verification_request = None
@@ -1249,22 +1243,7 @@ class EffectPreviewManager:
                 details={"sequence": request.sequence},
             )
         else:
-            self._diagnostics.record_evidence_gap(
-                "preview_write_unverified",
-                correlation_id=request.correlation_id,
-                config_entry_id=request.config_entry_id,
-                details={"sequence": request.sequence},
-            )
-            current_health = self.health(request.config_entry_id)
-            if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
-                self._set_health(
-                    request.config_entry_id,
-                    PreviewHealthPhase.DEGRADED,
-                    error_code=current_health.error_code,
-                    error_message=current_health.error_message,
-                    write_disposition=current_health.write_disposition,
-                    incident_id=current_health.incident_id,
-                )
+            self._mark_write_unverified(request)
             return
         self._publish(
             request,

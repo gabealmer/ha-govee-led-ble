@@ -171,6 +171,30 @@ class EffectDeploymentEngine:
         self._operation_locks: dict[UUID, asyncio.Lock] = {}
         self._operation_lock_users: dict[UUID, int] = {}
 
+    async def _apply_library_item(
+        self,
+        coordinator: GoveeBLECoordinator,
+        item: LibraryItem,
+        *,
+        config_entry_id: str,
+        updated_at: str,
+        diy_code: int | None,
+        operation_id: UUID | None,
+        source_kind: str,
+    ) -> tuple[CompiledApplication, DeploymentRecord]:
+        resolved_diy_code = resolve_diy_code(item, diy_code)
+        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
+        record = self._new_record(
+            compiled,
+            config_entry_id=config_entry_id,
+            updated_at=updated_at,
+            operation_id=operation_id,
+            source_item=item,
+            source_kind=source_kind,
+        )
+        result = await self._async_apply(coordinator, compiled, record)
+        return compiled, result
+
     async def async_apply_saved(
         self,
         coordinator: GoveeBLECoordinator,
@@ -181,17 +205,15 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        resolved_diy_code = resolve_diy_code(item, diy_code)
-        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
-        record = self._new_record(
-            compiled,
+        _compiled, result = await self._apply_library_item(
+            coordinator,
+            item,
             config_entry_id=config_entry_id,
             updated_at=updated_at,
+            diy_code=diy_code,
             operation_id=operation_id,
-            source_item=item,
             source_kind="saved_effect",
         )
-        result = await self._async_apply(coordinator, compiled, record)
         if self._active_workspaces is not None and result.phase is DeploymentPhase.CONFIRMED:
             self._active_workspaces.clear(config_entry_id)
         return result
@@ -206,17 +228,15 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        resolved_diy_code = resolve_diy_code(item, diy_code)
-        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
-        record = self._new_record(
-            compiled,
+        compiled, result = await self._apply_library_item(
+            coordinator,
+            item,
             config_entry_id=config_entry_id,
             updated_at=updated_at,
+            diy_code=diy_code,
             operation_id=operation_id,
-            source_item=item,
             source_kind="snapshot",
         )
-        result = await self._async_apply(coordinator, compiled, record)
         if self._active_workspaces is not None and result.phase is DeploymentPhase.CONFIRMED:
             signature = observable_signature_for_coordinator(coordinator)
             if signature is not None:

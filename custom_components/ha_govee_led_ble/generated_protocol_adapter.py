@@ -575,6 +575,33 @@ def build_brightness(percent: int, model: str = "H617A") -> bytes:
     return _serialize_xor(root)
 
 
+def _build_h617a_static_colour(
+    mask: int,
+    *,
+    direct: tuple[int, int, int],
+    kelvin: int,
+    preview: tuple[int, int, int],
+) -> bytes:
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.multi
+    multi = _child(CommandWrite.MultiCmd, root)
+    multi.sub = CommandWrite.MultiSub.static
+    static = _child(CommandWrite.StaticCmd, multi)
+    static.static_sub = 1
+    colour = _child(CommandWrite.StaticColor, static)
+    colour.rgb_direct = _rgb(colour, *direct)
+    colour.kelvin = kelvin
+    colour.rgb_preview = _rgb(colour, *preview)
+    segment_mask = _child(CommandWrite.SegmentMask, colour)
+    segment_mask.bits = mask
+    colour.mask = segment_mask
+    static.static_body = colour
+    multi.sub_body = static
+    root.body = multi
+    return _serialize_xor(root)
+
+
 def build_segment_colour(
     mask: int,
     red: int,
@@ -600,24 +627,12 @@ def build_segment_colour(
         root.body = mode
         return _serialize_xor(root)
 
-    root = CommandWrite()
-    root.header = b"\x33"
-    root.opcode = CommandWrite.CommandOp.multi
-    multi = _child(CommandWrite.MultiCmd, root)
-    multi.sub = CommandWrite.MultiSub.static
-    static = _child(CommandWrite.StaticCmd, multi)
-    static.static_sub = 1
-    colour = _child(CommandWrite.StaticColor, static)
-    colour.rgb_direct = _rgb(colour, red, green, blue)
-    colour.kelvin = 0
-    colour.rgb_preview = _rgb(colour, 0, 0, 0)
-    segment_mask = _child(CommandWrite.SegmentMask, colour)
-    segment_mask.bits = mask
-    colour.mask = segment_mask
-    static.static_body = colour
-    multi.sub_body = static
-    root.body = multi
-    return _serialize_xor(root)
+    return _build_h617a_static_colour(
+        mask,
+        direct=(red, green, blue),
+        kelvin=0,
+        preview=(0, 0, 0),
+    )
 
 
 def build_colour_temperature(
@@ -645,24 +660,12 @@ def build_colour_temperature(
         root.body = mode
         return _serialize_xor(root)
 
-    root = CommandWrite()
-    root.header = b"\x33"
-    root.opcode = CommandWrite.CommandOp.multi
-    multi = _child(CommandWrite.MultiCmd, root)
-    multi.sub = CommandWrite.MultiSub.static
-    static = _child(CommandWrite.StaticCmd, multi)
-    static.static_sub = 1
-    colour = _child(CommandWrite.StaticColor, static)
-    colour.rgb_direct = _rgb(colour, 0, 0, 0)
-    colour.kelvin = value
-    colour.rgb_preview = _rgb(colour, *preview)
-    segment_mask = _child(CommandWrite.SegmentMask, colour)
-    segment_mask.bits = mask
-    colour.mask = segment_mask
-    static.static_body = colour
-    multi.sub_body = static
-    root.body = multi
-    return _serialize_xor(root)
+    return _build_h617a_static_colour(
+        mask,
+        direct=(0, 0, 0),
+        kelvin=value,
+        preview=preview,
+    )
 
 
 def build_segment_brightness(
