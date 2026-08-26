@@ -66,17 +66,17 @@ const PRIORITY_OPTIONS = [
 ] satisfies readonly SegmentedControlOption<number>[];
 
 const BRIGHTNESS_LABELS: Record<BrightnessOrder, string> = {
-  0: "Brightest to darkest",
-  1: "Brightest, darkest, brightest",
-  2: "Darkest to brightest",
-  3: "Darkest, brightest, darkest",
+  0: "Brightest to Darkest",
+  1: "Brightest, Darkest, Brightest",
+  2: "Darkest to Brightest",
+  3: "Darkest, Brightest, Darkest",
 };
 
 const MOVEMENT_LABELS: Record<number, string> = {
   0: "Forward",
   1: "Backward",
-  2: "Forward and back",
-  3: "Back and forward",
+  2: "Forward and Back",
+  3: "Back and Forward",
 };
 
 export class GoveeAdvancedEffectEditor extends LitElement {
@@ -128,6 +128,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       </div>
 
       <section class="card layer-card">
+        <h3 class="section-title">Layers</h3>
         <govee-reorderable-strip
           class="layer-strip"
           .items=${layerItems}
@@ -138,6 +139,8 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           .addDisabled=${this.disabled}
           .addHidden=${this.content.layers.length >= AUTHORING_LAYER_LIMIT}
           .reorderDisabled=${this.disabled}
+          .separateActions=${!this.disabled ||
+          this.content.layers.length < AUTHORING_LAYER_LIMIT}
           @item-selected=${(event: CustomEvent<{ index: number }>) =>
             this.selectLayer(event.detail.index)}
           @items-reordered=${(
@@ -200,13 +203,13 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           ${this.renderMovement(
             layer,
             "selected_movement",
-            "Move effect within applied area",
+            "Move Effect within Applied Area",
             true,
           )}
           ${this.renderMovement(
             layer,
             "overall_movement",
-            "Move entire layer",
+            "Move Entire Layer",
             false,
           )}
           ${this.renderPriority(layer)}
@@ -218,7 +221,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   private renderEmptyLayers() {
     return html`
       <section class="card empty-state" role="status">
-        <h3 class="section-title">No layer records</h3>
+        <h3 class="section-title">No Layer Records</h3>
         <p class="muted">
           This layered content contains no layer records. It remains preserved
           until you add one.
@@ -243,7 +246,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     return html`
       <section class="card wide-card">
         <div class="section-heading">
-          <h3 class="section-title">Applied area</h3>
+          <h3 class="section-title">Applied Area</h3>
           ${renderAdvancedHelp("appliedArea")}
         </div>
         <govee-applied-area-control
@@ -298,7 +301,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     if (layer.brightness_patterns.length === 0) {
       return html`
         <section class="card wide-card empty-state" role="status">
-          <h3 class="section-title">No brightness pattern records</h3>
+          <h3 class="section-title">No Brightness Pattern Records</h3>
           <p class="muted">
             This layer contains no brightness pattern records. It remains
             preserved until you add one.
@@ -406,7 +409,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
               </label>
               <div class="parameter-grid">
                 ${renderRangeField(
-                  "Scope low",
+                  "Scope Low",
                   pattern.scope_low,
                   (value) =>
                     this.updateBrightnessPattern({ scope_low: value }),
@@ -414,7 +417,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   "brightnessScopeLow",
                 )}
                 ${renderRangeField(
-                  "Scope high",
+                  "Scope High",
                   pattern.scope_high,
                   (value) =>
                     this.updateBrightnessPattern({ scope_high: value }),
@@ -423,7 +426,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                 )}
               </div>
               ${renderRangeField(
-                "Changing speed",
+                "Changing Speed",
                 pattern.change_speed,
                 (value) =>
                   this.updateBrightnessPattern({ change_speed: value }),
@@ -432,7 +435,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
               )}
               <div class="parameter-grid">
                 ${renderRangeField(
-                  "Brightest retention",
+                  "Brightest Retention",
                   pattern.brightest_retention,
                   (value) =>
                     this.updateBrightnessPattern({
@@ -442,7 +445,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   "brightestRetention",
                 )}
                 ${renderRangeField(
-                  "Darkest retention",
+                  "Darkest Retention",
                   pattern.darkest_retention,
                   (value) =>
                     this.updateBrightnessPattern({
@@ -499,7 +502,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           ? html`
               <div class="parameter-stack">
                 ${renderNumberField(
-                  "ICs per step",
+                  "ICs per Step",
                   movement.distance,
                   (value) =>
                     this.updateMovement(
@@ -508,6 +511,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                       `${label} distance ${value}.`,
                     ),
                   this.disabled,
+                  0,
+                  255,
+                  "icsPerStep",
                 )}
                 <label class="field">
                   <span>Direction</span>
@@ -556,26 +562,25 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                 )}
                 ${showEnterExit
                   ? html`
-                      <div class="check-control-with-help">
-                        <govee-checkbox-control
-                          label="Pause before re-entering"
-                          .checked=${movement.enter_exit}
-                          .disabled=${this.disabled}
-                          @checked-changed=${(
-                            event: CustomEvent<CheckboxControlChange>,
-                          ) => {
-                            const enterExit = event.detail.checked;
-                            this.updateMovement(
-                              key,
-                              { enter_exit: enterExit },
-                              `${label} pause before re-entering ${enterExit
-                                ? "enabled"
-                                : "disabled"}.`,
-                            );
-                          }}
-                        ></govee-checkbox-control>
-                        ${renderAdvancedHelp("pauseBeforeReentry")}
-                      </div>
+                      <govee-checkbox-control
+                        label="Pause Before Re-entering"
+                        .checked=${movement.enter_exit}
+                        .disabled=${this.disabled}
+                        @checked-changed=${(
+                          event: CustomEvent<CheckboxControlChange>,
+                        ) => {
+                          const enterExit = event.detail.checked;
+                          this.updateMovement(
+                            key,
+                            { enter_exit: enterExit },
+                            `${label} pause before re-entering ${enterExit
+                              ? "enabled"
+                              : "disabled"}.`,
+                          );
+                        }}
+                      >
+                        ${renderAdvancedHelp("pauseBeforeReentry", "help")}
+                      </govee-checkbox-control>
                     `
                   : nothing}
               </div>

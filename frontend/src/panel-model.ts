@@ -64,6 +64,7 @@ export class PanelModel {
   public deletingItemId?: string;
   public liveApplyEnabled = true;
   public autoSaveEnabled = false;
+  public autoSaveInProgress = false;
   public autoSaveFailed = false;
   public previewStatus?: PreviewStatus;
   public previewNotice?: string;

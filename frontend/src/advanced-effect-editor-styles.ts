@@ -27,8 +27,13 @@ export const advancedEffectEditorStyles = [
       margin-bottom: var(--studio-section-gap);
     }
 
-    .layer-strip {
+    .layer-strip,
+    .pattern-strip {
       --strip-label-min-width: var(--studio-compact-action-size);
+    }
+
+    .layer-card > .section-title {
+      margin-bottom: var(--studio-section-title-gap);
     }
 
     .card-heading,
@@ -131,15 +136,11 @@ export const advancedEffectEditorStyles = [
       margin-bottom: 0;
     }
 
-    .check-control-with-help {
-      display: flex;
+    .field-label-with-help {
+      display: inline-flex;
       align-items: center;
       gap: var(--studio-compact-gap);
-    }
-
-    .check-control-with-help govee-checkbox-control {
-      min-width: 0;
-      flex: 1;
+      justify-self: start;
     }
 
     /* Advanced cards and parameter pairs become single-column on narrow screens. */

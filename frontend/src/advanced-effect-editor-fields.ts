@@ -36,7 +36,7 @@ export function renderFillPatternControls(
   return html`
     <div class="fill-pattern-controls parameter-stack">
       <div class="subsection-heading">
-        <h4>Fill pattern</h4>
+        <h4>Fill Pattern</h4>
         ${renderAdvancedHelp("fillPattern")}
       </div>
       <label class="field">
@@ -75,7 +75,7 @@ export function renderDistribution(
       </div>
       <div class="parameter-stack">
         <label class="field">
-          <span>Method</span>
+          ${renderFieldLabel("Method", "distributionMethod")}
           <select
             .value=${knownMethod ? String(method) : ""}
             ?disabled=${disabled}
@@ -86,7 +86,7 @@ export function renderDistribution(
               : html`<option value="" disabled .selected=${true}>Choose a method</option>`}
             <option value="0">Unified</option>
             <option value="1">By IC</option>
-            <option value="2">By segment</option>
+            <option value="2">By Segment</option>
           </select>
         </label>
         ${method === 1 || method === 2
@@ -108,14 +108,14 @@ export function renderDistribution(
           : nothing}
         <div class="parameter-grid">
           ${renderRangeField(
-            "Colour speed",
+            "Colour Speed",
             layer.colour_speed,
             (value) => updateLayer({ colour_speed: value }),
             disabled,
             "colourSpeed",
           )}
           ${renderRangeField(
-            "Colour retention",
+            "Colour Retention",
             layer.colour_retention,
             (value) => updateLayer({ colour_retention: value }),
             disabled,
@@ -141,6 +141,7 @@ export function renderRangeField(
       .minimum=${0}
       .maximum=${255}
       .valueText=${String(value)}
+      .hideValueText=${true}
       .disabled=${disabled}
       @value-changed=${(event: CustomEvent<SliderControlChange>) =>
         changed(event.detail.value)}
@@ -151,11 +152,11 @@ export function renderRangeField(
 }
 
 export function renderNumberField(
-  label: string, value: number, changed: (value: number) => void, disabled: boolean, minimum = 0, maximum = 255,
+  label: string, value: number, changed: (value: number) => void, disabled: boolean, minimum = 0, maximum = 255, help?: AdvancedHelpKey,
 ): TemplateResult {
   return html`
     <label class="field">
-      <span>${label}</span>
+      ${renderFieldLabel(label, help)}
       <input
         type="number"
         min=${minimum}
@@ -165,6 +166,18 @@ export function renderNumberField(
         @change=${(event: Event) => changed(clampInteger(Number((event.target as HTMLInputElement).value), minimum, maximum))}
       />
     </label>
+  `;
+}
+
+function renderFieldLabel(
+  label: string,
+  help?: AdvancedHelpKey,
+): TemplateResult {
+  return html`
+    <span class="field-label-with-help">
+      <span>${label}</span>
+      ${help ? renderAdvancedHelp(help) : nothing}
+    </span>
   `;
 }
 

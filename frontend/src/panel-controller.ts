@@ -1057,6 +1057,7 @@ export class PanelController {
 
   private async drainAutoSave(): Promise<boolean> {
     this.autoSaveRunning = true;
+    this.model.patch({ autoSaveInProgress: true });
     let succeeded = true;
     try {
       while (this.autoSavePending) {
@@ -1070,6 +1071,7 @@ export class PanelController {
     } finally {
       this.autoSaveRunning = false;
       this.autoSaveDrain = undefined;
+      this.model.patch({ autoSaveInProgress: false });
     }
     return succeeded;
   }

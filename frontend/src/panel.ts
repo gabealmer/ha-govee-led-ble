@@ -453,7 +453,7 @@ export class GoveeLedEffectStudio extends LitElement {
     );
     return html`
       <button
-        class="light-control-button native-light-control ${presentation.className}"
+        class="toolbar-control light-control-button native-light-control ${presentation.className}"
         type="button"
         aria-label=${presentation.accessibleName}
         title=${presentation.accessibleName}
@@ -490,7 +490,7 @@ export class GoveeLedEffectStudio extends LitElement {
       "/config/integrations/integration/ha_govee_led_ble";
     return html`
       <a
-        class="light-control-button"
+        class="toolbar-control light-control-button"
         href=${integrationSettingsPath(configurationPath, configEntryId)}
         aria-label=${`Configure visible effects for ${displayName}`}
         title=${`Configure visible effects for ${displayName}`}
@@ -566,7 +566,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       <div class="live-apply-control">
         <button
-          class="toolbar-mode-button"
+          class="toolbar-control toolbar-mode-button"
           type="button"
           aria-pressed=${this.model.liveApplyEnabled}
           title="Apply committed changes automatically"
@@ -608,15 +608,26 @@ export class GoveeLedEffectStudio extends LitElement {
   private renderAutoSaveControl() {
     return html`
       <button
-        class="toolbar-mode-button"
+        class="toolbar-control toolbar-mode-button ${this.model.autoSaveInProgress
+          ? "pending"
+          : ""}"
         type="button"
         aria-pressed=${this.model.autoSaveEnabled}
-        aria-label="Save automatically"
-        title="Save committed changes automatically"
+        aria-busy=${this.model.autoSaveInProgress}
+        aria-label="Auto Save"
+        title=${this.model.autoSaveInProgress
+          ? "Saving committed changes automatically"
+          : "Save committed changes automatically"}
         @click=${() => this.controller.toggleAutoSave()}
       >
-        Save
+        <span>Auto</span>
+        <span>Save</span>
       </button>
+      ${this.model.autoSaveInProgress
+        ? html`<span class="visually-hidden" role="status"
+            >Saving changes automatically</span
+          >`
+        : nothing}
     `;
   }
 
@@ -1010,8 +1021,8 @@ export class GoveeLedEffectStudio extends LitElement {
         >
           <h2 id="pending-transition-title">Save changes?</h2>
           <p>
-            Save this effect before leaving it, or choose No to leave the
-            device unchanged.
+            This effect has unsaved changes. Save them before leaving, or
+            choose No to leave the device unchanged.
           </p>
           ${dialog.primaryLabel === "Save As"
             ? html`
@@ -1044,7 +1055,7 @@ export class GoveeLedEffectStudio extends LitElement {
               Cancel
             </button>
             <button
-              class="secondary"
+              class="danger transition-discard"
               type="button"
               ?disabled=${dialog.busy}
               @click=${() =>

@@ -23,14 +23,14 @@ export const FILL_PATTERN_PARAMETERS: Record<
   SelectionType,
   readonly FillPatternParameter[]
 > = {
-  0: [["param_2", "Segment count"]],
-  1: [["param_2", "LED count"]],
+  0: [["param_2", "Segment Count"]],
+  1: [["param_2", "LED Count"]],
   2: [
-    ["param_2", "Minimum LED count"],
-    ["param_1", "Maximum LED count"],
+    ["param_2", "Minimum LED Count"],
+    ["param_1", "Maximum LED Count"],
   ],
   3: [
-    ["param_1", "Lit length"],
+    ["param_1", "Lit Length"],
     ["param_2", "Gap"],
   ],
 };

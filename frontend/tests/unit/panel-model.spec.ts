@@ -2086,7 +2086,7 @@ test("automatic save flushes before navigation and exposes failures to the trans
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
   model.autoSaveEnabled = true;
-  model.liveApplyEnabled = false;
+  model.liveApplyEnabled = true;
   installH6199Catalogue(model);
   model.customCatalogue!.models.H617A.painted_effects = [
     { id: "cycle", label: "Cycle" },
@@ -2099,11 +2099,18 @@ test("automatic save flushes before navigation and exposes failures to the trans
     resolveSave = resolve;
   });
   const updateItem = vi.fn().mockReturnValue(saving);
-  controller.api = { updateItem } as unknown as EffectStudioApi;
+  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+  const loadDevice = vi.fn().mockResolvedValue(selected);
+  controller.api = {
+    updateItem,
+    applySavedEffect,
+    device: loadDevice,
+  } as unknown as EffectStudioApi;
   editorController.updatePaintedContent({ speed: 62 }, "committed");
 
   const navigation = controller.selectSection("scenes");
   expect(model.section).toBe("custom");
+  expect(model.autoSaveInProgress).toBe(true);
   resolveSave({
     ...saved,
     version: 3,
@@ -2112,10 +2119,17 @@ test("automatic save flushes before navigation and exposes failures to the trans
   await navigation;
 
   expect(model.section).toBe("scenes");
+  expect(model.autoSaveInProgress).toBe(false);
   expect(model.pendingTransitionDialog).toBeUndefined();
   expect(model.currentItem).toMatchObject({ id: saved.id, version: 3 });
+  expect(applySavedEffect).toHaveBeenCalledWith(
+    selected.light_entity_id,
+    saved.name,
+  );
+  expect(loadDevice).toHaveBeenCalledWith(selected.config_entry_id);
 
   await controller.selectSection("custom", "single-layer");
+  model.liveApplyEnabled = false;
   updateItem.mockRejectedValueOnce(new Error("storage unavailable"));
   editorController.updatePaintedContent({ speed: 63 }, "committed");
   controller.contentCommitted("committed");

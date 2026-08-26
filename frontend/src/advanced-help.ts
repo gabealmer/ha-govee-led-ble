@@ -11,6 +11,10 @@ export const ADVANCED_HELP_CONTENT = {
     label: "Distribution information",
     text: "Controls whether participating LEDs share colours or receive colours by IC or segment.",
   },
+  distributionMethod: {
+    label: "Distribution method information",
+    text: "Unified gives all participating LEDs the same colour.  By IC assigns colours by independently controlled LED group.  By Segment assigns colours by fill-pattern segment.",
+  },
   colourSpeed: {
     label: "Colour speed information",
     text: "Controls how quickly the layer changes between palette colours.",
@@ -51,13 +55,17 @@ export const ADVANCED_HELP_CONTENT = {
     label: "Whole-layer movement information",
     text: "Moves the complete layer.",
   },
+  icsPerStep: {
+    label: "ICs per Step information",
+    text: "Sets how many independently controlled LED groups are advanced for each movement step.",
+  },
   pauseBeforeReentry: {
     label: "Pause before re-entry information",
     text: "Pauses the moving effect before it enters the applied area again.",
   },
   priority: {
-    label: "Layer priority information",
-    text: "A higher number gives this layer a higher priority.",
+    label: "Layer overlap priority information",
+    text: "When layers target the same LEDs, the layer with the higher priority is shown.  None leaves the layer without an explicit overlap priority.",
   },
 } as const;
 

@@ -35,18 +35,21 @@ export class GoveeSliderControl extends LitElement {
   @property({ attribute: false })
   public valueText?: string;
 
+  @property({ type: Boolean })
+  public hideValueText = false;
+
   protected render() {
     const value = clamp(this.value, this.minimum, this.maximum);
     return html`
       <label class="slider-field">
         <span class="slider-label">
-          <span class="parameter-label">${this.label}</span>
-          <span class="slider-context">
-            ${this.valueText === undefined
-              ? nothing
-              : html`<span class="slider-value">${this.valueText}</span>`}
+          <span class="slider-label-context">
+            <span class="parameter-label">${this.label}</span>
             <slot name="help"></slot>
           </span>
+          ${this.valueText === undefined || this.hideValueText
+              ? nothing
+              : html`<span class="slider-value">${this.valueText}</span>`}
         </span>
         <input
           type="range"
@@ -104,7 +107,7 @@ export class GoveeSliderControl extends LitElement {
         gap: var(--studio-compact-gap);
       }
 
-      .slider-context {
+      .slider-label-context {
         display: inline-flex;
         align-items: center;
         gap: var(--studio-compact-gap);

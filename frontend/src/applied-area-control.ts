@@ -270,15 +270,25 @@ export class GoveeAppliedAreaControl extends LitElement {
   };
 
   private readonly finishDrag = (event: PointerEvent): void => {
-    if (this.drag?.pointerId !== event.pointerId) {
+    const drag = this.drag;
+    if (drag?.pointerId !== event.pointerId) {
       return;
     }
     const target = event.currentTarget as HTMLElement;
     if (target.hasPointerCapture(event.pointerId)) {
       target.releasePointerCapture(event.pointerId);
     }
+    const segments = this.layer
+      ? layerAppliedAreaSegments(this.layer, this.validSegmentCount)
+      : undefined;
+    const changed =
+      segments !== undefined &&
+      (segments.start !== drag.start || segments.end !== drag.end);
     this.drag = undefined;
     this.activeControl = undefined;
+    if (changed) {
+      this.emitAreaChange("committed");
+    }
   };
 
   private applyControl(
@@ -311,6 +321,13 @@ export class GoveeAppliedAreaControl extends LitElement {
       end,
       this.validSegmentCount,
     );
+    this.emitAreaChange(interaction);
+  }
+
+  private emitAreaChange(interaction: LivePreviewInteraction): void {
+    if (!this.layer || this.disabled) {
+      return;
+    }
     this.dispatchEvent(
       new CustomEvent<AppliedAreaChange>("area-changed", {
         detail: { layer: this.layer, interaction },

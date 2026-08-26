@@ -19,15 +19,18 @@ export class GoveeCheckboxControl extends LitElement {
 
   protected render() {
     return html`
-      <label class="check-field">
-        <input
-          type="checkbox"
-          .checked=${this.checked}
-          ?disabled=${this.disabled}
-          @change=${this.checkedChanged}
-        />
-        <span class="parameter-label">${this.label}</span>
-      </label>
+      <div class="check-control">
+        <label class="check-field">
+          <input
+            type="checkbox"
+            .checked=${this.checked}
+            ?disabled=${this.disabled}
+            @change=${this.checkedChanged}
+          />
+          <span class="parameter-label">${this.label}</span>
+        </label>
+        <slot name="help"></slot>
+      </div>
     `;
   }
 
@@ -49,6 +52,16 @@ export class GoveeCheckboxControl extends LitElement {
     css`
       :host {
         display: block;
+      }
+
+      .check-control {
+        display: flex;
+        align-items: center;
+        gap: var(--studio-compact-gap);
+      }
+
+      .check-field {
+        flex: 0 1 auto;
       }
     `,
   ];

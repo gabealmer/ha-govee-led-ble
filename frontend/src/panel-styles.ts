@@ -186,21 +186,33 @@ export const effectStudioPanelStyles = [
       gap: var(--studio-action-gap);
     }
 
-    .toolbar-mode-button {
+    .toolbar-control {
       min-width: var(--studio-touch-target-size);
-      min-height: var(--studio-control-height);
-      padding: 0 var(--studio-control-gap);
+      height: var(--studio-touch-target-size);
+      min-height: var(--studio-touch-target-size);
+      box-sizing: border-box;
       border: var(--studio-border-width) solid var(--studio-border);
       border-radius: var(--studio-button-radius);
       color: var(--secondary-text-color);
       background: transparent;
+    }
+
+    .toolbar-mode-button {
+      display: inline-grid;
+      padding: var(--studio-micro-gap) var(--studio-control-gap);
+      place-content: center;
       font: inherit;
       font-size: var(--studio-caption-size);
       font-weight: var(--studio-font-weight-semibold);
+      line-height: var(--studio-label-line-height);
       cursor: pointer;
     }
 
-    .toolbar-mode-button:hover {
+    .toolbar-mode-button > span {
+      display: block;
+    }
+
+    .toolbar-control:hover {
       color: var(--primary-text-color);
       background: color-mix(
         in srgb,
@@ -215,7 +227,12 @@ export const effectStudioPanelStyles = [
       background: color-mix(in srgb, var(--studio-blue) 12%, transparent);
     }
 
-    .toolbar-mode-button:focus-visible {
+    .toolbar-mode-button.pending {
+      box-shadow: inset 0 0 0 var(--studio-border-width)
+        var(--studio-blue);
+    }
+
+    .toolbar-control:focus-visible {
       outline: var(--studio-focus-width) solid var(--studio-blue);
       outline-offset: var(--studio-focus-offset);
     }
@@ -231,32 +248,14 @@ export const effectStudioPanelStyles = [
     .light-control-button {
       display: inline-grid;
       width: var(--studio-touch-target-size);
-      height: var(--studio-touch-target-size);
-      min-height: var(--studio-touch-target-size);
       padding: var(--studio-compact-gap);
-      box-sizing: border-box;
-      border: 0;
-      border-radius: var(--studio-round-radius);
       place-items: center;
-      color: var(--secondary-text-color);
-      background: transparent;
       cursor: pointer;
       text-decoration: none;
     }
 
-    .light-control-button:hover {
-      color: var(--primary-text-color);
-      background: color-mix(
-        in srgb,
-        var(--primary-text-color) 8%,
-        transparent
-      );
-    }
-
     .light-control-button:focus-visible {
       color: var(--primary-text-color);
-      outline: var(--studio-strong-border-width) solid var(--studio-blue);
-      outline-offset: var(--studio-border-width);
     }
 
     .light-control-button svg {
@@ -474,6 +473,14 @@ export const effectStudioPanelStyles = [
       justify-content: flex-end;
       gap: var(--studio-action-gap);
       margin-top: var(--studio-dialog-padding);
+    }
+
+    .transition-discard {
+      background: color-mix(
+        in srgb,
+        var(--studio-danger) 10%,
+        var(--studio-card)
+      );
     }
 
     .controls {

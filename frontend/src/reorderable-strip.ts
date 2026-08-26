@@ -36,6 +36,9 @@ export class GoveeReorderableStrip extends LitElement {
   @property({ type: Boolean })
   public reorderDisabled = false;
 
+  @property({ type: Boolean })
+  public separateActions = false;
+
   private draggedIndex?: number;
   private pointerId?: number;
   private pointerIndex?: number;
@@ -54,7 +57,7 @@ export class GoveeReorderableStrip extends LitElement {
     );
     const tablist = model.listRole === "tablist";
     return html`
-      <div class="strip">
+      <div class="strip ${this.separateActions ? "separate-actions" : ""}">
         ${tablist
           ? html`
               <div
@@ -333,6 +336,13 @@ export class GoveeReorderableStrip extends LitElement {
       gap: var(--studio-control-gap);
     }
 
+    .strip.separate-actions .strip-actions {
+      margin-inline-start: var(--studio-compact-gap);
+      padding-inline-start: var(--studio-control-gap);
+      border-inline-start: var(--studio-border-width) solid
+        var(--studio-border);
+    }
+
     .item-container,
     .item-wrapper {
       position: relative;
@@ -458,6 +468,20 @@ export class GoveeReorderableStrip extends LitElement {
 
     /* Promotes popovers to viewport overlays on phones to avoid clipping. */
     @media (max-width: 600px) {
+      .strip.separate-actions {
+        flex-direction: column;
+      }
+
+      .strip.separate-actions .strip-actions {
+        margin-block-start: var(--studio-compact-gap);
+        margin-inline-start: 0;
+        padding-block-start: var(--studio-control-gap);
+        padding-inline-start: 0;
+        border-block-start: var(--studio-border-width) solid
+          var(--studio-border);
+        border-inline-start: 0;
+      }
+
       ::slotted(.strip-popover) {
         position: fixed;
         top: 50%;

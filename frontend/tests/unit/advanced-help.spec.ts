@@ -7,6 +7,7 @@ test("Advanced help registry covers supported evidence without time units", () =
     "appliedArea",
     "fillPattern",
     "distribution",
+    "distributionMethod",
     "colourSpeed",
     "colourRetention",
     "patterns",
@@ -17,6 +18,7 @@ test("Advanced help registry covers supported evidence without time units", () =
     "darkestRetention",
     "inAreaMovement",
     "wholeLayerMovement",
+    "icsPerStep",
     "pauseBeforeReentry",
     "priority",
   ]);
@@ -26,6 +28,24 @@ test("Advanced help registry covers supported evidence without time units", () =
   );
   expect(ADVANCED_HELP_CONTENT.fillPattern.text).toContain(
     "inside the applied area",
+  );
+  expect(ADVANCED_HELP_CONTENT.distributionMethod.text).toContain(
+    "Unified gives",
+  );
+  expect(ADVANCED_HELP_CONTENT.distributionMethod.text).toContain(
+    "By IC assigns",
+  );
+  expect(ADVANCED_HELP_CONTENT.distributionMethod.text).toContain(
+    "By Segment assigns",
+  );
+  expect(ADVANCED_HELP_CONTENT.icsPerStep.text).toContain(
+    "independently controlled LED groups",
+  );
+  expect(ADVANCED_HELP_CONTENT.priority.text).toContain(
+    "same LEDs",
+  );
+  expect(ADVANCED_HELP_CONTENT.priority.text).toContain(
+    "None leaves the layer without an explicit overlap priority",
   );
   expect(ADVANCED_HELP_CONTENT.brightnessScopeLow.text).toContain(
     "lowest brightness",
