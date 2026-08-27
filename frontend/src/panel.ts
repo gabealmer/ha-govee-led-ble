@@ -337,6 +337,7 @@ export class GoveeLedEffectStudio extends LitElement {
         <govee-scene-browser
           ?hidden=${this.section !== "scenes"}
           .externalEditActive=${this.model.sceneEditorOpen}
+          .editorTransitionEpoch=${this.model.editorTransitionEpoch}
           .api=${this.controller.api}
           .device=${this.model.selectedDevice}
           .library=${this.model.library}
@@ -572,7 +573,7 @@ export class GoveeLedEffectStudio extends LitElement {
           aria-pressed=${this.model.liveApplyEnabled}
           title="Apply committed changes automatically"
           @click=${() =>
-            this.preview.toggle(this.currentScenePreviewRequest())}
+            void this.controller.toggleLive(this.currentScenePreviewRequest())}
         >
           Live
         </button>
@@ -1609,9 +1610,17 @@ export class GoveeLedEffectStudio extends LitElement {
   private sceneLibraryItemSaved(
     event: CustomEvent<{
       item: LibraryItem;
+      configEntryId: string;
+      selectionIsCurrent: boolean;
+      panelTransitionEpoch: number;
     }>,
   ): void {
-    this.controller.sceneItemSaved(event.detail.item);
+    void this.controller.sceneItemSaved(
+      event.detail.item,
+      event.detail.configEntryId,
+      event.detail.selectionIsCurrent,
+      event.detail.panelTransitionEpoch,
+    );
   }
 
   private sceneTemplateSelected(

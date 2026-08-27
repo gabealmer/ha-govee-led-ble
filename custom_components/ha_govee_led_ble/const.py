@@ -8,6 +8,7 @@ DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
+CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
 EFFECT_FAMILY_SCENES = "scenes"
 EFFECT_FAMILY_MUSIC = "music"
 EFFECT_FAMILY_VIDEO = "video"
@@ -18,8 +19,8 @@ EFFECT_CATEGORY_MULTI_LAYERED = "multi_layered"
 EFFECT_CATEGORY_REACTIVE = "reactive"
 EFFECT_CATEGORY_ADVANCED = "advanced"
 EFFECT_CATEGORIES = (
-    EFFECT_CATEGORY_SCENES,
     EFFECT_CATEGORY_VIDEO,
+    EFFECT_CATEGORY_SCENES,
     EFFECT_CATEGORY_EFFECTS,
     EFFECT_CATEGORY_MULTI_LAYERED,
     EFFECT_CATEGORY_REACTIVE,
@@ -176,6 +177,10 @@ def effect_categories_from_options(model: str, options: Mapping[str, Any]) -> fr
     if not isinstance(selected, list | tuple | set | frozenset):
         return frozenset(default_effect_categories(model))
     return frozenset(str(value) for value in selected) & frozenset(supported_effect_categories(model))
+
+
+def prefix_effect_names_from_options(options: Mapping[str, Any]) -> bool:
+    return options.get(CONF_PREFIX_EFFECT_NAMES) is True
 
 
 def effect_families_from_categories(categories: frozenset[str]) -> frozenset[str]:

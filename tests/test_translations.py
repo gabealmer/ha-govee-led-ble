@@ -23,7 +23,11 @@ def test_effect_category_options_have_direct_labels():
         "multi_layered": "Multi-Layered",
         "reactive": "Reactive",
         "advanced": "Advanced",
+        "prefix_effect_names": "Include category labels when multiple effect categories are enabled",
     }
+    assert strings["options"]["step"]["init"]["data_description"]["prefix_effect_names"].startswith(
+        "Adds category labels"
+    )
 
 
 def test_home_assistant_exceptions_declare_translation_metadata():

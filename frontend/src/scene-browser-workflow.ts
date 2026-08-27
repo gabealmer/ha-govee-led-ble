@@ -137,7 +137,12 @@ export interface SceneEditSelection {
 export interface SceneBrowserWorkflowEffects {
   changed: (state: SceneBrowserViewState) => void;
   initialSelectionFinished: (opened: boolean) => void;
-  libraryItemSaved: (item: LibraryItem) => void;
+  libraryItemSaved: (
+    item: LibraryItem,
+    configEntryId: string,
+    selectionIsCurrent: boolean,
+    panelTransitionEpoch: number,
+  ) => void;
 }
 
 export class SceneBrowserWorkflow {
@@ -464,7 +469,10 @@ export class SceneBrowserWorkflow {
     }
   }
 
-  public async save(isAdmin: boolean): Promise<void> {
+  public async save(
+    isAdmin: boolean,
+    panelTransitionEpoch = 0,
+  ): Promise<void> {
     const { catalogue, content, selectedItem, selectedScene } = this.stateValue;
     if (
       !this.api ||
@@ -486,6 +494,7 @@ export class SceneBrowserWorkflow {
     }
     const savedContent = sceneContentAtSpeed(content, this.stateValue.speedIndex);
     const request = this.captureRequest();
+    const document = this.currentDocument();
     this.patch({ saving: true, notice: undefined });
     try {
       const result = selectedItem
@@ -494,8 +503,16 @@ export class SceneBrowserWorkflow {
       if (result.content.kind !== "scene_builtin" && result.content.kind !== "scene_palette") {
         throw new Error("The saved scene returned an unsupported definition.");
       }
-      this.effects.libraryItemSaved(result);
-      if (!this.requestIsCurrent(request)) {
+      const selectionIsCurrent =
+        this.requestIsCurrent(request) &&
+        this.currentDocument() === document;
+      this.effects.libraryItemSaved(
+        result,
+        request.deviceId,
+        selectionIsCurrent,
+        panelTransitionEpoch,
+      );
+      if (!selectionIsCurrent) {
         return;
       }
       this.activeSelectionIdentity = `custom:${result.id}`;
@@ -975,6 +992,16 @@ export class SceneBrowserWorkflow {
       category: this.stateValue.category,
       selectionIdentity: this.activeSelectionIdentity,
     };
+  }
+
+  private currentDocument(): string {
+    return JSON.stringify({
+      name: this.stateValue.name,
+      content: this.stateValue.content,
+      speedIndex: this.stateValue.speedIndex,
+      selectedItemId: this.stateValue.selectedItem?.id,
+      selectedItemVersion: this.stateValue.selectedItem?.version,
+    });
   }
 
   private patch(values: Partial<SceneBrowserViewState>): void {

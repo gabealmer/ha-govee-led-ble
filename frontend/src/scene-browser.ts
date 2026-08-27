@@ -83,6 +83,9 @@ export class GoveeSceneBrowser extends LitElement {
   @property({ type: Boolean })
   public externalEditActive = false;
 
+  @property({ type: Number })
+  public editorTransitionEpoch = 0;
+
   @property()
   public panelNotice?: string;
 
@@ -110,8 +113,18 @@ export class GoveeSceneBrowser extends LitElement {
       initialSelectionFinished: (opened) => {
         this.emit(opened ? "scene-initial-selection-opened" : "scene-initial-selection-failed");
       },
-      libraryItemSaved: (item) => {
-        this.emit("library-item-saved", { item });
+      libraryItemSaved: (
+        item,
+        configEntryId,
+        selectionIsCurrent,
+        panelTransitionEpoch,
+      ) => {
+        this.emit("library-item-saved", {
+          item,
+          configEntryId,
+          selectionIsCurrent,
+          panelTransitionEpoch,
+        });
       },
     });
     this.viewState = this.workflow.state;
@@ -141,7 +154,7 @@ export class GoveeSceneBrowser extends LitElement {
       this.workflow.sceneDirty &&
       this.viewState.content?.kind !== "scene_layered"
     ) {
-      void this.workflow.save(true);
+      void this.workflow.save(true, this.editorTransitionEpoch);
       return true;
     }
     return false;
@@ -488,7 +501,7 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   private save(): void {
-    void this.workflow.save(this.isAdmin);
+    void this.workflow.save(this.isAdmin, this.editorTransitionEpoch);
   }
 
   private resetToCatalogue(): void {

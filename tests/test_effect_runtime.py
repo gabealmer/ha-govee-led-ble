@@ -44,6 +44,7 @@ from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
 from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
 )
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -312,6 +313,33 @@ async def test_saved_effect_uploads_activates_then_confirms_selector(
     assert cache.get("entry-a").active_effect.content_hash == item.content_hash
     assert cache.get("entry-a").active_effect.observable_signature == "custom:800"
     coordinator.async_set_updated_data.assert_called_once_with({})
+
+
+async def test_saved_effect_powers_on_before_committed_upload(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.is_on = False
+    coordinator.data = {}
+    coordinator.async_set_updated_data = MagicMock()
+    _confirm_on_call(coordinator, 2, 800)
+    item = _item()
+    compiled = compile_h617a(item, 800)
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert coordinator.is_on is True
+    assert coordinator.send_command.await_args_list == [
+        call(build_power(True, coordinator.model)),
+        *(call(packet) for packet in compiled.packets),
+    ]
 
 
 async def test_layered_scene_uses_shared_transaction_and_identity_verification(
@@ -972,6 +1000,10 @@ async def test_confirmed_saved_sena_reapply_clears_matching_flow_workspace(
     await active_workspaces.async_load()
     active_workspaces.set(_flow_workspace())
     coordinator = _coordinator()
+    published_workspaces = []
+    coordinator.async_set_updated_data = MagicMock(
+        side_effect=lambda _data: published_workspaces.append(active_workspaces.get("entry-a"))
+    )
     coordinator.diy_code = 24
     _confirm_on_call(coordinator, 2, 24)
     sena = _sena_item()
@@ -996,6 +1028,8 @@ async def test_confirmed_saved_sena_reapply_clears_matching_flow_workspace(
     assert observed.active_effect.item_id == sena.id
     assert observed.active_effect.item_version == sena.version
     assert observed.active_effect.content_hash == sena.content_hash
+    assert len(published_workspaces) == 1
+    assert published_workspaces[-1] is None
 
 
 async def test_workspace_signature_mismatch_suspends_without_clearing() -> None:
@@ -1417,6 +1451,10 @@ async def test_unsaved_music_profile_persists_the_applied_snapshot(
     item = _music_item("H6199")
     active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
     await active_workspaces.async_load()
+    published_workspaces = []
+    coordinator.async_set_updated_data = MagicMock(
+        side_effect=lambda _data: published_workspaces.append(active_workspaces.get("entry-a"))
+    )
     result = await EffectDeploymentEngine(
         repository,
         cache,
@@ -1441,6 +1479,7 @@ async def test_unsaved_music_profile_persists_the_applied_snapshot(
     assert isinstance(workspace.content, MusicProfile)
     assert workspace.observable_signature == f"music:{workspace.content.mode}"
     assert workspace.confidence is ObservationConfidence.SETTINGS_MATCH
+    assert published_workspaces == [workspace]
 
 
 async def test_music_profile_retries_the_complete_writer_before_confirmation(

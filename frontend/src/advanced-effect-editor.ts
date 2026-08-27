@@ -40,8 +40,6 @@ import "./reorderable-strip";
 import type {
   GoveeReorderableStrip,
 } from "./reorderable-strip";
-import type { RangePairControlChange } from "./range-pair-control";
-import "./range-pair-control";
 import type {
   SegmentedControlChange,
   SegmentedControlOption,
@@ -420,28 +418,24 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   )}
                 </select>
               </label>
-              <govee-range-pair-control
-                label="Brightness Scope"
-                lowLabel="Low"
-                highLabel="High"
-                .lowValue=${pattern.scope_low}
-                .highValue=${pattern.scope_high}
-                .minimum=${0}
-                .maximum=${255}
-                .disabled=${this.disabled}
-                @range-pair-changed=${(
-                  event: CustomEvent<RangePairControlChange>,
-                ) =>
-                  this.updateBrightnessPattern(
-                    {
-                      scope_low: event.detail.low,
-                      scope_high: event.detail.high,
-                    },
-                    event.detail.interaction,
-                  )}
-              >
-                ${renderAdvancedHelp("brightnessScope", "help")}
-              </govee-range-pair-control>
+              <div class="parameter-grid">
+                ${renderRangeField(
+                  "Scope Low",
+                  pattern.scope_low,
+                  (value) =>
+                    this.updateBrightnessPattern({ scope_low: value }),
+                  this.disabled,
+                  "brightnessScopeLow",
+                )}
+                ${renderRangeField(
+                  "Scope High",
+                  pattern.scope_high,
+                  (value) =>
+                    this.updateBrightnessPattern({ scope_high: value }),
+                  this.disabled,
+                  "brightnessScopeHigh",
+                )}
+              </div>
               <div class="parameter-grid">
                 ${renderRangeField(
                   "Changing Speed",

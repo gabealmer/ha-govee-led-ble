@@ -68,11 +68,11 @@ export function studioNavigationItems(
   }[],
 ): StudioNavigationItem[] {
   return [
-    ...(scenesAvailable
-      ? [{ section: "scenes" as const, label: "Scenes" }]
-      : []),
     ...(videoAvailable
       ? [{ section: "video" as const, label: "Video" }]
+      : []),
+    ...(scenesAvailable
+      ? [{ section: "scenes" as const, label: "Scenes" }]
       : []),
     ...customCategories.map(({ category, label }) => ({
       section: "custom" as const,

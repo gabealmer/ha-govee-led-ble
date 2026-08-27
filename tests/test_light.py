@@ -27,7 +27,11 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
+    BuiltinScene,
+    CatalogueRef,
+    EffectValidationError,
     LibraryItem,
+    MusicProfile,
     Origin,
     RelativeBrightness,
     SingleEffect,
@@ -37,6 +41,10 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefault
+from custom_components.ha_govee_led_ble.effect_selector import (
+    effect_selector_entries,
+    resolve_effect_selector,
+)
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -83,7 +91,9 @@ def test_basic_and_color_props(light, mock_coordinator):
     mock_coordinator.brightness_pct = 50
     assert light.brightness == 128
     labels = sorted(MODEL_SCENE_LABELS["H617A"].values(), key=str.casefold)
-    assert light.effect_list[: len(labels)] == labels
+    assert light.effect_list[0] == "off"
+    assert set(labels) - {"Energetic", "Rhythm", "Bloom"} <= set(light.effect_list)
+    assert {"Energetic [Scene]", "Rhythm [Scene]", "Bloom [Scene]"} <= set(light.effect_list)
     mock_coordinator.effect = "rainbow"
     assert light.effect == "Rainbow"
     mock_coordinator.effect = None
@@ -157,6 +167,19 @@ async def test_turn_on_variants(light, mock_coordinator):
     assert len(packets) > 2 and packets[1][0] == 0xA3 and packets[-1][0] == 0x33
 
 
+async def test_mixed_colour_and_effect_request_finishes_in_effect_mode(light, mock_coordinator):
+    mock_coordinator.is_on = True
+
+    await light.async_turn_on(
+        rgb_color=(12, 34, 56),
+        effect="Rainbow",
+    )
+
+    assert mock_coordinator.rgb_color == (12, 34, 56)
+    assert mock_coordinator.effect == "rainbow"
+    assert light.effect == "Rainbow"
+
+
 async def test_power_rollback(light, mock_coordinator):
     mock_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("fail")])
     with pytest.raises(HomeAssistantError) as turn_on:
@@ -173,18 +196,175 @@ async def test_power_rollback(light, mock_coordinator):
 
 def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinator):
     el = light.effect_list
-    labels = sorted(MODEL_SCENE_LABELS["H617A"].values(), key=str.casefold)
-    assert el[: len(labels)] == labels
-    assert "Music: Energetic" in el and "Music: Piano Keys" in el
-    assert "Video: Movie" not in el and "music: energetic" not in el
+    assert el[0] == "off"
+    assert "Energetic [Scene]" in el and "Energetic [Reactive]" in el
+    assert "Piano Keys" in el
+    assert el[1:] == sorted(el[1:], key=lambda label: label.split(" [", 1)[0].casefold())
     h = h6199_light.effect_list
-    assert h == ["off", "Video: Movie", "Video: Game"]
+    assert h == ["off", "Game", "Movie"]
 
     mock_h6199_coordinator.effect_families = frozenset({"scenes", "music", "video"})
     h = h6199_light.effect_list
-    assert "Sunrise" in h and "Music: Rhythm" in h and h[-2:] == ["Video: Movie", "Video: Game"]
-    assert "Music: Bloom" not in h and "Music: Shiny" not in h
+    assert "Sunrise" in h and "Rhythm" in h
+    assert "Movie [Scene]" in h and "Movie [Video]" in h
+    assert "Bloom" not in h and "Shiny" not in h
     assert "Forest" in h and "Aurora-A" in h
+
+    mock_h6199_coordinator.prefix_effect_names = True
+    h = h6199_light.effect_list
+    assert h[:3] == ["off", "Video: Game", "Video: Movie"]
+    assert h.index("Scene: Afternoon") < h.index("Reactive: Energetic")
+
+
+def test_selector_projection_preserves_unique_aliases_and_rejects_built_in_ambiguity():
+    h617a = effect_selector_entries(
+        "H617A",
+        frozenset({"scenes", "effects", "multi_layered", "reactive", "advanced"}),
+        (),
+        prefix_effect_names=False,
+    )
+    assert resolve_effect_selector(h617a, "candlelight").source == "scene"
+    assert resolve_effect_selector(h617a, "Music: Piano Keys").value == "piano_keys"
+    assert resolve_effect_selector(h617a, "Energetic [Scene]").source == "scene"
+    assert resolve_effect_selector(h617a, "Energetic [Reactive]").source == "music"
+    with pytest.raises(EffectValidationError, match="ambiguous"):
+        resolve_effect_selector(h617a, "Energetic")
+
+    h6199 = effect_selector_entries(
+        "H6199",
+        frozenset({"video", "scenes", "effects", "reactive", "advanced"}),
+        (),
+        prefix_effect_names=True,
+    )
+    labels = [entry.display_label for entry in h6199]
+    assert labels[:2] == ["Video: Game", "Video: Movie"]
+    assert resolve_effect_selector(h6199, "Video: Movie").source == "video"
+    assert resolve_effect_selector(h6199, "Scene: Movie").source == "scene"
+    with pytest.raises(EffectValidationError, match="ambiguous"):
+        resolve_effect_selector(h6199, "Movie")
+
+
+def test_transient_custom_disambiguates_grandfathered_saved_name():
+    saved = LibraryItem.new(
+        "Custom",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    entries = effect_selector_entries(
+        "H617A",
+        frozenset({"effects"}),
+        (saved,),
+        prefix_effect_names=False,
+        active_custom=True,
+    )
+
+    assert [entry.display_label for entry in entries] == ["Custom [Effect]"]
+    assert resolve_effect_selector(entries, "Custom [Effect]").item == saved
+
+
+def test_same_category_native_and_saved_collisions_have_unique_display_values():
+    saved = LibraryItem.new(
+        "Energetic",
+        MusicProfile("H617A", "energetic", 50),
+    )
+    entries = effect_selector_entries(
+        "H617A",
+        frozenset({"reactive"}),
+        (saved,),
+        prefix_effect_names=False,
+    )
+
+    energetic = [entry for entry in entries if entry.base_label == "Energetic"]
+    assert [entry.display_label for entry in energetic] == [
+        "Energetic [Reactive, Built-in]",
+        "Energetic [Reactive, Saved]",
+    ]
+    assert resolve_effect_selector(entries, "Energetic [Reactive, Built-in]").source == "music"
+    assert resolve_effect_selector(entries, "Energetic [Reactive, Saved]").item == saved
+
+
+def test_generated_native_label_does_not_shadow_grandfathered_saved_name():
+    saved = LibraryItem.new(
+        "Energetic [Scene]",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    entries = effect_selector_entries(
+        "H617A",
+        frozenset({"scenes", "effects", "reactive"}),
+        (saved,),
+        prefix_effect_names=False,
+    )
+    matching = [entry for entry in entries if "Energetic [Scene" in entry.display_label]
+
+    assert len({entry.display_label for entry in matching}) == len(matching)
+    assert resolve_effect_selector(entries, "Energetic [Scene, Built-in]").source == "scene"
+    assert resolve_effect_selector(entries, "Energetic [Scene] [Effect, Saved]").item == saved
+
+
+def test_identity_qualified_labels_continue_until_the_namespace_is_unique():
+    first = LibraryItem.new(
+        "Energetic [Scene]",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    second = LibraryItem.new(
+        "Energetic [Scene, Built-in]",
+        SingleEffect(0, 0, 50, ((0, 255, 0),)),
+    )
+    third = LibraryItem.new(
+        "Energetic [Scene, Built-in, scene:energetic]",
+        SingleEffect(0, 0, 50, ((0, 0, 255),)),
+    )
+    entries = effect_selector_entries(
+        "H617A",
+        frozenset({"scenes", "effects", "reactive"}),
+        (first, second, third),
+        prefix_effect_names=False,
+    )
+    labels = [entry.display_label for entry in entries]
+
+    assert len(labels) == len(set(map(str.casefold, labels)))
+    assert all(resolve_effect_selector(entries, label) is not None for label in labels)
+
+
+def test_saved_categories_remain_visible_when_native_families_are_narrower(
+    mock_h6199_coordinator,
+):
+    saved_scene = LibraryItem.new(
+        "Saved scene",
+        BuiltinScene(CatalogueRef("H6199", 168, 150)),
+    )
+    saved_reactive = LibraryItem.new(
+        "Saved reactive",
+        MusicProfile("H6199", "rhythm", 50),
+    )
+    entries = effect_selector_entries(
+        "H6199",
+        frozenset({"video", "scenes", "reactive"}),
+        (saved_scene, saved_reactive),
+        prefix_effect_names=False,
+        native_categories=frozenset({"video"}),
+    )
+
+    assert {"Saved scene", "Saved reactive"} <= {entry.display_label for entry in entries}
+
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(
+                    return_value=LibrarySnapshot((saved_scene, saved_reactive)),
+                )
+            ),
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+            active_workspaces=SimpleNamespace(get=MagicMock(return_value=None)),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_h6199_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+
+    assert {"Saved scene", "Saved reactive"} <= set(entity.effect_list)
 
 
 async def test_saved_effects_are_compatible_reactive_and_lock_safe(
@@ -246,7 +426,7 @@ async def test_saved_effects_are_compatible_reactive_and_lock_safe(
     )
     entity.async_write_ha_state = MagicMock()
 
-    assert entity.effect_list[-1] == "My Effect"
+    assert "My Effect" in entity.effect_list
     assert "Movie profile" not in entity.effect_list
 
     await entity.async_turn_on(effect="my effect")
@@ -346,7 +526,7 @@ def test_active_saved_effect_uses_current_name_only_for_matching_content(
         model="H617A",
         observable_signature="custom:800",
     )
-    assert entity.effect == "off"
+    assert entity.effect == "Custom"
     backend.active_workspaces.get.return_value = None
 
     changed = replace(
@@ -446,7 +626,8 @@ async def test_workspace_identity_agrees_between_device_payload_and_light_effect
     assert observed.active_effect is None
     assert payload["active_state"]["active_effect"] is None
     assert payload["active_workspace"]["selector_label"] == "Flow"
-    assert entity.effect == "off"
+    assert entity.effect == "Custom"
+    assert entity.effect_list[:2] == ["off", "Custom"]
 
     mock_coordinator.unknown_scene_code = None
     mock_coordinator.diy_code = 25
@@ -460,6 +641,226 @@ async def test_workspace_identity_agrees_between_device_payload_and_light_effect
 
     assert suspended_payload["active_workspace"] is None
     assert active_workspaces.get("entry-a") == workspace
+
+
+def test_active_custom_remains_in_effect_list_when_categories_are_disabled(
+    mock_coordinator,
+):
+    mock_coordinator.effect_categories = frozenset()
+    mock_coordinator.is_on = True
+    mock_coordinator.diy_code = 24
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
+            ),
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+            active_workspaces=SimpleNamespace(
+                get=MagicMock(
+                    return_value=SimpleNamespace(
+                        model="H617A",
+                        observable_signature="custom:24",
+                    )
+                )
+            ),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+
+    assert entity.effect == "Custom"
+    assert entity.effect_list == ["off", "Custom"]
+
+
+def test_active_custom_uses_the_advertised_namespace_for_saved_resolution(
+    mock_coordinator,
+):
+    saved = LibraryItem.new(
+        "Custom",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    mock_coordinator.effect_categories = frozenset({"effects"})
+    mock_coordinator.is_on = True
+    mock_coordinator.diy_code = 24
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(
+                    return_value=LibrarySnapshot((saved,)),
+                ),
+            ),
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+            active_workspaces=SimpleNamespace(
+                get=MagicMock(
+                    return_value=SimpleNamespace(
+                        model="H617A",
+                        observable_signature="custom:24",
+                    )
+                )
+            ),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+
+    assert "Custom [Effect]" in entity.effect_list
+    assert entity._saved_effect("Custom [Effect]") == saved
+
+
+async def test_direct_colour_control_clears_active_workspace(mock_coordinator):
+    workspace = SimpleNamespace(
+        model="H617A",
+        observable_signature="custom:24",
+    )
+    current_workspace = workspace
+    active_workspaces = MagicMock()
+    active_workspaces.get.side_effect = lambda _entry_id: current_workspace
+
+    def clear_workspace(_entry_id):
+        nonlocal current_workspace
+        current_workspace = None
+        return True
+
+    active_workspaces.clear.side_effect = clear_workspace
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
+            ),
+            active_workspaces=active_workspaces,
+            preview=SimpleNamespace(async_supersede_device=AsyncMock()),
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+        ),
+    )
+    mock_coordinator.is_on = True
+    mock_coordinator.diy_code = 24
+    light = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+    light.async_write_ha_state = MagicMock()
+
+    assert light.effect == "Custom"
+
+    await light.async_turn_on(rgb_color=(12, 34, 56))
+
+    active_workspaces.clear.assert_called_once_with("entry-a")
+    assert light.effect == "off"
+    assert light.rgb_color == (12, 34, 56)
+
+
+async def test_failed_foreground_control_preserves_active_workspace(mock_coordinator):
+    workspace = SimpleNamespace(
+        model="H617A",
+        observable_signature="custom:24",
+    )
+    active_workspaces = MagicMock()
+    active_workspaces.get.return_value = workspace
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
+            ),
+            active_workspaces=active_workspaces,
+            preview=SimpleNamespace(async_supersede_device=AsyncMock()),
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+        ),
+    )
+    mock_coordinator.is_on = True
+    mock_coordinator.diy_code = 24
+    mock_coordinator.send_command = AsyncMock(side_effect=BleakError("failed"))
+    light = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(rgb_color=(12, 34, 56))
+
+    active_workspaces.clear.assert_not_called()
+    assert light.effect == "Custom"
+
+
+async def test_custom_effect_selection_with_brightness_preserves_workspace(
+    mock_coordinator,
+):
+    workspace = SimpleNamespace(
+        model="H617A",
+        observable_signature="custom:24",
+    )
+    active_workspaces = MagicMock()
+    active_workspaces.get.return_value = workspace
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
+            ),
+            active_workspaces=active_workspaces,
+            preview=SimpleNamespace(async_supersede_device=AsyncMock()),
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+        ),
+    )
+    mock_coordinator.is_on = True
+    mock_coordinator.diy_code = 24
+    light = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+    light.async_write_ha_state = MagicMock()
+
+    await light.async_turn_on(brightness=128, effect="Custom")
+
+    active_workspaces.clear.assert_not_called()
+    assert light.effect == "Custom"
+
+
+async def test_brightness_only_control_preserves_active_workspace(
+    mock_coordinator,
+):
+    workspace = SimpleNamespace(
+        model="H617A",
+        observable_signature="custom:24",
+    )
+    active_workspaces = MagicMock()
+    active_workspaces.get.return_value = workspace
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
+            ),
+            active_workspaces=active_workspaces,
+            preview=SimpleNamespace(async_supersede_device=AsyncMock()),
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+        ),
+    )
+    mock_coordinator.is_on = True
+    mock_coordinator.diy_code = 24
+    light = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+    light.async_write_ha_state = MagicMock()
+
+    await light.async_turn_on(brightness=128)
+
+    active_workspaces.clear.assert_not_called()
+    assert light.effect == "Custom"
 
 
 async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
@@ -608,9 +1009,9 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
 async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):
     mock_h6199_coordinator.effect = None
     mock_h6199_coordinator.video_mode = "movie"
-    assert h6199_light.effect == "Video: Movie"
+    assert h6199_light.effect == "Movie"
     mock_h6199_coordinator.video_mode = "game"
-    assert h6199_light.effect == "Video: Game"
+    assert h6199_light.effect == "Game"
     mock_h6199_coordinator.video_mode = "off"
     mock_h6199_coordinator.effect = "rainbow"
     assert h6199_light.effect == "off"

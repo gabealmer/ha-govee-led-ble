@@ -13,7 +13,8 @@ test("Advanced help registry covers supported evidence without time units", () =
     "colourSpeed",
     "colourRetention",
     "patterns",
-    "brightnessScope",
+    "brightnessScopeLow",
+    "brightnessScopeHigh",
     "changingSpeed",
     "brightestRetention",
     "darkestRetention",
@@ -60,8 +61,11 @@ test("Advanced help registry covers supported evidence without time units", () =
   expect(ADVANCED_HELP_CONTENT.priority.text).toContain(
     "A dash leaves the layer without an explicit overlap priority",
   );
-  expect(ADVANCED_HELP_CONTENT.brightnessScope.text).toContain(
-    "lowest and highest brightness",
+  expect(ADVANCED_HELP_CONTENT.brightnessScopeLow.text).toContain(
+    "lowest brightness",
+  );
+  expect(ADVANCED_HELP_CONTENT.brightnessScopeHigh.text).toContain(
+    "highest brightness",
   );
   expect(
     [

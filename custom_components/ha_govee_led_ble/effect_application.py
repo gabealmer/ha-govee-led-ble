@@ -25,7 +25,7 @@ from .effect_domain import (
 )
 from .effect_identity import EffectDeviceCache
 from .effect_runtime import EffectDeploymentEngine
-from .effect_selector import validate_saved_effect_name
+from .effect_selector import normalise_effect_name, validate_saved_effect_name
 from .effect_storage import (
     EffectLibraryRepository,
     EffectStorageError,
@@ -132,6 +132,7 @@ class EffectStudioApplication:
                 item.name,
                 self.library_snapshot().items,
                 excluding_item_id=item.id,
+                allow_reserved=normalise_effect_name(item.name) == normalise_effect_name(current.name),
             )
             snapshot = await self.library.async_update(
                 item,

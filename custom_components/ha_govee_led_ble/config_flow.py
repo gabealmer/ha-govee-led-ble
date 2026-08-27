@@ -19,6 +19,7 @@ from .const import (
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_MODEL,
+    CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
     MODEL_PROFILES,
     default_effect_categories,
@@ -48,7 +49,7 @@ def _normalize_manual_address(address: str) -> str:
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 6
+    VERSION = 7
 
     _discovered: dict[str, str]
 
@@ -124,15 +125,23 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
             ordered = [category for category in supported if user_input[category]]
             options = {key: value for key, value in self.config_entry.options.items() if key != CONF_EFFECT_FAMILIES}
             options[CONF_EFFECT_CATEGORIES] = ordered
+            options[CONF_PREFIX_EFFECT_NAMES] = user_input[CONF_PREFIX_EFFECT_NAMES]
             return self.async_create_entry(data=options)
         defaults = default_effect_categories(model)
         current = self.config_entry.options.get(
             CONF_EFFECT_CATEGORIES,
             list(defaults),
         )
+        prefix_effect_names = self.config_entry.options.get(
+            CONF_PREFIX_EFFECT_NAMES,
+            False,
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
-                {vol.Required(category, default=category in current): bool for category in supported}
+                {
+                    **{vol.Required(category, default=category in current): bool for category in supported},
+                    vol.Required(CONF_PREFIX_EFFECT_NAMES, default=prefix_effect_names): bool,
+                }
             ),
         )

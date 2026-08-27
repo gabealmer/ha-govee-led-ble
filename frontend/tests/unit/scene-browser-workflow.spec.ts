@@ -262,10 +262,36 @@ describe("SceneBrowserWorkflow", () => {
       "Glacier custom",
       expect.objectContaining({ kind: "scene_builtin", speed_index: 2 }),
     );
-    expect(libraryItemSaved).toHaveBeenCalledWith(saved);
+    expect(libraryItemSaved).toHaveBeenCalledWith(saved, "device-a", true, 0);
     expect(workflow.state.selectedItem).toEqual(saved);
     expect(workflow.state.category).toBe("custom");
     expect(workflow.state.notice).toBeUndefined();
+  });
+
+  test("a delayed save updates the library without replacing or applying newer edits", async () => {
+    const pending = deferred<LibraryItem>();
+    const saved = libraryItem("saved-copy", firstScene, "Glacier custom");
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene)),
+      createItem: vi.fn().mockReturnValue(pending.promise),
+    } as unknown as EffectStudioApi;
+    const { workflow, libraryItemSaved } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+    workflow.edit(true);
+    workflow.setName("Glacier custom");
+
+    const save = workflow.save(true);
+    workflow.setName("Newer local name");
+    workflow.setSpeedIndex(2);
+    pending.resolve(saved);
+    await save;
+
+    expect(libraryItemSaved).toHaveBeenCalledWith(saved, "device-a", false, 0);
+    expect(workflow.state.selectedItem).toBeUndefined();
+    expect(workflow.state.name).toBe("Newer local name");
+    expect(workflow.state.speedIndex).toBe(2);
   });
 
   test("cancelling a scene copy restores the selected catalogue scene", async () => {
@@ -549,7 +575,7 @@ describe("SceneBrowserWorkflow", () => {
     pendingSave.resolve(saved);
     await save;
 
-    expect(libraryItemSaved).toHaveBeenCalledWith(saved);
+    expect(libraryItemSaved).toHaveBeenCalledWith(saved, "device-a", false, 0);
     expect(workflow.state.selectedItem).toBeUndefined();
     expect(workflow.state.category).toBe("custom");
   });

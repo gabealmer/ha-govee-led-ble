@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import Mock
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock, Mock
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import DOMAIN
+from custom_components.ha_govee_led_ble.effect_application import EffectStudioApplication
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
 from custom_components.ha_govee_led_ble.effect_domain import SingleEffect, effect_content_to_dict
@@ -19,10 +22,12 @@ from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewSessionNotFoundError,
     PreviewTargetUnavailableError,
 )
+from custom_components.ha_govee_led_ble.effect_storage import EffectVersionConflictError
 from custom_components.ha_govee_led_ble.effect_websocket import (
     PREVIEW_SESSION_NOT_FOUND_CODE,
     PREVIEW_SESSION_UNAUTHORIZED_CODE,
     PREVIEW_TARGET_UNAVAILABLE_CODE,
+    WS_APPLY,
     WS_CUSTOM_CATALOGUE,
     WS_INFO,
     WS_LIBRARY_CREATE,
@@ -131,6 +136,92 @@ async def test_non_admin_cannot_mutate_library(
 
     assert response["success"] is False
     assert response["error"]["code"] == "unauthorized"
+
+
+async def test_apply_forwards_expected_item_version(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    monkeypatch.setattr(cast(Any, backend.preview), "async_supersede_device", AsyncMock())
+    deployment = MagicMock()
+    deployment.to_public_dict.return_value = {"phase": "confirmed"}
+    apply_saved = AsyncMock(return_value=deployment)
+    monkeypatch.setattr(cast(Any, EffectStudioApplication), "async_apply_saved_effect", apply_saved)
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=MagicMock(),
+    )
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == entry.entry_id else None,
+    )
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_APPLY,
+            "config_entry_id": entry.entry_id,
+            "item_id": "00000000-0000-0000-0000-000000000001",
+            "expected_version": 4,
+            "updated_at": "2026-08-27T00:00:00Z",
+        }
+    )
+    response = await client.receive_json()
+
+    assert response["success"] is True
+    apply_saved.assert_awaited_once_with(
+        backend.engine,
+        entry.runtime_data,
+        item_id="00000000-0000-0000-0000-000000000001",
+        config_entry_id=entry.entry_id,
+        updated_at="2026-08-27T00:00:00Z",
+        operation_id=None,
+        expected_version=4,
+    )
+
+
+async def test_apply_surfaces_item_version_conflict(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    monkeypatch.setattr(cast(Any, backend.preview), "async_supersede_device", AsyncMock())
+    apply_saved = AsyncMock(
+        side_effect=EffectVersionConflictError(5),
+    )
+    monkeypatch.setattr(cast(Any, EffectStudioApplication), "async_apply_saved_effect", apply_saved)
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=MagicMock(),
+    )
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == entry.entry_id else None,
+    )
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_APPLY,
+            "config_entry_id": entry.entry_id,
+            "item_id": "00000000-0000-0000-0000-000000000001",
+            "expected_version": 4,
+            "updated_at": "2026-08-27T00:00:00Z",
+        }
+    )
+    response = await client.receive_json()
+
+    assert response["success"] is False
+    assert response["error"]["code"] == "conflict"
 
 
 async def test_admin_current_only_library_lifecycle_and_stale_token(

@@ -51,6 +51,7 @@ async def test_setup_entry(hass: HomeAssistant):
         effect_categories=frozenset(
             {"scenes", "effects", "multi_layered", "reactive", "advanced"},
         ),
+        prefix_effect_names=False,
     )
     build_url.assert_called_once_with(entry.entry_id)
     assert entry.runtime_data is cls.return_value

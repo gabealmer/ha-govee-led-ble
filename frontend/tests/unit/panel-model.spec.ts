@@ -1783,9 +1783,202 @@ test("saved item selection applies identity only while Live is enabled", async (
   model.liveApplyEnabled = true;
   await expect(controller.selectItem(saved.id)).resolves.toBe(true);
   expect(applySavedEffect).toHaveBeenCalledWith(
-    "light.entry-a",
-    "Saved paint",
+    "entry-a",
+    saved,
   );
+});
+
+test("enabling Live on a clean saved item applies its stable identity", async () => {
+  const selected = device("entry-a", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.liveApplyEnabled = false;
+  const { controller, editorController } = panelControllerHarness(model);
+  const saved = item(painted());
+  editorController.applyLibraryItem(saved);
+  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+  controller.api = {
+    applySavedEffect,
+    device: vi.fn().mockResolvedValue(selected),
+  } as unknown as EffectStudioApi;
+
+  await controller.toggleLive();
+
+  expect(model.liveApplyEnabled).toBe(true);
+  expect(applySavedEffect).toHaveBeenCalledWith(
+    selected.config_entry_id,
+    saved,
+  );
+});
+
+test("enabling Live while browsing Scenes does not apply a retained hidden editor item", async () => {
+  const selected = device("entry-a", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.liveApplyEnabled = false;
+  const { controller, editorController, preview } = panelControllerHarness(model);
+  const saved = item(painted());
+  editorController.applyLibraryItem(saved);
+  model.section = "scenes";
+  const toggle = vi.spyOn(preview, "toggle");
+  const applySavedEffect = vi.fn();
+  controller.api = {
+    applySavedEffect,
+  } as unknown as EffectStudioApi;
+
+  await controller.toggleLive();
+
+  expect(toggle).toHaveBeenCalledOnce();
+  expect(applySavedEffect).not.toHaveBeenCalled();
+});
+
+test("new saves promote stable identity only while Live remains enabled", async () => {
+  const selected = device("entry-a", "H617A");
+  selected.custom_effects.advanced = "supported";
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.liveApplyEnabled = true;
+  model.editorSource = {
+    kind: "new",
+    owner: { section: "custom", category: "advanced" },
+  };
+  model.name = "BugToFix";
+  model.content = blankAdvancedContent();
+  const { controller } = panelControllerHarness(model);
+  const created: LibraryItem = {
+    ...item(painted()),
+    id: "bug-to-fix",
+    version: 1,
+    name: model.name,
+    content: blankAdvancedContent(),
+  };
+  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+  controller.api = {
+    createItem: vi.fn().mockResolvedValue(created),
+    applySavedEffect,
+    device: vi.fn().mockResolvedValue(selected),
+  } as unknown as EffectStudioApi;
+
+  await expect(controller.save()).resolves.toBe(true);
+
+  expect(applySavedEffect).toHaveBeenCalledWith(
+    selected.config_entry_id,
+    created,
+  );
+
+  model.liveApplyEnabled = false;
+  model.editorSource = {
+    kind: "new",
+    owner: { section: "custom", category: "advanced" },
+  };
+  model.currentItem = undefined;
+  model.name = "StoredOnly";
+  model.content = blankAdvancedContent();
+  const stored = { ...created, id: "stored-only", name: model.name };
+  controller.api.createItem = vi.fn().mockResolvedValue(stored);
+  applySavedEffect.mockClear();
+
+  await expect(controller.save()).resolves.toBe(true);
+
+  expect(applySavedEffect).not.toHaveBeenCalled();
+});
+
+test("disabling Live while a new save is pending suppresses saved identity application", async () => {
+  const selected = device("entry-a", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.liveApplyEnabled = true;
+  model.editorSource = {
+    kind: "new",
+    owner: { section: "custom", category: "advanced" },
+  };
+  model.name = "Delayed";
+  model.content = blankAdvancedContent();
+  const { controller } = panelControllerHarness(model);
+  let resolveCreate!: (item: LibraryItem) => void;
+  const create = new Promise<LibraryItem>((resolve) => {
+    resolveCreate = resolve;
+  });
+  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+  controller.api = {
+    createItem: vi.fn().mockReturnValue(create),
+    applySavedEffect,
+    device: vi.fn().mockResolvedValue(selected),
+  } as unknown as EffectStudioApi;
+
+  const save = controller.save();
+  model.liveApplyEnabled = false;
+  resolveCreate({
+    ...item(painted()),
+    id: "delayed",
+    version: 1,
+    name: model.name,
+    content: blankAdvancedContent(),
+  });
+
+  await expect(save).resolves.toBe(true);
+  expect(applySavedEffect).not.toHaveBeenCalled();
+});
+
+test("scene saves follow strict Live semantics", async () => {
+  const selected = device("entry-a", "H617A");
+  const model = new PanelModel(() => undefined);
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  const { controller } = panelControllerHarness(model);
+  const saved = item(painted());
+  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+  controller.api = {
+    applySavedEffect,
+    device: vi.fn().mockResolvedValue(selected),
+  } as unknown as EffectStudioApi;
+
+  model.liveApplyEnabled = false;
+  await controller.sceneItemSaved(
+    saved,
+    selected.config_entry_id,
+    true,
+    model.editorTransitionEpoch,
+  );
+  expect(applySavedEffect).not.toHaveBeenCalled();
+
+  model.liveApplyEnabled = true;
+  model.section = "scenes";
+  await controller.sceneItemSaved(
+    saved,
+    selected.config_entry_id,
+    true,
+    model.editorTransitionEpoch,
+  );
+  expect(applySavedEffect).toHaveBeenCalledWith(
+    selected.config_entry_id,
+    saved,
+  );
+
+  applySavedEffect.mockClear();
+  await controller.sceneItemSaved(
+    saved,
+    "entry-b",
+    false,
+    model.editorTransitionEpoch,
+  );
+  expect(applySavedEffect).not.toHaveBeenCalled();
+
+  await controller.sceneItemSaved(
+    saved,
+    selected.config_entry_id,
+    true,
+    model.editorTransitionEpoch - 1,
+  );
+  expect(applySavedEffect).not.toHaveBeenCalled();
 });
 
 test("manual Save adopts the saved content as the next Reset baseline", async () => {
@@ -2059,7 +2252,7 @@ test("Live-on No and reload present an authored Sena workspace as structural Flo
   expect(reloadedModel.resetBaseline).toMatchObject({ speed: 50 });
 });
 
-test("Save establishes saved identity before completing a pending transition", async () => {
+test("Live-off pending Save persists without applying before navigation", async () => {
   const selected = device("entry-a", "H617A");
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
@@ -2095,7 +2288,8 @@ test("Save establishes saved identity before completing a pending transition", a
 
   expect(model.section).toBe("scenes");
   expect(model.currentItem).toMatchObject({ id: saved.id, version: 3 });
-  expect(calls.slice(0, 2)).toEqual(["save", "apply"]);
+  expect(calls).not.toContain("apply");
+  expect(calls[0]).toBe("save");
   expect(model.pendingTransitionDialog).toBeUndefined();
 });
 
@@ -2145,10 +2339,7 @@ test("Live-off catalogue edits use Save As while Live catalogue work is recovera
   await controller.savePendingTransition();
 
   expect(createItem).toHaveBeenCalled();
-  expect(applySavedEffect).toHaveBeenCalledWith(
-    selected.light_entity_id,
-    created.name,
-  );
+  expect(applySavedEffect).not.toHaveBeenCalled();
   expect(model.currentItem?.id).toBe(created.id);
   expect(model.section).toBe("scenes");
 });
@@ -2197,8 +2388,11 @@ test("automatic save flushes before navigation and exposes failures to the trans
   expect(model.pendingTransitionDialog).toBeUndefined();
   expect(model.currentItem).toMatchObject({ id: saved.id, version: 3 });
   expect(applySavedEffect).toHaveBeenCalledWith(
-    selected.light_entity_id,
-    saved.name,
+    selected.config_entry_id,
+    expect.objectContaining({
+      id: saved.id,
+      version: 3,
+    }),
   );
   expect(loadDevice).toHaveBeenCalledWith(selected.config_entry_id);
 

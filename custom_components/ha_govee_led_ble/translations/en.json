@@ -137,7 +137,11 @@
           "effects": "Effects",
           "multi_layered": "Multi-Layered",
           "reactive": "Reactive",
-          "advanced": "Advanced"
+          "advanced": "Advanced",
+          "prefix_effect_names": "Include category labels when multiple effect categories are enabled"
+        },
+        "data_description": {
+          "prefix_effect_names": "Adds category labels such as Scene or Advanced when more than one effect category is enabled. Effects with otherwise identical names remain distinguished with bracketed category labels."
         }
       }
     }

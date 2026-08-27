@@ -27,6 +27,7 @@ import type {
   LibrarySnapshot,
 } from "./types";
 import type { SceneEditSelection } from "./scene-browser-workflow";
+import type { ScenePreviewRequest } from "./scene-browser";
 import { errorCode, errorMessage } from "./ui-utils";
 import { isCompatibleEditorInfo } from "./validation";
 
@@ -658,8 +659,8 @@ export class PanelController {
     this.modal.updateTransition({ busy: true, error: undefined });
     const saved =
       dialog.primaryLabel === "Save"
-        ? await this.save(true)
-        : await this.saveAs(name, true);
+        ? await this.save()
+        : await this.saveAs(name);
     if (!saved) {
       this.modal.updateTransition({
         busy: false,
@@ -759,8 +760,41 @@ export class PanelController {
     }
   }
 
-  public sceneItemSaved(item: LibraryItem): void {
+  public async sceneItemSaved(
+    item: LibraryItem,
+    configEntryId: string,
+    selectionIsCurrent: boolean,
+    panelTransitionEpoch: number,
+  ): Promise<void> {
     this.model.patch({ library: { items: upsertSummary(this.model.library.items, item) } });
+    if (
+      selectionIsCurrent &&
+      this.model.liveApplyEnabled &&
+      this.model.selectedDeviceId === configEntryId &&
+      this.model.section === "scenes" &&
+      this.model.editorTransitionEpoch === panelTransitionEpoch
+    ) {
+      await this.applySavedIdentity(item, this.model.editorTransitionEpoch);
+    }
+  }
+
+  public async toggleLive(scene?: ScenePreviewRequest): Promise<void> {
+    if (this.model.liveApplyEnabled) {
+      this.preview.toggle(scene);
+      return;
+    }
+    const currentItem = this.model.currentItem;
+    if (
+      currentItem &&
+      this.model.editorSource.kind === "saved" &&
+      this.model.editorOwnedByActiveView &&
+      !this.model.dirty
+    ) {
+      this.model.patch({ liveApplyEnabled: true });
+      await this.applySavedIdentity(currentItem, this.model.editorTransitionEpoch);
+      return;
+    }
+    this.preview.toggle(scene);
   }
 
   public async selectItem(
@@ -834,21 +868,7 @@ export class PanelController {
     }
   }
 
-  public async save(forceSavedIdentity = false): Promise<boolean> {
-    if (
-      forceSavedIdentity &&
-      this.model.currentItem &&
-      !this.model.canSaveCurrentDraft
-    ) {
-      const applied = await this.applySavedIdentity(
-        this.model.currentItem,
-        this.model.editorTransitionEpoch,
-      );
-      if (applied) {
-        this.model.patch({ autoSaveFailed: false, notice: undefined });
-      }
-      return applied;
-    }
+  public async save(): Promise<boolean> {
     if (
       !this.api || !this.model.isAdmin || !this.model.canSaveCurrentDraft || this.model.saving ||
       this.model.deletingCurrentItem || !isEditableEffectContent(this.model.content)
@@ -906,7 +926,7 @@ export class PanelController {
         });
         if (savingSceneEditor && savedContent.kind === "scene_layered") this.remember();
         if (
-          (this.model.liveApplyEnabled || forceSavedIdentity) &&
+          this.model.liveApplyEnabled &&
           !(await this.applySavedIdentity(result, transitionEpoch))
         ) {
           return false;
@@ -943,7 +963,7 @@ export class PanelController {
     }
   }
 
-  public async saveAs(name: string, forceSavedIdentity = false): Promise<boolean> {
+  public async saveAs(name: string): Promise<boolean> {
     if (
       !this.api ||
       !this.model.isAdmin ||
@@ -956,6 +976,8 @@ export class PanelController {
     const content = cloneEditableEffect(this.model.content);
     const transitionEpoch = this.model.editorTransitionEpoch;
     const sourceItemId = this.model.currentItem?.id;
+    const sourceDocument = this.currentEditorDocument();
+    const selectedDeviceId = this.model.selectedDeviceId;
     this.cancelPendingAutoSave();
     this.model.patch({ saving: true, notice: undefined });
     try {
@@ -967,7 +989,9 @@ export class PanelController {
       });
       if (
         transitionEpoch === this.model.editorTransitionEpoch &&
-        this.model.currentItem?.id === sourceItemId
+        this.model.currentItem?.id === sourceItemId &&
+        this.model.selectedDeviceId === selectedDeviceId &&
+        this.currentEditorDocument() === sourceDocument
       ) {
         this.editor.applyLibraryItem(result);
         this.model.patch({
@@ -983,7 +1007,7 @@ export class PanelController {
         });
         this.remember();
         if (
-          (this.model.liveApplyEnabled || forceSavedIdentity) &&
+          this.model.liveApplyEnabled &&
           !(await this.applySavedIdentity(result, transitionEpoch))
         ) {
           return false;
@@ -1181,12 +1205,22 @@ export class PanelController {
     transitionEpoch: number,
   ): Promise<boolean> {
     const device = this.model.selectedDevice;
-    const lightEntityId = device?.light_entity_id;
-    if (!this.api || !device || !lightEntityId) {
+    if (!this.api || !device) {
+      return false;
+    }
+    const configEntryId = device.config_entry_id;
+    if (!this.model.liveApplyEnabled) {
       return false;
     }
     try {
-      await this.api.applySavedEffect(lightEntityId, item.name);
+      await this.api.applySavedEffect(configEntryId, item);
+      if (
+        !this.model.liveApplyEnabled ||
+        this.model.selectedDeviceId !== configEntryId ||
+        transitionEpoch !== this.model.editorTransitionEpoch
+      ) {
+        return false;
+      }
       await this.refreshSelectedDevice(transitionEpoch);
       return transitionEpoch === this.model.editorTransitionEpoch;
     } catch (error) {

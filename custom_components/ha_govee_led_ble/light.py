@@ -29,6 +29,9 @@ from homeassistant.util import dt as dt_util
 from .const import (
     DOMAIN,
     EFFECT_CATEGORIES,
+    EFFECT_CATEGORY_REACTIVE,
+    EFFECT_CATEGORY_SCENES,
+    EFFECT_CATEGORY_VIDEO,
     EFFECT_FAMILY_MUSIC,
     EFFECT_FAMILY_SCENES,
     EFFECT_FAMILY_VIDEO,
@@ -43,11 +46,10 @@ from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
 from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
 from .effect_runtime import observable_signature_for_coordinator
 from .effect_selector import (
-    MUSIC_EFFECTS,
-    VIDEO_EFFECTS,
-    compatible_saved_effects,
+    EffectSelectorEntry,
+    effect_selector_entries,
     normalise_effect_name,
-    saved_effect_by_name,
+    resolve_effect_selector,
 )
 from .effect_setup import get_effect_backend
 from .effect_storage import (
@@ -62,7 +64,7 @@ from .light_services import (
     _GoveeLightServicesMixin,
 )
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
-from .scenes import MODEL_SCENE_LABELS, MODEL_SCENES
+from .scenes import MODEL_SCENES
 
 # fmt: on
 
@@ -197,19 +199,31 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def effect(self) -> str | None:
+        active_workspace = self._matching_active_workspace()
+        if active_workspace is not None:
+            return "Custom"
+        entries = self._selector_entries(active_custom=False)
         if active_saved := self._active_saved_effect():
-            return active_saved.name
-        families = self.coordinator.effect_families
-        if EFFECT_FAMILY_VIDEO in families:
-            for label, mode in VIDEO_EFFECTS.items():
-                if mode == self.coordinator.video_mode:
-                    return label
-        if EFFECT_FAMILY_MUSIC in families:
-            for label, slug in MUSIC_EFFECTS.items():
-                if slug == self.coordinator.music_mode:
-                    return label
-        if EFFECT_FAMILY_SCENES in families and self.coordinator.effect is not None:
-            return MODEL_SCENE_LABELS[self.coordinator.model].get(self.coordinator.effect)
+            return next(
+                (
+                    entry.display_label
+                    for entry in entries
+                    if entry.source == "saved" and entry.item is not None and entry.item.id == active_saved.id
+                ),
+                EFFECT_OFF,
+            )
+        active = next(
+            (
+                entry
+                for entry in entries
+                if (entry.source == "video" and entry.value == self.coordinator.video_mode)
+                or (entry.source == "music" and entry.value == self.coordinator.music_mode)
+                or (entry.source == "scene" and entry.value == self.coordinator.effect)
+            ),
+            None,
+        )
+        if active is not None:
+            return active.display_label
         return EFFECT_OFF if self.effect_list else None
 
     @property
@@ -218,23 +232,15 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def effect_list(self) -> list[str]:
-        p = self.coordinator.profile
-        families = self.coordinator.effect_families
-        scenes = (
-            sorted(MODEL_SCENE_LABELS[self.coordinator.model].values(), key=str.casefold)
-            if EFFECT_FAMILY_SCENES in families
-            else []
-        )
-        music = (
-            [label for label, slug in MUSIC_EFFECTS.items() if slug in p.music_modes]
-            if EFFECT_FAMILY_MUSIC in families
-            else []
-        )
-        video = list(VIDEO_EFFECTS) if EFFECT_FAMILY_VIDEO in families else []
-        saved = [item.name for item in self._visible_saved_effects()]
-        if not self._effect_categories:
+        active_custom = self._matching_active_workspace() is not None
+        if not self._effect_categories and not active_custom:
             return []
-        return [*scenes, EFFECT_OFF, *music, *video, *saved]
+        custom = ["Custom"] if active_custom else []
+        return [
+            EFFECT_OFF,
+            *custom,
+            *(entry.display_label for entry in self._selector_entries(active_custom=active_custom)),
+        ]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -272,13 +278,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if hint is None or hint.source_kind != "saved_effect" or hint.item_id is None:
             return None
         observable_signature = observable_signature_for_coordinator(self.coordinator)
-        active_workspaces = getattr(self._effect_backend, "active_workspaces", None)
-        workspace = active_workspaces.get(self._config_entry_id) if active_workspaces is not None else None
-        if (
-            workspace is not None
-            and workspace.model == self.coordinator.model
-            and workspace.observable_signature == observable_signature
-        ):
+        if self._matching_active_workspace() is not None:
             return None
         if hint.observable_signature != observable_signature:
             return None
@@ -292,15 +292,31 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         return item if item is not None and self._saved_effect_visible(item) else None
 
-    def _visible_saved_effects(self) -> tuple[LibraryItem, ...]:
-        return tuple(
-            item
-            for item in compatible_saved_effects(
-                self._library_snapshot.items,
-                self.coordinator.model,
-            )
-            if self._saved_effect_visible(item)
+    def _selector_entries(self, *, active_custom: bool | None = None) -> tuple[EffectSelectorEntry, ...]:
+        if active_custom is None:
+            active_custom = self._matching_active_workspace() is not None
+        return effect_selector_entries(
+            self.coordinator.model,
+            self._effect_categories,
+            self._library_snapshot.items,
+            prefix_effect_names=getattr(self.coordinator, "prefix_effect_names", False) is True,
+            active_custom=active_custom,
+            native_categories=self._native_selector_categories,
         )
+
+    def _matching_active_workspace(self) -> Any | None:
+        if self._effect_backend is None or self._config_entry_id is None:
+            return None
+        active_workspaces = getattr(self._effect_backend, "active_workspaces", None)
+        workspace = active_workspaces.get(self._config_entry_id) if active_workspaces is not None else None
+        observable_signature = observable_signature_for_coordinator(self.coordinator)
+        if (
+            workspace is None
+            or workspace.model != self.coordinator.model
+            or workspace.observable_signature != observable_signature
+        ):
+            return None
+        return workspace
 
     def _saved_effect_visible(self, item: LibraryItem) -> bool:
         content_kind = effect_content_to_dict(item.content).get("kind")
@@ -311,6 +327,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     def _effect_categories(self) -> frozenset[str]:
         categories = getattr(self.coordinator, "effect_categories", None)
         return categories if isinstance(categories, frozenset) else frozenset(EFFECT_CATEGORIES)
+
+    @property
+    def _native_selector_categories(self) -> frozenset[str]:
+        categories = set(self._effect_categories)
+        families = getattr(self.coordinator, "effect_families", None)
+        if isinstance(families, frozenset):
+            if EFFECT_FAMILY_SCENES not in families:
+                categories.discard(EFFECT_CATEGORY_SCENES)
+            if EFFECT_FAMILY_MUSIC not in families:
+                categories.discard(EFFECT_CATEGORY_REACTIVE)
+            if EFFECT_FAMILY_VIDEO not in families:
+                categories.discard(EFFECT_CATEGORY_VIDEO)
+        return frozenset(categories)
 
     async def _async_restore_static_color(self) -> None:
         coordinator = self.coordinator
@@ -436,6 +465,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 reason="home_assistant_control",
             )
 
+    def _clear_active_workspace(self) -> None:
+        active_workspaces = (
+            getattr(self._effect_backend, "active_workspaces", None) if self._effect_backend is not None else None
+        )
+        if active_workspaces is not None and self._config_entry_id is not None:
+            active_workspaces.clear(self._config_entry_id)
+
     def _require_support(self, service: str, *, supported: bool) -> None:
         if supported:
             return
@@ -474,10 +510,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
             coordinator._enter_static_mode()
             return
-        scene = (
-            MODEL_SCENES[coordinator.model].get(key) if EFFECT_FAMILY_SCENES in coordinator.effect_families else None
-        )
-        if scene is not None:
+        if key == normalise_effect_name("Custom") and self._matching_active_workspace() is not None:
+            return
+        try:
+            selected = resolve_effect_selector(self._selector_entries(), effect_name)
+        except EffectValidationError as exc:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_effect",
+                translation_placeholders={"effect": effect_name},
+            ) from exc
+        if selected is not None and selected.source == "scene":
+            scene = MODEL_SCENES[coordinator.model][selected.value]
             scene_default = (
                 self._effect_backend.scene_defaults.get(
                     self._config_entry_id,
@@ -488,7 +532,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 else None
             )
             await coordinator._async_apply_native_scene_locked(
-                key,
+                selected.value,
                 speed_index=scene_default.speed_index if scene_default is not None else None,
                 canonical_body=scene_default.canonical_body if scene_default is not None else None,
                 writer=None,
@@ -496,31 +540,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 intent=ControlIntent.USER,
             )
             return
-        if EFFECT_FAMILY_VIDEO in coordinator.effect_families:
-            mode = next((m for label, m in VIDEO_EFFECTS.items() if normalise_effect_name(label) == key), None)
-            if mode is not None:
-                await self._async_set_video_mode(
-                    mode=mode,
-                    saturation=coordinator.video_saturation,
-                    full_screen=coordinator.video_full_screen,
-                    sound_effects=(
-                        coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects
-                    ),
-                    sound_effects_softness=coordinator.video_sound_effects_softness,
-                )
-                return
-        if EFFECT_FAMILY_MUSIC in coordinator.effect_families:
-            slug = next(
-                (
-                    candidate
-                    for label, candidate in MUSIC_EFFECTS.items()
-                    if normalise_effect_name(label) == key and candidate in coordinator.profile.music_modes
-                ),
-                None,
+        if selected is not None and selected.source == "video":
+            await self._async_set_video_mode(
+                mode=selected.value,
+                saturation=coordinator.video_saturation,
+                full_screen=coordinator.video_full_screen,
+                sound_effects=(coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects),
+                sound_effects_softness=coordinator.video_sound_effects_softness,
             )
-            if slug is not None:
-                await coordinator.async_select_music_slug(slug)
-                return
+            return
+        if selected is not None and selected.source == "music":
+            await coordinator.async_select_music_slug(selected.value)
+            return
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="unknown_effect",
@@ -528,6 +559,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        active_workspace = self._matching_active_workspace()
+        custom_requested = (
+            ATTR_EFFECT in kwargs
+            and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == normalise_effect_name("Custom")
+            and active_workspace is not None
+        )
+        if custom_requested:
+            kwargs = {key: value for key, value in kwargs.items() if key != ATTR_EFFECT}
+            if not kwargs:
+                return
         await self._async_supersede_preview()
         if ATTR_EFFECT in kwargs and (item := self._saved_effect(str(kwargs[ATTR_EFFECT]))) is not None:
             remaining = {key: value for key, value in kwargs.items() if key != ATTR_EFFECT}
@@ -536,11 +577,17 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 turn_on_kwargs=remaining,
             )
             return
+        clear_workspace = active_workspace is not None and (
+            ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs or ATTR_EFFECT in kwargs
+        )
         async with async_control_intent(
             self.coordinator,
             ControlIntent.USER,
         ):
-            await self._async_turn_on(**kwargs)
+            await self._async_turn_on(
+                clear_workspace_on_success=clear_workspace,
+                **kwargs,
+            )
 
     async def _async_apply_saved_item(
         self,
@@ -672,12 +719,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     def _saved_effect(self, effect_name: str) -> LibraryItem | None:
         try:
-            item = saved_effect_by_name(
-                self._library_snapshot.items,
-                self.coordinator.model,
-                effect_name,
-            )
-            return item if item is not None and self._saved_effect_visible(item) else None
+            selected = resolve_effect_selector(self._selector_entries(), effect_name)
+            return selected.item if selected is not None and selected.source == "saved" else None
         except EffectValidationError as exc:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
@@ -685,7 +728,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 translation_placeholders={"effect": effect_name},
             ) from exc
 
-    async def _async_turn_on(self, **kwargs: Any) -> None:
+    async def _async_turn_on(
+        self,
+        *,
+        clear_workspace_on_success: bool = False,
+        **kwargs: Any,
+    ) -> None:
         power_on = partial(
             self.coordinator.send_command,
             build_power(True, self.coordinator.model),
@@ -727,17 +775,28 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 self.coordinator._enter_static_mode()
             if ATTR_EFFECT in kwargs:
                 await self._apply_effect(str(kwargs[ATTR_EFFECT]))
+        if clear_workspace_on_success:
+            self._clear_active_workspace()
         self._notify_state_changed()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        clear_workspace = self._matching_active_workspace() is not None
         await self._async_supersede_preview()
         async with async_control_intent(
             self.coordinator,
             ControlIntent.USER,
         ):
-            await self._async_turn_off(**kwargs)
+            await self._async_turn_off(
+                clear_workspace_on_success=clear_workspace,
+                **kwargs,
+            )
 
-    async def _async_turn_off(self, **kwargs: Any) -> None:
+    async def _async_turn_off(
+        self,
+        *,
+        clear_workspace_on_success: bool = False,
+        **kwargs: Any,
+    ) -> None:
         power_off = partial(
             self.coordinator.send_command,
             build_power(False, self.coordinator.model),
@@ -746,4 +805,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             await power_off()
             self.coordinator.is_on = False
             await self._refresh_with_retry(expected_on=False, retry_command=power_off)
+        if clear_workspace_on_success:
+            self._clear_active_workspace()
         self._notify_state_changed()

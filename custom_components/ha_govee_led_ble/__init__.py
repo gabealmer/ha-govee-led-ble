@@ -17,11 +17,13 @@ from .const import (
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_MODEL,
+    CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
     MODEL_PROFILES,
     default_effect_categories,
     effect_categories_from_options,
     effect_families_from_options,
+    prefix_effect_names_from_options,
     resolve_model,
 )
 from .coordinator import GoveeBLECoordinator, clear_availability_log_state
@@ -111,7 +113,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -
         data[CONF_MODEL] = model
         options.pop(CONF_EFFECT_FAMILIES, None)
         options.setdefault(CONF_EFFECT_CATEGORIES, list(default_effect_categories(model)))
-    hass.config_entries.async_update_entry(entry, data=data, options=options, version=6)
+        options.setdefault(CONF_PREFIX_EFFECT_NAMES, False)
+    hass.config_entries.async_update_entry(entry, data=data, options=options, version=7)
     return True
 
 
@@ -155,6 +158,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         configuration_url=editor_url(entry.entry_id),
         effect_families=effect_families_from_options(model, entry.options),
         effect_categories=effect_categories_from_options(model, entry.options),
+        prefix_effect_names=prefix_effect_names_from_options(entry.options),
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

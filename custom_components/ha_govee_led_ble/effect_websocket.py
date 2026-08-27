@@ -1037,6 +1037,7 @@ def ws_user_state_record_colour(
         vol.Required("type"): WS_APPLY,
         vol.Required("config_entry_id"): IDENTIFIER,
         vol.Required("item_id"): UUID_TEXT,
+        vol.Required("expected_version"): POSITIVE_REVISION,
         vol.Required("updated_at"): TIMESTAMP,
         vol.Optional("operation_id"): UUID_TEXT,
     }
@@ -1071,9 +1072,13 @@ async def ws_apply(
             config_entry_id=entry.entry_id,
             updated_at=msg["updated_at"],
             operation_id=operation_id,
+            expected_version=msg["expected_version"],
         )
     except EffectNotFoundError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
+        return
+    except EffectVersionConflictError as exc:
+        connection.send_error(msg["id"], "conflict", str(exc))
         return
     except ValueError as exc:
         connection.send_error(msg["id"], "unsupported_model", str(exc))

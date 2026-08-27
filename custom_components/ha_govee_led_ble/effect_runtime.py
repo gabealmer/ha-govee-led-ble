@@ -53,6 +53,7 @@ from .effect_protocol_decoder import (
     UnsupportedA3EffectError,
     decode_a3_effect_frames,
 )
+from .generated_protocol_adapter import build_power
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .native_profile_controls import (
     apply_active_video_mode,
@@ -214,8 +215,10 @@ class EffectDeploymentEngine:
             operation_id=operation_id,
             source_kind="saved_effect",
         )
-        if self._active_workspaces is not None and result.phase is DeploymentPhase.CONFIRMED:
-            self._active_workspaces.clear(config_entry_id)
+        if result.phase is DeploymentPhase.CONFIRMED:
+            if self._active_workspaces is not None:
+                self._active_workspaces.clear(config_entry_id)
+            self._publish_coordinator_state(coordinator)
         return result
 
     async def async_apply_snapshot(
@@ -237,25 +240,27 @@ class EffectDeploymentEngine:
             operation_id=operation_id,
             source_kind="snapshot",
         )
-        if self._active_workspaces is not None and result.phase is DeploymentPhase.CONFIRMED:
-            signature = observable_signature_for_coordinator(coordinator)
-            if signature is not None:
-                self._active_workspaces.set(
-                    ActiveEffectWorkspace(
-                        config_entry_id=config_entry_id,
-                        model=coordinator.model,
-                        selector_label=item.name,
-                        content=_active_workspace_content(
-                            item.content,
-                            compiled,
-                        ),
-                        origin=item.origin,
-                        observable_signature=signature,
-                        updated_at=updated_at,
-                        generation=self._active_workspaces.next_generation(),
-                        confidence=result.verification_confidence,
+        if result.phase is DeploymentPhase.CONFIRMED:
+            if self._active_workspaces is not None:
+                signature = observable_signature_for_coordinator(coordinator)
+                if signature is not None:
+                    self._active_workspaces.set(
+                        ActiveEffectWorkspace(
+                            config_entry_id=config_entry_id,
+                            model=coordinator.model,
+                            selector_label=item.name,
+                            content=_active_workspace_content(
+                                item.content,
+                                compiled,
+                            ),
+                            origin=item.origin,
+                            observable_signature=signature,
+                            updated_at=updated_at,
+                            generation=self._active_workspaces.next_generation(),
+                            confidence=result.verification_confidence,
+                        )
                     )
-                )
+            self._publish_coordinator_state(coordinator)
         return result
 
     async def async_reconcile(
@@ -387,6 +392,9 @@ class EffectDeploymentEngine:
                     if isinstance(compiled, CompiledEffect):
                         if compiled.activation_packet is None:
                             raise RuntimeError("compiled activation verification has no activation packet")
+                        if not coordinator.is_on:
+                            await coordinator.send_command(build_power(True, coordinator.model))
+                            coordinator.is_on = True
                         upload_count = len(compiled.upload_packets)
 
                         async def attempt_started(attempt: int) -> None:
@@ -458,7 +466,6 @@ class EffectDeploymentEngine:
                         refreshed=True,
                         matched_record=completed,
                     )
-                    self._publish_coordinator_state(coordinator)
                     return completed
                 except asyncio.CancelledError:
                     current = self._deployments.get_optional(record.operation_id) or current
@@ -1089,6 +1096,8 @@ def _activation_matches(
     coordinator: GoveeBLECoordinator,
     record: DeploymentRecord,
 ) -> bool:
+    if not coordinator.is_on:
+        return False
     if record.target_mode == ActivationMode.SCENE.value:
         return record.target_effect is not None and coordinator.effect == record.target_effect
     return coordinator.diy_code == record.diy_code or coordinator.unknown_scene_code == record.diy_code

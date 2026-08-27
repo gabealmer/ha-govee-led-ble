@@ -11,7 +11,12 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.config_flow import _extract_model
-from custom_components.ha_govee_led_ble.const import CONF_EFFECT_CATEGORIES, CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.const import (
+    CONF_EFFECT_CATEGORIES,
+    CONF_MODEL,
+    CONF_PREFIX_EFFECT_NAMES,
+    DOMAIN,
+)
 
 M = "custom_components.ha_govee_led_ble.config_flow"
 SVC = BluetoothServiceInfo("ihoment_H617A_ABCD", "AA:BB:CC:DD:EE:FF", -60, {}, {}, [], "local")
@@ -239,7 +244,7 @@ def test_extract_model(name, expected):
     ("model", "expected"),
     [
         ("H617A", ["scenes", "effects", "multi_layered", "reactive", "advanced"]),
-        ("H6199", ["scenes", "video", "effects", "reactive", "advanced"]),
+        ("H6199", ["video", "scenes", "effects", "reactive", "advanced"]),
     ],
 )
 async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssistant, model: str, expected: list[str]):
@@ -249,8 +254,8 @@ async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssist
     assert result["type"] is FlowResultType.FORM
     schema = result["data_schema"]
     assert schema is not None
-    assert [marker.schema for marker in schema.schema] == expected
-    assert schema({}) == dict.fromkeys(expected, True)
+    assert [marker.schema for marker in schema.schema] == [*expected, CONF_PREFIX_EFFECT_NAMES]
+    assert schema({}) == {**dict.fromkeys(expected, True), CONF_PREFIX_EFFECT_NAMES: False}
 
 
 async def test_options_flow_uses_stored_category_list_for_checkbox_defaults(hass: HomeAssistant):
@@ -272,6 +277,7 @@ async def test_options_flow_uses_stored_category_list_for_checkbox_defaults(hass
         "effects": False,
         "reactive": True,
         "advanced": False,
+        CONF_PREFIX_EFFECT_NAMES: False,
     }
 
 
@@ -298,7 +304,36 @@ async def test_options_flow_saves_ordered_studio_categories(hass: HomeAssistant)
                 "effects": False,
                 "reactive": True,
                 "advanced": False,
+                CONF_PREFIX_EFFECT_NAMES: False,
             },
         )
     assert saved["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {CONF_EFFECT_CATEGORIES: ["scenes", "reactive"]}
+    assert entry.options == {
+        CONF_EFFECT_CATEGORIES: ["scenes", "reactive"],
+        CONF_PREFIX_EFFECT_NAMES: False,
+    }
+
+
+async def test_options_flow_persists_prefix_preference(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6199"}, unique_id="AA:BB:CC:DD:EE:FF")
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    with patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock):
+        saved = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                "video": True,
+                "scenes": True,
+                "effects": False,
+                "reactive": False,
+                "advanced": False,
+                CONF_PREFIX_EFFECT_NAMES: True,
+            },
+        )
+
+    assert saved["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {
+        CONF_EFFECT_CATEGORIES: ["video", "scenes"],
+        CONF_PREFIX_EFFECT_NAMES: True,
+    }

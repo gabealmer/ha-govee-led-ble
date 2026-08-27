@@ -112,8 +112,8 @@ test("primary navigation flattens custom categories", () => {
     { category: "multi-layer" as const, label: "Multi-Layered" },
   ];
   expect(studioNavigationItems(true, true, categories)).toEqual([
-    { section: "scenes", label: "Scenes" },
     { section: "video", label: "Video" },
+    { section: "scenes", label: "Scenes" },
     { section: "custom", category: "single-layer", label: "Effects" },
     {
       section: "custom",

@@ -19,7 +19,11 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     EffectDeploymentRepository,
     ObservationConfidence,
 )
-from custom_components.ha_govee_led_ble.effect_domain import EffectValidationError, LibraryItem
+from custom_components.ha_govee_led_ble.effect_domain import (
+    EffectValidationError,
+    LibraryItem,
+    effect_content_to_dict,
+)
 from custom_components.ha_govee_led_ble.effect_identity import (
     ActiveEffectHint,
     EffectDeviceCache,
@@ -130,12 +134,44 @@ async def test_library_names_are_unique_and_do_not_shadow_native_effects() -> No
     with pytest.raises(EffectValidationError, match="reserved"):
         await application.async_create_library_item(name="Candy", content=CONTENT)
     with pytest.raises(EffectValidationError, match="reserved"):
+        await application.async_create_library_item(name="Custom", content=CONTENT)
+    with pytest.raises(EffectValidationError, match="reserved"):
+        await application.async_create_library_item(name="Energetic [Reactive]", content=CONTENT)
+    with pytest.raises(EffectValidationError, match="reserved"):
+        await application.async_create_library_item(name="Scene: Candy", content=CONTENT)
+    with pytest.raises(EffectValidationError, match="reserved"):
         await application.async_update_library_item(
             item_id=str(created.item.id),
             name="Video: Movie",
             content=CONTENT,
             expected_version=created.item.version,
             expected_updated_at=created.item.updated_at,
+        )
+
+
+async def test_grandfathered_reserved_name_can_keep_its_name_when_edited() -> None:
+    application = await _application()
+    legacy = application.new_authored_item(name="Custom", content=CONTENT)
+    await application.library.async_create(legacy)
+
+    updated = await application.async_update_library_item(
+        item_id=str(legacy.id),
+        name="Custom",
+        content={**CONTENT, "speed": 60},
+        expected_version=legacy.version,
+        expected_updated_at=legacy.updated_at,
+    )
+
+    assert updated.item.name == "Custom"
+    assert effect_content_to_dict(updated.item.content)["speed"] == 60
+
+    with pytest.raises(EffectValidationError, match="reserved"):
+        await application.async_update_library_item(
+            item_id=str(legacy.id),
+            name="Scene: Candy",
+            content=CONTENT,
+            expected_version=updated.item.version,
+            expected_updated_at=updated.item.updated_at,
         )
 
 

@@ -35,9 +35,13 @@ export const ADVANCED_HELP_CONTENT = {
     label: "Brightness patterns information",
     text: "Each pattern defines an ordered brightness change for this layer.",
   },
-  brightnessScope: {
-    label: "Brightness scope information",
-    text: "Sets the lowest and highest brightness levels the pattern can use.",
+  brightnessScopeLow: {
+    label: "Scope low information",
+    text: "Sets the lowest brightness the pattern can use.",
+  },
+  brightnessScopeHigh: {
+    label: "Scope high information",
+    text: "Sets the highest brightness the pattern can use.",
   },
   changingSpeed: {
     label: "Brightness changing speed information",

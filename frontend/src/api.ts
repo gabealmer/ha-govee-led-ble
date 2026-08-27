@@ -137,12 +137,14 @@ export class EffectStudioApi {
   }
 
   public async applySavedEffect(
-    lightEntityId: string,
-    effectName: string,
+    configEntryId: string,
+    item: Pick<LibraryItem, "id" | "version">,
   ): Promise<void> {
-    await this.hass.callService("light", "turn_on", {
-      entity_id: lightEntityId,
-      effect: effectName,
+    await this.call("apply", {
+      config_entry_id: configEntryId,
+      item_id: item.id,
+      expected_version: item.version,
+      updated_at: new Date().toISOString(),
     });
   }
 
