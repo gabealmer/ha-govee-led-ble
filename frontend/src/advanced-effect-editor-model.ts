@@ -59,7 +59,8 @@ export type AdvancedLayerActionKind = "copy" | "delete";
 export interface AdvancedLayerAction {
   kind: AdvancedLayerActionKind;
   label: string;
-  glyph: string;
+  icon?: string;
+  glyph?: string;
   danger: boolean;
   disabled: boolean;
 }
@@ -104,7 +105,7 @@ export function advancedLayerActions(
     {
       kind: "copy",
       label: "Copy current layer",
-      glyph: "⧉",
+      icon: "mdi:content-copy",
       danger: false,
       disabled: layerCount >= AUTHORING_LAYER_LIMIT,
     },

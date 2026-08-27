@@ -7,6 +7,10 @@ export const ADVANCED_HELP_CONTENT = {
     label: "Fill pattern information",
     text: "Controls how LEDs inside the applied area take part in the effect.",
   },
+  fillPatternType: {
+    label: "Fill pattern type information",
+    text: "Segment repeats the applied area according to Segment Count.  Continuous uses runs of the selected LED Count.  Random varies runs between Minimum LED Count and Maximum LED Count.  Custom alternates Lit Length with Gap.",
+  },
   segmentCount: {
     label: "Segment Count information",
     text: "Sets how many repeated sections divide the applied area for the Segmented fill pattern.",

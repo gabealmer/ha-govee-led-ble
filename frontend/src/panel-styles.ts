@@ -208,8 +208,14 @@ export const effectStudioPanelStyles = [
       cursor: pointer;
     }
 
-    .toolbar-mode-button > span {
+    .toolbar-mode-button > span,
+    .toolbar-mode-icon {
       display: block;
+    }
+
+    .toolbar-mode-icon {
+      width: var(--studio-icon-size);
+      height: var(--studio-icon-size);
     }
 
     .toolbar-control:hover {

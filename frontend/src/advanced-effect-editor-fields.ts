@@ -41,7 +41,7 @@ export function renderFillPatternControls(
         ${renderAdvancedHelp("fillPattern")}
       </div>
       <label class="field">
-        <span>Type</span>
+        ${renderFieldLabel("Type", "fillPatternType")}
         <select
           aria-label="Fill pattern type"
           .value=${knownType ? String(selection.type) : ""}

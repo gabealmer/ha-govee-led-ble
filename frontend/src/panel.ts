@@ -620,8 +620,11 @@ export class GoveeLedEffectStudio extends LitElement {
           : "Save committed changes automatically"}
         @click=${() => this.controller.toggleAutoSave()}
       >
-        <span>Auto</span>
-        <span>Save</span>
+        <ha-icon
+          class="toolbar-mode-icon"
+          icon="mdi:content-save"
+          aria-hidden="true"
+        ></ha-icon>
       </button>
       ${this.model.autoSaveInProgress
         ? html`<span class="visually-hidden" role="status"

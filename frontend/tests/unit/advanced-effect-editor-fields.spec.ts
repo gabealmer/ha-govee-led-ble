@@ -97,7 +97,7 @@ test("compact layer actions retain labels, tone, and authoring limits", () => {
     {
       kind: "copy",
       label: "Copy current layer",
-      glyph: "⧉",
+      icon: "mdi:content-copy",
       danger: false,
       disabled: false,
     },

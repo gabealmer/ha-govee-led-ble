@@ -139,8 +139,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           .addDisabled=${this.disabled}
           .addHidden=${this.content.layers.length >= AUTHORING_LAYER_LIMIT}
           .reorderDisabled=${this.disabled}
-          .separateActions=${!this.disabled ||
-          this.content.layers.length < AUTHORING_LAYER_LIMIT}
+          .separateActions=${!this.disabled}
           @item-selected=${(event: CustomEvent<{ index: number }>) =>
             this.selectLayer(event.detail.index)}
           @items-reordered=${(
@@ -165,7 +164,15 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                       ? this.copyLayer
                       : this.deleteLayer}
                   >
-                    <span aria-hidden="true">${action.glyph}</span>
+                    ${action.icon
+                      ? html`
+                          <ha-icon
+                            class="compact-action-icon"
+                            icon=${action.icon}
+                            aria-hidden="true"
+                          ></ha-icon>
+                        `
+                      : html`<span aria-hidden="true">${action.glyph}</span>`}
                   </button>
                 `,
               )}
@@ -188,6 +195,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         aria-labelledby="advanced-layer-tab-${this.controller.activeLayerIndex}"
       >
         <div class="control-grid">
+          ${this.renderPriority(layer)}
           ${this.renderAppliedArea(layer)}
           ${this.renderPalette(layer)}
           ${renderDistribution(
@@ -212,7 +220,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
             "Move Entire Layer",
             false,
           )}
-          ${this.renderPriority(layer)}
         </div>
       </section>
     `;
@@ -244,7 +251,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
 
   private renderAppliedArea(layer: EffectLayer) {
     return html`
-      <section class="card wide-card">
+      <section class="card">
         <div class="section-heading">
           <h3 class="section-title">Applied Area</h3>
           ${renderAdvancedHelp("appliedArea")}
@@ -300,7 +307,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   private renderBrightness(layer: EffectLayer) {
     if (layer.brightness_patterns.length === 0) {
       return html`
-        <section class="card wide-card empty-state" role="status">
+        <section class="card empty-state" role="status">
           <h3 class="section-title">No Brightness Pattern Records</h3>
           <p class="muted">
             This layer contains no brightness pattern records. It remains
@@ -323,7 +330,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     const pattern = layer.brightness_patterns[activeIndex];
     const knownOrder = isKnownBrightnessOrder(pattern.order);
     return html`
-      <section class="card wide-card">
+      <section class="card">
         <h3 class="section-title">Brightness</h3>
         <div class="parameter-stack">
           <label class="field">
@@ -343,20 +350,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           </label>
 
           <div class="patterns-section">
-            <div class="patterns-heading">
-              <div class="subsection-heading">
-                <h4>Patterns</h4>
-                ${renderAdvancedHelp("patterns")}
-              </div>
-              <button
-                class="secondary pattern-delete"
-                type="button"
-                ?disabled=${this.disabled ||
-                layer.brightness_patterns.length === 1}
-                @click=${this.deleteBrightnessPattern}
-              >
-                Delete
-              </button>
+            <div class="subsection-heading">
+              <h4>Patterns</h4>
+              ${renderAdvancedHelp("patterns")}
             </div>
             <govee-reorderable-strip
               class="pattern-strip"
@@ -370,10 +366,24 @@ export class GoveeAdvancedEffectEditor extends LitElement {
               .addDisabled=${this.disabled}
               .addHidden=${layer.brightness_patterns.length >= 3}
               .reorderDisabled=${true}
+              .separateActions=${true}
               @item-selected=${(event: CustomEvent<{ index: number }>) =>
                 this.selectPattern(event.detail.index)}
               @item-added=${this.addBrightnessPattern}
-            ></govee-reorderable-strip>
+            >
+              <button
+                slot="actions"
+                class="compact-action danger-action"
+                type="button"
+                title="Delete current brightness pattern"
+                aria-label="Delete current brightness pattern"
+                ?disabled=${this.disabled ||
+                layer.brightness_patterns.length === 1}
+                @click=${this.deleteBrightnessPattern}
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </govee-reorderable-strip>
 
             <div
               class="brightness-fields parameter-stack"

@@ -37,7 +37,6 @@ export const advancedEffectEditorStyles = [
     }
 
     .card-heading,
-    .patterns-heading,
     .section-heading,
     .subsection-heading {
       display: flex;
@@ -88,13 +87,12 @@ export const advancedEffectEditorStyles = [
 
     .control-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(
+        auto-fit,
+        minmax(min(100%, 340px), 1fr)
+      );
       align-items: start;
       gap: var(--studio-section-gap);
-    }
-
-    .wide-card {
-      grid-column: 1 / -1;
     }
 
     .fill-pattern-controls {
@@ -105,7 +103,10 @@ export const advancedEffectEditorStyles = [
 
     .parameter-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(
+        auto-fit,
+        minmax(min(100%, 220px), 1fr)
+      );
       gap: var(--studio-parameter-gap) var(--studio-section-gap);
     }
 
@@ -113,18 +114,15 @@ export const advancedEffectEditorStyles = [
       margin-top: 0;
     }
 
-    .patterns-heading {
-      justify-content: space-between;
-    }
-
     .patterns-section {
       display: grid;
       gap: var(--studio-parameter-gap);
     }
 
-    .pattern-delete {
-      min-height: var(--studio-compact-control-height);
-      padding: var(--studio-spacing-xs) var(--studio-spacing-lg);
+    .compact-action-icon {
+      display: block;
+      width: var(--studio-icon-size);
+      height: var(--studio-icon-size);
     }
 
     .card-heading {
@@ -143,17 +141,8 @@ export const advancedEffectEditorStyles = [
       justify-self: start;
     }
 
-    /* Advanced cards and parameter pairs become single-column on narrow screens. */
+    /* Advanced cards become single-column when controls no longer fit. */
     @media (max-width: 760px) {
-      .control-grid,
-      .parameter-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .wide-card {
-        grid-column: auto;
-      }
-
       .add-button {
         width: 100%;
       }

@@ -108,31 +108,31 @@ export class GoveeReorderableStrip extends LitElement {
     const tablist = model.listRole === "tablist";
     return html`
       <div class="strip ${this.separateActions ? "separate-actions" : ""}">
-        ${tablist
-          ? html`
-              <div
-                class="item-list"
-                role="tablist"
-                aria-label=${this.ariaLabel}
-              >
-                ${this.items.map((item, index) =>
-                  this.renderItemButton(item, index, true),
-                )}
-              </div>
-            `
-          : html`
-              <ul class="item-list" aria-label=${this.ariaLabel}>
-                ${this.items.map(
-                  (item, index) => html`
-                    <li class="item-container">
-                      ${this.renderItemButton(item, index, false)}
-                      <slot name="item-${index}"></slot>
-                    </li>
-                  `,
-                )}
-              </ul>
-            `}
-        <div class="strip-actions">
+        <div class="strip-items">
+          ${tablist
+            ? html`
+                <div
+                  class="item-list"
+                  role="tablist"
+                  aria-label=${this.ariaLabel}
+                >
+                  ${this.items.map((item, index) =>
+                    this.renderItemButton(item, index, true),
+                  )}
+                </div>
+              `
+            : html`
+                <ul class="item-list" aria-label=${this.ariaLabel}>
+                  ${this.items.map(
+                    (item, index) => html`
+                      <li class="item-container">
+                        ${this.renderItemButton(item, index, false)}
+                        <slot name="item-${index}"></slot>
+                      </li>
+                    `,
+                  )}
+                </ul>
+              `}
           ${model.addAction
             ? html`
                 <button
@@ -147,6 +147,8 @@ export class GoveeReorderableStrip extends LitElement {
                 </button>
               `
             : nothing}
+        </div>
+        <div class="strip-actions">
           <slot name="actions"></slot>
         </div>
       </div>
@@ -497,10 +499,18 @@ export class GoveeReorderableStrip extends LitElement {
       gap: var(--studio-control-gap);
     }
 
+    .strip-items,
     .item-list {
       display: flex;
       flex-wrap: wrap;
       gap: var(--studio-control-gap);
+    }
+
+    .strip-items {
+      align-items: flex-start;
+    }
+
+    .item-list {
       margin: 0;
       padding: 0;
       list-style: none;
