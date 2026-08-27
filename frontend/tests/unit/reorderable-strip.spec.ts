@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import {
   reorderableStripKeyboardAction,
   reorderableStripModel,
+  reorderableStripPointerIntent,
 } from "../../src/reorderable-strip-model";
 
 test("tab and action models keep Add separate from item semantics", () => {
@@ -77,4 +78,12 @@ test("non-reorderable tabs select while buttons ignore arrow keys", () => {
       "button",
     ),
   ).toBeUndefined();
+});
+
+test("pointer intent distinguishes taps, scrolling, and reordering", () => {
+  expect(reorderableStripPointerIntent(4, 5, false)).toBe("pending");
+  expect(reorderableStripPointerIntent(9, 0, false)).toBe("pending");
+  expect(reorderableStripPointerIntent(4, 12, false)).toBe("cancel");
+  expect(reorderableStripPointerIntent(12, 4, false)).toBe("reorder");
+  expect(reorderableStripPointerIntent(12, 4, true)).toBe("cancel");
 });

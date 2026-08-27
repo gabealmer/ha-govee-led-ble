@@ -103,6 +103,7 @@ check:
 	$(NPM) --prefix frontend run typecheck
 	$(MAKE) --no-print-directory verify-frontend
 	$(NPM) --prefix frontend run test:unit
+	$(NPM) --prefix frontend run test:browser
 	uv run --no-sync ruff check .
 	uv run --no-sync ruff format --check .
 	$(MAKE) --no-print-directory verify-protocol

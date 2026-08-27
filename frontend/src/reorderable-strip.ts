@@ -4,6 +4,7 @@ import { property } from "lit/decorators.js";
 import {
   reorderableStripKeyboardAction,
   reorderableStripModel,
+  reorderableStripPointerIntent,
   type ReorderableStripItem,
   type ReorderableStripItemRole,
 } from "./reorderable-strip-model";
@@ -54,6 +55,7 @@ export class GoveeReorderableStrip extends LitElement {
   private pointerX = 0;
   private pointerY = 0;
   private pointerMoved = false;
+  private pointerTapCancelled = false;
   private suppressClick = false;
   private popoverTracking = false;
   private positionFrame?: number;
@@ -186,7 +188,7 @@ export class GoveeReorderableStrip extends LitElement {
           ? `--item-colour: ${item.colour}`
           : nothing}
         ?disabled=${item.disabled}
-        @click=${() => this.itemClicked(index)}
+        @click=${(event: MouseEvent) => this.itemClicked(index, event)}
         @keydown=${(event: KeyboardEvent) =>
           this.keyPressed(index, event)}
         @dragstart=${(event: DragEvent) =>
@@ -200,8 +202,8 @@ export class GoveeReorderableStrip extends LitElement {
         @pointerdown=${(event: PointerEvent) =>
           this.pointerStarted(index, event)}
         @pointermove=${this.pointerMovedOver}
-        @pointerup=${this.pointerFinished}
-        @pointercancel=${this.pointerFinished}
+        @pointerup=${this.pointerCompleted}
+        @pointercancel=${this.pointerCancelled}
       >
         ${item.colour ? nothing : item.label}
       </button>
@@ -342,11 +344,16 @@ export class GoveeReorderableStrip extends LitElement {
     return this.querySelector<HTMLElement>(".strip-popover");
   }
 
-  private itemClicked(index: number): void {
-    if (this.suppressClick) {
+  private itemClicked(index: number, event: MouseEvent): void {
+    if (this.suppressClick && event.detail !== 0) {
       this.suppressClick = false;
       return;
     }
+    this.suppressClick = false;
+    this.selectItem(index);
+  }
+
+  private selectItem(index: number): void {
     this.dispatchEvent(
       new CustomEvent<{ index: number }>("item-selected", {
         detail: { index },
@@ -398,7 +405,7 @@ export class GoveeReorderableStrip extends LitElement {
       return;
     }
     if (action.kind === "select") {
-      this.itemClicked(action.index);
+      this.selectItem(action.index);
       this.focusItem(action.focusIndex);
       return;
     }
@@ -406,20 +413,26 @@ export class GoveeReorderableStrip extends LitElement {
   }
 
   private pointerStarted(index: number, event: PointerEvent): void {
+    if (!event.isPrimary || this.pointerId !== undefined) {
+      return;
+    }
+    this.suppressClick = false;
+    const target = event.currentTarget as HTMLButtonElement;
+    target.draggable =
+      event.pointerType === "mouse" && !this.reorderDisabled;
     if (
-      this.reorderDisabled ||
       event.pointerType === "mouse" ||
       (event.target as HTMLElement).closest(".strip-popover")
     ) {
       return;
     }
-    this.suppressClick = false;
     this.pointerId = event.pointerId;
     this.pointerIndex = index;
-    this.pointerTarget = event.currentTarget as HTMLElement;
+    this.pointerTarget = target;
     this.pointerX = event.clientX;
     this.pointerY = event.clientY;
     this.pointerMoved = false;
+    this.pointerTapCancelled = false;
   }
 
   private pointerMovedOver(event: PointerEvent): void {
@@ -431,12 +444,24 @@ export class GoveeReorderableStrip extends LitElement {
     }
     const deltaX = event.clientX - this.pointerX;
     const deltaY = event.clientY - this.pointerY;
-    if (!this.pointerMoved) {
-      if (Math.abs(deltaY) > Math.abs(deltaX) || Math.abs(deltaX) < 10) {
+    if (!this.pointerMoved && !this.pointerTapCancelled) {
+      const intent = reorderableStripPointerIntent(
+        deltaX,
+        deltaY,
+        this.reorderDisabled,
+      );
+      if (intent === "pending") {
+        return;
+      }
+      if (intent === "cancel") {
+        this.pointerTapCancelled = true;
         return;
       }
       this.pointerMoved = true;
       this.pointerTarget?.setPointerCapture(event.pointerId);
+    }
+    if (this.pointerTapCancelled) {
+      return;
     }
     event.preventDefault();
     const target = this.shadowRoot
@@ -453,19 +478,40 @@ export class GoveeReorderableStrip extends LitElement {
     this.pointerIndex = targetIndex;
   }
 
-  private pointerFinished(event: PointerEvent): void {
+  private pointerCompleted(event: PointerEvent): void {
     if (event.pointerId !== this.pointerId) {
       return;
     }
+    const index = this.pointerIndex;
+    const activate =
+      index !== undefined &&
+      !this.pointerMoved &&
+      !this.pointerTapCancelled;
+    this.finishPointer(event);
+    this.suppressClick = true;
+    if (activate) {
+      this.selectItem(index);
+    }
+  }
+
+  private pointerCancelled(event: PointerEvent): void {
+    if (event.pointerId !== this.pointerId) {
+      return;
+    }
+    this.finishPointer(event);
+    this.suppressClick = true;
+  }
+
+  private finishPointer(event: PointerEvent): void {
     const target = this.pointerTarget;
     if (target?.hasPointerCapture(event.pointerId)) {
       target.releasePointerCapture(event.pointerId);
     }
-    this.suppressClick = this.pointerMoved;
     this.pointerId = undefined;
     this.pointerIndex = undefined;
     this.pointerTarget = undefined;
     this.pointerMoved = false;
+    this.pointerTapCancelled = false;
   }
 
   private reorder(from: number, to: number, restoreFocus = false): void {

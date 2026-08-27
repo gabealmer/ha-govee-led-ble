@@ -1063,6 +1063,34 @@ test("paint editing applies colour and off as distinct draft states", () => {
   });
 });
 
+test("paint gestures commit after their live segment update", () => {
+  const model = new PanelModel(() => undefined);
+  const preview = new PanelPreviewController(model);
+  const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
+  const committed = vi.fn();
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const controller = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => undefined,
+    contentCommitted: committed,
+  });
+
+  controller.paintColourChanged([12, 34, 56]);
+  expect(controller.setSegmentColour(2, "changing")).toBe(true);
+  expect(controller.setSegmentColour(2, "committed")).toBe(false);
+
+  expect(scheduleEdited).toHaveBeenLastCalledWith(
+    "committed",
+    undefined,
+  );
+  expect(committed).toHaveBeenLastCalledWith("committed");
+});
+
 test("catalogue templates edit directly without creating a Cancel breadcrumb", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;

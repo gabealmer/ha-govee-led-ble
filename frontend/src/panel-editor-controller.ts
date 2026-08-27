@@ -630,6 +630,12 @@ export class PanelEditorController {
         ? brush === null
         : brush !== null && current.every((channel, channelIndex) => channel === brush[channelIndex])
     ) {
+      if (interaction === "committed") {
+        this.installEditedContent(
+          { ...this.model.content, segments },
+          interaction,
+        );
+      }
       return false;
     }
     segments[index] = brush === null ? null : [...brush];

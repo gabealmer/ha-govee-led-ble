@@ -17,6 +17,7 @@ export class GoveePaintedSegmentEditor extends LitElement {
   public disabled = false;
 
   private paintingPointerId?: number;
+  private paintingPointerTarget?: HTMLElement;
   private lastPaintedSegment?: number;
 
   protected render() {
@@ -43,8 +44,8 @@ export class GoveePaintedSegmentEditor extends LitElement {
                 @pointerdown=${(event: PointerEvent) =>
                   this.pointerStarted(index, event)}
                 @pointermove=${this.pointerMoved}
-                @pointerup=${this.pointerFinished}
-                @pointercancel=${this.pointerFinished}
+                @pointerup=${this.pointerCompleted}
+                @pointercancel=${this.pointerCancelled}
                 @click=${(event: MouseEvent) =>
                   this.segmentClicked(index, event)}
               ></button>
@@ -57,13 +58,20 @@ export class GoveePaintedSegmentEditor extends LitElement {
   }
 
   private pointerStarted(index: number, event: PointerEvent): void {
-    if (this.disabled) {
+    if (
+      this.disabled ||
+      !event.isPrimary ||
+      this.paintingPointerId !== undefined ||
+      (event.button !== 0 && event.pointerType !== "touch")
+    ) {
       return;
     }
     event.preventDefault();
+    const target = event.currentTarget as HTMLElement;
     this.paintingPointerId = event.pointerId;
+    this.paintingPointerTarget = target;
     this.lastPaintedSegment = index;
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    target.setPointerCapture(event.pointerId);
     this.selectSegment(index, "changing");
   }
 
@@ -84,17 +92,34 @@ export class GoveePaintedSegmentEditor extends LitElement {
     }
   }
 
-  private pointerFinished(event: PointerEvent): void {
+  private pointerCompleted(event: PointerEvent): void {
     if (event.pointerId !== this.paintingPointerId) {
       return;
     }
-    const captured = this.shadowRoot?.querySelector<HTMLElement>(
-      `[data-segment="${this.lastPaintedSegment}"]`,
-    );
-    if (captured?.hasPointerCapture(event.pointerId)) {
-      captured.releasePointerCapture(event.pointerId);
+    const index = this.lastPaintedSegment;
+    this.finishPointer(event);
+    if (index !== undefined) {
+      this.selectSegment(index, "committed");
+    }
+  }
+
+  private pointerCancelled(event: PointerEvent): void {
+    if (event.pointerId !== this.paintingPointerId) {
+      return;
+    }
+    const index = this.lastPaintedSegment;
+    this.finishPointer(event);
+    if (index !== undefined) {
+      this.selectSegment(index, "committed");
+    }
+  }
+
+  private finishPointer(event: PointerEvent): void {
+    if (this.paintingPointerTarget?.hasPointerCapture(event.pointerId)) {
+      this.paintingPointerTarget.releasePointerCapture(event.pointerId);
     }
     this.paintingPointerId = undefined;
+    this.paintingPointerTarget = undefined;
     this.lastPaintedSegment = undefined;
   }
 

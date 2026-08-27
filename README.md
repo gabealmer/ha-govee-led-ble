@@ -100,6 +100,7 @@ To add manually in Home Assistant:
 
 ```bash
 make build
+bash scripts/node-tool.sh npm --prefix frontend exec -- playwright install webkit
 make check
 make package
 ```

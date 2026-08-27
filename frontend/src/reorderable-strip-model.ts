@@ -11,6 +11,10 @@ export interface ReorderableStripItem {
 }
 
 export type ReorderableStripItemRole = "button" | "tab";
+export type ReorderableStripPointerIntent =
+  | "pending"
+  | "cancel"
+  | "reorder";
 
 export interface ReorderableStripModel {
   listRole?: "tablist";
@@ -79,4 +83,21 @@ export function reorderableStripKeyboardAction(
     to: target,
     focusIndex: target,
   };
+}
+
+export function reorderableStripPointerIntent(
+  deltaX: number,
+  deltaY: number,
+  reorderDisabled: boolean,
+  threshold = 10,
+): ReorderableStripPointerIntent {
+  const horizontal = Math.abs(deltaX);
+  const vertical = Math.abs(deltaY);
+  if (Math.max(horizontal, vertical) < threshold) {
+    return "pending";
+  }
+  if (reorderDisabled || vertical > horizontal) {
+    return "cancel";
+  }
+  return "reorder";
 }
