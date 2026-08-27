@@ -143,6 +143,11 @@ export interface SceneBrowserWorkflowEffects {
     selectionIsCurrent: boolean,
     panelTransitionEpoch: number,
   ) => void;
+  error: (
+    message: string,
+    options?: { title?: string; key?: string },
+  ) => void;
+  workStateChanged: (dirty: boolean) => void;
 }
 
 export class SceneBrowserWorkflow {
@@ -160,6 +165,8 @@ export class SceneBrowserWorkflow {
   private defaultPreviewPending = false;
   private defaultPreviewRollback?: SceneDefaultSnapshot;
   private defaultBaseline?: SceneDefaultSnapshot;
+  private errorSequence = 0;
+  private stateUpdatesAvailable = true;
   private readonly defaultWriter = new SerialLatestWriter<SceneDefaultWrite>((write) =>
     this.performDefaultWrite(write),
   );
@@ -196,6 +203,16 @@ export class SceneBrowserWorkflow {
     );
   }
 
+  public get protectedWorkDirty(): boolean {
+    const workflowOwnsSceneDraft =
+      this.stateValue.editingCopy ||
+      this.stateValue.selectedItem !== undefined;
+    return (
+      (workflowOwnsSceneDraft && this.sceneDirty) ||
+      this.sceneDefaultDirty
+    );
+  }
+
   public get defaultWritePending(): boolean {
     return this.defaultWriter.busy || this.defaultPreviewPending;
   }
@@ -205,6 +222,9 @@ export class SceneBrowserWorkflow {
   }
 
   public previewRequest(isAdmin: boolean): ScenePreviewRequest | undefined {
+    if (!this.stateUpdatesAvailable) {
+      return undefined;
+    }
     const request = buildScenePreviewRequest(
       this.stateValue,
       this.activeSelectionIdentity,
@@ -301,10 +321,16 @@ export class SceneBrowserWorkflow {
   }
 
   public setName(name: string): void {
+    if (this.stateValue.saving || !this.stateUpdatesAvailable) {
+      return;
+    }
     this.patch({ name });
   }
 
   public setSpeedIndex(speedIndex: number): void {
+    if (this.stateValue.saving || !this.stateUpdatesAvailable) {
+      return;
+    }
     this.speedRevision += 1;
     this.patch({
       speedIndex,
@@ -472,9 +498,10 @@ export class SceneBrowserWorkflow {
   public async save(
     isAdmin: boolean,
     panelTransitionEpoch = 0,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const { catalogue, content, selectedItem, selectedScene } = this.stateValue;
     if (
+      !this.stateUpdatesAvailable ||
       !this.api ||
       !this.device ||
       !catalogue ||
@@ -485,21 +512,30 @@ export class SceneBrowserWorkflow {
       !isAdmin ||
       this.stateValue.saving
     ) {
-      return;
+      return false;
     }
     const name = this.stateValue.name.trim();
     if (!name) {
       this.patch({ notice: "Give this custom scene a name before saving." });
-      return;
+      return false;
     }
     const savedContent = sceneContentAtSpeed(content, this.stateValue.speedIndex);
     const request = this.captureRequest();
     const document = this.currentDocument();
+    const guard = () =>
+      this.stateUpdatesAvailable &&
+      this.requestIsCurrent(request) &&
+      this.currentDocument() === document;
     this.patch({ saving: true, notice: undefined });
     try {
       const result = selectedItem
-        ? await request.api.updateItem(selectedItem, name, savedContent)
-        : await request.api.createItem(name, savedContent);
+        ? await request.api.updateItem(
+            selectedItem,
+            name,
+            savedContent,
+            guard,
+          )
+        : await request.api.createItem(name, savedContent, guard);
       if (result.content.kind !== "scene_builtin" && result.content.kind !== "scene_palette") {
         throw new Error("The saved scene returned an unsupported definition.");
       }
@@ -513,7 +549,7 @@ export class SceneBrowserWorkflow {
         panelTransitionEpoch,
       );
       if (!selectionIsCurrent) {
-        return;
+        return true;
       }
       this.activeSelectionIdentity = `custom:${result.id}`;
       this.requests.invalidate();
@@ -525,23 +561,50 @@ export class SceneBrowserWorkflow {
         category: "custom",
         notice: undefined,
       });
+      return true;
     } catch (error) {
-      if (this.requestIsCurrent(request)) {
+      if (
+        this.requestIsCurrent(request) &&
+        errorCode(error) !== "save_cancelled"
+      ) {
+        const code = errorCode(error);
         this.patch({
           notice:
-            errorCode(error) === "conflict"
+            code === "conflict"
               ? "The library changed elsewhere. Reload the scene before saving."
-              : `Save failed: ${errorMessage(error)}`,
+              : code === "reserved_name"
+                ? errorMessage(error)
+                : `Save failed: ${errorMessage(error)}`,
         });
       }
+      return false;
     } finally {
       this.patch({ saving: false });
     }
   }
 
+  public async savePendingWork(
+    isAdmin: boolean,
+    panelTransitionEpoch: number,
+  ): Promise<boolean> {
+    if (
+      (this.stateValue.editingCopy ||
+        this.stateValue.selectedItem !== undefined) &&
+      this.sceneDirty
+    ) {
+      return this.save(isAdmin, panelTransitionEpoch);
+    }
+    if (this.sceneDefaultDirty) {
+      await this.setCurrentDefault(isAdmin);
+      return !this.sceneDefaultDirty;
+    }
+    return true;
+  }
+
   public async resetToCatalogue(isAdmin: boolean): Promise<void> {
     const { content, selectedItem, selectedScene } = this.stateValue;
     if (
+      !this.stateUpdatesAvailable ||
       !this.api ||
       !this.device ||
       !selectedScene ||
@@ -576,6 +639,7 @@ export class SceneBrowserWorkflow {
   public async setCurrentDefault(isAdmin: boolean): Promise<void> {
     const { content, selectedItem, selectedScene, speedIndex } = this.stateValue;
     if (
+      !this.stateUpdatesAvailable ||
       !this.api ||
       !this.device ||
       !selectedScene ||
@@ -1004,8 +1068,41 @@ export class SceneBrowserWorkflow {
     });
   }
 
+  public setStateUpdatesAvailable(available: boolean): void {
+    if (this.stateUpdatesAvailable === available) {
+      return;
+    }
+    this.stateUpdatesAvailable = available;
+    if (!available) {
+      this.defaultWriter.invalidate();
+      this.invalidateRequests();
+      this.patch({ saving: false });
+    }
+  }
+
   private patch(values: Partial<SceneBrowserViewState>): void {
-    this.stateValue = { ...this.stateValue, ...values };
+    const notice = values.notice;
+    const error = values.error;
+    if (notice) {
+      this.effects.error(notice, {
+        title: "Scene operation failed",
+        key: `scene:${++this.errorSequence}`,
+      });
+    }
+    if (error) {
+      this.effects.error(error, {
+        title: "Scenes unavailable",
+        key: `scene-load:${error}`,
+      });
+    }
+    this.stateValue = {
+      ...this.stateValue,
+      ...values,
+      ...(notice ? { notice: undefined } : {}),
+    };
     this.effects.changed(this.stateValue);
+    this.effects.workStateChanged(
+      this.protectedWorkDirty,
+    );
   }
 }

@@ -123,6 +123,133 @@ test("snapshot previews pass catalogue provenance through the API boundary", asy
   );
 });
 
+test("saved-name collisions confirm a guarded overwrite and accept its generation", async () => {
+  const original = cloneObject(responses.library_item);
+  const target = {
+    id: "target",
+    version: 4,
+    updated_at: "2026-08-27T00:00:00Z",
+    name: "Existing",
+    kind: "h617a_painted",
+    content_hash: "4".repeat(64),
+    origin: { kind: "authored", source_id: null },
+  };
+  const overwritten = {
+    ...original,
+    id: target.id,
+    version: 5,
+    updated_at: "2026-08-27T00:00:01Z",
+    name: target.name,
+  };
+  const callWS = vi.fn(async (message: Record<string, unknown>) => {
+    if (message.type === "ha_govee_led_ble/editor/library/create") {
+      throw { code: "name_conflict", message: "name conflict" };
+    }
+    if (message.type === "ha_govee_led_ble/editor/library/name_status") {
+      return { status: { kind: "saved", item: target } };
+    }
+    if (message.type === "ha_govee_led_ble/editor/library/overwrite") {
+      return {
+        item: overwritten,
+        library: { generation: 8, items: [target] },
+      };
+    }
+    throw new Error(`Unexpected command ${String(message.type)}`);
+  });
+  const api = new EffectStudioApi({
+    callWS,
+    callService: vi.fn(),
+    connection: { subscribeMessage: vi.fn() },
+  } as unknown as HomeAssistant);
+  const confirm = vi.fn().mockResolvedValue(true);
+  const accept = vi.fn().mockReturnValue(true);
+  api.setOverwriteConfirmation(confirm);
+  api.setLibrarySnapshotHandler(accept);
+
+  const result = await api.createItem(
+    "Existing",
+    decodeEffectContent(contentSamples.h617a_painted),
+  );
+
+  expect(confirm).toHaveBeenCalledWith("Existing");
+  expect(result).toMatchObject({ id: "target", version: 5 });
+  expect(accept).toHaveBeenCalledWith(
+    expect.objectContaining({ generation: 8 }),
+  );
+  expect(callWS).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      type: "ha_govee_led_ble/editor/library/overwrite",
+      target_item_id: "target",
+      expected_version: 4,
+      expected_updated_at: "2026-08-27T00:00:00Z",
+    }),
+  );
+});
+
+test("reserved names surface a direct unavailable-name error", async () => {
+  const api = new EffectStudioApi({
+    callWS: vi.fn().mockRejectedValue({
+      code: "reserved_name",
+      message: "reserved",
+    }),
+    callService: vi.fn(),
+    connection: { subscribeMessage: vi.fn() },
+  } as unknown as HomeAssistant);
+
+  await expect(
+    api.createItem(
+      "Mysterious",
+      decodeEffectContent(contentSamples.h617a_painted),
+    ),
+  ).rejects.toThrow('An effect named "Mysterious" already exists.');
+});
+
+test("abandoned collision classification cannot issue an overwrite", async () => {
+  let active = true;
+  const target = {
+    id: "target",
+    version: 4,
+    updated_at: "2026-08-27T00:00:00Z",
+    name: "Existing",
+    kind: "h617a_painted",
+    content_hash: "4".repeat(64),
+    origin: { kind: "authored", source_id: null },
+  };
+  const callWS = vi.fn(async (message: Record<string, unknown>) => {
+    if (message.type === "ha_govee_led_ble/editor/library/create") {
+      throw { code: "name_conflict", message: "name conflict" };
+    }
+    if (message.type === "ha_govee_led_ble/editor/library/name_status") {
+      active = false;
+      return { status: { kind: "saved", item: target } };
+    }
+    throw new Error(`Unexpected command ${String(message.type)}`);
+  });
+  const api = new EffectStudioApi({
+    callWS,
+    callService: vi.fn(),
+    connection: { subscribeMessage: vi.fn() },
+  } as unknown as HomeAssistant);
+  const confirm = vi.fn().mockResolvedValue(true);
+  api.setOverwriteConfirmation(confirm);
+
+  await expect(
+    api.createItem(
+      "Existing",
+      decodeEffectContent(contentSamples.h617a_painted),
+      () => active,
+    ),
+  ).rejects.toMatchObject({ code: "save_cancelled" });
+
+  expect(confirm).not.toHaveBeenCalled();
+  expect(
+    callWS.mock.calls.some(
+      ([message]) =>
+        message.type === "ha_govee_led_ble/editor/library/overwrite",
+    ),
+  ).toBe(false);
+});
+
 test.each(knownContentFamilies)(
   "canonical %s content decodes and preserves its wire form",
   (family) => {

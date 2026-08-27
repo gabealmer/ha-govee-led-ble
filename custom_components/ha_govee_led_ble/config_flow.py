@@ -16,6 +16,7 @@ from homeassistant.core import callback
 
 from .ble_connection import async_validate_ble_connection
 from .const import (
+    CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_MODEL,
@@ -49,7 +50,7 @@ def _normalize_manual_address(address: str) -> str:
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 7
+    VERSION = 8
 
     _discovered: dict[str, str]
 
@@ -126,6 +127,7 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
             options = {key: value for key, value in self.config_entry.options.items() if key != CONF_EFFECT_FAMILIES}
             options[CONF_EFFECT_CATEGORIES] = ordered
             options[CONF_PREFIX_EFFECT_NAMES] = user_input[CONF_PREFIX_EFFECT_NAMES]
+            options[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS] = user_input[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS]
             return self.async_create_entry(data=options)
         defaults = default_effect_categories(model)
         current = self.config_entry.options.get(
@@ -136,12 +138,17 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
             CONF_PREFIX_EFFECT_NAMES,
             False,
         )
+        always_include_custom_effects = self.config_entry.options.get(
+            CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+            False,
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     **{vol.Required(category, default=category in current): bool for category in supported},
                     vol.Required(CONF_PREFIX_EFFECT_NAMES, default=prefix_effect_names): bool,
+                    vol.Required(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS, default=always_include_custom_effects): bool,
                 }
             ),
         )

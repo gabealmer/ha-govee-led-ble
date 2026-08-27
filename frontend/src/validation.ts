@@ -52,6 +52,7 @@ import {
   stringValue,
 } from "./payload-validation";
 import { PREVIEW_PHASES } from "./types";
+import { installLibraryItemEditorMetadata } from "./effect-editor-model";
 import {
   LAYER_UNKNOWN_FLAGS_MASK,
   MAX_CATALOGUE_BYTES,
@@ -423,6 +424,15 @@ function decodeActiveEffectHint(value: unknown, name: string) {
 export function decodeLibrarySnapshot(value: unknown): LibrarySnapshot {
   const snapshot = objectValue(value, "library snapshot");
   const decoded: LibrarySnapshot = {
+    generation:
+      snapshot.generation === undefined
+        ? 0
+        : integerValue(
+            snapshot.generation,
+            "library generation",
+            0,
+            MAX_SAFE_REVISION,
+          ),
     items: arrayValue(
       snapshot.items,
       "library items",
@@ -469,7 +479,7 @@ export function decodeLibraryItem(value: unknown): LibraryItem {
     item.target_hint === undefined
       ? undefined
       : objectValue(item.target_hint, "target hint");
-  return {
+  return installLibraryItemEditorMetadata({
     schema_version: exactInteger(
       item.schema_version,
       EFFECT_SCHEMA_VERSION,
@@ -506,7 +516,7 @@ export function decodeLibraryItem(value: unknown): LibraryItem {
           },
         }
       : {}),
-  };
+  });
 }
 
 export function decodePreviewStatus(value: unknown): PreviewStatus {

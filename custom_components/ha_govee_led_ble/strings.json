@@ -138,10 +138,8 @@
           "multi_layered": "Multi-Layered",
           "reactive": "Reactive",
           "advanced": "Advanced",
-          "prefix_effect_names": "Include category labels when multiple effect categories are enabled"
-        },
-        "data_description": {
-          "prefix_effect_names": "Adds category labels such as Scene or Advanced when more than one effect category is enabled. Effects with otherwise identical names remain distinguished with bracketed category labels."
+          "prefix_effect_names": "Prefix effects with their category (e.g., \"Scene: <Effect>\")",
+          "always_include_custom_effects": "Always include my custom effects"
         }
       }
     }

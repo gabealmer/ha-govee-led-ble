@@ -36,6 +36,7 @@ VIDEO_EFFECTS: dict[str, str] = {
 MUSIC_EFFECTS: dict[str, str] = {f"Music: {slug.replace('_', ' ').title()}": slug for slug in MUSIC_MODE_SLUGS}
 
 EffectSelectorSource = Literal["scene", "video", "music", "saved"]
+SavedEffectNameKind = Literal["available", "reserved", "same_item", "saved"]
 
 _CATEGORY_LABELS = {
     EFFECT_CATEGORY_SCENES: "Scene",
@@ -60,6 +61,20 @@ class EffectSelectorEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class SavedEffectNameStatus:
+    kind: SavedEffectNameKind
+    item: LibraryItem | None = None
+
+
+class ReservedEffectNameError(EffectValidationError):
+    """A saved effect name is reserved by the selector contract."""
+
+
+class SavedEffectNameConflictError(EffectValidationError):
+    """A saved effect name belongs to another library item."""
+
+
+@dataclass(frozen=True, slots=True)
 class _SelectorCandidate:
     source: EffectSelectorSource
     category: str
@@ -80,6 +95,7 @@ def effect_selector_entries(
     items: Iterable[LibraryItem],
     *,
     prefix_effect_names: bool,
+    always_include_custom_effects: bool = False,
     active_custom: bool = False,
     native_categories: frozenset[str] | None = None,
 ) -> tuple[EffectSelectorEntry, ...]:
@@ -87,6 +103,7 @@ def effect_selector_entries(
         model,
         categories,
         items,
+        always_include_custom_effects=always_include_custom_effects,
         native_categories=native_categories,
     )
     counts = Counter(normalise_effect_name(candidate.base_label) for candidate in candidates)
@@ -96,7 +113,8 @@ def effect_selector_entries(
     counts[normalise_effect_name(EFFECT_OFF)] += 1
     if active_custom:
         counts[normalise_effect_name("Custom")] += 1
-    use_prefixes = prefix_effect_names and len(categories) > 1
+    represented_categories = frozenset(candidate.category for candidate in candidates)
+    use_prefixes = prefix_effect_names and len(represented_categories) > 1
     projected = _ensure_unique_display_labels(
         tuple(
             _project_candidate(
@@ -160,9 +178,27 @@ def validate_saved_effect_name(
 ) -> None:
     key = normalise_effect_name(name)
     if not allow_reserved and key in _reserved_effect_names():
-        raise EffectValidationError(f"effect name {name!r} is reserved by Home Assistant")
+        raise ReservedEffectNameError(f"effect name {name!r} is reserved by Home Assistant")
     if any(item.id != excluding_item_id and normalise_effect_name(item.name) == key for item in items):
-        raise EffectValidationError(f"effect name {name!r} is already in use")
+        raise SavedEffectNameConflictError(f"effect name {name!r} is already in use")
+
+
+def classify_saved_effect_name(
+    name: str,
+    items: Iterable[LibraryItem],
+    *,
+    excluding_item_id: UUID | None = None,
+) -> SavedEffectNameStatus:
+    key = normalise_effect_name(name)
+    if key in _reserved_effect_names():
+        return SavedEffectNameStatus("reserved")
+    matches = tuple(item for item in items if normalise_effect_name(item.name) == key)
+    conflicting = next((item for item in matches if item.id != excluding_item_id), None)
+    if conflicting is not None:
+        return SavedEffectNameStatus("saved", conflicting)
+    if excluding_item_id is not None and any(item.id == excluding_item_id for item in matches):
+        return SavedEffectNameStatus("same_item")
+    return SavedEffectNameStatus("available")
 
 
 def compatible_saved_effects(
@@ -199,6 +235,7 @@ def _selector_candidates(
     categories: frozenset[str],
     items: Iterable[LibraryItem],
     *,
+    always_include_custom_effects: bool = False,
     native_categories: frozenset[str] | None = None,
 ) -> tuple[_SelectorCandidate, ...]:
     candidates: list[_SelectorCandidate] = []
@@ -249,7 +286,8 @@ def _selector_candidates(
         )
         for item in compatible_saved_effects(items, model)
         if (category := effect_category_for_content_kind(str(effect_content_to_dict(item.content).get("kind"))))
-        in categories
+        is not None
+        and (category in categories or always_include_custom_effects)
     )
     return tuple(candidates)
 

@@ -5,9 +5,11 @@ import {
   AUTHORING_LAYER_LIMIT,
 } from "../../src/advanced-effect-editor-controller";
 import {
+  advancedLayerLabels,
   blankAdvancedContent,
   blankBrightnessPattern,
   blankLayer,
+  installAdvancedLayerLabels,
 } from "../../src/advanced-effect-model";
 
 test("content synchronisation keeps layer and pattern selections in range", () => {
@@ -112,11 +114,13 @@ test("adding and copying layers install content and move selection", () => {
   const added = controller.addLayer()!;
   expect(controller.isCurrentContent(added)).toBe(true);
   expect(added.layers).toHaveLength(2);
+  expect(advancedLayerLabels(added)).toEqual([1, 2]);
   expect(controller.activeLayerIndex).toBe(1);
 
   const copied = controller.copyLayer()!;
   expect(controller.isCurrentContent(copied)).toBe(true);
   expect(copied.layers).toHaveLength(3);
+  expect(advancedLayerLabels(copied)).toEqual([1, 2, 3]);
   expect(controller.activeLayerIndex).toBe(2);
   copied.layers[2].palette[0][0] = 12;
   expect(copied.layers[1].palette[0][0]).toBe(255);
@@ -129,6 +133,7 @@ test("deleting and reordering layers retain the active logical layer", () => {
   content.layers[0].priority = 1;
   content.layers[1].priority = 2;
   content.layers[2].priority = 3;
+  installAdvancedLayerLabels(content, [3, 1, 2]);
   controller.sync(content, false);
   controller.selectLayer(1);
 
@@ -136,14 +141,50 @@ test("deleting and reordering layers retain the active logical layer", () => {
   expect(reordered.layers.map((layer) => layer.priority)).toEqual([
     2, 3, 1,
   ]);
+  expect(advancedLayerLabels(reordered)).toEqual([1, 2, 3]);
   expect(controller.activeLayerIndex).toBe(0);
   expect(controller.isCurrentContent(reordered)).toBe(false);
 
   controller.sync(reordered, false);
   const deleted = controller.deleteLayer()!;
   expect(deleted.layers.map((layer) => layer.priority)).toEqual([3, 1]);
+  expect(advancedLayerLabels(deleted)).toEqual([2, 3]);
   expect(controller.activeLayerIndex).toBe(0);
   expect(controller.activePatternIndex).toBe(0);
+});
+
+test("positional labels are materialised before the first reorder", () => {
+  const controller = new AdvancedEffectEditorController();
+  const content = blankAdvancedContent();
+  content.layers.push(blankLayer());
+  controller.sync(content, false);
+
+  const reordered = controller.reorderLayer(1, 0)!;
+
+  expect(advancedLayerLabels(reordered)).toEqual([2, 1]);
+});
+
+test("renumbering and reuse preserve stable numeric identities", () => {
+  const controller = new AdvancedEffectEditorController();
+  const content = blankAdvancedContent();
+  content.layers.push(blankLayer(), blankLayer());
+  installAdvancedLayerLabels(content, [3, 1, 2]);
+  controller.sync(content, false);
+
+  const reordered = controller.reorderLayer(0, 2)!;
+  expect(advancedLayerLabels(reordered)).toEqual([1, 2, 3]);
+
+  controller.sync(reordered, false);
+  controller.selectLayer(1);
+  const deleted = controller.deleteLayer()!;
+  expect(advancedLayerLabels(deleted)).toEqual([1, 3]);
+
+  controller.sync(deleted, false);
+  const added = controller.addLayer()!;
+  expect(advancedLayerLabels(added)).toEqual([1, 3, 2]);
+
+  const renumbered = controller.renumberLayers()!;
+  expect(advancedLayerLabels(renumbered)).toEqual([1, 2, 3]);
 });
 
 test("brightness pattern operations share selection state", () => {

@@ -438,7 +438,17 @@ export interface LibrarySummary {
 
 export interface LibrarySnapshot {
   items: LibrarySummary[];
+  generation?: number;
 }
+
+export interface LibraryMutationResult {
+  item: LibraryItem;
+  library: LibrarySnapshot;
+}
+
+export type LibraryNameStatus =
+  | { kind: "available" | "reserved" | "same_item" }
+  | { kind: "saved"; item: LibrarySummary };
 
 export const PREVIEW_PHASES = [
   "queued",

@@ -349,35 +349,45 @@ export class GoveeCustomEffectEditor extends LitElement {
             )}
           </select>
         </label>
-        ${!this.disabled &&
-        (this.content as MultiContent).effects.length > 1
-          ? html`
-              <details
-                class="row-menu"
-                data-row-menu-index=${index}
-                ?open=${this.openRowMenuIndex === index}
-                @toggle=${(event: Event) =>
-                  this.rowMenuToggled(index, event)}
-                @keydown=${(event: KeyboardEvent) =>
-                  this.rowMenuKeyPressed(index, event)}
-              >
-                <summary aria-label="Layer actions for Layer ${index + 1}">
+        ${(this.content as MultiContent).effects.length > 1
+          ? this.disabled
+            ? html`
+                <button
+                  class="row-menu-trigger"
+                  type="button"
+                  aria-label="Layer actions for Layer ${index + 1}"
+                  disabled
+                >
                   ⋮
-                </summary>
-                <div class="row-menu-popover">
-                  <button
-                    class="danger delete-action"
-                    type="button"
-                    @click=${() => {
-                      this.openRowMenuIndex = undefined;
-                      this.removeEffect(index);
-                    }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </details>
-            `
+                </button>
+              `
+            : html`
+                <details
+                  class="row-menu"
+                  data-row-menu-index=${index}
+                  ?open=${this.openRowMenuIndex === index}
+                  @toggle=${(event: Event) =>
+                    this.rowMenuToggled(index, event)}
+                  @keydown=${(event: KeyboardEvent) =>
+                    this.rowMenuKeyPressed(index, event)}
+                >
+                  <summary aria-label="Layer actions for Layer ${index + 1}">
+                    ⋮
+                  </summary>
+                  <div class="row-menu-popover">
+                    <button
+                      class="danger delete-action"
+                      type="button"
+                      @click=${() => {
+                        this.openRowMenuIndex = undefined;
+                        this.removeEffect(index);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </details>
+              `
           : nothing}
       </li>
     `;
@@ -473,6 +483,16 @@ export class GoveeCustomEffectEditor extends LitElement {
       (_effect, effectIndex) => effectIndex !== index,
     );
     this.emitContent({ ...this.content, effects });
+    const focusIndex = Math.min(index, effects.length - 1);
+    void this.updateComplete.then(() => {
+      requestAnimationFrame(() => {
+        this.shadowRoot
+          ?.querySelector<HTMLElement>(
+            `[data-effect-index="${focusIndex}"] select`,
+          )
+          ?.focus();
+      });
+    });
   }
 
   private reorderEffect(from: number, to: number): void {
@@ -845,7 +865,8 @@ export class GoveeCustomEffectEditor extends LitElement {
       justify-self: end;
     }
 
-    .row-menu summary {
+    .row-menu summary,
+    .row-menu-trigger {
       display: grid;
       width: var(--studio-control-height);
       height: var(--studio-control-height);
@@ -856,6 +877,10 @@ export class GoveeCustomEffectEditor extends LitElement {
       background: var(--studio-card);
       cursor: pointer;
       list-style: none;
+    }
+
+    .row-menu-trigger {
+      cursor: not-allowed;
       font-size: var(--effect-layer-menu-icon-size);
     }
 

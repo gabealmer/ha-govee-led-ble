@@ -54,7 +54,7 @@ export const DISTRIBUTION_COLOUR_FIELDS = [
   help: AdvancedHelpKey;
 }>;
 
-export type AdvancedLayerActionKind = "copy" | "delete";
+export type AdvancedLayerActionKind = "copy" | "renumber" | "delete";
 
 export interface AdvancedLayerAction {
   kind: AdvancedLayerActionKind;
@@ -63,6 +63,7 @@ export interface AdvancedLayerAction {
   glyph?: string;
   danger: boolean;
   disabled: boolean;
+  visible: boolean;
 }
 
 export function fillPatternParameters(
@@ -74,10 +75,10 @@ export function fillPatternParameters(
 }
 
 export function advancedLayerItems(
-  layerCount: number,
+  layerLabels: readonly number[],
 ): ReorderableStripItem[] {
   return numberedStripItems(
-    layerCount,
+    layerLabels,
     "layer",
     "Layer",
     "advanced-layer-tab",
@@ -90,7 +91,7 @@ export function advancedBrightnessPatternItems(
   patternCount: number,
 ): ReorderableStripItem[] {
   return numberedStripItems(
-    patternCount,
+    Array.from({ length: patternCount }, (_item, index) => index + 1),
     "pattern",
     "Pattern",
     "advanced-pattern-tab",
@@ -100,6 +101,7 @@ export function advancedBrightnessPatternItems(
 
 export function advancedLayerActions(
   layerCount: number,
+  disabled = false,
 ): AdvancedLayerAction[] {
   return [
     {
@@ -107,30 +109,40 @@ export function advancedLayerActions(
       label: "Copy current layer",
       icon: "mdi:content-copy",
       danger: false,
-      disabled: layerCount >= AUTHORING_LAYER_LIMIT,
+      disabled: disabled || layerCount >= AUTHORING_LAYER_LIMIT,
+      visible: true,
+    },
+    {
+      kind: "renumber",
+      label: "Renumber layers",
+      icon: "mdi:format-list-numbered",
+      danger: false,
+      disabled,
+      visible: layerCount > 1,
     },
     {
       kind: "delete",
       label: "Delete current layer",
       glyph: "×",
       danger: true,
-      disabled: layerCount === 1,
+      disabled,
+      visible: layerCount > 1,
     },
   ];
 }
 
 function numberedStripItems(
-  count: number,
+  labels: readonly number[],
   keyPrefix: string,
   ariaPrefix: string,
   idPrefix: string,
   ariaControls: string,
   ariaDescription?: string,
 ): ReorderableStripItem[] {
-  return Array.from({ length: count }, (_item, index) => ({
+  return labels.map((label, index) => ({
     key: `${keyPrefix}-${index}`,
-    label: String(index + 1),
-    ariaLabel: `${ariaPrefix} ${index + 1}`,
+    label: String(label),
+    ariaLabel: `${ariaPrefix} ${label}`,
     ariaDescription,
     id: `${idPrefix}-${index}`,
     ariaControls,

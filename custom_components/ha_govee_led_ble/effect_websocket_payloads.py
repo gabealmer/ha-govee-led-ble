@@ -55,7 +55,10 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
 
 
 def library_snapshot_payload(snapshot: LibrarySnapshot) -> dict[str, Any]:
-    return {"items": [item_summary(item) for item in snapshot.items]}
+    return {
+        "generation": snapshot.generation,
+        "items": [item_summary(item) for item in snapshot.items],
+    }
 
 
 def deployment_snapshot_payload(snapshot: DeploymentSnapshot) -> dict[str, Any]:

@@ -233,13 +233,14 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     @property
     def effect_list(self) -> list[str]:
         active_custom = self._matching_active_workspace() is not None
-        if not self._effect_categories and not active_custom:
+        entries = self._selector_entries(active_custom=active_custom)
+        if not entries and not active_custom and not self._effect_categories:
             return []
         custom = ["Custom"] if active_custom else []
         return [
             EFFECT_OFF,
             *custom,
-            *(entry.display_label for entry in self._selector_entries(active_custom=active_custom)),
+            *(entry.display_label for entry in entries),
         ]
 
     @property
@@ -300,6 +301,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self._effect_categories,
             self._library_snapshot.items,
             prefix_effect_names=getattr(self.coordinator, "prefix_effect_names", False) is True,
+            always_include_custom_effects=getattr(self.coordinator, "always_include_custom_effects", False) is True,
             active_custom=active_custom,
             native_categories=self._native_selector_categories,
         )
@@ -321,7 +323,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     def _saved_effect_visible(self, item: LibraryItem) -> bool:
         content_kind = effect_content_to_dict(item.content).get("kind")
         category = effect_category_for_content_kind(str(content_kind))
-        return category is not None and category in self._effect_categories
+        return category is not None and (
+            category in self._effect_categories
+            or getattr(self.coordinator, "always_include_custom_effects", False) is True
+        )
 
     @property
     def _effect_categories(self) -> frozenset[str]:

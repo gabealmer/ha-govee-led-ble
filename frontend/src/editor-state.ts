@@ -1,4 +1,8 @@
-import type { CustomEffectCategory, EditableEffectContent } from "./effect-editor-model";
+import {
+  editableLayerLabels,
+  type CustomEffectCategory,
+  type EditableEffectContent,
+} from "./effect-editor-model";
 
 export type EditorOwner =
   | { section: "custom"; category: CustomEffectCategory }
@@ -155,5 +159,8 @@ export function editorTransitionSaveMode(
 export function serialiseEditableContent(
   content: EditableEffectContent,
 ): string {
-  return JSON.stringify(content);
+  return JSON.stringify({
+    content,
+    layer_labels: editableLayerLabels(content),
+  });
 }

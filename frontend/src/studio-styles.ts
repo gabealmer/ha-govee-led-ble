@@ -99,6 +99,7 @@ export const studioTokenStyles = css`
     --studio-chrome-gutter: var(--studio-spacing-2xl);
     --studio-empty-state-max-width: 680px;
     --studio-editor-name-max-width: 460px;
+    --studio-editor-action-width: 96px;
     --studio-navigation-width: clamp(168px, 14vw, 190px);
     --studio-list-width: clamp(210px, 18vw, 230px);
     --studio-stacked-navigation-width: clamp(152px, 16vw, 170px);
@@ -412,6 +413,12 @@ export const studioEditorStyles = css`
     gap: var(--studio-action-gap);
   }
 
+  .actions > button {
+    width: var(--studio-editor-action-width);
+    min-width: var(--studio-editor-action-width);
+    max-width: var(--studio-editor-action-width);
+  }
+
   /* Gives editor actions full-row room on phone widths. */
   @media (max-width: 600px) {
     .editor-heading {
@@ -419,8 +426,18 @@ export const studioEditorStyles = css`
       flex-direction: column;
     }
 
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(
+        auto-fit,
+        minmax(var(--studio-editor-action-width), 1fr)
+      );
+    }
+
     .actions > button {
-      flex: 1;
+      width: auto;
+      min-width: 0;
+      max-width: none;
     }
   }
 `;

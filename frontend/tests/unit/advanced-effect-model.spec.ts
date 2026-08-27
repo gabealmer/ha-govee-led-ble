@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
 import {
+  advancedLayerLabels,
   adjustAppliedAreaLeftEdge,
   adjustAppliedAreaRightEdge,
   appliedAreaEffectiveWidth,
@@ -14,6 +15,7 @@ import {
   cloneLayeredSceneContent,
   layerAppliedAreaSegments,
   moveAppliedArea,
+  installAdvancedLayerLabels,
   withAppliedAreaSegments,
 } from "../../src/advanced-effect-model";
 
@@ -34,6 +36,7 @@ test("blank advanced content contains an editable default layer", () => {
 
 test("advanced and layered scene clones do not share nested state", () => {
   const source = blankAdvancedContent();
+  installAdvancedLayerLabels(source, [7]);
   const advancedClone = cloneAdvancedContent(source);
   const scene = {
     kind: "scene_layered" as const,
@@ -56,6 +59,23 @@ test("advanced and layered scene clones do not share nested state", () => {
   expect(source.layers[0].palette[0]).toEqual([255, 0, 0]);
   expect(scene.template.scene_id).toBe(1);
   expect(source.layers[0].area.start_tenths).toBe(0);
+  expect(advancedLayerLabels(advancedClone)).toEqual([7]);
+  expect(advancedLayerLabels({
+    kind: "advanced",
+    layers: sceneClone.effect.layers,
+  })).toEqual([7]);
+});
+
+test("invalid layer metadata falls back to positional labels", () => {
+  const content = blankAdvancedContent();
+  content.layers.push(blankLayer());
+
+  installAdvancedLayerLabels(content, [4, 4]);
+
+  expect(advancedLayerLabels(content)).toEqual([1, 2]);
+
+  installAdvancedLayerLabels(content, [255, 256]);
+  expect(advancedLayerLabels(content)).toEqual([1, 2]);
 });
 
 test("byte percentages clamp to the supported range", () => {

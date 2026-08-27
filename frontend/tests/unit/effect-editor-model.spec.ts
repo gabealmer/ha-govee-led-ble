@@ -1,11 +1,13 @@
 import { expect, test } from "vitest";
 
 import {
+  EDITOR_EXTENSION_KEY,
   blankCustomEffect,
   blankPaintedSegments,
   cloneEditableEffect,
   customEffectCategoryForKind,
   effectOriginDescription,
+  installLibraryItemEditorMetadata,
   isEditableEffectContent,
   libraryItemSyncResult,
   libraryKindPriority,
@@ -16,6 +18,12 @@ import {
   uniquePaintedPalette,
   upsertSummary,
 } from "../../src/effect-editor-model";
+import {
+  advancedLayerLabels,
+  blankAdvancedContent,
+  blankLayer,
+  installAdvancedLayerLabels,
+} from "../../src/advanced-effect-model";
 import type {
   LibraryItem,
   ModelEffectCatalogue,
@@ -165,6 +173,38 @@ test("editable clones and serialisation isolate nested state", () => {
   expect(source.colour).toEqual([1, 2, 3]);
   expect(source.parameters).toEqual({ speed: 4 });
   expect(serialiseEditable("  Name  ", source)).toContain('"name":"Name"');
+});
+
+test("advanced layer labels survive clones, serialisation, and saved metadata", () => {
+  const content = blankAdvancedContent();
+  content.layers.push(blankLayer());
+  installAdvancedLayerLabels(content, [3, 1]);
+
+  const cloned = cloneEditableEffect(content);
+  expect(cloned.kind).toBe("advanced");
+  if (cloned.kind !== "advanced") {
+    throw new Error("Expected advanced content.");
+  }
+  expect(advancedLayerLabels(cloned)).toEqual([3, 1]);
+  expect(serialiseEditable("Layered", cloned)).toContain(
+    '"layer_labels":[3,1]',
+  );
+
+  const item: LibraryItem = {
+    schema_version: 1,
+    id: "advanced",
+    version: 1,
+    updated_at: "2026-08-27T00:00:00Z",
+    name: "Layered",
+    content: blankAdvancedContent(),
+    content_hash: "3".repeat(64),
+    origin: { kind: "authored", source_id: null },
+    extensions: {
+      [EDITOR_EXTENSION_KEY]: { layer_labels: [7] },
+    },
+  };
+  installLibraryItemEditorMetadata(item);
+  expect(advancedLayerLabels(item.content as ReturnType<typeof blankAdvancedContent>)).toEqual([7]);
 });
 
 test("library summaries retain model metadata and stable ordering", () => {

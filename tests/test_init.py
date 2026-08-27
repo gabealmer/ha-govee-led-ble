@@ -12,7 +12,12 @@ from custom_components.ha_govee_led_ble import (
     async_setup_entry,
     async_unload_entry,
 )
-from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import (
+    CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+    CONF_MODEL,
+    DOMAIN,
+    MODEL_PROFILES,
+)
 from custom_components.ha_govee_led_ble.coordinator import AVAILABILITY_UNAVAILABLE_DATA_KEY
 from custom_components.ha_govee_led_ble.editor import (
     EDITOR_ELEMENT_NAME,
@@ -29,7 +34,7 @@ def _entry(**kw):
 
 
 async def test_setup_entry(hass: HomeAssistant):
-    entry = _entry()
+    entry = _entry(options={CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True})
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
         patch(
@@ -52,6 +57,7 @@ async def test_setup_entry(hass: HomeAssistant):
             {"scenes", "effects", "multi_layered", "reactive", "advanced"},
         ),
         prefix_effect_names=False,
+        always_include_custom_effects=True,
     )
     build_url.assert_called_once_with(entry.entry_id)
     assert entry.runtime_data is cls.return_value

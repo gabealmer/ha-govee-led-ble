@@ -9,6 +9,7 @@ from .effect_limits import (
     MAX_EFFECT_DOCUMENT_BYTES,
     MAX_EFFECT_NAME_LENGTH,
     MAX_IDENTIFIER_LENGTH,
+    MAX_JSON_COLLECTION_ITEMS,
     MAX_PREFERENCES_BYTES,
     MAX_REVISION,
     MAX_TIMESTAMP_LENGTH,
@@ -25,7 +26,9 @@ WS_LIBRARY_LIST = f"{DOMAIN}/editor/library/list"
 WS_LIBRARY_GET = f"{DOMAIN}/editor/library/get"
 WS_LIBRARY_CREATE = f"{DOMAIN}/editor/library/create"
 WS_LIBRARY_UPDATE = f"{DOMAIN}/editor/library/update"
+WS_LIBRARY_OVERWRITE = f"{DOMAIN}/editor/library/overwrite"
 WS_LIBRARY_DELETE = f"{DOMAIN}/editor/library/delete"
+WS_LIBRARY_NAME_STATUS = f"{DOMAIN}/editor/library/name_status"
 WS_LIBRARY_SUBSCRIBE = f"{DOMAIN}/editor/library/subscribe"
 WS_DEPLOYMENT_SUBSCRIBE = f"{DOMAIN}/editor/deployment/subscribe"
 WS_USER_STATE_GET = f"{DOMAIN}/editor/user_state/get"
@@ -97,11 +100,23 @@ def _timestamp(value: str) -> str:
     return value
 
 
+def _unique_values(values: list[int]) -> list[int]:
+    if len(values) != len(set(values)):
+        raise vol.Invalid("values must be unique")
+    return values
+
+
 EFFECT_NAME = vol.All(str, vol.Length(max=MAX_EFFECT_NAME_LENGTH))
 IDENTIFIER = vol.All(str, vol.Length(min=1, max=MAX_IDENTIFIER_LENGTH))
 UUID_TEXT = vol.All(str, vol.Length(min=36, max=36))
 TIMESTAMP = vol.All(str, vol.Length(min=1, max=MAX_TIMESTAMP_LENGTH), _timestamp)
 POSITIVE_REVISION = vol.All(strict_int, vol.Range(min=1, max=MAX_REVISION))
+LAYER_LABEL = vol.All(strict_int, vol.Range(min=1, max=0xFF))
+LAYER_LABELS = vol.All(
+    [LAYER_LABEL],
+    vol.Length(max=MAX_JSON_COLLECTION_ITEMS),
+    _unique_values,
+)
 SCENE_ID = vol.All(strict_int, vol.Range(min=0, max=0xFFFF))
 SPEED_INDEX = vol.All(strict_int, vol.Range(min=0, max=0xFF))
 EFFECT_CONTENT = vol.All(dict, _bounded_effect_content)

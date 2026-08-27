@@ -367,6 +367,117 @@ def test_saved_categories_remain_visible_when_native_families_are_narrower(
     assert {"Saved scene", "Saved reactive"} <= set(entity.effect_list)
 
 
+def test_always_custom_includes_saved_effects_with_no_enabled_categories(
+    mock_coordinator,
+):
+    saved = LibraryItem.new(
+        "Saved effect",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    mock_coordinator.effect_categories = frozenset()
+    mock_coordinator.effect_families = frozenset()
+    mock_coordinator.always_include_custom_effects = True
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot((saved,))),
+            ),
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+            active_workspaces=SimpleNamespace(get=MagicMock(return_value=None)),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+
+    assert entity.effect_list == ["off", "Saved effect"]
+    assert all(entry.source == "saved" for entry in entity._selector_entries())
+
+
+def test_always_custom_keeps_active_saved_effect_in_state_and_list(
+    mock_coordinator,
+):
+    saved = LibraryItem.new(
+        "Saved effect",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    hint = SimpleNamespace(
+        source_kind="saved_effect",
+        item_id=saved.id,
+        content_hash=saved.content_hash,
+        observable_signature="custom:800",
+    )
+    mock_coordinator.effect_categories = frozenset()
+    mock_coordinator.effect_families = frozenset()
+    mock_coordinator.always_include_custom_effects = True
+    mock_coordinator.is_on = True
+    mock_coordinator.diy_code = 800
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot((saved,))),
+            ),
+            device_cache=SimpleNamespace(
+                get=MagicMock(return_value=SimpleNamespace(active_effect=hint)),
+            ),
+            active_workspaces=SimpleNamespace(get=MagicMock(return_value=None)),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+
+    assert entity.effect == "Saved effect"
+    assert entity.effect in entity.effect_list
+
+
+def test_always_custom_keeps_native_effects_category_gated() -> None:
+    saved = LibraryItem.new(
+        "Saved effect",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+
+    entries = effect_selector_entries(
+        "H617A",
+        frozenset(),
+        (saved,),
+        prefix_effect_names=False,
+        always_include_custom_effects=True,
+    )
+
+    assert [(entry.source, entry.display_label) for entry in entries] == [("saved", "Saved effect")]
+
+
+def test_prefixes_depend_on_represented_categories() -> None:
+    one_category = effect_selector_entries(
+        "H617A",
+        frozenset({"scenes", "effects"}),
+        (),
+        prefix_effect_names=True,
+    )
+    saved_effect = LibraryItem.new(
+        "Saved effect",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    two_categories = effect_selector_entries(
+        "H617A",
+        frozenset({"scenes"}),
+        (saved_effect,),
+        prefix_effect_names=True,
+        always_include_custom_effects=True,
+    )
+
+    assert "Birthday" in {entry.display_label for entry in one_category}
+    assert "Scene: Birthday" in {entry.display_label for entry in two_categories}
+    assert "Effect: Saved effect" in {entry.display_label for entry in two_categories}
+
+
 async def test_saved_effects_are_compatible_reactive_and_lock_safe(
     mock_coordinator,
 ):

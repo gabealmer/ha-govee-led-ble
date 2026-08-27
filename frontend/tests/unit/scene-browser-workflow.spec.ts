@@ -103,13 +103,23 @@ function deferred<T>() {
 function harness(api: EffectStudioApi) {
   const initialSelectionFinished = vi.fn();
   const libraryItemSaved = vi.fn();
+  const error = vi.fn();
+  const workStateChanged = vi.fn();
   const workflow = new SceneBrowserWorkflow({
     changed: vi.fn(),
     initialSelectionFinished,
     libraryItemSaved,
+    error,
+    workStateChanged,
   });
   workflow.configure(api, device);
-  return { workflow, initialSelectionFinished, libraryItemSaved };
+  return {
+    workflow,
+    initialSelectionFinished,
+    libraryItemSaved,
+    error,
+    workStateChanged,
+  };
 }
 
 describe("SceneBrowserWorkflow", () => {
@@ -134,6 +144,21 @@ describe("SceneBrowserWorkflow", () => {
 
     expect(workflow.state.selectedScene).toEqual(secondScene);
     expect(workflow.state.speedIndex).toBe(2);
+  });
+
+  test("untouched native and empty scene states do not report protected work", async () => {
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1)),
+    } as unknown as EffectStudioApi;
+    const { workflow, workStateChanged } = harness(api);
+
+    await workflow.loadCatalogue();
+    expect(workStateChanged).toHaveBeenLastCalledWith(false);
+
+    await workflow.selectBuiltin(firstScene);
+    expect(workflow.protectedWorkDirty).toBe(false);
+    expect(workStateChanged).toHaveBeenLastCalledWith(false);
   });
 
   test("an initial saved selection opens once through the custom-scene path", async () => {
@@ -223,7 +248,7 @@ describe("SceneBrowserWorkflow", () => {
         .mockReturnValueOnce(remoteItem.promise),
       sceneDetail: vi.fn().mockResolvedValue(detail(firstScene)),
     } as unknown as EffectStudioApi;
-    const { workflow } = harness(api);
+    const { workflow, error } = harness(api);
     workflow.setLibrary({ items: [summary(original)] });
     await workflow.loadCatalogue();
     await workflow.selectCustom(summary(original));
@@ -236,8 +261,9 @@ describe("SceneBrowserWorkflow", () => {
 
     expect(workflow.state.selectedItem?.version).toBe(original.version);
     expect(workflow.state.name).toBe("Local edit");
-    expect(workflow.state.notice).toBe(
+    expect(error).toHaveBeenCalledWith(
       "This custom scene changed elsewhere. Reload it before saving.",
+      expect.objectContaining({ title: "Scene operation failed" }),
     );
   });
 
@@ -261,6 +287,7 @@ describe("SceneBrowserWorkflow", () => {
     expect(createItem).toHaveBeenCalledWith(
       "Glacier custom",
       expect.objectContaining({ kind: "scene_builtin", speed_index: 2 }),
+      expect.any(Function),
     );
     expect(libraryItemSaved).toHaveBeenCalledWith(saved, "device-a", true, 0);
     expect(workflow.state.selectedItem).toEqual(saved);
@@ -268,30 +295,37 @@ describe("SceneBrowserWorkflow", () => {
     expect(workflow.state.notice).toBeUndefined();
   });
 
-  test("a delayed save updates the library without replacing or applying newer edits", async () => {
+  test("an existing custom scene blocks edits during save and adopts the returned version", async () => {
     const pending = deferred<LibraryItem>();
-    const saved = libraryItem("saved-copy", firstScene, "Glacier custom");
+    const original = libraryItem("saved-copy", firstScene, "Glacier custom");
+    const saved = {
+      ...original,
+      version: original.version + 1,
+      updated_at: "2026-08-27T00:00:00Z",
+      name: "Renamed",
+    };
     const api = {
       sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
       sceneDetail: vi.fn().mockResolvedValue(detail(firstScene)),
-      createItem: vi.fn().mockReturnValue(pending.promise),
+      item: vi.fn().mockResolvedValue(original),
+      updateItem: vi.fn().mockReturnValue(pending.promise),
     } as unknown as EffectStudioApi;
     const { workflow, libraryItemSaved } = harness(api);
+    workflow.setLibrary({ items: [summary(original)] });
     await workflow.loadCatalogue();
-    await workflow.selectBuiltin(firstScene);
-    workflow.edit(true);
-    workflow.setName("Glacier custom");
+    await workflow.selectCustom(summary(original));
+    workflow.setName("Renamed");
 
     const save = workflow.save(true);
-    workflow.setName("Newer local name");
+    workflow.setName("Ignored");
     workflow.setSpeedIndex(2);
     pending.resolve(saved);
     await save;
 
-    expect(libraryItemSaved).toHaveBeenCalledWith(saved, "device-a", false, 0);
-    expect(workflow.state.selectedItem).toBeUndefined();
-    expect(workflow.state.name).toBe("Newer local name");
-    expect(workflow.state.speedIndex).toBe(2);
+    expect(libraryItemSaved).toHaveBeenCalledWith(saved, "device-a", true, 0);
+    expect(workflow.state.selectedItem).toEqual(saved);
+    expect(workflow.state.name).toBe("Renamed");
+    expect(workflow.state.speedIndex).not.toBe(2);
   });
 
   test("cancelling a scene copy restores the selected catalogue scene", async () => {
@@ -440,6 +474,54 @@ describe("SceneBrowserWorkflow", () => {
     expect(workflow.state.speedIndex).toBe(1);
     expect(workflow.state.content?.speed_index).toBe(1);
     expect(workflow.state.hasDefault).toBe(true);
+  });
+
+  test("state-update failure invalidates queued scene-default writes", async () => {
+    const firstWrite = deferred<SceneDetail>();
+    const setSceneDefault = vi.fn().mockReturnValue(firstWrite.promise);
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1)),
+      setSceneDefault,
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(firstScene);
+
+    workflow.setSpeedIndex(0);
+    const first = workflow.setCurrentDefault(true);
+    workflow.setSpeedIndex(2);
+    const queued = workflow.setCurrentDefault(true);
+    workflow.setStateUpdatesAvailable(false);
+    firstWrite.resolve(detail(firstScene, 0, true));
+    await first;
+    await queued;
+
+    expect(setSceneDefault.mock.calls.map((call) => call[2])).toEqual([0]);
+    expect(workflow.defaultWritePending).toBe(false);
+  });
+
+  test("scene work reports dirty state and becomes immutable after update failure", async () => {
+    const original = libraryItem("saved-copy", firstScene, "Glacier custom");
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue(catalogue),
+      sceneDetail: vi.fn().mockResolvedValue(detail(firstScene)),
+      item: vi.fn().mockResolvedValue(original),
+    } as unknown as EffectStudioApi;
+    const { workflow, workStateChanged } = harness(api);
+    workflow.setLibrary({ items: [summary(original)] });
+    await workflow.loadCatalogue();
+    await workflow.selectCustom(summary(original));
+
+    workflow.setName("Changed");
+    expect(workStateChanged).toHaveBeenLastCalledWith(true);
+
+    workflow.setStateUpdatesAvailable(false);
+    workflow.setName("Ignored");
+    workflow.setSpeedIndex(2);
+
+    expect(workflow.state.name).toBe("Changed");
+    expect(workflow.state.speedIndex).not.toBe(2);
     expect(workflow.state.notice).toBeUndefined();
   });
 
@@ -476,7 +558,7 @@ describe("SceneBrowserWorkflow", () => {
       sceneDetail: vi.fn().mockResolvedValue(detail(firstScene, 1, false)),
       setSceneDefault: vi.fn().mockReturnValue(pending.promise),
     } as unknown as EffectStudioApi;
-    const { workflow } = harness(api);
+    const { workflow, error } = harness(api);
     await workflow.loadCatalogue();
     await workflow.selectBuiltin(firstScene);
     workflow.setSpeedIndex(2);
@@ -489,7 +571,10 @@ describe("SceneBrowserWorkflow", () => {
     expect(workflow.state.content?.speed_index).toBe(1);
     expect(workflow.state.hasDefault).toBe(false);
     expect(workflow.sceneDefaultDirty).toBe(true);
-    expect(workflow.state.notice).toBe("Set as Default failed: offline");
+    expect(error).toHaveBeenCalledWith(
+      "Set as Default failed: offline",
+      expect.objectContaining({ title: "Scene operation failed" }),
+    );
     expect(workflow.state.saving).toBe(false);
   });
 
@@ -504,7 +589,7 @@ describe("SceneBrowserWorkflow", () => {
         .mockReturnValueOnce(firstWrite.promise)
         .mockReturnValueOnce(latestWrite.promise),
     } as unknown as EffectStudioApi;
-    const { workflow } = harness(api);
+    const { workflow, error } = harness(api);
     await workflow.loadCatalogue();
     await workflow.selectBuiltin(firstScene);
 
@@ -524,7 +609,10 @@ describe("SceneBrowserWorkflow", () => {
     expect(workflow.state.speedIndex).toBe(2);
     expect(workflow.state.content?.speed_index).toBe(1);
     expect(workflow.state.hasDefault).toBe(false);
-    expect(workflow.state.notice).toBe("Set as Default failed: latest failed");
+    expect(error).toHaveBeenCalledWith(
+      "Set as Default failed: latest failed",
+      expect.objectContaining({ title: "Scene operation failed" }),
+    );
   });
 
   test("a stale preview refresh cannot replace newer optimistic default state", async () => {

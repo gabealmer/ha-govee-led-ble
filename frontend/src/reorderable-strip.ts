@@ -614,6 +614,15 @@ export class GoveeReorderableStrip extends LitElement {
       background: var(--studio-card);
       font-size: var(--studio-action-glyph-size);
       font-weight: var(--studio-font-weight-semibold);
+      line-height: 0;
+    }
+
+    .compact-action > span {
+      display: inline-grid;
+      width: var(--studio-icon-size);
+      height: var(--studio-icon-size);
+      place-items: center;
+      line-height: 0;
     }
 
     .add {

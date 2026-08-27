@@ -12,6 +12,7 @@ import { clampInteger, clonePalette } from "./ui-utils";
 export const KNOWN_SELECTION_TYPES: readonly SelectionType[] = [1, 2, 0, 3];
 export const KNOWN_BRIGHTNESS_ORDERS: readonly BrightnessOrder[] = [0, 1, 2, 3];
 const APPLIED_AREA_SEGMENTS = Symbol("applied-area-segments");
+const LAYER_LABEL = Symbol("layer-label");
 
 interface EffectLayerWithAppliedAreaSegments extends EffectLayer {
   [APPLIED_AREA_SEGMENTS]?: {
@@ -19,6 +20,7 @@ interface EffectLayerWithAppliedAreaSegments extends EffectLayer {
     start: number;
     end: number;
   };
+  [LAYER_LABEL]?: number;
 }
 
 export function blankAdvancedContent(): AdvancedContent {
@@ -127,7 +129,75 @@ export function cloneLayer(layer: EffectLayer): EffectLayer {
       configurable: true,
     });
   }
+  const layerLabel = (layer as EffectLayerWithAppliedAreaSegments)[LAYER_LABEL];
+  if (layerLabel !== undefined) {
+    setLayerLabel(clone, layerLabel);
+  }
   return clone;
+}
+
+export function advancedLayerLabels(content: AdvancedContent): number[] {
+  const labels = content.layers.map(
+    (layer, index) =>
+      (layer as EffectLayerWithAppliedAreaSegments)[LAYER_LABEL] ?? index + 1,
+  );
+  return validLayerLabels(labels, content.layers.length)
+    ? labels
+    : content.layers.map((_layer, index) => index + 1);
+}
+
+export function installAdvancedLayerLabels(
+  content: AdvancedContent,
+  labels: unknown,
+): void {
+  const resolved =
+    Array.isArray(labels) && validLayerLabels(labels, content.layers.length)
+      ? labels
+      : content.layers.map((_layer, index) => index + 1);
+  content.layers.forEach((layer, index) =>
+    setLayerLabel(layer, resolved[index]),
+  );
+}
+
+export function setAdvancedLayerLabel(
+  layer: EffectLayer,
+  label: number,
+): void {
+  setLayerLabel(layer, label);
+}
+
+export function nextAdvancedLayerLabel(content: AdvancedContent): number {
+  const used = new Set(advancedLayerLabels(content));
+  let candidate = 1;
+  while (used.has(candidate)) {
+    candidate += 1;
+  }
+  return candidate;
+}
+
+function setLayerLabel(layer: EffectLayer, label: number): void {
+  Object.defineProperty(layer, LAYER_LABEL, {
+    value: label,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function validLayerLabels(
+  labels: readonly unknown[],
+  layerCount: number,
+): labels is number[] {
+  return (
+    labels.length === layerCount &&
+    labels.every(
+      (label) =>
+        Number.isInteger(label) &&
+        typeof label === "number" &&
+        label > 0 &&
+        label <= 255,
+    ) &&
+    new Set(labels).size === labels.length
+  );
 }
 
 export function isKnownSelectionType(value: number): value is SelectionType {

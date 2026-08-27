@@ -62,7 +62,9 @@ def _item(name: str = "Test", *, updated_at: str = TIMESTAMP) -> LibraryItem:
 async def test_current_only_library_creates_updates_and_hard_deletes() -> None:
     store = InMemoryVersionedDocumentStore()
     repository = EffectLibraryRepository(store)
-    assert (await repository.async_load()).items == ()
+    initial = await repository.async_load()
+    assert initial.items == ()
+    assert initial.generation == 0
     item = _item()
 
     created = await repository.async_create(item)
@@ -84,11 +86,14 @@ async def test_current_only_library_creates_updates_and_hard_deletes() -> None:
     )
 
     assert created.items == (item,)
+    assert created.generation == 1
     assert updated.items == (updated_item,)
+    assert updated.generation == 2
     assert deleted.items == ()
+    assert deleted.generation == 3
     with pytest.raises(EffectNotFoundError):
         repository.get(item.id)
-    assert store.data == {"items": {}}
+    assert store.data == {"items": {}, "generation": 3}
 
 
 async def test_active_workspace_keeps_only_the_latest_generation() -> None:
@@ -210,12 +215,14 @@ async def test_legacy_migration_keeps_only_live_head(hass: HomeAssistant) -> Non
     deleted = _item("Deleted")
     await _save_legacy_library(hass, live, deleted)
 
-    (migrated,) = (await EffectLibraryRepository(hass).async_load()).items
+    snapshot = await EffectLibraryRepository(hass).async_load()
+    (migrated,) = snapshot.items
 
     assert migrated.id == live.id
     assert migrated.version == 2
     assert migrated.name == "Current"
     assert migrated.origin == Origin()
+    assert snapshot.generation == 0
     assert "Old" not in str(await Store[dict[str, Any]](hass, LIBRARY_STORE_VERSION, LIBRARY_STORE_KEY).async_load())
 
 
@@ -272,7 +279,7 @@ async def test_current_library_migrates_legacy_painted_content(
     assert migrated.content_hash != "0" * 64
 
 
-@pytest.mark.parametrize("minor_version", [0, 1])
+@pytest.mark.parametrize("minor_version", [0, 1, 2])
 async def test_current_library_migrations_delete_retired_special_diy_before_decoding(
     hass: HomeAssistant,
     minor_version: int,
@@ -302,6 +309,7 @@ async def test_current_library_migrations_delete_retired_special_diy_before_deco
     snapshot = await EffectLibraryRepository(hass).async_load()
 
     assert snapshot.items == (retained,)
+    assert snapshot.generation == 0
     migrated = await Store[dict[str, Any]](
         hass,
         LIBRARY_STORE_VERSION,
@@ -310,7 +318,10 @@ async def test_current_library_migrations_delete_retired_special_diy_before_deco
         atomic_writes=True,
         minor_version=LIBRARY_STORE_MINOR_VERSION,
     ).async_load()
-    assert migrated == {"items": {str(retained.id): retained.to_dict()}}
+    assert migrated == {
+        "items": {str(retained.id): retained.to_dict()},
+        "generation": 0,
+    }
 
 
 async def test_current_library_rejects_overlapping_legacy_paint_groups(hass: HomeAssistant) -> None:

@@ -46,6 +46,8 @@ export function previewStatusMessage(
 
 export class PanelPreviewController {
   private session?: EffectStudioPreviewSession;
+  private rejectedRequestSequence = 0;
+  private readonly reportedPreviewErrors = new Set<string>();
   private readonly progress = new LivePreviewProgressController({
     changed: (visible) => {
       this.model.patch({ previewProgressVisible: visible });
@@ -57,6 +59,7 @@ export class PanelPreviewController {
     api: EffectStudioApi,
     subscriptionFailed: (error: Error) => void,
   ): Promise<boolean> {
+    this.reportedPreviewErrors.clear();
     const session = new EffectStudioPreviewSession(
       api,
       (status) => {
@@ -73,17 +76,36 @@ export class PanelPreviewController {
         }
         this.model.update((model) => {
           model.previewStatus = status;
-          model.previewNotice = previewStatusMessage(status);
+          model.previewNotice = undefined;
         });
+        const message = previewStatusMessage(status);
+        if (message && status) {
+          const key = `preview:${status.session_id}:${status.sequence}:${status.phase}:${status.error_code ?? ""}`;
+          if (!this.reportedPreviewErrors.has(key)) {
+            this.reportedPreviewErrors.add(key);
+            this.model.reportError(message, {
+              title: "Live change failed",
+              key,
+            });
+          }
+        }
       },
       subscriptionFailed,
       (error) => {
         this.progress.clear();
         this.model.patch({
           previewStatus: undefined,
-          previewNotice: `Live request was not accepted: ${errorMessage(error)}`,
+          previewNotice: undefined,
           previewProgressVisible: false,
         });
+        this.rejectedRequestSequence += 1;
+        this.model.reportError(
+          `Live request was not accepted: ${errorMessage(error)}`,
+          {
+            title: "Live request failed",
+            key: `preview-rejected:${this.rejectedRequestSequence}`,
+          },
+        );
       },
     );
     this.session = session;
@@ -181,6 +203,7 @@ export class PanelPreviewController {
     this.progress.reset();
     this.session?.close();
     this.session = undefined;
+    this.reportedPreviewErrors.clear();
     this.model.update((model) => {
       model.previewStatus = undefined;
       model.previewNotice = undefined;

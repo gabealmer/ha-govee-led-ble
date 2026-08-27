@@ -118,6 +118,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         effect_families: frozenset[str] | None = None,
         effect_categories: frozenset[str] | None = None,
         prefix_effect_names: bool = False,
+        always_include_custom_effects: bool = False,
         device_resolver: BLEDeviceResolver | None = None,
     ) -> None:
         profile = get_profile(model)
@@ -134,6 +135,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             frozenset(default_effect_categories(model)) if effect_categories is None else effect_categories
         )
         self.prefix_effect_names = prefix_effect_names
+        self.always_include_custom_effects = always_include_custom_effects
         self._device_resolver = BLEDeviceResolver() if device_resolver is None else device_resolver
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()

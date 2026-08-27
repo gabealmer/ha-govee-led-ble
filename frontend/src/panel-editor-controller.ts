@@ -439,6 +439,18 @@ export class PanelEditorController {
     });
   }
 
+  public clearRetainedSelection(): void {
+    this.model.patch({
+      currentItem: undefined,
+      editorSource: { kind: "none" },
+      name: "",
+      content: blankPainted(),
+      savedBaseline: undefined,
+      resetBaseline: undefined,
+      resetNameBaseline: undefined,
+    });
+  }
+
   public openSceneEditor(detail: {
     content: LayeredSceneContent;
     config_entry_id: string;

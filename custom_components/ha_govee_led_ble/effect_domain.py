@@ -458,6 +458,7 @@ class LibraryItem:
         origin: Origin | None = None,
         target_hint: TargetHint | None = None,
         updated_at: str | None = None,
+        extensions: Mapping[str, JsonValue] | None = None,
     ) -> LibraryItem:
         return cls(
             id=uuid4(),
@@ -467,6 +468,7 @@ class LibraryItem:
             content=content,
             origin=origin or Origin(),
             target_hint=target_hint,
+            extensions={} if extensions is None else extensions,
         )
 
     def to_dict(self) -> dict[str, JsonValue]:

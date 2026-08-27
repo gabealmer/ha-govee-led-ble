@@ -52,11 +52,11 @@ test("unknown fill pattern values remain unsupported rather than remapped", () =
 });
 
 test("layer and brightness pattern items use numeric labels and exact accessible names", () => {
-  expect(advancedLayerItems(2)).toEqual([
+  expect(advancedLayerItems([3, 1])).toEqual([
     {
       key: "layer-0",
-      label: "1",
-      ariaLabel: "Layer 1",
+      label: "3",
+      ariaLabel: "Layer 3",
       ariaDescription:
         "Drag to reorder or use the Left and Right Arrow keys.",
       id: "advanced-layer-tab-0",
@@ -64,8 +64,8 @@ test("layer and brightness pattern items use numeric labels and exact accessible
     },
     {
       key: "layer-1",
-      label: "2",
-      ariaLabel: "Layer 2",
+      label: "1",
+      ariaLabel: "Layer 1",
       ariaDescription:
         "Drag to reorder or use the Left and Right Arrow keys.",
       id: "advanced-layer-tab-1",
@@ -100,20 +100,32 @@ test("compact layer actions retain labels, tone, and authoring limits", () => {
       icon: "mdi:content-copy",
       danger: false,
       disabled: false,
+      visible: true,
+    },
+    {
+      kind: "renumber",
+      label: "Renumber layers",
+      icon: "mdi:format-list-numbered",
+      danger: false,
+      disabled: false,
+      visible: false,
     },
     {
       kind: "delete",
       label: "Delete current layer",
       glyph: "×",
       danger: true,
-      disabled: true,
+      disabled: false,
+      visible: false,
     },
   ]);
-  expect(advancedLayerActions(5).map(({ kind, disabled }) => ({
+  expect(advancedLayerActions(5).map(({ kind, disabled, visible }) => ({
     kind,
     disabled,
+    visible,
   }))).toEqual([
-    { kind: "copy", disabled: true },
-    { kind: "delete", disabled: false },
+    { kind: "copy", disabled: true, visible: true },
+    { kind: "renumber", disabled: false, visible: true },
+    { kind: "delete", disabled: false, visible: true },
   ]);
 });

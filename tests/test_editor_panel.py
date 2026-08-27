@@ -263,7 +263,7 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
 
     assert info["success"] is True
     assert info["result"]["api_version"] == EDITOR_API_VERSION
-    assert library["result"] == {"items": []}
+    assert library["result"] == {"generation": 0, "items": []}
     device = devices["result"]["devices"][0]
     refreshed_device = selected_device["result"]["device"]
     assert subscribed["success"] is True

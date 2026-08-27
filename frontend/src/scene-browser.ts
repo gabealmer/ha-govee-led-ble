@@ -86,17 +86,18 @@ export class GoveeSceneBrowser extends LitElement {
   @property({ type: Number })
   public editorTransitionEpoch = 0;
 
-  @property()
-  public panelNotice?: string;
-
   @property({ attribute: false })
   public previewStatus?: PreviewStatus;
+
+  @property({ type: Boolean })
+  public stateUpdatesAvailable = true;
 
   @property({ attribute: false })
   public requestTransition?: (
     transition: () => void | Promise<void>,
     returnFocus: HTMLElement,
-  ) => void;
+    save?: () => Promise<boolean>,
+  ) => Promise<void>;
 
   @state()
   private viewState: SceneBrowserViewState;
@@ -126,8 +127,24 @@ export class GoveeSceneBrowser extends LitElement {
           panelTransitionEpoch,
         });
       },
+      error: (message, options) => {
+        this.emit("studio-error", {
+          message,
+          ...options,
+        });
+      },
+      workStateChanged: (dirty) => {
+        this.emit("scene-work-state-changed", { dirty });
+      },
     });
     this.viewState = this.workflow.state;
+  }
+
+  public savePendingWork(): Promise<boolean> {
+    return this.workflow.savePendingWork(
+      this.isAdmin,
+      this.editorTransitionEpoch,
+    );
   }
 
   public currentPreviewRequest(): ScenePreviewRequest | undefined {
@@ -178,6 +195,11 @@ export class GoveeSceneBrowser extends LitElement {
     }
     if (changed.has("library")) {
       this.workflow.setLibrary(this.library);
+    }
+    if (changed.has("stateUpdatesAvailable")) {
+      this.workflow.setStateUpdatesAvailable(
+        this.stateUpdatesAvailable,
+      );
     }
   }
 
@@ -239,7 +261,7 @@ export class GoveeSceneBrowser extends LitElement {
       return html`
         <section class="empty">
           <h2>Scenes are unavailable</h2>
-          <p role="alert">${state.error ?? "The scene catalogue could not be loaded."}</p>
+          <p>The scene catalogue could not be loaded.</p>
         </section>
       `;
     }
@@ -250,11 +272,15 @@ export class GoveeSceneBrowser extends LitElement {
             <select
               aria-label="Scene category"
               @change=${(event: Event) => {
-                this.dismissExternalEdit();
-                this.workflow.setCategory(
-                  categorySelection(
-                    (event.target as HTMLSelectElement).value,
-                  ),
+                const select = event.target as HTMLSelectElement;
+                this.requestSceneTransition(
+                  () => {
+                    this.dismissExternalEdit();
+                    this.workflow.setCategory(
+                      categorySelection(select.value),
+                    );
+                  },
+                  select,
                 );
               }}
             >
@@ -281,13 +307,9 @@ export class GoveeSceneBrowser extends LitElement {
       </aside>
 
       ${this.externalEditActive || (!state.selectedScene || !state.content)
-        ? state.notice
-          ? html`<p class="action-error" role="alert">${state.notice}</p>`
-          : nothing
+        ? nothing
         : html`
             <section class="editor-surface detail">
-              ${this.panelNotice ? html`<p class="action-error" role="alert">${this.panelNotice}</p>` : nothing}
-              ${state.notice ? html`<p class="action-error" role="alert">${state.notice}</p>` : nothing}
               ${state.selectedScene && state.content ? this.renderDetail() : nothing}
             </section>
           `}
@@ -322,16 +344,37 @@ export class GoveeSceneBrowser extends LitElement {
             await select();
           };
           const returnFocus = event.currentTarget as HTMLElement;
-          if (this.requestTransition) {
-            this.requestTransition(transition, returnFocus);
-          } else {
-            void transition();
-          }
+          this.requestSceneTransition(transition, returnFocus);
         }}
       >
         <span>${label}</span>
       </button>
     `;
+  }
+
+  private requestSceneTransition(
+    transition: () => void | Promise<void>,
+    returnFocus: HTMLElement,
+  ): void {
+    if (this.requestTransition) {
+      void this.requestTransition(
+        transition,
+        returnFocus,
+        this.externalEditActive
+          ? undefined
+          : () =>
+              this.workflow.savePendingWork(
+                this.isAdmin,
+                this.editorTransitionEpoch,
+              ),
+      ).finally(() => {
+        if (returnFocus instanceof HTMLSelectElement) {
+          returnFocus.value = String(this.viewState.category);
+        }
+      });
+    } else {
+      void transition();
+    }
   }
 
   private renderDetail() {
@@ -356,7 +399,7 @@ export class GoveeSceneBrowser extends LitElement {
                     aria-label="Scene name"
                     maxlength="128"
                     .value=${state.name}
-                    ?disabled=${!this.isAdmin}
+                    ?disabled=${!this.isAdmin || state.saving}
                     @input=${(event: Event) => {
                       this.workflow.setName((event.target as HTMLInputElement).value);
                     }}
@@ -445,6 +488,7 @@ export class GoveeSceneBrowser extends LitElement {
         class=${action.style}
         type="button"
         ?disabled=${!this.isAdmin ||
+        this.viewState.saving ||
         !this.workflow.hasCurrentSceneContent() ||
         action.disabled === true}
         @click=${click}
@@ -462,7 +506,7 @@ export class GoveeSceneBrowser extends LitElement {
             .label=${"Speed"}
             .value=${speedIndex}
             .options=${sceneSpeedOptions(speed.option_count, speed.default_index)}
-            .disabled=${!this.isAdmin}
+            .disabled=${!this.isAdmin || this.viewState.saving}
             @value-changed=${(event: CustomEvent<SegmentedControlChange<number>>) => {
               this.workflow.setSpeedIndex(event.detail.value);
               if (this.autoSaveEnabled) {
@@ -596,11 +640,6 @@ export class GoveeSceneBrowser extends LitElement {
         background: var(--primary-background-color);
       }
       .parameter-list { display: grid; gap: var(--studio-spacing-lg); }
-      .action-error {
-        margin: 0 0 var(--studio-section-title-gap);
-        color: var(--error-color, #db4437);
-        line-height: var(--studio-muted-line-height);
-      }
       .empty p {
         margin-bottom: 0;
         color: var(--studio-muted);

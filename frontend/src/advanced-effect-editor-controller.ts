@@ -1,4 +1,12 @@
-import { blankBrightnessPattern, blankLayer, cloneLayer } from "./advanced-effect-model";
+import {
+  advancedLayerLabels,
+  blankBrightnessPattern,
+  blankLayer,
+  cloneLayer,
+  nextAdvancedLayerLabel,
+  setAdvancedLayerLabel,
+  installAdvancedLayerLabels,
+} from "./advanced-effect-model";
 import { AUTHORING_LAYER_LIMIT } from "./advanced-effect-editor-model";
 import type { AdvancedContent, BrightnessPattern, EffectLayer, RGB } from "./types";
 import { clampInteger, clonePalette, relocatedIndex } from "./ui-utils";
@@ -26,6 +34,7 @@ export class AdvancedEffectEditorController {
       this.activateLayer(0);
       return;
     }
+    installAdvancedLayerLabels(content, advancedLayerLabels(content));
     this.activeLayerIndex = clampInteger(this.activeLayerIndex, 0, content.layers.length - 1);
     const patternCount = this.activeLayer.brightness_patterns.length;
     this.activePatternIndex = patternCount ? clampInteger(this.activePatternIndex, 0, patternCount - 1) : 0;
@@ -35,16 +44,32 @@ export class AdvancedEffectEditorController {
     return this.content!.layers[this.activeLayerIndex];
   }
 
+  public get layerLabels(): number[] {
+    return this.content ? advancedLayerLabels(this.content) : [];
+  }
+
   public isCurrentContent(content: AdvancedContent): boolean {
     return this.content === content;
   }
 
   public updateLayer(update: Partial<EffectLayer>): AdvancedContent | undefined {
-    return this.canEditLayer() ? this.replaceActive({ ...this.activeLayer, ...update }) : undefined;
+    if (!this.canEditLayer()) {
+      return undefined;
+    }
+    const replacement = cloneLayer(this.activeLayer);
+    Object.assign(replacement, update);
+    return this.replaceActive(replacement);
   }
 
   public replaceActiveLayer(replacement: EffectLayer): AdvancedContent | undefined {
-    return this.canEditLayer() ? this.replaceActive(replacement) : undefined;
+    if (!this.canEditLayer()) {
+      return undefined;
+    }
+    setAdvancedLayerLabel(
+      replacement,
+      this.layerLabels[this.activeLayerIndex],
+    );
+    return this.replaceActive(replacement);
   }
 
   public updateBrightnessPattern(update: Partial<BrightnessPattern>): AdvancedContent | undefined {
@@ -72,7 +97,9 @@ export class AdvancedEffectEditorController {
     if (!this.content || this.disabled || this.content.layers.length >= AUTHORING_LAYER_LIMIT) {
       return undefined;
     }
-    const layers = [...this.content.layers.map(cloneLayer), blankLayer()];
+    const layer = blankLayer();
+    setAdvancedLayerLabel(layer, nextAdvancedLayerLabel(this.content));
+    const layers = [...this.content.layers.map(cloneLayer), layer];
     this.activateLayer(layers.length - 1);
     return this.contentChange(layers, true);
   }
@@ -83,7 +110,9 @@ export class AdvancedEffectEditorController {
     }
     const layers = this.content!.layers.map(cloneLayer);
     const copyIndex = this.activeLayerIndex + 1;
-    layers.splice(copyIndex, 0, cloneLayer(this.activeLayer));
+    const copy = cloneLayer(this.activeLayer);
+    setAdvancedLayerLabel(copy, nextAdvancedLayerLabel(this.content!));
+    layers.splice(copyIndex, 0, copy);
     this.activateLayer(copyIndex);
     return this.contentChange(layers, true);
   }
@@ -105,6 +134,18 @@ export class AdvancedEffectEditorController {
     const [moving] = layers.splice(from, 1);
     layers.splice(to, 0, moving);
     this.activeLayerIndex = relocatedIndex(this.activeLayerIndex, from, to);
+    return this.contentChange(layers);
+  }
+
+  public renumberLayers(): AdvancedContent | undefined {
+    if (!this.canEditLayer()) {
+      return undefined;
+    }
+    const layers = this.content!.layers.map((layer, index) => {
+      const clone = cloneLayer(layer);
+      setAdvancedLayerLabel(clone, index + 1);
+      return clone;
+    });
     return this.contentChange(layers);
   }
 

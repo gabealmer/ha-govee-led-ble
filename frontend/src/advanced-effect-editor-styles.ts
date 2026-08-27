@@ -75,15 +75,10 @@ export const advancedEffectEditorStyles = [
       cursor: pointer;
     }
 
-    .limit-note,
     .muted {
       color: var(--studio-muted);
       font-size: var(--studio-parameter-label-size);
       line-height: var(--studio-muted-line-height);
-    }
-
-    .limit-note {
-      margin: var(--studio-spacing-lg) 0 0;
     }
 
     .empty-state .add-button {
@@ -134,9 +129,13 @@ export const advancedEffectEditorStyles = [
     }
 
     .compact-action-icon {
-      display: block;
+      --mdc-icon-size: var(--studio-icon-size);
+      display: inline-flex;
       width: var(--studio-icon-size);
       height: var(--studio-icon-size);
+      align-items: center;
+      justify-content: center;
+      line-height: 0;
     }
 
     .card-heading {

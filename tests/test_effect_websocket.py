@@ -34,6 +34,8 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_LIBRARY_DELETE,
     WS_LIBRARY_GET,
     WS_LIBRARY_LIST,
+    WS_LIBRARY_NAME_STATUS,
+    WS_LIBRARY_OVERWRITE,
     WS_LIBRARY_SUBSCRIBE,
     WS_LIBRARY_UPDATE,
     WS_USER_STATE_GET,
@@ -113,7 +115,7 @@ async def test_authenticated_users_can_read_contracts(
 
     assert info["result"]["api_version"] == EDITOR_API_VERSION
     assert "drafts_per_owner" not in info["result"]["limits"]
-    assert library["result"] == {"items": []}
+    assert library["result"] == {"generation": 0, "items": []}
     assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H617A", "H6199"]
 
 
@@ -238,10 +240,12 @@ async def test_admin_current_only_library_lifecycle_and_stale_token(
             "content": _content(),
         }
     )
-    created = (await client.receive_json())["result"]["item"]
+    create_result = (await client.receive_json())["result"]
+    created = create_result["item"]
     assert created["version"] == 1
     assert len(created["content_hash"]) == 64
     assert created["origin"] == {"kind": "authored", "source_id": None}
+    assert create_result["library"]["generation"] == 1
 
     await client.send_json_auto_id(
         {
@@ -253,9 +257,11 @@ async def test_admin_current_only_library_lifecycle_and_stale_token(
             "expected_updated_at": created["updated_at"],
         }
     )
-    updated = (await client.receive_json())["result"]["item"]
+    update_result = (await client.receive_json())["result"]
+    updated = update_result["item"]
     assert updated["version"] == 2
     assert updated["updated_at"] > created["updated_at"]
+    assert update_result["library"]["generation"] == 2
 
     await client.send_json_auto_id(
         {
@@ -282,9 +288,11 @@ async def test_admin_current_only_library_lifecycle_and_stale_token(
             "expected_updated_at": updated["updated_at"],
         }
     )
-    assert (await client.receive_json())["success"] is True
+    deleted = await client.receive_json()
+    assert deleted["success"] is True
+    assert deleted["result"]["library"] == {"generation": 3, "items": []}
     await client.send_json_auto_id({"type": WS_LIBRARY_LIST})
-    assert (await client.receive_json())["result"] == {"items": []}
+    assert (await client.receive_json())["result"] == {"generation": 3, "items": []}
 
 
 async def test_library_subscription_publishes_current_snapshot(
@@ -299,7 +307,7 @@ async def test_library_subscription_publishes_current_snapshot(
     assert subscribed["success"] is True
     initial = await client.receive_json()
     assert initial["id"] == subscribed["id"]
-    assert initial["event"] == {"items": []}
+    assert initial["event"] == {"generation": 0, "items": []}
 
     await client.send_json_auto_id(
         {
@@ -314,7 +322,161 @@ async def test_library_subscription_publishes_current_snapshot(
 
     assert created["success"] is True
     assert event["id"] == subscribed["id"]
+    assert event["event"]["generation"] == 1
     assert event["event"]["items"][0]["version"] == 1
+
+
+async def test_library_name_status_and_distinct_name_errors(
+    hass: HomeAssistant,
+    hass_ws_client,
+) -> None:
+    await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_LIBRARY_CREATE,
+            "name": "Saved",
+            "content": _content(),
+        }
+    )
+    saved = (await client.receive_json())["result"]["item"]
+
+    for name, excluding_item_id, expected in (
+        ("Available", None, {"kind": "available"}),
+        ("Custom", saved["id"], {"kind": "reserved"}),
+        ("Saved", saved["id"], {"kind": "same_item"}),
+    ):
+        await client.send_json_auto_id(
+            {
+                "type": WS_LIBRARY_NAME_STATUS,
+                "name": name,
+                **({"excluding_item_id": excluding_item_id} if excluding_item_id else {}),
+            }
+        )
+        assert (await client.receive_json())["result"]["status"] == expected
+
+    await client.send_json_auto_id({"type": WS_LIBRARY_NAME_STATUS, "name": "Saved"})
+    conflict = (await client.receive_json())["result"]["status"]
+    assert conflict["kind"] == "saved"
+    assert conflict["item"]["id"] == saved["id"]
+
+    for name, code in (("Custom", "reserved_name"), ("Saved", "name_conflict")):
+        await client.send_json_auto_id(
+            {
+                "type": WS_LIBRARY_CREATE,
+                "name": name,
+                "content": _content(),
+            }
+        )
+        response = await client.receive_json()
+        assert response["success"] is False
+        assert response["error"]["code"] == code
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_LIBRARY_CREATE,
+            "name": "Other",
+            "content": _content(),
+        }
+    )
+    other = (await client.receive_json())["result"]["item"]
+    for item, name, code in (
+        (saved, "Custom", "reserved_name"),
+        (other, "Saved", "name_conflict"),
+    ):
+        await client.send_json_auto_id(
+            {
+                "type": WS_LIBRARY_UPDATE,
+                "item_id": item["id"],
+                "name": name,
+                "content": _content(),
+                "expected_version": item["version"],
+                "expected_updated_at": item["updated_at"],
+            }
+        )
+        response = await client.receive_json()
+        assert response["success"] is False
+        assert response["error"]["code"] == code
+
+
+async def test_library_overwrite_updates_only_target_and_returns_snapshot(
+    hass: HomeAssistant,
+    hass_ws_client,
+) -> None:
+    await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+    items = []
+    for name in ("Source", "Target"):
+        await client.send_json_auto_id(
+            {
+                "type": WS_LIBRARY_CREATE,
+                "name": name,
+                "content": _content(),
+            }
+        )
+        items.append((await client.receive_json())["result"]["item"])
+    source, target = items
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_LIBRARY_OVERWRITE,
+            "target_item_id": target["id"],
+            "expected_version": target["version"],
+            "expected_updated_at": target["updated_at"],
+            "name": target["name"],
+            "content": _content(75),
+        }
+    )
+    result = (await client.receive_json())["result"]
+
+    assert result["item"]["id"] == target["id"]
+    assert result["item"]["version"] == 2
+    assert result["library"]["generation"] == 3
+    assert {item["id"] for item in result["library"]["items"]} == {source["id"], target["id"]}
+
+    await client.send_json_auto_id({"type": WS_LIBRARY_GET, "item_id": source["id"]})
+    assert (await client.receive_json())["result"]["item"] == source
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_LIBRARY_OVERWRITE,
+            "target_item_id": target["id"],
+            "expected_version": target["version"],
+            "expected_updated_at": target["updated_at"],
+            "name": target["name"],
+            "content": _content(),
+        }
+    )
+    stale = await client.receive_json()
+    assert stale["success"] is False
+    assert stale["error"]["code"] == "conflict"
+
+
+async def test_library_mutations_reject_invalid_layer_metadata_and_extensions(
+    hass: HomeAssistant,
+    hass_ws_client,
+) -> None:
+    await _setup_backend(hass)
+    client = await hass_ws_client(hass)
+
+    for extra in (
+        {"layer_labels": [True]},
+        {"layer_labels": [1, 1]},
+        {"layer_labels": [1]},
+        {"extensions": {"arbitrary": True}},
+    ):
+        await client.send_json_auto_id(
+            {
+                "type": WS_LIBRARY_CREATE,
+                "name": "Invalid",
+                "content": _content(),
+                **extra,
+            }
+        )
+        response = await client.receive_json()
+        assert response["success"] is False
+        assert response["error"]["code"] in {"invalid_format", "invalid_info"}
 
 
 async def test_user_state_contains_navigation_without_drafts(

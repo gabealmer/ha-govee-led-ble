@@ -27,8 +27,10 @@ from .effect_domain import (
 from .effect_limits import (
     MAX_LIBRARY_ITEMS,
     MAX_LIBRARY_STORE_BYTES,
+    MAX_REVISION,
     MAX_STORE_JSON_NODES,
     validate_json_document,
+    validate_revision,
 )
 from .effect_persistence_validation import (
     EffectLimitError,
@@ -41,7 +43,7 @@ from .effect_schema_migration import LegacyEffectMigrationError, migrate_effect_
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 
 LIBRARY_STORE_VERSION: Final = 2
-LIBRARY_STORE_MINOR_VERSION: Final = 2
+LIBRARY_STORE_MINOR_VERSION: Final = 3
 LIBRARY_STORE_KEY: Final = f"{DOMAIN}.effect_library"
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,6 +61,7 @@ __all__ = [
 @dataclass(frozen=True, slots=True)
 class LibrarySnapshot:
     items: tuple[LibraryItem, ...]
+    generation: int = 0
 
 
 class EffectLibraryRepository:
@@ -151,6 +154,10 @@ class EffectLibraryRepository:
             return await self._async_commit(candidate)
 
     async def _async_commit(self, candidate: dict[str, Any]) -> LibrarySnapshot:
+        current_generation = _library_generation(self._require_loaded())
+        if current_generation >= MAX_REVISION:
+            raise EffectLimitError(f"effect library generation must not exceed {MAX_REVISION}")
+        candidate["generation"] = current_generation + 1
         snapshot = _validate_library(candidate)
         await self._store.async_save(candidate)
         self._data = candidate
@@ -186,10 +193,10 @@ async def _async_migrate_library(
         return old_data
     if old_major_version == LIBRARY_STORE_VERSION:
         without_retired_items = _remove_retired_library_items(old_data)
-        if old_minor_version == 1:
-            return without_retired_items
+        if old_minor_version in {1, 2}:
+            return {**without_retired_items, "generation": 0}
         if old_minor_version == 0:
-            return _migrate_current_library(without_retired_items)
+            return {**_migrate_current_library(without_retired_items), "generation": 0}
         raise EffectStorageError(f"cannot migrate effect store version {old_major_version}.{old_minor_version}")
     if old_major_version != 1 or old_minor_version > 1:
         raise EffectStorageError(f"cannot migrate effect store version {old_major_version}.{old_minor_version}")
@@ -212,7 +219,7 @@ async def _async_migrate_library(
         if str(item.id) != str(key):
             raise EffectStorageError(f"legacy effect resource {key} has mismatched identity")
         items[str(item.id)] = item.to_dict()
-    return {"items": items}
+    return {"items": items, "generation": 0}
 
 
 def _migrate_legacy_item(raw: Mapping[str, Any], *, version: int, updated_at: str) -> LibraryItem:
@@ -291,7 +298,7 @@ def _migrate_current_library(old_data: object) -> dict[str, Any]:
 
 
 def _empty_library() -> dict[str, Any]:
-    return {"items": {}}
+    return {"items": {}, "generation": 0}
 
 
 def _validate_library(data: object) -> LibrarySnapshot:
@@ -304,6 +311,7 @@ def _validate_library(data: object) -> LibrarySnapshot:
         maximum_nodes=MAX_STORE_JSON_NODES,
     )
     items_raw = as_persisted_mapping(root.get("items"), "effect library items")
+    generation = _library_generation(root)
     if len(items_raw) > MAX_LIBRARY_ITEMS:
         raise EffectLimitError(f"effect library must not exceed {MAX_LIBRARY_ITEMS} items")
     items: list[LibraryItem] = []
@@ -315,11 +323,22 @@ def _validate_library(data: object) -> LibrarySnapshot:
         if str(item.id) != str(key):
             raise EffectStorageError(f"effect {key} has mismatched identity")
         items.append(item)
-    return LibrarySnapshot(tuple(items))
+    return LibrarySnapshot(tuple(items), generation)
 
 
 def _snapshot_from_data(data: Mapping[str, Any]) -> LibrarySnapshot:
     return _validate_library(data)
+
+
+def _library_generation(data: Mapping[str, Any]) -> int:
+    generation = data.get("generation", 0)
+    validate_revision(
+        generation,
+        "effect library generation",
+        minimum=0,
+        error_type=EffectStorageError,
+    )
+    return cast(int, generation)
 
 
 def _expect_write_token(item: LibraryItem, expected_version: int, expected_updated_at: str) -> None:

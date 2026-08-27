@@ -6,6 +6,8 @@ import type {
   EffectUserState,
   HomeAssistant,
   LibraryItem,
+  LibraryMutationResult,
+  LibraryNameStatus,
   LibrarySnapshot,
   PreviewStatus,
   PreviewSnapshotProvenance,
@@ -13,6 +15,10 @@ import type {
   SceneDetail,
   SceneSummary,
 } from "./types";
+import {
+  editableLayerLabels,
+} from "./effect-editor-model";
+import { errorCode } from "./ui-utils";
 import {
   decodeCustomCatalogue,
   decodeDevices,
@@ -29,7 +35,26 @@ import {
 const PREFIX = "ha_govee_led_ble/editor";
 
 export class EffectStudioApi {
+  private librarySnapshotHandler?: (
+    snapshot: LibrarySnapshot,
+  ) => boolean | void | Promise<boolean | void>;
+  private overwriteConfirmation?: (effectName: string) => Promise<boolean>;
+
   public constructor(private readonly hass: HomeAssistant) {}
+
+  public setLibrarySnapshotHandler(
+    handler: (
+      snapshot: LibrarySnapshot,
+    ) => boolean | void | Promise<boolean | void>,
+  ): void {
+    this.librarySnapshotHandler = handler;
+  }
+
+  public setOverwriteConfirmation(
+    confirm: (effectName: string) => Promise<boolean>,
+  ): void {
+    this.overwriteConfirmation = confirm;
+  }
 
   public async info(): Promise<EditorApiInfo> {
     return decodeEditorApiInfo(await this.call("info"));
@@ -105,35 +130,100 @@ export class EffectStudioApi {
   public async createItem(
     name: string,
     content: EffectContent,
+    guard?: () => boolean,
   ): Promise<LibraryItem> {
-    const result = await this.call("library/create", {
+    const data = {
       name,
       content: effectContentToWire(content),
-    });
-    return decodeLibraryItem(resultField(result, "item"));
+      ...(editableLayerLabels(content)
+        ? { layer_labels: editableLayerLabels(content) }
+        : {}),
+    };
+    try {
+      return await this.libraryMutation("library/create", data);
+    } catch (error) {
+      return this.resolveNameCollision(
+        error,
+        name,
+        content,
+        undefined,
+        guard,
+      );
+    }
   }
 
   public async updateItem(
     item: LibraryItem,
     name: string,
     content: EffectContent,
+    guard?: () => boolean,
   ): Promise<LibraryItem> {
-    const result = await this.call("library/update", {
+    const data = {
       item_id: item.id,
       name,
       content: effectContentToWire(content),
+      ...(editableLayerLabels(content)
+        ? { layer_labels: editableLayerLabels(content) }
+        : {}),
       expected_version: item.version,
       expected_updated_at: item.updated_at,
-    });
-    return decodeLibraryItem(resultField(result, "item"));
+    };
+    try {
+      return await this.libraryMutation("library/update", data);
+    } catch (error) {
+      return this.resolveNameCollision(
+        error,
+        name,
+        content,
+        item.id,
+        guard,
+      );
+    }
   }
 
   public async deleteItem(item: Pick<LibraryItem, "id" | "version" | "updated_at">): Promise<void> {
-    await this.call("library/delete", {
+    const result = await this.call("library/delete", {
       item_id: item.id,
       expected_version: item.version,
       expected_updated_at: item.updated_at,
     });
+    const accepted = await this.acceptLibrarySnapshot(
+      decodeLibrarySnapshot(resultField(result, "library")),
+    );
+    if (accepted === false) {
+      throw new StaleLibraryMutationError();
+    }
+  }
+
+  public async nameStatus(
+    name: string,
+    excludingItemId?: string,
+  ): Promise<LibraryNameStatus> {
+    const result = await this.call("library/name_status", {
+      name,
+      ...(excludingItemId ? { excluding_item_id: excludingItemId } : {}),
+    });
+    const status = resultField(result, "status");
+    if (typeof status !== "object" || status === null || Array.isArray(status)) {
+      throw new Error("Malformed Effect Studio server payload: name status must be an object.");
+    }
+    const raw = status as Record<string, unknown>;
+    if (
+      raw.kind !== "available" &&
+      raw.kind !== "reserved" &&
+      raw.kind !== "same_item" &&
+      raw.kind !== "saved"
+    ) {
+      throw new Error("Malformed Effect Studio server payload: name status kind is invalid.");
+    }
+    if (raw.kind !== "saved") {
+      return { kind: raw.kind };
+    }
+    const snapshot = decodeLibrarySnapshot({
+      generation: 0,
+      items: [raw.item],
+    });
+    return { kind: "saved", item: snapshot.items[0] };
   }
 
   public async applySavedEffect(
@@ -310,6 +400,104 @@ export class EffectStudioApi {
       ...data,
     });
   }
+
+  private async libraryMutation(
+    command: string,
+    data: Record<string, unknown>,
+  ): Promise<LibraryItem> {
+    const result = await this.call(command, data);
+    const mutation = decodeLibraryMutation(result);
+    const accepted = await this.acceptLibrarySnapshot(mutation.library);
+    if (accepted === false) {
+      throw new StaleLibraryMutationError();
+    }
+    return mutation.item;
+  }
+
+  private async resolveNameCollision(
+    error: unknown,
+    name: string,
+    content: EffectContent,
+    excludingItemId?: string,
+    guard?: () => boolean,
+  ): Promise<LibraryItem> {
+    const code = errorCode(error);
+    if (code === "reserved_name") {
+      throw new EffectNameUnavailableError(name);
+    }
+    if (code !== "name_conflict") {
+      throw error;
+    }
+    if (guard && !guard()) {
+      throw new EffectSaveCancelledError();
+    }
+    const status = await this.nameStatus(name, excludingItemId);
+    if (guard && !guard()) {
+      throw new EffectSaveCancelledError();
+    }
+    if (status.kind === "reserved") {
+      throw new EffectNameUnavailableError(name);
+    }
+    if (status.kind !== "saved") {
+      throw error;
+    }
+    if (
+      !this.overwriteConfirmation ||
+      !(await this.overwriteConfirmation(status.item.name))
+    ) {
+      throw new EffectSaveCancelledError();
+    }
+    if (guard && !guard()) {
+      throw new EffectSaveCancelledError();
+    }
+    return this.libraryMutation("library/overwrite", {
+      target_item_id: status.item.id,
+      expected_version: status.item.version,
+      expected_updated_at: status.item.updated_at,
+      name,
+      content: effectContentToWire(content),
+      ...(editableLayerLabels(content)
+        ? { layer_labels: editableLayerLabels(content) }
+        : {}),
+    });
+  }
+
+  private acceptLibrarySnapshot(
+    snapshot: LibrarySnapshot,
+  ): boolean | void | Promise<boolean | void> {
+    return this.librarySnapshotHandler?.(snapshot);
+  }
+}
+
+export class EffectSaveCancelledError extends Error {
+  public readonly code = "save_cancelled";
+
+  public constructor() {
+    super("The save was cancelled.");
+  }
+}
+
+export class EffectNameUnavailableError extends Error {
+  public readonly code = "reserved_name";
+
+  public constructor(name: string) {
+    super(`An effect named ${JSON.stringify(name)} already exists.`);
+  }
+}
+
+class StaleLibraryMutationError extends Error {
+  public readonly code = "conflict";
+
+  public constructor() {
+    super("The effect library changed before the save response arrived.");
+  }
+}
+
+function decodeLibraryMutation(value: unknown): LibraryMutationResult {
+  return {
+    item: decodeLibraryItem(resultField(value, "item")),
+    library: decodeLibrarySnapshot(resultField(value, "library")),
+  };
 }
 
 function resultField(value: unknown, field: string): unknown {

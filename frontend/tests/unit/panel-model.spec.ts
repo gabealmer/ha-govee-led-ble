@@ -253,7 +253,10 @@ function installFlowCatalogue(model: PanelModel): void {
   };
 }
 
-function panelControllerHarness(model: PanelModel) {
+function panelControllerHarness(
+  model: PanelModel,
+  saveSceneWork?: () => Promise<boolean>,
+) {
   const preview = new PanelPreviewController(model);
   const modal = new PanelModalController(model, {
     updateComplete: async () => undefined,
@@ -276,6 +279,7 @@ function panelControllerHarness(model: PanelModel) {
       connected: () => true,
       pathname: () => "/ha-govee-led-ble",
       replacePath: () => undefined,
+      saveSceneWork,
     },
   );
   return { controller, editorController, preview, modal };
@@ -286,6 +290,7 @@ function workspaceModel(selected: DeviceCapabilities): PanelModel {
   model.isAdmin = true;
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
+  model.section = "scenes";
   model.userState = {
     owner_id: "user-a",
     recent_colours: [],
@@ -310,6 +315,95 @@ test("derives selected-device and preview decisions from panel state", () => {
   model.selectedDeviceId = "missing";
   expect(model.selectedDevice).toBeUndefined();
   expect(model.showDeviceSelector).toBe(true);
+});
+
+test("subscription failure disables Live and blocks mutation until reload", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = true;
+  const { controller } = panelControllerHarness(model);
+
+  controller.stateUpdatesFailed(new Error("Connection lost."));
+
+  expect(model.liveApplyEnabled).toBe(false);
+  expect(model.stateUpdatesUnavailable).toBe(true);
+  expect(model.editorReadOnly).toBe(true);
+  expect(model.editorActions.every((action) => !action.enabled)).toBe(true);
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    title: "State updates stopped",
+    message: "Connection lost. Reload the page before making further changes.",
+  });
+});
+
+test("subscription failure cancels queued auto-save and blocks dirty transitions", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.autoSaveEnabled = true;
+  model.liveApplyEnabled = false;
+  model.devices = [device("entry-a", "H617A")];
+  model.selectedDeviceId = "entry-a";
+  const { controller, editorController, modal } =
+    panelControllerHarness(model);
+  const source = item(painted());
+  editorController.applyLibraryItem(source);
+  let resolveUpdate!: (item: LibraryItem) => void;
+  const updating = new Promise<LibraryItem>((resolve) => {
+    resolveUpdate = resolve;
+  });
+  const updateItem = vi.fn().mockReturnValue(updating);
+  controller.api = { updateItem } as unknown as EffectStudioApi;
+
+  editorController.updatePaintedContent({ speed: 60 }, "committed");
+  controller.contentCommitted("committed");
+  editorController.updatePaintedContent({ speed: 70 }, "committed");
+  controller.contentCommitted("committed");
+  await vi.waitFor(() => expect(updateItem).toHaveBeenCalledOnce());
+
+  controller.stateUpdatesFailed(new Error("Connection lost."));
+  resolveUpdate({
+    ...source,
+    version: source.version + 1,
+    updated_at: "2026-08-27T00:00:00Z",
+    content: { ...painted(), speed: 60 },
+  });
+  await vi.waitFor(() => expect(model.autoSaveInProgress).toBe(false));
+  modal.closeError();
+  await controller.selectSection("scenes");
+
+  expect(updateItem).toHaveBeenCalledOnce();
+  expect(model.section).toBe("custom");
+  expect(model.dirty).toBe(true);
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    message: "Reload the page before continuing.",
+  });
+});
+
+test("subscription failure aborts armed transitions and overwrite confirmation", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.editorSource = {
+    kind: "new",
+    owner: { section: "custom", category: "advanced" },
+  };
+  model.name = "Draft";
+  model.content = blankAdvancedContent();
+  model.resetBaseline = blankAdvancedContent();
+  model.resetNameBaseline = "New Advanced effect";
+  const { controller, modal } = panelControllerHarness(model);
+  const execute = vi.fn();
+  await controller.requestTransition(execute);
+  const overwrite = modal.requestOverwrite("Existing");
+
+  controller.stateUpdatesFailed(new Error("Connection lost."));
+  await expect(overwrite).resolves.toBe(false);
+  modal.closeError();
+  await controller.declinePendingTransition();
+
+  expect(execute).not.toHaveBeenCalled();
+  expect(model.pendingTransitionDialog).toBeUndefined();
 });
 
 test("administrator state follows late Home Assistant user updates", () => {
@@ -398,7 +492,7 @@ test("unchanged explicit New drafts save directly with the header name", () => {
   expect(model.saveNameDialogOpen).toBe(false);
 });
 
-test("Save As retains the dedicated naming dialog", () => {
+test("Save As retains the dedicated naming dialog", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   const modal = new PanelModalController(model, {
@@ -406,15 +500,204 @@ test("Save As retains the dedicated naming dialog", () => {
     root: () => null,
     canMutate: () => true,
   });
-  const saveAs = vi.fn();
+  const saveAs = vi.fn().mockResolvedValue(true);
 
   modal.requestSaveAs({} as HTMLElement, "Jumping copy");
   expect(model.saveNameDialogOpen).toBe(true);
   expect(model.saveNameValue).toBe("Jumping copy");
 
-  modal.confirmNamedSave(saveAs);
+  await modal.confirmNamedSave(saveAs);
   expect(saveAs).toHaveBeenCalledWith("Jumping copy");
   expect(model.saveNameDialogOpen).toBe(false);
+});
+
+test("Save As overwrite cancellation resumes naming and preserves return focus", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const focus = vi.fn();
+  const returnFocus = {
+    isConnected: true,
+    focus,
+  } as unknown as HTMLElement;
+
+  modal.requestSaveAs(returnFocus, "Existing");
+  const save = vi.fn(async () => {
+    const overwrite = modal.requestOverwrite("Existing");
+    modal.cancelOverwrite();
+    return overwrite;
+  });
+
+  await modal.confirmNamedSave(save);
+
+  expect(model.saveNameDialogOpen).toBe(true);
+  expect(model.saveNameValue).toBe("Existing");
+  modal.cancelSaveName();
+  await Promise.resolve();
+  expect(focus).toHaveBeenCalledOnce();
+});
+
+test("busy Save As ignores cancellation until persistence finishes", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  let resolveSave!: (saved: boolean) => void;
+  const saving = new Promise<boolean>((resolve) => {
+    resolveSave = resolve;
+  });
+
+  modal.requestSaveAs({} as HTMLElement, "Existing");
+  const operation = modal.confirmNamedSave(() => saving);
+  await Promise.resolve();
+  modal.showError("Unrelated preview failure.", {
+    key: "unrelated-preview",
+  });
+  modal.closeError();
+  modal.cancelSaveName();
+
+  expect(model.modalState).toMatchObject({
+    kind: "save-name",
+    busy: true,
+  });
+
+  resolveSave(true);
+  await operation;
+  expect(model.modalState).toBeUndefined();
+});
+
+test("successful persistence keeps an apply error without resuming Save As", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+
+  modal.requestSaveAs({} as HTMLElement, "Existing");
+  await modal.confirmNamedSave(async () => {
+    model.reportError("Apply failed.", {
+      title: "Live change failed",
+      key: "apply-failed",
+    });
+    return true;
+  });
+
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    message: "Apply failed.",
+  });
+  expect(
+    model.modalState?.kind === "error"
+      ? model.modalState.resume
+      : undefined,
+  ).toBeUndefined();
+  modal.closeError();
+  expect(model.modalState).toBeUndefined();
+});
+
+test("error modals suspend and resume the active naming workflow", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+
+  modal.requestSaveAs({} as HTMLElement, "Jumping copy");
+  modal.showError("The library is unavailable.", {
+    title: "Save failed",
+    key: "save-failed",
+  });
+
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    title: "Save failed",
+    resume: { kind: "save-name" },
+  });
+
+  modal.closeError();
+  expect(model.saveNameDialogOpen).toBe(true);
+  expect(model.saveNameValue).toBe("Jumping copy");
+});
+
+test("replacement errors preserve suspended workflows and retry after close", () => {
+  const model = new PanelModel(() => undefined);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+
+  modal.requestTransition("Save", "Draft", false);
+  modal.showError("First failure.", { key: "first" });
+  modal.showError("Second failure.", { key: "second" });
+
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    message: "Second failure.",
+    resume: { kind: "pending-transition", saveName: "Draft" },
+  });
+
+  modal.closeError();
+  expect(model.pendingTransitionDialog?.saveName).toBe("Draft");
+
+  modal.showError("Second failure.", { key: "second" });
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    message: "Second failure.",
+  });
+});
+
+test("overwrite confirmation resolves without stacking modal workflows", async () => {
+  const model = new PanelModel(() => undefined);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+
+  const cancelled = modal.requestOverwrite("Existing");
+  modal.cancelOverwrite();
+  await expect(cancelled).resolves.toBe(false);
+  expect(model.modalState).toBeUndefined();
+
+  const confirmed = modal.requestOverwrite("Existing");
+  modal.confirmOverwrite();
+  await expect(confirmed).resolves.toBe(true);
+  expect(model.modalState).toBeUndefined();
+});
+
+test("nested overwrite cancellation preserves transition return focus", async () => {
+  const model = new PanelModel(() => undefined);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const focus = vi.fn();
+  const returnFocus = {
+    isConnected: true,
+    focus,
+  } as unknown as HTMLElement;
+
+  modal.requestTransition("Save", "Draft", false, returnFocus);
+  const overwrite = modal.requestOverwrite("Existing");
+  modal.cancelOverwrite();
+  await expect(overwrite).resolves.toBe(false);
+  modal.closeTransition(true);
+  await Promise.resolve();
+
+  expect(focus).toHaveBeenCalledOnce();
 });
 
 test("pending transitions save named new drafts directly", async () => {
@@ -435,6 +718,284 @@ test("pending transitions save named new drafts directly", async () => {
     saveName: "Named Advanced effect",
     requiresName: true,
   });
+});
+
+test("scene-owned transitions use the scene save continuation", async () => {
+  const model = new PanelModel(() => undefined);
+  model.sceneWorkDirty = true;
+  const { controller } = panelControllerHarness(model);
+  const execute = vi.fn();
+  const saveScene = vi.fn().mockResolvedValue(true);
+
+  await controller.requestTransition(execute, undefined, saveScene);
+  expect(model.pendingTransitionDialog).toMatchObject({
+    primaryLabel: "Save",
+    requiresName: false,
+  });
+
+  await controller.savePendingTransition();
+
+  expect(saveScene).toHaveBeenCalledOnce();
+  expect(execute).toHaveBeenCalledOnce();
+});
+
+test("top-level transitions use the registered scene-work saver", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const first = device("entry-a", "H6199");
+  const second = device("entry-b", "H6199");
+  model.devices = [first, second];
+  model.selectedDeviceId = first.config_entry_id;
+  model.section = "scenes";
+  model.sceneWorkDirty = true;
+  installH6199Catalogue(model);
+  const saveSceneWork = vi.fn().mockResolvedValue(true);
+  const { controller } = panelControllerHarness(
+    model,
+    saveSceneWork,
+  );
+  controller.api = {
+    subscribeDevice: vi.fn().mockResolvedValue(() => undefined),
+    updateUserState: vi.fn().mockResolvedValue(undefined),
+  } as unknown as EffectStudioApi;
+
+  await controller.selectSection("custom", "single-layer");
+  await controller.savePendingTransition();
+  expect(model.section).toBe("custom");
+
+  model.section = "scenes";
+  model.sceneWorkDirty = true;
+  await controller.deviceChanged(second.config_entry_id);
+  await controller.savePendingTransition();
+  expect(model.selectedDeviceId).toBe(second.config_entry_id);
+
+  model.sceneWorkDirty = true;
+  const followLink = vi.fn();
+  await controller.requestTransition(followLink);
+  await controller.savePendingTransition();
+
+  expect(followLink).toHaveBeenCalledOnce();
+  expect(saveSceneWork).toHaveBeenCalledTimes(3);
+});
+
+test("opening the layered editor transfers scene-work ownership", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.sceneWorkDirty = true;
+  const selected = device("entry-a", "H617A");
+  selected.custom_effects.advanced = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  const { controller } = panelControllerHarness(model);
+  const scene = {
+    kind: "scene_layered" as const,
+    template: {
+      sku: "H617A" as const,
+      scene_id: 1,
+      effect_id: 2,
+      catalogue_schema_version: 1,
+    },
+    effect: { layers: blankAdvancedContent().layers },
+    speed_index: null,
+    raw_param: "",
+  };
+
+  await controller.openSceneEditor({
+    content: scene,
+    config_entry_id: selected.config_entry_id,
+    name: "Layered scene",
+  });
+  await controller.declinePendingTransition();
+
+  expect(model.sceneEditorOpen).toBe(true);
+  expect(model.sceneWorkDirty).toBe(false);
+  expect(model.editorSource.kind).toBe("scene");
+});
+
+test("external layered-scene transitions use the panel editor save", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const selected = device("entry-a", "H617A");
+  selected.custom_effects.advanced = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.section = "scenes";
+  const saveSceneWork = vi.fn().mockResolvedValue(true);
+  const { controller, editorController } = panelControllerHarness(
+    model,
+    saveSceneWork,
+  );
+  const scene = {
+    kind: "scene_layered" as const,
+    template: {
+      sku: "H617A" as const,
+      scene_id: 1,
+      effect_id: 2,
+      catalogue_schema_version: 1,
+    },
+    effect: { layers: blankAdvancedContent().layers },
+    speed_index: null,
+    raw_param: "",
+  };
+  editorController.openSceneEditor({
+    content: scene,
+    config_entry_id: selected.config_entry_id,
+    name: "Layered scene",
+  });
+  const edited = blankAdvancedContent();
+  edited.layers[0].priority = 4;
+  editorController.advancedContentChanged(edited, "committed");
+  model.sceneWorkDirty = true;
+  const execute = vi.fn();
+  await controller.selectScene(execute);
+  const created: LibraryItem = {
+    ...item(painted()),
+    id: "layered-scene",
+    name: "Layered scene",
+    content: {
+      ...scene,
+      effect: { layers: edited.layers },
+    },
+  };
+  const createItem = vi.fn().mockResolvedValue(created);
+  controller.api = { createItem } as unknown as EffectStudioApi;
+
+  await controller.savePendingTransition();
+
+  expect(createItem).toHaveBeenCalled();
+  expect(saveSceneWork).not.toHaveBeenCalled();
+  expect(execute).toHaveBeenCalledOnce();
+});
+
+test("catalogue drafts take precedence over stale scene-work ownership", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const selected = device("entry-a", "H617A");
+  selected.custom_effects.advanced = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.customEffectCategory = "advanced";
+  const saveSceneWork = vi.fn().mockResolvedValue(true);
+  const { controller, editorController } = panelControllerHarness(
+    model,
+    saveSceneWork,
+  );
+  editorController.openEditableTemplate(
+    "Template",
+    blankAdvancedContent(),
+    "template:advanced",
+    { section: "custom", category: "advanced" },
+  );
+  const edited = blankAdvancedContent();
+  edited.layers[0].priority = 4;
+  editorController.advancedContentChanged(edited, "committed");
+  model.sceneWorkDirty = true;
+  const execute = vi.fn();
+  await controller.requestTransition(execute);
+  const created: LibraryItem = {
+    ...item(painted()),
+    id: "catalogue-copy",
+    name: "Template copy",
+    content: edited,
+  };
+  const createItem = vi.fn().mockResolvedValue(created);
+  controller.api = { createItem } as unknown as EffectStudioApi;
+
+  expect(model.pendingTransitionDialog?.primaryLabel).toBe("Save As");
+  await controller.savePendingTransition();
+
+  expect(createItem).toHaveBeenCalled();
+  expect(saveSceneWork).not.toHaveBeenCalled();
+  expect(execute).toHaveBeenCalledOnce();
+});
+
+test("busy pending-transition saves ignore cancellation until persistence finishes", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.devices = [device("entry-a", "H617A")];
+  model.devices[0].custom_effects.advanced = "supported";
+  model.selectedDeviceId = "entry-a";
+  const { controller, editorController, modal } =
+    panelControllerHarness(model);
+  editorController.newEffect("advanced");
+  model.name = "Named Advanced effect";
+  const execute = vi.fn();
+  await controller.requestTransition(execute);
+  let resolveCreate!: (item: LibraryItem) => void;
+  const creating = new Promise<LibraryItem>((resolve) => {
+    resolveCreate = resolve;
+  });
+  const created: LibraryItem = {
+    ...item(painted()),
+    id: "advanced-created",
+    name: model.name,
+    content: blankAdvancedContent(),
+  };
+  controller.api = {
+    createItem: vi.fn().mockReturnValue(creating),
+  } as unknown as EffectStudioApi;
+
+  const saving = controller.savePendingTransition();
+  await Promise.resolve();
+  modal.showError("Unrelated subscription failure.", {
+    key: "unrelated-subscription",
+  });
+  modal.closeError();
+  controller.cancelPendingTransition();
+
+  expect(model.pendingTransitionDialog).toMatchObject({ busy: true });
+  expect(execute).not.toHaveBeenCalled();
+
+  resolveCreate(created);
+  await saving;
+
+  expect(execute).toHaveBeenCalledOnce();
+  expect(model.pendingTransitionDialog).toBeUndefined();
+});
+
+test("pending-transition navigation preserves a standalone Live apply error", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const selected = device("entry-a", "H617A");
+  selected.custom_effects.advanced = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  const { controller, editorController } = panelControllerHarness(model);
+  editorController.newEffect("advanced");
+  model.name = "Named Advanced effect";
+  const execute = vi.fn(() => {
+    editorController.beginTransition();
+  });
+  await controller.requestTransition(execute);
+  model.liveApplyEnabled = true;
+  const created: LibraryItem = {
+    ...item(painted()),
+    id: "advanced-created",
+    name: model.name,
+    content: blankAdvancedContent(),
+  };
+  controller.api = {
+    createItem: vi.fn().mockResolvedValue(created),
+    applySavedEffect: vi.fn().mockRejectedValue(new Error("offline")),
+  } as unknown as EffectStudioApi;
+
+  await controller.savePendingTransition();
+
+  expect(execute).toHaveBeenCalledOnce();
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    message: expect.stringContaining("offline"),
+  });
+  expect(
+    model.modalState?.kind === "error"
+      ? model.modalState.resume
+      : undefined,
+  ).toBeUndefined();
 });
 
 test("auto-save restores only an explicit true preference", () => {
@@ -1457,6 +2018,7 @@ test("a library subscription reload cannot clobber a mid-flight local edit", asy
     root: () => null,
     canMutate: () => true,
   });
+
   let controller!: PanelController;
   const editorController = new PanelEditorController(model, preview, modal, {
     apiReady: () => true,
@@ -1511,9 +2073,67 @@ test("a library subscription reload cannot clobber a mid-flight local edit", asy
 
   expect(model.currentItem?.version).toBe(source.version);
   expect(model.content).toMatchObject({ kind: "h617a_painted", speed: 73 });
-  expect(model.notice).toBe(
-    "This effect changed elsewhere. Reload it before saving.",
-  );
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    message: "This effect changed elsewhere. Reload it before saving.",
+  });
+});
+
+test("older library generations cannot replace newer subscription state", async () => {
+  const model = new PanelModel(() => undefined);
+  const { controller } = panelControllerHarness(model);
+  model.library = {
+    generation: 4,
+    items: [
+      {
+        id: "newer",
+        version: 1,
+        updated_at: "2026-08-27T00:00:00Z",
+        name: "Newer",
+        kind: "advanced",
+        content_hash: "4".repeat(64),
+        origin: { kind: "authored", source_id: null },
+      },
+    ],
+  };
+
+  await expect(
+    controller.libraryChanged({
+      generation: 3,
+      items: [],
+    }),
+  ).resolves.toBe(false);
+
+  expect(model.library.generation).toBe(4);
+  expect(model.library.items.map((item) => item.id)).toEqual(["newer"]);
+});
+
+test("inactive retained editors clear silently when a scene overwrite changes their item", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const { controller, editorController } = panelControllerHarness(model);
+  const source = item(painted());
+  editorController.applyLibraryItem(source);
+  model.section = "scenes";
+
+  await controller.libraryChanged({
+    generation: 1,
+    items: [
+      {
+        id: source.id,
+        version: source.version + 1,
+        updated_at: "2026-08-27T00:00:00Z",
+        name: source.name,
+        kind: "scene_builtin",
+        content_hash: "5".repeat(64),
+        origin: source.origin,
+      },
+    ],
+  });
+
+  expect(model.currentItem).toBeUndefined();
+  expect(model.editorSource.kind).toBe("none");
+  expect(model.modalState).toBeUndefined();
 });
 
 test("automatic saved restoration reads without applying, previewing, or saving", async () => {
@@ -1734,6 +2354,34 @@ test("auto-save coalesces committed edits onto the returned item version", async
   expect(model.resetDirty).toBe(false);
 });
 
+test("auto-save overwrite retains pending navigation ownership", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.autoSaveEnabled = true;
+  model.liveApplyEnabled = false;
+  model.devices = [device("entry-a", "H617A")];
+  model.selectedDeviceId = "entry-a";
+  const { controller, editorController } = panelControllerHarness(model);
+  const source = item(painted());
+  editorController.applyLibraryItem(source);
+  editorController.updatePaintedContent({ speed: 61 }, "committed");
+  const target = {
+    ...source,
+    id: "target",
+    version: 5,
+    updated_at: "2026-08-27T00:00:00Z",
+    content: { ...source.content, speed: 61 },
+  };
+  controller.api = {
+    updateItem: vi.fn().mockResolvedValue(target),
+  } as unknown as EffectStudioApi;
+
+  await controller.selectSection("scenes");
+
+  expect(model.section).toBe("scenes");
+  expect(model.currentItem?.id).toBe("target");
+});
+
 test("saved item selection applies identity only while Live is enabled", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
@@ -1887,6 +2535,43 @@ test("new saves promote stable identity only while Live remains enabled", async 
   await expect(controller.save()).resolves.toBe(true);
 
   expect(applySavedEffect).not.toHaveBeenCalled();
+});
+
+test("a failed Live apply does not turn a committed save into a persistence failure", async () => {
+  const selected = device("entry-a", "H617A");
+  selected.custom_effects.advanced = "supported";
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.liveApplyEnabled = true;
+  model.editorSource = {
+    kind: "new",
+    owner: { section: "custom", category: "advanced" },
+  };
+  model.name = "Stored";
+  model.content = blankAdvancedContent();
+  const { controller } = panelControllerHarness(model);
+  const created: LibraryItem = {
+    ...item(painted()),
+    id: "stored",
+    version: 1,
+    name: model.name,
+    content: blankAdvancedContent(),
+  };
+  controller.api = {
+    createItem: vi.fn().mockResolvedValue(created),
+    applySavedEffect: vi.fn().mockRejectedValue(new Error("offline")),
+  } as unknown as EffectStudioApi;
+
+  await expect(controller.save()).resolves.toBe(true);
+
+  expect(model.currentItem?.id).toBe(created.id);
+  expect(model.dirty).toBe(false);
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    message: expect.stringContaining("offline"),
+  });
 });
 
 test("disabling Live while a new save is pending suppresses saved identity application", async () => {
@@ -2356,7 +3041,7 @@ test("automatic save flushes before navigation and exposes failures to the trans
   model.customCatalogue!.models.H617A.painted_effects = [
     { id: "cycle", label: "Cycle" },
   ];
-  const { controller, editorController } = panelControllerHarness(model);
+  const { controller, editorController, modal } = panelControllerHarness(model);
   const saved = item(painted());
   editorController.applyLibraryItem(saved);
   let resolveSave!: (value: LibraryItem) => void;
@@ -2402,6 +3087,11 @@ test("automatic save flushes before navigation and exposes failures to the trans
   editorController.updatePaintedContent({ speed: 63 }, "committed");
   controller.contentCommitted("committed");
   await vi.waitFor(() => expect(model.autoSaveFailed).toBe(true));
+  expect(model.modalState).toMatchObject({
+    kind: "error",
+    message: expect.stringContaining("storage unavailable"),
+  });
+  modal.closeError();
   expect(model.section).toBe("custom");
   expect(model.dirty).toBe(true);
   expect(model.localWorkNeedsProtection).toBe(true);
@@ -2409,7 +3099,6 @@ test("automatic save flushes before navigation and exposes failures to the trans
 
   expect(model.section).toBe("custom");
   expect(model.pendingTransitionDialog?.primaryLabel).toBe("Save");
-  expect(model.notice).toContain("storage unavailable");
 });
 
 test("unload protection covers only unrecoverable work", () => {

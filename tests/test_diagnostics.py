@@ -54,6 +54,9 @@ async def test_surfaces_segment_fields(mock_h6199_coordinator):
     assert coord["subordinate_21_version"] is None
     assert coord["diy_code"] is None
     assert coord["color_mode"] is None
+    assert coord["effect_categories"] == ["advanced", "effects", "reactive", "scenes", "video"]
+    assert coord["prefix_effect_names"] is False
+    assert coord["always_include_custom_effects"] is False
 
 
 async def test_surfaces_release_capability_evidence_without_hiding_planned_workflows(

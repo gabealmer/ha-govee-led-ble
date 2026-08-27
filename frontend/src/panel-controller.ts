@@ -49,12 +49,14 @@ interface PendingTransition {
   epoch: number;
   itemId?: string;
   execute: () => void | Promise<void>;
+  save?: () => Promise<boolean>;
 }
 
 interface PanelControllerOptions {
   connected(): boolean;
   pathname(): string;
   replacePath(path: string): void;
+  saveSceneWork?(): Promise<boolean>;
 }
 
 export class PanelController {
@@ -65,6 +67,8 @@ export class PanelController {
   private autoSavePending?: AutoSaveTarget;
   private autoSaveRunning = false;
   private autoSaveDrain?: Promise<boolean>;
+  private lastSaveCancelled = false;
+  private stateUpdatesGeneration = 0;
   private pendingTransition?: PendingTransition;
   private deviceRefresh?: {
     api: EffectStudioApi;
@@ -89,14 +93,23 @@ export class PanelController {
   }
 
   public async load(hass: HomeAssistant, isAdmin: boolean): Promise<void> {
+    this.stateUpdatesGeneration += 1;
     this.model.patch({
       loading: true,
       error: undefined,
       previewStatus: undefined,
       previewNotice: undefined,
+      stateUpdatesUnavailable: false,
+      sceneWorkDirty: false,
       isAdmin,
     });
     const api = new EffectStudioApi(hass);
+    api.setLibrarySnapshotHandler((snapshot) =>
+      this.libraryChanged(snapshot),
+    );
+    api.setOverwriteConfirmation((effectName) =>
+      this.confirmOverwrite(effectName),
+    );
     this.api = api;
     const request = this.loadRequests.begin({ api });
     try {
@@ -120,18 +133,31 @@ export class PanelController {
         (snapshot) => void this.libraryChanged(snapshot),
         (error) => this.subscriptionFailed(error, request),
       );
-      if (!this.loadIsCurrent(request) || this.model.error) {
+      if (
+        !this.loadIsCurrent(request) ||
+        this.model.error ||
+        this.model.stateUpdatesUnavailable
+      ) {
         unsubscribeLibrary();
         return;
       }
       this.unsubscribeLibrary = unsubscribeLibrary;
       await this.subscribeSelectedDevice(api);
-      if (!this.loadIsCurrent(request) || this.model.error) {
+      if (
+        !this.loadIsCurrent(request) ||
+        this.model.error ||
+        this.model.stateUpdatesUnavailable
+      ) {
         return;
       }
       if (isAdmin) {
         const opened = await this.preview.open(api, (error) => this.subscriptionFailed(error, request));
-        if (!opened || !this.loadIsCurrent(request) || this.model.error) {
+        if (
+          !opened ||
+          !this.loadIsCurrent(request) ||
+          this.model.error ||
+          this.model.stateUpdatesUnavailable
+        ) {
           this.preview.dispose();
           return;
         }
@@ -186,17 +212,29 @@ export class PanelController {
     if (this.api) {
       await this.subscribeSelectedDevice(this.api);
     }
+    if (this.model.stateUpdatesUnavailable) {
+      return;
+    }
     this.options.replacePath(editorDevicePath(selectedDeviceId));
+    const updatesGeneration = this.stateUpdatesGeneration;
     try {
       const userState = await this.api?.updateUserState(
         selectedDeviceId,
         this.navigationPreferences,
       );
-      if (userState) this.model.patch({ userState });
+      if (
+        userState &&
+        !this.model.stateUpdatesUnavailable &&
+        updatesGeneration === this.stateUpdatesGeneration
+      ) {
+        this.model.patch({ userState });
+      }
     } catch (error) {
       console.warn("Could not remember the selected light", error);
     }
     if (
+      !this.model.stateUpdatesUnavailable &&
+      updatesGeneration === this.stateUpdatesGeneration &&
       rootEpoch === this.model.editorTransitionEpoch &&
       selectedDeviceId === this.model.selectedDeviceId
     ) {
@@ -295,7 +333,10 @@ export class PanelController {
     returnFocus?: HTMLElement,
   ): Promise<void> {
     await this.requestTransition(
-      () => this.editor.openSceneEditor(detail),
+      () => {
+        this.model.patch({ sceneWorkDirty: false });
+        this.editor.openSceneEditor(detail);
+      },
       returnFocus,
     );
   }
@@ -329,6 +370,7 @@ export class PanelController {
   public async selectScene(
     selection: () => void | Promise<void>,
     returnFocus?: HTMLElement,
+    save?: () => Promise<boolean>,
   ): Promise<void> {
     await this.requestTransition(async () => {
       if (this.model.editorSource.kind !== "none") {
@@ -337,7 +379,7 @@ export class PanelController {
         this.model.patch({ sceneEditorOpen: false });
       }
       await selection();
-    }, returnFocus);
+    }, returnFocus, save);
   }
 
   public async openInitialContext(): Promise<void> {
@@ -530,6 +572,9 @@ export class PanelController {
   }
 
   public toggleAutoSave(): void {
+    if (this.model.stateUpdatesUnavailable) {
+      return;
+    }
     const autoSaveEnabled = !this.model.autoSaveEnabled;
     this.model.patch({
       autoSaveEnabled,
@@ -544,6 +589,9 @@ export class PanelController {
   }
 
   public contentCommitted(interaction: LivePreviewInteraction): void {
+    if (this.model.stateUpdatesUnavailable) {
+      return;
+    }
     if (
       interaction !== "committed" ||
       !this.model.isAdmin ||
@@ -577,14 +625,34 @@ export class PanelController {
   public async requestTransition(
     execute: () => void | Promise<void>,
     returnFocus?: HTMLElement,
+    save?: () => Promise<boolean>,
   ): Promise<boolean> {
     if (this.pendingTransition || this.modal.open) {
       return false;
     }
+    if (this.model.stateUpdatesUnavailable) {
+      this.modal.showError("Reload the page before continuing.", {
+        title: "State updates stopped",
+        key: "subscription:reload-before-transition",
+        resumeWorkflow: false,
+      });
+      return false;
+    }
+    const updatesGeneration = this.stateUpdatesGeneration;
+    const panelOwnsDirtyWork =
+      this.model.editorOwnedByActiveView &&
+      (this.model.dirty || this.model.resetDirty);
+    const saveWork =
+      save ??
+      (this.model.sceneWorkDirty && !panelOwnsDirtyWork
+        ? this.options.saveSceneWork ??
+          (() => Promise.resolve(false))
+        : undefined);
     const owner: PendingTransition = {
       epoch: this.model.editorTransitionEpoch,
       itemId: this.model.currentItem?.id,
       execute,
+      save: saveWork,
     };
     if (
       this.model.editorSource.kind === "saved" &&
@@ -593,10 +661,18 @@ export class PanelController {
       !this.model.autoSaveFailed
     ) {
       if (await this.flushAutoSave(owner)) {
+        if (
+          this.model.stateUpdatesUnavailable ||
+          updatesGeneration !== this.stateUpdatesGeneration
+        ) {
+          return false;
+        }
         await this.executeOwnedTransition(owner);
         return true;
       }
       if (
+        this.model.stateUpdatesUnavailable ||
+        updatesGeneration !== this.stateUpdatesGeneration ||
         owner.epoch !== this.model.editorTransitionEpoch ||
         owner.itemId !== this.model.currentItem?.id
       ) {
@@ -614,16 +690,19 @@ export class PanelController {
     }
     this.pendingTransition = owner;
     this.modal.requestTransition(
-      editorTransitionSaveMode(this.model.editorSource),
+      saveWork ? "Save" : editorTransitionSaveMode(this.model.editorSource),
       this.model.name.trim(),
-      this.model.currentItem === undefined,
+      saveWork ? false : this.model.currentItem === undefined,
       returnFocus,
     );
     return false;
   }
 
   public cancelPendingTransition(): void {
-    if (!this.pendingTransition) {
+    if (
+      !this.pendingTransition ||
+      this.model.pendingTransitionDialog?.busy
+    ) {
       return;
     }
     this.pendingTransition = undefined;
@@ -631,6 +710,9 @@ export class PanelController {
   }
 
   public async declinePendingTransition(): Promise<void> {
+    if (this.model.stateUpdatesUnavailable) {
+      return;
+    }
     const pending = this.takePendingTransition();
     if (
       pending &&
@@ -644,13 +726,17 @@ export class PanelController {
 
   public async savePendingTransition(): Promise<void> {
     const pending = this.pendingTransition;
+    const updatesGeneration = this.stateUpdatesGeneration;
     const dialog = this.model.pendingTransitionDialog;
     if (!pending || !dialog || dialog.busy) {
       return;
     }
     const name = dialog.saveName.trim();
     if (dialog.requiresName && !name) {
-      this.modal.updateTransition({ error: "Enter an effect name." });
+      this.modal.showError("Enter an effect name.", {
+        title: "Effect name required",
+        key: `transition-name-required:${pending.epoch}`,
+      });
       return;
     }
     if (dialog.primaryLabel === "Save" && dialog.requiresName) {
@@ -658,14 +744,35 @@ export class PanelController {
     }
     this.modal.updateTransition({ busy: true, error: undefined });
     const saved =
-      dialog.primaryLabel === "Save"
+      pending.save
+        ? await pending.save()
+        : dialog.primaryLabel === "Save"
         ? await this.save()
         : await this.saveAs(name);
+    if (
+      this.model.stateUpdatesUnavailable ||
+      updatesGeneration !== this.stateUpdatesGeneration
+    ) {
+      return;
+    }
     if (!saved) {
-      this.modal.updateTransition({
-        busy: false,
-        error: this.model.notice ?? "The effect could not be saved.",
-      });
+      if (this.lastSaveCancelled) {
+        this.modal.updateTransition({ busy: false, error: undefined });
+        return;
+      }
+      const errorAlreadyVisible =
+        this.model.modalState?.kind === "error" &&
+        this.model.modalState.resume?.kind === "pending-transition";
+      this.modal.updateTransition({ busy: false, error: undefined });
+      if (errorAlreadyVisible) {
+        return;
+      }
+      if (this.model.modalState?.kind === "pending-transition") {
+        this.modal.showError("The effect could not be saved.", {
+          title: "Save failed",
+          key: `transition-save-failed:${pending.epoch}`,
+        });
+      }
       return;
     }
     const owned = this.takePendingTransition();
@@ -685,6 +792,7 @@ export class PanelController {
     pending: PendingTransition,
   ): Promise<void> {
     if (
+      this.model.stateUpdatesUnavailable ||
       pending.epoch !== this.model.editorTransitionEpoch ||
       pending.itemId !== this.model.currentItem?.id
     ) {
@@ -695,6 +803,7 @@ export class PanelController {
 
   private async flushAutoSave(owner: PendingTransition): Promise<boolean> {
     if (
+      this.model.stateUpdatesUnavailable ||
       !this.model.currentItem ||
       !isEditableEffectContent(this.model.content)
     ) {
@@ -710,32 +819,53 @@ export class PanelController {
       this.autoSaveDrain = this.drainAutoSave();
     }
     const succeeded = await this.autoSaveDrain;
-    return (
+    if (
       succeeded === true &&
-      owner.epoch === this.model.editorTransitionEpoch &&
-      owner.itemId === this.model.currentItem?.id &&
-      !this.model.dirty
-    );
+      !this.model.stateUpdatesUnavailable &&
+      owner.epoch === this.model.editorTransitionEpoch
+    ) {
+      owner.itemId = this.model.currentItem?.id;
+      return !this.model.dirty;
+    }
+    return false;
   }
 
-  public async libraryChanged(snapshot: LibrarySnapshot): Promise<void> {
+  public async libraryChanged(snapshot: LibrarySnapshot): Promise<boolean> {
+    if (
+      (snapshot.generation ?? 0) <
+      (this.model.library.generation ?? 0)
+    ) {
+      return false;
+    }
     this.model.patch({ library: snapshot });
     if (this.model.saving) {
-      return;
+      return true;
+    }
+    if (this.model.currentItem && !this.model.editorOwnedByActiveView) {
+      const summary = snapshot.items.find(
+        (item) => item.id === this.model.currentItem?.id,
+      );
+      if (
+        !summary ||
+        summary.version !== this.model.currentItem.version
+      ) {
+        this.editor.clearRetainedSelection();
+      }
+      return true;
     }
     const sync = libraryItemSyncResult(this.model.currentItem, snapshot.items, this.model.dirty, this.model.deletingItemId);
-    if (sync.action === "none") return;
+    if (sync.action === "none") return true;
     if (sync.action === "removed") {
       this.model.patch({ notice: undefined });
-      return;
+      return true;
     }
     if (sync.action === "conflict") {
       this.model.patch({ notice: "This effect changed elsewhere. Reload it before saving." });
-      return;
+      return true;
     }
     const currentItem = this.model.currentItem;
     if (!currentItem) {
-      return;
+      return true;
     }
     const guard: LibraryReloadGuard = {
       itemId: currentItem.id,
@@ -758,6 +888,7 @@ export class PanelController {
     ) {
       this.model.patch({ notice: "This effect changed elsewhere. Reload it before saving." });
     }
+    return true;
   }
 
   public async sceneItemSaved(
@@ -766,7 +897,12 @@ export class PanelController {
     selectionIsCurrent: boolean,
     panelTransitionEpoch: number,
   ): Promise<void> {
-    this.model.patch({ library: { items: upsertSummary(this.model.library.items, item) } });
+    this.model.patch({
+      library: {
+        ...this.model.library,
+        items: upsertSummary(this.model.library.items, item),
+      },
+    });
     if (
       selectionIsCurrent &&
       this.model.liveApplyEnabled &&
@@ -779,6 +915,9 @@ export class PanelController {
   }
 
   public async toggleLive(scene?: ScenePreviewRequest): Promise<void> {
+    if (this.model.stateUpdatesUnavailable) {
+      return;
+    }
     if (this.model.liveApplyEnabled) {
       this.preview.toggle(scene);
       return;
@@ -838,30 +977,43 @@ export class PanelController {
 
   public async confirmDelete(): Promise<void> {
     const candidate = this.modal.deleteCandidate;
-    if (!candidate || !this.api || !this.model.isAdmin || this.model.deletingItemId !== undefined) return;
+    if (
+      !candidate ||
+      !this.api ||
+      !this.model.isAdmin ||
+      this.model.stateUpdatesUnavailable ||
+      this.model.deletingItemId !== undefined
+    ) return;
     this.modal.takeDeleteCandidate();
     this.model.patch({ deletingItemId: candidate.id, notice: undefined });
     try {
       await this.api.deleteItem(candidate);
-      this.model.patch({ library: { items: this.model.library.items.filter((item) => item.id !== candidate.id) } });
+      this.model.patch({
+        library: {
+          ...this.model.library,
+          items: this.model.library.items.filter(
+            (item) => item.id !== candidate.id,
+          ),
+        },
+      });
       if (this.model.currentItem?.id === candidate.id && this.model.currentItem.version === candidate.version) {
         this.editor.clearCurrentAfterDelete();
       }
       this.model.patch({ notice: undefined });
     } catch (error) {
       const conflict = errorCode(error) === "conflict";
-      this.model.patch({
-        notice: conflict
-          ? "This effect or library changed elsewhere. Reload before deleting."
-          : `Delete failed: ${errorMessage(error)}`,
-      });
+      const message = conflict
+        ? "This effect or library changed elsewhere. Reload before deleting."
+        : `Delete failed: ${errorMessage(error)}`;
+      let finalMessage = message;
       if (conflict) {
         try {
           this.model.patch({ library: await this.api.library() });
         } catch (refreshError) {
-          this.model.patch({ notice: `${this.model.notice} Library refresh failed: ${errorMessage(refreshError)}` });
+          finalMessage = `${message} Library refresh failed: ${errorMessage(refreshError)}`;
         }
       }
+      this.model.patch({ notice: finalMessage });
     } finally {
       this.model.patch({ deletingItemId: undefined });
       this.modal.focusActiveSectionIfNeeded();
@@ -871,7 +1023,8 @@ export class PanelController {
   public async save(): Promise<boolean> {
     if (
       !this.api || !this.model.isAdmin || !this.model.canSaveCurrentDraft || this.model.saving ||
-      this.model.deletingCurrentItem || !isEditableEffectContent(this.model.content)
+      this.model.stateUpdatesUnavailable || this.model.deletingCurrentItem ||
+      !isEditableEffectContent(this.model.content)
     ) return false;
     const name = this.model.name.trim();
     if (!name) {
@@ -880,19 +1033,38 @@ export class PanelController {
     }
 
     const transitionEpoch = this.model.editorTransitionEpoch;
+    this.lastSaveCancelled = false;
     const originatingItem = this.model.currentItem;
     const content = cloneEditableEffect(this.model.content);
+    const api = this.api;
+    const selectedDeviceId = this.model.selectedDeviceId;
+    const sourceDocument = serialiseEditable(name, content);
+    const updatesGeneration = this.stateUpdatesGeneration;
+    const guard = () =>
+      api === this.api &&
+      !this.model.stateUpdatesUnavailable &&
+      updatesGeneration === this.stateUpdatesGeneration &&
+      transitionEpoch === this.model.editorTransitionEpoch &&
+      selectedDeviceId === this.model.selectedDeviceId &&
+      sameLibraryItemVersion(this.model.currentItem, originatingItem) &&
+      isEditableEffectContent(this.model.content) &&
+      this.currentEditorDocument() === sourceDocument;
     const savingSceneEditor = this.model.sceneEditorOpen;
     this.model.patch({ saving: true, notice: undefined });
     try {
       const result = originatingItem
-        ? await this.api.updateItem(originatingItem, name, content)
-        : await this.api.createItem(name, content);
+        ? await api.updateItem(originatingItem, name, content, guard)
+        : await api.createItem(name, content, guard);
       if (!isEditableEffectContent(result.content)) {
         throw new Error("The saved effect returned an unsupported definition.");
       }
       const savedContent = result.content;
-      this.model.patch({ library: { items: upsertSummary(this.model.library.items, result) } });
+      this.model.patch({
+        library: {
+          ...this.model.library,
+          items: upsertSummary(this.model.library.items, result),
+        },
+      });
       const originIsCurrent =
         transitionEpoch === this.model.editorTransitionEpoch &&
         sameLibraryItemVersion(this.model.currentItem, originatingItem) &&
@@ -929,7 +1101,7 @@ export class PanelController {
           this.model.liveApplyEnabled &&
           !(await this.applySavedIdentity(result, transitionEpoch))
         ) {
-          return false;
+          return true;
         }
       }
 
@@ -944,7 +1116,10 @@ export class PanelController {
       }
       return false;
     } catch (error) {
-      if (errorCode(error) === "conflict") {
+      const code = errorCode(error);
+      if (code === "save_cancelled") {
+        this.lastSaveCancelled = true;
+      } else if (code === "conflict") {
         const conflictNotice = "This effect or library changed elsewhere. Reload before saving.";
         if (transitionEpoch === this.model.editorTransitionEpoch) this.model.patch({ notice: conflictNotice });
         try {
@@ -955,7 +1130,12 @@ export class PanelController {
           }
         }
       } else if (transitionEpoch === this.model.editorTransitionEpoch) {
-        this.model.patch({ notice: `Save failed: ${errorMessage(error)}` });
+        this.model.patch({
+          notice:
+            code === "reserved_name"
+              ? errorMessage(error)
+              : `Save failed: ${errorMessage(error)}`,
+        });
       }
       return false;
     } finally {
@@ -967,6 +1147,7 @@ export class PanelController {
     if (
       !this.api ||
       !this.model.isAdmin ||
+      this.model.stateUpdatesUnavailable ||
       this.model.saving ||
       this.model.deletingCurrentItem ||
       !isEditableEffectContent(this.model.content)
@@ -974,16 +1155,28 @@ export class PanelController {
       return false;
     }
     const content = cloneEditableEffect(this.model.content);
+    this.lastSaveCancelled = false;
     const transitionEpoch = this.model.editorTransitionEpoch;
+    const api = this.api;
     const sourceItemId = this.model.currentItem?.id;
     const sourceDocument = this.currentEditorDocument();
     const selectedDeviceId = this.model.selectedDeviceId;
+    const updatesGeneration = this.stateUpdatesGeneration;
+    const guard = () =>
+      api === this.api &&
+      !this.model.stateUpdatesUnavailable &&
+      updatesGeneration === this.stateUpdatesGeneration &&
+      transitionEpoch === this.model.editorTransitionEpoch &&
+      this.model.currentItem?.id === sourceItemId &&
+      this.model.selectedDeviceId === selectedDeviceId &&
+      this.currentEditorDocument() === sourceDocument;
     this.cancelPendingAutoSave();
     this.model.patch({ saving: true, notice: undefined });
     try {
-      const result = await this.api.createItem(name, content);
+      const result = await api.createItem(name, content, guard);
       this.model.patch({
         library: {
+          ...this.model.library,
           items: upsertSummary(this.model.library.items, result),
         },
       });
@@ -1010,15 +1203,21 @@ export class PanelController {
           this.model.liveApplyEnabled &&
           !(await this.applySavedIdentity(result, transitionEpoch))
         ) {
-          return false;
+          return true;
         }
         return true;
       }
       return false;
     } catch (error) {
-      if (transitionEpoch === this.model.editorTransitionEpoch) {
+      const code = errorCode(error);
+      if (code === "save_cancelled") {
+        this.lastSaveCancelled = true;
+      } else if (transitionEpoch === this.model.editorTransitionEpoch) {
         this.model.patch({
-          notice: `Save As failed: ${errorMessage(error)}`,
+          notice:
+            code === "reserved_name"
+              ? errorMessage(error)
+              : `Save As failed: ${errorMessage(error)}`,
         });
       }
       return false;
@@ -1073,23 +1272,52 @@ export class PanelController {
   }
 
   private async rememberNavigation(): Promise<void> {
-    if (!this.api || !this.model.userState) return;
+    if (
+      !this.api ||
+      !this.model.userState ||
+      this.model.stateUpdatesUnavailable
+    ) return;
+    const updatesGeneration = this.stateUpdatesGeneration;
     try {
       const userState = await this.api.updateUserState(this.model.selectedDeviceId, {
         ...this.navigationPreferences,
       });
-      this.model.patch({ userState });
+      if (
+        !this.model.stateUpdatesUnavailable &&
+        updatesGeneration === this.stateUpdatesGeneration
+      ) {
+        this.model.patch({ userState });
+      }
     } catch (error) {
       console.warn("Could not remember Studio navigation", error);
     }
   }
 
+  private async confirmOverwrite(effectName: string): Promise<boolean> {
+    const generation = this.stateUpdatesGeneration;
+    const confirmed = await this.modal.requestOverwrite(effectName);
+    return (
+      confirmed &&
+      !this.model.stateUpdatesUnavailable &&
+      generation === this.stateUpdatesGeneration
+    );
+  }
+
   private async drainAutoSave(): Promise<boolean> {
+    if (this.model.stateUpdatesUnavailable) {
+      this.autoSavePending = undefined;
+      return false;
+    }
     this.autoSaveRunning = true;
     this.model.patch({ autoSaveInProgress: true });
     let succeeded = true;
     try {
       while (this.autoSavePending) {
+        if (this.model.stateUpdatesUnavailable) {
+          this.autoSavePending = undefined;
+          succeeded = false;
+          break;
+        }
         const target = this.autoSavePending;
         this.autoSavePending = undefined;
         if (!(await this.persistAutoSave(target))) {
@@ -1106,7 +1334,11 @@ export class PanelController {
   }
 
   private async persistAutoSave(target: AutoSaveTarget): Promise<boolean> {
-    if (!this.api || !target.name) {
+    if (
+      this.model.stateUpdatesUnavailable ||
+      !this.api ||
+      !target.name
+    ) {
       return false;
     }
     const base = this.latestSavedItems.get(target.item.id) ?? target.item;
@@ -1116,10 +1348,24 @@ export class PanelController {
       notice: undefined,
     });
     try {
-      const result = await this.api.updateItem(
+      const api = this.api;
+      const updatesGeneration = this.stateUpdatesGeneration;
+      const sourceDocument = serialiseEditable(
+        target.name,
+        target.content,
+      );
+      const result = await api.updateItem(
         base,
         target.name,
         target.content,
+        () =>
+          api === this.api &&
+          !this.model.stateUpdatesUnavailable &&
+          updatesGeneration === this.stateUpdatesGeneration &&
+          target.epoch === this.model.editorTransitionEpoch &&
+          this.model.currentItem?.id === target.item.id &&
+          isEditableEffectContent(this.model.content) &&
+          this.currentEditorDocument() === sourceDocument,
       );
       if (!isEditableEffectContent(result.content)) {
         throw new Error("The saved effect returned an unsupported definition.");
@@ -1128,23 +1374,48 @@ export class PanelController {
       this.latestSavedItems.set(result.id, result);
       this.model.patch({
         library: {
+          ...this.model.library,
           items: upsertSummary(this.model.library.items, result),
         },
       });
       if (
         target.epoch === this.model.editorTransitionEpoch &&
-        this.model.currentItem?.id === result.id
+        this.model.currentItem?.id === target.item.id
       ) {
         const savedBaseline = serialiseEditable(
           result.name,
           savedContent,
         );
-        this.model.patch({
-          currentItem: result,
-          savedBaseline,
-          autoSaveFailed: false,
-          notice: undefined,
-        });
+        const currentMatchesSaved =
+          isEditableEffectContent(this.model.content) &&
+          serialiseEditable(this.model.name, this.model.content) ===
+            serialiseEditable(target.name, target.content);
+        if (currentMatchesSaved && result.id !== target.item.id) {
+          this.editor.applyLibraryItem(result);
+        } else {
+          this.model.patch({
+            currentItem: result,
+            editorSource: {
+              kind: "saved",
+              owner:
+                result.content.kind === "video_profile"
+                  ? { section: "video" }
+                  : {
+                      section: "custom",
+                      category: this.categoryForKind(result.content.kind),
+                    },
+              itemId: result.id,
+            },
+            savedBaseline,
+          });
+        }
+        this.model.patch({ autoSaveFailed: false, notice: undefined });
+        if (this.autoSavePending?.item.id === target.item.id) {
+          this.autoSavePending = {
+            ...this.autoSavePending,
+            item: result,
+          };
+        }
         if (
           this.model.liveApplyEnabled &&
           isEditableEffectContent(this.model.content) &&
@@ -1152,8 +1423,7 @@ export class PanelController {
             savedBaseline
         ) {
           if (!(await this.applySavedIdentity(result, target.epoch))) {
-            this.model.patch({ autoSaveFailed: true });
-            return false;
+            return true;
           }
         }
       }
@@ -1163,12 +1433,17 @@ export class PanelController {
         target.epoch === this.model.editorTransitionEpoch &&
         this.model.currentItem?.id === target.item.id
       ) {
+        const code = errorCode(error);
         this.model.patch({
           autoSaveFailed: true,
-          notice:
-            errorCode(error) === "conflict"
-              ? "This effect changed elsewhere. Reload it before saving."
-              : `Save failed: ${errorMessage(error)}`,
+          ...(code === "save_cancelled"
+            ? {}
+            : {
+                notice:
+                  code === "conflict"
+                    ? "This effect changed elsewhere. Reload it before saving."
+                    : `Save failed: ${errorMessage(error)}`,
+              }),
         });
       }
       this.autoSavePending = undefined;
@@ -1187,10 +1462,12 @@ export class PanelController {
   }
 
   private currentEditorDocument(): string {
-    return JSON.stringify({
-      name: this.model.name,
-      content: this.model.content,
-    });
+    return isEditableEffectContent(this.model.content)
+      ? serialiseEditable(this.model.name, this.model.content)
+      : JSON.stringify({
+          name: this.model.name,
+          content: this.model.content,
+        });
   }
 
   private categoryForKind(kind: string): CustomEffectCategory {
@@ -1293,10 +1570,29 @@ export class PanelController {
 
   private subscriptionFailed(error: Error, request: LoadRequest): void {
     if (!this.loadIsCurrent(request)) return;
-    this.model.patch({ error: error.message, loading: false });
-    queueMicrotask(() => {
-      if (this.loadIsCurrent(request)) this.stopSubscriptions();
+    this.stateUpdatesFailed(error);
+  }
+
+  public stateUpdatesFailed(error: Error): void {
+    this.stateUpdatesGeneration += 1;
+    this.cancelPendingAutoSave();
+    this.pendingTransition = undefined;
+    this.model.patch({
+      liveApplyEnabled: false,
+      stateUpdatesUnavailable: true,
+      previewStatus: undefined,
+      previewNotice: undefined,
+      previewProgressVisible: false,
     });
+    this.modal.showError(
+      `${error.message} Reload the page before making further changes.`,
+      {
+        title: "State updates stopped",
+        key: `subscription:${error.message}`,
+        resumeWorkflow: false,
+      },
+    );
+    queueMicrotask(() => this.stopSubscriptions());
   }
 
   private async subscribeSelectedDevice(api: EffectStudioApi): Promise<void> {
@@ -1306,30 +1602,52 @@ export class PanelController {
     if (!configEntryId) {
       return;
     }
-    const unsubscribe = await api.subscribeDevice(
-      configEntryId,
-      (device) => {
-        if (
-          api !== this.api ||
-          device.config_entry_id !== this.model.selectedDeviceId
-        ) {
-          return;
-        }
-        this.model.patch({
-          devices: this.model.devices.map((current) =>
-            current.config_entry_id === device.config_entry_id
-              ? device
-              : current,
-          ),
-        });
-      },
-      (error) => {
-        if (api === this.api) {
-          this.model.patch({ notice: `State updates stopped: ${error.message}` });
-        }
-      },
-    );
-    if (api !== this.api || configEntryId !== this.model.selectedDeviceId) {
+    const updatesGeneration = this.stateUpdatesGeneration;
+    let unsubscribe: () => void;
+    try {
+      unsubscribe = await api.subscribeDevice(
+        configEntryId,
+        (device) => {
+          if (
+            api !== this.api ||
+            this.model.stateUpdatesUnavailable ||
+            device.config_entry_id !== this.model.selectedDeviceId
+          ) {
+            return;
+          }
+          this.model.patch({
+            devices: this.model.devices.map((current) =>
+              current.config_entry_id === device.config_entry_id
+                ? device
+                : current,
+            ),
+          });
+        },
+        (error) => {
+          if (api === this.api) {
+            this.stateUpdatesFailed(error);
+          }
+        },
+      );
+    } catch (error) {
+      if (
+        api === this.api &&
+        configEntryId === this.model.selectedDeviceId
+      ) {
+        this.stateUpdatesFailed(
+          error instanceof Error
+            ? error
+            : new Error("Device state subscription failed."),
+        );
+      }
+      return;
+    }
+    if (
+      api !== this.api ||
+      this.model.stateUpdatesUnavailable ||
+      updatesGeneration !== this.stateUpdatesGeneration ||
+      configEntryId !== this.model.selectedDeviceId
+    ) {
       unsubscribe();
       return;
     }

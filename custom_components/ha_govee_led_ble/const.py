@@ -9,6 +9,7 @@ CONF_MODEL = "model"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
 CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
+CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS = "always_include_custom_effects"
 EFFECT_FAMILY_SCENES = "scenes"
 EFFECT_FAMILY_MUSIC = "music"
 EFFECT_FAMILY_VIDEO = "video"
@@ -181,6 +182,10 @@ def effect_categories_from_options(model: str, options: Mapping[str, Any]) -> fr
 
 def prefix_effect_names_from_options(options: Mapping[str, Any]) -> bool:
     return options.get(CONF_PREFIX_EFFECT_NAMES) is True
+
+
+def always_include_custom_effects_from_options(options: Mapping[str, Any]) -> bool:
+    return options.get(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS) is True
 
 
 def effect_families_from_categories(categories: frozenset[str]) -> frozenset[str]:

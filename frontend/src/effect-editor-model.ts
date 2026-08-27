@@ -1,6 +1,8 @@
 import {
+  advancedLayerLabels,
   cloneAdvancedContent,
   cloneLayeredSceneContent,
+  installAdvancedLayerLabels,
 } from "./advanced-effect-model";
 import {
   cloneMusicProfileContent,
@@ -59,6 +61,7 @@ export type LibraryItemSyncResult =
 
 export const PAINTED_SEGMENT_COUNT = 15;
 export type PaintedSegmentDraft = PaintedContent["segments"][number];
+export const EDITOR_EXTENSION_KEY = "ha_govee_led_ble.editor";
 
 export function reactiveParameterValueText(
   parameter: string,
@@ -383,7 +386,37 @@ export function serialiseEditable(
   return JSON.stringify({
     name: name.trim(),
     content,
+    layer_labels: editableLayerLabels(content),
   });
+}
+
+export function editableLayerLabels(
+  content: EffectContent,
+): number[] | undefined {
+  if (!isAdvancedEditableContent(content)) {
+    return undefined;
+  }
+  return advancedLayerLabels(advancedEditorContent(content));
+}
+
+export function installLibraryItemEditorMetadata(
+  item: LibraryItem,
+): LibraryItem {
+  if (!isAdvancedEditableContent(item.content)) {
+    return item;
+  }
+  const extension = item.extensions[EDITOR_EXTENSION_KEY];
+  const layerLabels =
+    typeof extension === "object" &&
+    extension !== null &&
+    !Array.isArray(extension)
+      ? (extension as Record<string, unknown>).layer_labels
+      : undefined;
+  installAdvancedLayerLabels(
+    advancedEditorContent(item.content),
+    layerLabels,
+  );
+  return item;
 }
 
 function isCustomEffectKind(

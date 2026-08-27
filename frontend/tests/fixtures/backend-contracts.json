@@ -1143,7 +1143,7 @@
       }
     ],
     "editor_info": {
-      "api_version": 12,
+      "api_version": 13,
       "compiler_version": 4,
       "effect_schema_version": 2,
       "limits": {
@@ -1209,6 +1209,7 @@
       "version": 1
     },
     "library_snapshot": {
+      "generation": 0,
       "items": [
         {
           "content_hash": "0e36f8c2b65a812a76063516a7895c2704b5d966e3636d11a9e97338762ae201",

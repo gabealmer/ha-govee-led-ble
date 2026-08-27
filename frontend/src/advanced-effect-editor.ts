@@ -121,7 +121,11 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       return this.renderEmptyLayers();
     }
     const layer = this.activeLayer;
-    const layerItems = advancedLayerItems(this.content.layers.length);
+    const layerItems = advancedLayerItems(this.controller.layerLabels);
+    const layerActions = advancedLayerActions(
+      this.content.layers.length,
+      this.disabled,
+    ).filter((action) => action.visible);
     return html`
       <div class="visually-hidden" aria-live="polite">
         ${this.movementAnnouncement}
@@ -139,7 +143,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           .addDisabled=${this.disabled}
           .addHidden=${this.content.layers.length >= AUTHORING_LAYER_LIMIT}
           .reorderDisabled=${this.disabled}
-          .separateActions=${!this.disabled}
+          .separateActions=${layerActions.length > 0}
           @item-selected=${(event: CustomEvent<{ index: number }>) =>
             this.selectLayer(event.detail.index)}
           @items-reordered=${(
@@ -147,9 +151,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           ) => this.reorderLayer(event.detail.from, event.detail.to)}
           @item-added=${this.addLayer}
         >
-          ${this.disabled
-            ? nothing
-            : advancedLayerActions(this.content.layers.length).map(
+          ${layerActions.map(
                 (action) => html`
                   <button
                     slot="actions"
@@ -162,7 +164,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                     ?disabled=${action.disabled}
                     @click=${action.kind === "copy"
                       ? this.copyLayer
-                      : this.deleteLayer}
+                      : action.kind === "renumber"
+                        ? this.renumberLayers
+                        : this.deleteLayer}
                   >
                     ${action.icon
                       ? html`
@@ -177,16 +181,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                 `,
               )}
         </govee-reorderable-strip>
-
-        ${this.content.layers.length >= AUTHORING_LAYER_LIMIT
-          ? html`
-              <p class="limit-note">
-                ${this.content.layers.length > AUTHORING_LAYER_LIMIT
-                  ? `This loaded effect has ${this.content.layers.length} layers. All are preserved, but adding and copying are unavailable while five or more remain.`
-                  : "Advanced effects can author up to five layers."}
-              </p>
-            `
-          : nothing}
       </section>
 
       <section
@@ -197,8 +191,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       >
         <div class="control-grid">
           ${this.renderPriority(layer)}
-          ${this.renderAppliedArea(layer)}
           ${this.renderPalette(layer)}
+          ${this.renderAppliedArea(layer)}
+          ${this.renderBrightness(layer)}
           ${renderDistribution(
             layer,
             this.disabled,
@@ -208,7 +203,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
               ),
             (update) => this.updateLayer(update),
           )}
-          ${this.renderBrightness(layer)}
           ${this.renderMovement(
             layer,
             "selected_movement",
@@ -293,14 +287,6 @@ export class GoveeAdvancedEffectEditor extends LitElement {
               this.controller.updatePalette(event.detail.palette),
             )}
         ></govee-palette-editor>
-        ${layer.palette.length > AUTHORING_PALETTE_LIMIT
-          ? html`
-              <p class="muted">
-                All ${layer.palette.length} loaded colours are preserved.
-                Adding remains unavailable until fewer than eight remain.
-              </p>
-            `
-          : nothing}
       </section>
     `;
   }
@@ -367,23 +353,26 @@ export class GoveeAdvancedEffectEditor extends LitElement {
               .addDisabled=${this.disabled}
               .addHidden=${layer.brightness_patterns.length >= 3}
               .reorderDisabled=${true}
-              .separateActions=${true}
+              .separateActions=${layer.brightness_patterns.length > 1}
               @item-selected=${(event: CustomEvent<{ index: number }>) =>
                 this.selectPattern(event.detail.index)}
               @item-added=${this.addBrightnessPattern}
             >
-              <button
-                slot="actions"
-                class="compact-action danger-action"
-                type="button"
-                title="Delete current brightness pattern"
-                aria-label="Delete current brightness pattern"
-                ?disabled=${this.disabled ||
-                layer.brightness_patterns.length === 1}
-                @click=${this.deleteBrightnessPattern}
-              >
-                <span aria-hidden="true">×</span>
-              </button>
+              ${layer.brightness_patterns.length > 1
+                ? html`
+                    <button
+                      slot="actions"
+                      class="compact-action danger-action"
+                      type="button"
+                      title="Delete current brightness pattern"
+                      aria-label="Delete current brightness pattern"
+                      ?disabled=${this.disabled}
+                      @click=${this.deleteBrightnessPattern}
+                    >
+                      <span aria-hidden="true">×</span>
+                    </button>
+                  `
+                : nothing}
             </govee-reorderable-strip>
 
             <div
@@ -655,6 +644,10 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     this.applyLayerChange(this.controller.copyLayer());
   }
 
+  private renumberLayers(): void {
+    this.applyLayerChange(this.controller.renumberLayers());
+  }
+
   private deleteLayer(): void {
     this.applyLayerChange(this.controller.deleteLayer());
   }
@@ -668,7 +661,13 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   }
 
   private deleteBrightnessPattern(): void {
-    this.applySelectionChange(this.controller.deleteBrightnessPattern());
+    if (this.applySelectionChange(this.controller.deleteBrightnessPattern())) {
+      void this.updateComplete.then(() => {
+        this.shadowRoot
+          ?.querySelector<GoveeReorderableStrip>(".pattern-strip")
+          ?.focusItem(this.controller.activePatternIndex);
+      });
+    }
   }
 
   private selectLayer(index: number): void {

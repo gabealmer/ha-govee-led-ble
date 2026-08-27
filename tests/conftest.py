@@ -4,7 +4,12 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock
 import pytest
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, default_effect_families
+from custom_components.ha_govee_led_ble.const import (
+    DOMAIN,
+    MODEL_PROFILES,
+    default_effect_categories,
+    default_effect_families,
+)
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
@@ -65,6 +70,9 @@ def _make_coord(**ov) -> MagicMock:
     model = d["model"]
     assert isinstance(model, str)
     d.setdefault("effect_families", default_effect_families(model))
+    d.setdefault("effect_categories", frozenset(default_effect_categories(model)))
+    d.setdefault("prefix_effect_names", False)
+    d.setdefault("always_include_custom_effects", False)
     effect_families = d["effect_families"]
     assert isinstance(effect_families, frozenset)
     d.setdefault(

@@ -48,6 +48,10 @@ export const effectStudioPanelStyles = [
       font-family: var(--paper-font-body1_-_font-family, sans-serif);
     }
 
+    .panel-content {
+      display: contents;
+    }
+
     .centred,
     .fatal {
       max-width: var(--studio-empty-state-max-width);
@@ -345,7 +349,7 @@ export const effectStudioPanelStyles = [
     }
 
     .live-apply-status.idle {
-      display: none;
+      visibility: hidden;
     }
 
     .live-apply-status.pending {
@@ -475,10 +479,6 @@ export const effectStudioPanelStyles = [
       margin-top: var(--studio-spacing-4xl);
     }
 
-    .dialog-error {
-      color: var(--error-color, #db4437);
-    }
-
     .dialog-actions {
       display: flex;
       justify-content: flex-end;
@@ -568,14 +568,9 @@ export const effectStudioPanelStyles = [
         rgb(255 255 255 / 14%);
     }
 
-    .action-error,
     .read-only-copy {
       margin: 0 0 var(--studio-section-gap);
       line-height: var(--studio-muted-line-height);
-    }
-
-    .action-error {
-      color: var(--error-color, #db4437);
     }
 
     .read-only-copy {

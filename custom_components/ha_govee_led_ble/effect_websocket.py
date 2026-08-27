@@ -53,6 +53,7 @@ from .effect_scenes import (
     scene_catalogue_payload,
     scene_detail_payload,
 )
+from .effect_selector import ReservedEffectNameError, SavedEffectNameConflictError
 from .effect_storage import (
     EffectLimitError,
     EffectNotFoundError,
@@ -62,12 +63,14 @@ from .effect_storage import (
 )
 from .effect_websocket_payloads import (
     deployment_snapshot_payload,
+    item_summary,
     library_snapshot_payload,
 )
 from .effect_websocket_schema import (
     EFFECT_CONTENT,
     EFFECT_NAME,
     IDENTIFIER,
+    LAYER_LABELS,
     NAVIGATION,
     POSITIVE_REVISION,
     SCENE_ID,
@@ -87,6 +90,8 @@ from .effect_websocket_schema import (
     WS_LIBRARY_DELETE,
     WS_LIBRARY_GET,
     WS_LIBRARY_LIST,
+    WS_LIBRARY_NAME_STATUS,
+    WS_LIBRARY_OVERWRITE,
     WS_LIBRARY_SUBSCRIBE,
     WS_LIBRARY_UPDATE,
     WS_PREVIEW_APPLY_SCENE,
@@ -840,6 +845,7 @@ def ws_library_get(
         vol.Required("type"): WS_LIBRARY_CREATE,
         vol.Required("name"): EFFECT_NAME,
         vol.Required("content"): EFFECT_CONTENT,
+        vol.Optional("layer_labels"): LAYER_LABELS,
     }
 )
 @require_admin
@@ -853,7 +859,14 @@ async def ws_library_create(
         mutation = await _backend(hass).application.async_create_library_item(
             name=msg["name"],
             content=msg["content"],
+            layer_labels=msg.get("layer_labels"),
         )
+    except ReservedEffectNameError as exc:
+        connection.send_error(msg["id"], "reserved_name", str(exc))
+        return
+    except SavedEffectNameConflictError as exc:
+        connection.send_error(msg["id"], "name_conflict", str(exc))
+        return
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
@@ -863,7 +876,13 @@ async def ws_library_create(
     except EffectStorageError as exc:
         connection.send_error(msg["id"], "storage_unavailable", str(exc))
         return
-    connection.send_result(msg["id"], {"item": mutation.item.to_dict()})
+    connection.send_result(
+        msg["id"],
+        {
+            "item": mutation.item.to_dict(),
+            "library": library_snapshot_payload(mutation.snapshot),
+        },
+    )
 
 
 @websocket_command(
@@ -874,6 +893,7 @@ async def ws_library_create(
         vol.Required("content"): EFFECT_CONTENT,
         vol.Required("expected_version"): POSITIVE_REVISION,
         vol.Required("expected_updated_at"): TIMESTAMP,
+        vol.Optional("layer_labels"): LAYER_LABELS,
     }
 )
 @require_admin
@@ -890,7 +910,14 @@ async def ws_library_update(
             content=msg["content"],
             expected_version=msg["expected_version"],
             expected_updated_at=msg["expected_updated_at"],
+            layer_labels=msg.get("layer_labels"),
         )
+    except ReservedEffectNameError as exc:
+        connection.send_error(msg["id"], "reserved_name", str(exc))
+        return
+    except SavedEffectNameConflictError as exc:
+        connection.send_error(msg["id"], "name_conflict", str(exc))
+        return
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
@@ -910,7 +937,101 @@ async def ws_library_update(
     except EffectStorageError as exc:
         connection.send_error(msg["id"], "storage_unavailable", str(exc))
         return
-    connection.send_result(msg["id"], {"item": mutation.item.to_dict()})
+    connection.send_result(
+        msg["id"],
+        {
+            "item": mutation.item.to_dict(),
+            "library": library_snapshot_payload(mutation.snapshot),
+        },
+    )
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_LIBRARY_NAME_STATUS,
+        vol.Required("name"): EFFECT_NAME,
+        vol.Optional("excluding_item_id"): UUID_TEXT,
+    }
+)
+@callback
+def ws_library_name_status(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    try:
+        status = _backend(hass).application.saved_effect_name_status(
+            msg["name"],
+            excluding_item_id=msg.get("excluding_item_id"),
+        )
+    except ValueError as exc:
+        connection.send_error(msg["id"], "invalid_format", str(exc))
+        return
+    payload: dict[str, Any] = {"kind": status.kind}
+    if status.item is not None:
+        payload["item"] = item_summary(status.item)
+    connection.send_result(msg["id"], {"status": payload})
+
+
+@websocket_command(
+    {
+        vol.Required("type"): WS_LIBRARY_OVERWRITE,
+        vol.Required("target_item_id"): UUID_TEXT,
+        vol.Required("name"): EFFECT_NAME,
+        vol.Required("content"): EFFECT_CONTENT,
+        vol.Required("expected_version"): POSITIVE_REVISION,
+        vol.Required("expected_updated_at"): TIMESTAMP,
+        vol.Optional("layer_labels"): LAYER_LABELS,
+    }
+)
+@require_admin
+@async_response
+async def ws_library_overwrite(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    try:
+        mutation = await _backend(hass).application.async_overwrite_library_item(
+            target_item_id=msg["target_item_id"],
+            name=msg["name"],
+            content=msg["content"],
+            expected_version=msg["expected_version"],
+            expected_updated_at=msg["expected_updated_at"],
+            layer_labels=msg.get("layer_labels"),
+        )
+    except ReservedEffectNameError as exc:
+        connection.send_error(msg["id"], "reserved_name", str(exc))
+        return
+    except SavedEffectNameConflictError as exc:
+        connection.send_error(msg["id"], "name_conflict", str(exc))
+        return
+    except EffectValidationError as exc:
+        connection.send_error(msg["id"], "invalid_format", str(exc))
+        return
+    except (ValueError, EffectNotFoundError) as exc:
+        connection.send_error(msg["id"], "not_found", str(exc))
+        return
+    except EffectVersionConflictError as exc:
+        connection.send_error(
+            msg["id"],
+            "conflict",
+            f"{exc}; current_version={exc.current_version}",
+        )
+        return
+    except EffectLimitError as exc:
+        connection.send_error(msg["id"], "limit_reached", str(exc))
+        return
+    except EffectStorageError as exc:
+        connection.send_error(msg["id"], "storage_unavailable", str(exc))
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "item": mutation.item.to_dict(),
+            "library": library_snapshot_payload(mutation.snapshot),
+        },
+    )
 
 
 @websocket_command(
@@ -929,7 +1050,7 @@ async def ws_library_delete(
     msg: dict[str, Any],
 ) -> None:
     try:
-        await _backend(hass).application.async_delete_library_item(
+        snapshot = await _backend(hass).application.async_delete_library_item(
             item_id=msg["item_id"],
             expected_version=msg["expected_version"],
             expected_updated_at=msg["expected_updated_at"],
@@ -944,7 +1065,7 @@ async def ws_library_delete(
             f"{exc}; current_version={exc.current_version}",
         )
         return
-    connection.send_result(msg["id"])
+    connection.send_result(msg["id"], {"library": library_snapshot_payload(snapshot)})
 
 
 @websocket_command({vol.Required("type"): WS_DEPLOYMENT_SUBSCRIBE})
@@ -1183,7 +1304,9 @@ def async_register_effect_websocket(
     websocket_api.async_register_command(hass, ws_library_get)
     websocket_api.async_register_command(hass, ws_library_create)
     websocket_api.async_register_command(hass, ws_library_update)
+    websocket_api.async_register_command(hass, ws_library_overwrite)
     websocket_api.async_register_command(hass, ws_library_delete)
+    websocket_api.async_register_command(hass, ws_library_name_status)
     websocket_api.async_register_command(hass, ws_library_subscribe)
     websocket_api.async_register_command(hass, ws_deployment_subscribe)
     websocket_api.async_register_command(hass, ws_user_state_get)

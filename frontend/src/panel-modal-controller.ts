@@ -1,4 +1,8 @@
-import { PanelModel, type DeleteCandidate } from "./panel-model";
+import {
+  PanelModel,
+  type DeleteCandidate,
+  type PanelModalState,
+} from "./panel-model";
 
 interface PanelModalHost {
   updateComplete(): Promise<unknown>;
@@ -9,20 +13,23 @@ interface PanelModalHost {
 export class PanelModalController {
   private deleteReturnFocus?: HTMLElement;
   private saveNameReturnFocus?: HTMLElement;
+  private overwriteReturnFocus?: HTMLElement;
+  private errorReturnFocus?: HTMLElement;
   private scrollLock?: { bodyOverflow: string; documentOverflow: string };
   private transitionDialogTeardown?: () => void;
+  private overwriteResolution?: (confirmed: boolean) => void;
 
   public constructor(
     private readonly model: PanelModel,
     private readonly host: PanelModalHost,
-  ) {}
+  ) {
+    this.model.setErrorHandler((message, options) =>
+      this.showError(message, options),
+    );
+  }
 
   public get open(): boolean {
-    return (
-      this.model.saveNameDialogOpen ||
-      this.model.deleteCandidate !== undefined ||
-      this.model.pendingTransitionDialog !== undefined
-    );
+    return this.model.modalState !== undefined;
   }
 
   public get deleteCandidate(): DeleteCandidate | undefined {
@@ -30,13 +37,26 @@ export class PanelModalController {
   }
 
   public closeForEditorTransition(): void {
-    if (this.model.pendingTransitionDialog) {
+    const modal = this.model.modalState;
+    const preserveStandaloneError =
+      modal?.kind === "error" && modal.resume === undefined;
+    if (
+      modal?.kind === "pending-transition" ||
+      (modal?.kind === "error" &&
+        modal.resume?.kind === "pending-transition")
+    ) {
       this.transitionDialogTeardown?.();
     }
     this.saveNameReturnFocus = undefined;
-    this.model.saveNameDialogOpen = false;
+    if (!preserveStandaloneError) {
+      this.errorReturnFocus = undefined;
+    }
+    this.overwriteReturnFocus = undefined;
+    this.overwriteResolution?.(false);
+    this.overwriteResolution = undefined;
+    this.model.modalState = preserveStandaloneError ? modal : undefined;
     this.model.saveNameError = undefined;
-    this.model.pendingTransitionDialog = undefined;
+    this.model.patch({});
   }
 
   public setTransitionDialogTeardown(callback: () => void): void {
@@ -54,7 +74,8 @@ export class PanelModalController {
     }
     this.saveNameReturnFocus = returnFocus;
     this.model.patch({
-      pendingTransitionDialog: {
+      modalState: {
+        kind: "pending-transition",
         primaryLabel,
         saveName,
         requiresName,
@@ -71,10 +92,10 @@ export class PanelModalController {
   }
 
   public updateTransitionName(saveName: string): void {
-    const dialog = this.model.pendingTransitionDialog;
-    if (dialog) {
+    const dialog = this.model.modalState;
+    if (dialog?.kind === "pending-transition") {
       this.model.patch({
-        pendingTransitionDialog: {
+        modalState: {
           ...dialog,
           saveName,
           error: undefined,
@@ -84,12 +105,24 @@ export class PanelModalController {
   }
 
   public updateTransition(
-    change: Partial<NonNullable<PanelModel["pendingTransitionDialog"]>>,
+    change: Partial<
+      Extract<NonNullable<PanelModel["modalState"]>, { kind: "pending-transition" }>
+    >,
   ): void {
-    const dialog = this.model.pendingTransitionDialog;
-    if (dialog) {
+    const dialog = this.model.modalState;
+    if (dialog?.kind === "pending-transition") {
       this.model.patch({
-        pendingTransitionDialog: { ...dialog, ...change },
+        modalState: { ...dialog, ...change },
+      });
+    } else if (
+      dialog?.kind === "error" &&
+      dialog.resume?.kind === "pending-transition"
+    ) {
+      this.model.patch({
+        modalState: {
+          ...dialog,
+          resume: { ...dialog.resume, ...change },
+        },
       });
     }
   }
@@ -97,7 +130,15 @@ export class PanelModalController {
   public closeTransition(restoreFocus: boolean): void {
     const returnFocus = this.saveNameReturnFocus;
     this.saveNameReturnFocus = undefined;
-    this.model.patch({ pendingTransitionDialog: undefined });
+    if (this.model.modalState?.kind === "pending-transition") {
+      this.model.patch({ modalState: undefined });
+    } else if (
+      this.model.modalState?.kind === "error" &&
+      this.model.modalState.resume?.kind === "pending-transition"
+    ) {
+      const { resume: _resume, ...error } = this.model.modalState;
+      this.model.patch({ modalState: error });
+    }
     if (restoreFocus) {
       this.restoreFocus(returnFocus);
     }
@@ -106,7 +147,10 @@ export class PanelModalController {
   public requestDelete(candidate: DeleteCandidate, returnFocus: HTMLElement): void {
     if (!this.host.canMutate() || !this.model.isAdmin || this.model.deletingItemId !== undefined || this.model.saving) return;
     this.deleteReturnFocus = returnFocus;
-    this.model.patch({ deleteCandidate: { ...candidate }, notice: undefined });
+    this.model.patch({
+      modalState: { kind: "delete", candidate: { ...candidate } },
+      notice: undefined,
+    });
     void this.host.updateComplete().then(() => {
       this.host.root()?.querySelector<HTMLButtonElement>(".delete-dialog .secondary")?.focus();
     });
@@ -115,14 +159,18 @@ export class PanelModalController {
   public cancelDelete(): void {
     const returnFocus = this.deleteReturnFocus;
     this.deleteReturnFocus = undefined;
-    this.model.patch({ deleteCandidate: undefined });
+    if (this.model.modalState?.kind === "delete") {
+      this.model.patch({ modalState: undefined });
+    }
     this.restoreFocus(returnFocus);
   }
 
   public takeDeleteCandidate(): DeleteCandidate | undefined {
     const candidate = this.model.deleteCandidate;
     this.deleteReturnFocus = undefined;
-    this.model.patch({ deleteCandidate: undefined });
+    if (this.model.modalState?.kind === "delete") {
+      this.model.patch({ modalState: undefined });
+    }
     return candidate;
   }
 
@@ -154,7 +202,7 @@ export class PanelModalController {
     this.model.patch({
       saveNameValue: value,
       saveNameError: undefined,
-      saveNameDialogOpen: true,
+      modalState: { kind: "save-name", busy: false },
     });
     void this.host.updateComplete().then(() => {
       const input = this.host.root()?.querySelector<HTMLInputElement>(".save-dialog input");
@@ -168,29 +216,178 @@ export class PanelModalController {
   }
 
   public cancelSaveName(): void {
+    if (
+      this.model.modalState?.kind === "save-name" &&
+      this.model.modalState.busy
+    ) {
+      return;
+    }
     const returnFocus = this.saveNameReturnFocus;
     this.saveNameReturnFocus = undefined;
-    this.model.patch({ saveNameDialogOpen: false, saveNameError: undefined });
+    if (this.model.modalState?.kind === "save-name") {
+      this.model.patch({
+        modalState: undefined,
+        saveNameError: undefined,
+      });
+    }
     this.restoreFocus(returnFocus);
   }
 
-  public confirmNamedSave(
-    save: (name: string) => void,
-  ): void {
+  public async confirmNamedSave(
+    save: (name: string) => Promise<boolean>,
+  ): Promise<void> {
     const name = this.model.saveNameValue.trim();
     if (!name) {
-      this.model.patch({ saveNameError: "Enter an effect name." });
-      void this.host.updateComplete().then(() => {
-        this.host.root()?.querySelector<HTMLInputElement>(".save-dialog input")?.focus();
+      this.showError("Enter an effect name.", {
+        title: "Effect name required",
+        key: `save-name-required:${this.model.saveNameValue}`,
       });
       return;
     }
-    this.saveNameReturnFocus = undefined;
     this.model.patch({
-      saveNameDialogOpen: false,
+      modalState: { kind: "save-name", busy: true },
       saveNameError: undefined,
     });
-    save(name);
+    const saved = await save(name);
+    if (saved) {
+      this.saveNameReturnFocus = undefined;
+      if (this.model.modalState?.kind === "save-name") {
+        this.model.patch({ modalState: undefined });
+      } else if (
+        this.model.modalState?.kind === "error" &&
+        this.model.modalState.resume?.kind === "save-name"
+      ) {
+        const { resume: _resume, ...error } = this.model.modalState;
+        this.model.patch({ modalState: error });
+      }
+    } else {
+      this.updateSaveNameBusy(false);
+    }
+  }
+
+  public showError(
+    message: string,
+    options: {
+      title?: string;
+      key?: string;
+      resumeWorkflow?: boolean;
+    } = {},
+  ): void {
+    const key = options.key ?? `error:${message}`;
+    const current = this.model.modalState;
+    if (current?.kind === "error" && current.key === key) {
+      return;
+    }
+    if (options.resumeWorkflow === false) {
+      this.overwriteResolution?.(false);
+      this.overwriteResolution = undefined;
+      this.saveNameReturnFocus = undefined;
+      this.overwriteReturnFocus = undefined;
+    }
+    const resume =
+      options.resumeWorkflow === false
+        ? undefined
+        : current?.kind === "error"
+          ? current.resume
+          : current
+            ? current
+            : undefined;
+    const active = this.host.root()?.activeElement;
+    this.errorReturnFocus = htmlElement(active) ?? this.errorReturnFocus;
+    this.model.patch({
+      modalState: {
+        kind: "error",
+        title: options.title ?? "Effect Studio error",
+        message,
+        key,
+        ...(resume ? { resume } : {}),
+      },
+    });
+    void this.host.updateComplete().then(() => {
+      this.host.root()
+        ?.querySelector<HTMLButtonElement>(".error-dialog .secondary")
+        ?.focus();
+    });
+  }
+
+  public closeError(): void {
+    const dialog = this.model.modalState;
+    if (dialog?.kind !== "error") {
+      return;
+    }
+    const resume = dialog.resume;
+    this.model.patch({ modalState: resume });
+    if (resume) {
+      void this.host.updateComplete().then(() =>
+        this.focusModal(resume),
+      );
+      return;
+    }
+    const returnFocus = this.errorReturnFocus;
+    this.errorReturnFocus = undefined;
+    this.restoreFocus(returnFocus);
+  }
+
+  public requestOverwrite(
+    effectName: string,
+  ): Promise<boolean> {
+    const current = this.model.modalState;
+    if (
+      current?.kind === "delete" ||
+      current?.kind === "error" ||
+      current?.kind === "overwrite"
+    ) {
+      return Promise.resolve(false);
+    }
+    const active = this.host.root()?.activeElement;
+    this.overwriteReturnFocus =
+      htmlElement(active) ?? this.overwriteReturnFocus;
+    this.model.patch({
+      modalState: {
+        kind: "overwrite",
+        effectName,
+        ...(current ? { resume: current } : {}),
+      },
+    });
+    const confirmation = new Promise<boolean>((resolve) => {
+      this.overwriteResolution = resolve;
+    });
+    void this.host.updateComplete().then(() => {
+      this.host.root()
+        ?.querySelector<HTMLButtonElement>(".overwrite-dialog .secondary")
+        ?.focus();
+    });
+    return confirmation;
+  }
+
+  public cancelOverwrite(): void {
+    if (this.model.modalState?.kind !== "overwrite") {
+      return;
+    }
+    const returnFocus = this.overwriteReturnFocus;
+    const resume = this.model.modalState.resume;
+    this.overwriteReturnFocus = undefined;
+    this.overwriteResolution?.(false);
+    this.overwriteResolution = undefined;
+    this.model.patch({ modalState: resume });
+    if (resume) {
+      void this.host.updateComplete().then(() =>
+        this.focusModal(resume),
+      );
+      return;
+    }
+    this.restoreFocus(returnFocus);
+  }
+
+  public confirmOverwrite(): void {
+    if (this.model.modalState?.kind !== "overwrite") {
+      return;
+    }
+    const resume = this.model.modalState.resume;
+    this.overwriteReturnFocus = undefined;
+    this.overwriteResolution?.(true);
+    this.overwriteResolution = undefined;
+    this.model.patch({ modalState: resume });
   }
 
   public dialogKeyDown(event: KeyboardEvent, cancel: () => void): void {
@@ -236,6 +433,39 @@ export class PanelModalController {
     });
   }
 
+  private focusModal(modal: PanelModalState): void {
+    const selector =
+      modal.kind === "save-name"
+        ? ".save-dialog input"
+        : modal.kind === "pending-transition"
+          ? ".transition-dialog .secondary"
+          : modal.kind === "delete"
+            ? ".delete-dialog .secondary"
+            : modal.kind === "overwrite"
+              ? ".overwrite-dialog .secondary"
+              : ".error-dialog .secondary";
+    this.host.root()?.querySelector<HTMLElement>(selector)?.focus();
+  }
+
+  private updateSaveNameBusy(busy: boolean): void {
+    const modal = this.model.modalState;
+    if (modal?.kind === "save-name") {
+      this.model.patch({
+        modalState: { ...modal, busy },
+      });
+    } else if (
+      modal?.kind === "error" &&
+      modal.resume?.kind === "save-name"
+    ) {
+      this.model.patch({
+        modalState: {
+          ...modal,
+          resume: { ...modal.resume, busy },
+        },
+      });
+    }
+  }
+
   private trapDialogFocus(event: KeyboardEvent): void {
     const dialog = event.currentTarget as HTMLElement;
     const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
@@ -255,4 +485,12 @@ export class PanelModalController {
       first.focus();
     }
   }
+}
+
+function htmlElement(
+  value: Element | null | undefined,
+): HTMLElement | undefined {
+  return typeof HTMLElement !== "undefined" && value instanceof HTMLElement
+    ? value
+    : undefined;
 }

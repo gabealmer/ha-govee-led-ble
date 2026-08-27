@@ -36,6 +36,41 @@ export interface PendingTransitionDialog {
   error?: string;
 }
 
+export interface SaveNameDialog {
+  kind: "save-name";
+  busy: boolean;
+}
+
+export interface DeleteDialog {
+  kind: "delete";
+  candidate: DeleteCandidate;
+}
+
+export interface PendingTransitionModal extends PendingTransitionDialog {
+  kind: "pending-transition";
+}
+
+export interface ErrorDialog {
+  kind: "error";
+  title: string;
+  message: string;
+  key: string;
+  resume?: Exclude<PanelModalState, ErrorDialog>;
+}
+
+export interface OverwriteDialog {
+  kind: "overwrite";
+  effectName: string;
+  resume?: SaveNameDialog | PendingTransitionModal;
+}
+
+export type PanelModalState =
+  | SaveNameDialog
+  | DeleteDialog
+  | PendingTransitionModal
+  | ErrorDialog
+  | OverwriteDialog;
+
 export class PanelModel {
   public loading = true;
   public error?: string;
@@ -57,11 +92,9 @@ export class PanelModel {
   public paintColour: RGB = [255, 69, 58];
   public paintBrushOff = false;
   public saving = false;
-  public saveNameDialogOpen = false;
+  public modalState?: PanelModalState;
   public saveNameValue = "";
   public saveNameError?: string;
-  public pendingTransitionDialog?: PendingTransitionDialog;
-  public deleteCandidate?: DeleteCandidate;
   public deletingItemId?: string;
   public liveApplyEnabled = true;
   public autoSaveEnabled = false;
@@ -70,22 +103,111 @@ export class PanelModel {
   public previewStatus?: PreviewStatus;
   public previewNotice?: string;
   public previewProgressVisible = false;
+  public stateUpdatesUnavailable = false;
+  public sceneWorkDirty = false;
   public savedBaseline?: string;
   public resetBaseline?: EditableEffectContent;
   public resetNameBaseline?: string;
   public editorTransitionEpoch = 0;
   public isAdmin = false;
+  private errorHandler?: (
+    message: string,
+    options?: { title?: string; key?: string },
+  ) => void;
+  private errorSequence = 0;
 
   public constructor(private readonly changed: () => void) {}
 
   public update(change: (model: PanelModel) => void): void {
     change(this);
+    this.flushReportedErrors();
     this.changed();
   }
 
   public patch(change: Partial<PanelModel>): void {
     Object.assign(this, change);
+    this.flushReportedErrors();
     this.changed();
+  }
+
+  public setErrorHandler(
+    handler: (
+      message: string,
+      options?: { title?: string; key?: string },
+    ) => void,
+  ): void {
+    this.errorHandler = handler;
+    this.flushReportedErrors();
+  }
+
+  public reportError(
+    message: string,
+    options?: { title?: string; key?: string },
+  ): void {
+    if (this.errorHandler) {
+      this.errorHandler(message, options);
+      return;
+    }
+    this.notice = message;
+    this.changed();
+  }
+
+  public get saveNameDialogOpen(): boolean {
+    return this.modalState?.kind === "save-name";
+  }
+
+  public set saveNameDialogOpen(open: boolean) {
+    if (open) {
+      this.modalState = { kind: "save-name", busy: false };
+    } else if (this.modalState?.kind === "save-name") {
+      this.modalState = undefined;
+    }
+  }
+
+  public get pendingTransitionDialog(): PendingTransitionDialog | undefined {
+    return this.modalState?.kind === "pending-transition"
+      ? this.modalState
+      : undefined;
+  }
+
+  public set pendingTransitionDialog(
+    dialog: PendingTransitionDialog | undefined,
+  ) {
+    if (dialog) {
+      this.modalState = { kind: "pending-transition", ...dialog };
+    } else if (this.modalState?.kind === "pending-transition") {
+      this.modalState = undefined;
+    }
+  }
+
+  public get deleteCandidate(): DeleteCandidate | undefined {
+    return this.modalState?.kind === "delete"
+      ? this.modalState.candidate
+      : undefined;
+  }
+
+  public set deleteCandidate(candidate: DeleteCandidate | undefined) {
+    if (candidate) {
+      this.modalState = { kind: "delete", candidate };
+    } else if (this.modalState?.kind === "delete") {
+      this.modalState = undefined;
+    }
+  }
+
+  private flushReportedErrors(): void {
+    const message = this.notice ?? this.previewNotice;
+    if (!message || !this.errorHandler) {
+      return;
+    }
+    const preview = this.previewNotice === message;
+    this.notice = undefined;
+    this.previewNotice = undefined;
+    this.errorHandler(message, {
+      title: preview ? "Live change failed" : "Effect Studio error",
+      key: preview
+        ? `preview:${message}`
+        : `studio:${++this.errorSequence}`,
+    });
   }
 
   public syncAdmin(hass?: HomeAssistant): void {
@@ -117,7 +239,7 @@ export class PanelModel {
   }
 
   public get editorReadOnly(): boolean {
-    return !this.isAdmin;
+    return !this.isAdmin || this.stateUpdatesUnavailable;
   }
 
   public get editorOwnedByActiveView(): boolean {
@@ -192,6 +314,9 @@ export class PanelModel {
   }
 
   public get localWorkNeedsProtection(): boolean {
+    if (this.sceneWorkDirty) {
+      return true;
+    }
     if (
       this.editorSource.kind === "saved" ||
       this.editorSource.kind === "scene"
@@ -246,7 +371,7 @@ export class PanelModel {
         autoSaveEnabled: this.autoSaveEnabled,
         autoSaveFailed: this.autoSaveFailed,
         canSave: this.canSaveCurrentDraft,
-        canMutate: this.isAdmin,
+        canMutate: this.isAdmin && !this.stateUpdatesUnavailable,
         busy: this.saving || this.deletingCurrentItem,
       },
     );
