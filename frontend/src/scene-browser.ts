@@ -386,7 +386,7 @@ export class GoveeSceneBrowser extends LitElement {
                 ${state.selectedItem
                   ? html`
                       <button
-                        class="danger"
+                        class="danger delete-action"
                         type="button"
                         ?disabled=${!this.isAdmin || state.saving}
                         @click=${this.requestDelete}

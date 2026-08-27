@@ -35,13 +35,9 @@ export const ADVANCED_HELP_CONTENT = {
     label: "Brightness patterns information",
     text: "Each pattern defines an ordered brightness change for this layer.",
   },
-  brightnessScopeLow: {
-    label: "Scope low information",
-    text: "Sets the lowest brightness the pattern can use.",
-  },
-  brightnessScopeHigh: {
-    label: "Scope high information",
-    text: "Sets the highest brightness the pattern can use.",
+  brightnessScope: {
+    label: "Brightness scope information",
+    text: "Sets the lowest and highest brightness levels the pattern can use.",
   },
   changingSpeed: {
     label: "Brightness changing speed information",
@@ -73,7 +69,7 @@ export const ADVANCED_HELP_CONTENT = {
   },
   priority: {
     label: "Layer overlap priority information",
-    text: "When layers target the same LEDs, the layer with the higher priority is shown.  None leaves the layer without an explicit overlap priority.",
+    text: "When layers target the same LEDs, the layer with the higher priority is shown.  A dash leaves the layer without an explicit overlap priority.",
   },
 } as const;
 

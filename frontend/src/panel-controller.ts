@@ -6,6 +6,7 @@ import {
   libraryItemSyncResult, sameLibraryItemVersion, serialiseEditable, upsertSummary, type CustomEffectCategory,
   type EditableEffectContent,
 } from "./effect-editor-model";
+import { editorTransitionSaveMode } from "./editor-state";
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import { PanelEditorController } from "./panel-editor-controller";
 import { PanelModalController } from "./panel-modal-controller";
@@ -612,8 +613,9 @@ export class PanelController {
     }
     this.pendingTransition = owner;
     this.modal.requestTransition(
-      this.model.currentItem ? "Save" : "Save As",
+      editorTransitionSaveMode(this.model.editorSource),
       this.model.name.trim(),
+      this.model.currentItem === undefined,
       returnFocus,
     );
     return false;
@@ -646,9 +648,12 @@ export class PanelController {
       return;
     }
     const name = dialog.saveName.trim();
-    if (dialog.primaryLabel === "Save As" && !name) {
+    if (dialog.requiresName && !name) {
       this.modal.updateTransition({ error: "Enter an effect name." });
       return;
+    }
+    if (dialog.primaryLabel === "Save" && dialog.requiresName) {
+      this.model.patch({ name });
     }
     this.modal.updateTransition({ busy: true, error: undefined });
     const saved =
@@ -874,7 +879,6 @@ export class PanelController {
         isEditableEffectContent(this.model.content) &&
         serialiseEditable(this.model.name, this.model.content) === serialiseEditable(name, content);
       if (originIsCurrent) {
-        this.editor.commitCreation();
         this.model.patch({
           currentItem: result,
           editorSource: {
@@ -891,6 +895,7 @@ export class PanelController {
           name: result.name, content: cloneEditableEffect(savedContent),
           savedBaseline: serialiseEditable(result.name, savedContent),
           resetBaseline: cloneEditableEffect(savedContent),
+          resetNameBaseline: undefined,
           sceneEditorOpen: savingSceneEditor && savedContent.kind === "scene_layered" ? false : this.model.sceneEditorOpen,
           section: savingSceneEditor && savedContent.kind === "scene_layered" ? "custom" : this.model.section,
           customEffectCategory: savingSceneEditor && savedContent.kind === "scene_layered"

@@ -46,6 +46,7 @@ export class PanelModalController {
   public requestTransition(
     primaryLabel: "Save" | "Save As",
     saveName: string,
+    requiresName: boolean,
     returnFocus?: HTMLElement,
   ): void {
     if (this.open) {
@@ -56,6 +57,7 @@ export class PanelModalController {
       pendingTransitionDialog: {
         primaryLabel,
         saveName,
+        requiresName,
         busy: false,
       },
     });
@@ -124,20 +126,9 @@ export class PanelModalController {
     return candidate;
   }
 
-  public requestSave(returnFocus: HTMLElement, save: () => void): void {
-    if (this.model.currentItem) {
-      save();
-      return;
-    }
+  public requestSave(save: () => void): void {
     if (!this.model.isAdmin || !this.model.canSaveCurrentDraft || this.model.saving || this.model.deletingCurrentItem) return;
-    this.requestNamedSave(
-      returnFocus,
-      this.model.name,
-      this.model.editorSource.kind === "scene" &&
-        this.model.editorSource.itemId === undefined
-        ? "copy"
-        : "save",
-    );
+    save();
   }
 
   public requestSaveAs(
@@ -152,17 +143,15 @@ export class PanelModalController {
     ) {
       return;
     }
-    this.requestNamedSave(returnFocus, suggestedName, "copy");
+    this.requestNamedSave(returnFocus, suggestedName);
   }
 
   private requestNamedSave(
     returnFocus: HTMLElement,
     value: string,
-    mode: "save" | "copy",
   ): void {
     this.saveNameReturnFocus = returnFocus;
     this.model.patch({
-      saveNameMode: mode,
       saveNameValue: value,
       saveNameError: undefined,
       saveNameDialogOpen: true,
@@ -186,7 +175,7 @@ export class PanelModalController {
   }
 
   public confirmNamedSave(
-    save: (name: string, mode: "save" | "copy") => void,
+    save: (name: string) => void,
   ): void {
     const name = this.model.saveNameValue.trim();
     if (!name) {
@@ -197,13 +186,11 @@ export class PanelModalController {
       return;
     }
     this.saveNameReturnFocus = undefined;
-    const mode = this.model.saveNameMode;
     this.model.patch({
-      ...(mode === "save" ? { name } : {}),
       saveNameDialogOpen: false,
       saveNameError: undefined,
     });
-    save(name, mode);
+    save(name);
   }
 
   public dialogKeyDown(event: KeyboardEvent, cancel: () => void): void {

@@ -625,8 +625,18 @@ export class GoveeReorderableStrip extends LitElement {
     }
 
     ::slotted(.compact-action.danger-action) {
-      color: var(--studio-danger);
       border-color: var(--studio-danger);
+      color: var(--text-primary-color, #fff);
+      background: var(--studio-danger);
+      font-size: var(--strip-remove-icon-size);
+      font-weight: var(--studio-font-weight-medium);
+      line-height: var(--studio-icon-line-height);
+    }
+
+    ::slotted(.compact-action.danger-action:hover),
+    ::slotted(.compact-action.danger-action:focus-visible) {
+      border-color: var(--studio-danger);
+      background: color-mix(in srgb, var(--studio-danger) 84%, #000);
     }
 
     .item:focus-visible,

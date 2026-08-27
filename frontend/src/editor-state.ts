@@ -17,15 +17,30 @@ export type EditorSource =
   | { kind: "saved"; owner: EditorOwner; itemId: string }
   | { kind: "scene"; owner: { section: "scenes" }; itemId?: string };
 
-export interface EditorActionVisibility {
-  reset: boolean;
-  cancel: boolean;
-  save: boolean;
-  saveAs: boolean;
-  delete: boolean;
+export type EditorAction =
+  | "saveAs"
+  | "reset"
+  | "cancel"
+  | "delete"
+  | "save";
+
+export interface EditorActionDescriptor {
+  id: EditorAction;
+  label: string;
+  style: "primary" | "secondary" | "delete";
+  visible: boolean;
+  enabled: boolean;
 }
 
-export type EditorAction = keyof EditorActionVisibility;
+export interface EditorActionContext {
+  resetAvailable: boolean;
+  resetDirty: boolean;
+  autoSaveEnabled: boolean;
+  autoSaveFailed: boolean;
+  canSave: boolean;
+  canMutate: boolean;
+  busy: boolean;
+}
 
 export const NO_EDITOR_SOURCE: EditorSource = { kind: "none" };
 
@@ -49,11 +64,9 @@ export function reactiveEffectSelectorVisible(source: EditorSource): boolean {
 }
 
 export function editorActionOrder(
-  visibility: EditorActionVisibility,
+  actions: readonly EditorActionDescriptor[],
 ): EditorAction[] {
-  return (["reset", "cancel", "delete", "save", "saveAs"] as const).filter(
-    (action) => visibility[action],
-  );
+  return actions.filter((action) => action.visible).map((action) => action.id);
 }
 
 export function editorOwnerMatches(
@@ -70,54 +83,73 @@ export function editorOwnerMatches(
   );
 }
 
-export function editorActionVisibility(
+export function editorActionDescriptors(
   source: EditorSource,
-  resetDirty: boolean,
-  autoSaveEnabled: boolean,
-  autoSaveFailed: boolean,
-): EditorActionVisibility {
+  context: EditorActionContext,
+): EditorActionDescriptor[] {
+  const visible = new Set<EditorAction>();
   switch (source.kind) {
     case "catalogue":
-      return {
-        reset: resetDirty,
-        cancel: false,
-        save: false,
-        saveAs: true,
-        delete: false,
-      };
+      visible.add("saveAs");
+      if (context.resetDirty) visible.add("reset");
+      break;
     case "new":
-      return {
-        reset: resetDirty,
-        cancel: true,
-        save: true,
-        saveAs: false,
-        delete: false,
-      };
+      if (context.resetAvailable) visible.add("reset");
+      visible.add("save");
+      break;
     case "saved":
-      return {
-        reset: resetDirty,
-        cancel: false,
-        save: !autoSaveEnabled || autoSaveFailed,
-        saveAs: true,
-        delete: true,
-      };
+      visible.add("saveAs");
+      if (context.resetDirty) visible.add("reset");
+      visible.add("delete");
+      if (!context.autoSaveEnabled || context.autoSaveFailed) {
+        visible.add("save");
+      }
+      break;
     case "scene":
-      return {
-        reset: resetDirty,
-        cancel: true,
-        save: true,
-        saveAs: source.itemId !== undefined,
-        delete: source.itemId !== undefined,
-      };
+      if (source.itemId !== undefined) visible.add("saveAs");
+      if (context.resetDirty) visible.add("reset");
+      visible.add("cancel");
+      if (source.itemId !== undefined) visible.add("delete");
+      visible.add("save");
+      break;
     case "none":
-      return {
-        reset: false,
-        cancel: false,
-        save: false,
-        saveAs: false,
-        delete: false,
-      };
+      break;
   }
+  return (["saveAs", "reset", "cancel", "delete", "save"] as const).map(
+    (id): EditorActionDescriptor => {
+      const isVisible = visible.has(id);
+      const enabled =
+        isVisible &&
+        !context.busy &&
+        (id === "reset"
+          ? context.resetDirty
+          : id === "cancel"
+            ? true
+            : context.canMutate &&
+              (id === "save" ? context.canSave : true));
+      return {
+        id,
+        label:
+          id === "saveAs"
+            ? "Save As"
+            : id[0].toUpperCase() + id.slice(1),
+        style:
+          id === "save"
+            ? "primary"
+            : id === "delete"
+              ? "delete"
+              : "secondary",
+        visible: isVisible,
+        enabled,
+      };
+    },
+  );
+}
+
+export function editorTransitionSaveMode(
+  source: EditorSource,
+): "Save" | "Save As" {
+  return source.kind === "catalogue" ? "Save As" : "Save";
 }
 
 export function serialiseEditableContent(

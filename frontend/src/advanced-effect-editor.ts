@@ -40,6 +40,8 @@ import "./reorderable-strip";
 import type {
   GoveeReorderableStrip,
 } from "./reorderable-strip";
+import type { RangePairControlChange } from "./range-pair-control";
+import "./range-pair-control";
 import type {
   SegmentedControlChange,
   SegmentedControlOption,
@@ -58,7 +60,7 @@ import type {
 } from "./types";
 
 const PRIORITY_OPTIONS = [
-  { value: 0, label: "None" },
+  { value: 0, label: "-", ariaLabel: "No priority" },
   ...[1, 2, 3, 4, 5].map((value) => ({
     value,
     label: String(value),
@@ -190,6 +192,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
       </section>
 
       <section
+        class="selected-record-panel"
         id="advanced-layer-panel"
         role="tabpanel"
         aria-labelledby="advanced-layer-tab-${this.controller.activeLayerIndex}"
@@ -417,24 +420,28 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                   )}
                 </select>
               </label>
-              <div class="parameter-grid">
-                ${renderRangeField(
-                  "Scope Low",
-                  pattern.scope_low,
-                  (value) =>
-                    this.updateBrightnessPattern({ scope_low: value }),
-                  this.disabled,
-                  "brightnessScopeLow",
-                )}
-                ${renderRangeField(
-                  "Scope High",
-                  pattern.scope_high,
-                  (value) =>
-                    this.updateBrightnessPattern({ scope_high: value }),
-                  this.disabled,
-                  "brightnessScopeHigh",
-                )}
-              </div>
+              <govee-range-pair-control
+                label="Brightness Scope"
+                lowLabel="Low"
+                highLabel="High"
+                .lowValue=${pattern.scope_low}
+                .highValue=${pattern.scope_high}
+                .minimum=${0}
+                .maximum=${255}
+                .disabled=${this.disabled}
+                @range-pair-changed=${(
+                  event: CustomEvent<RangePairControlChange>,
+                ) =>
+                  this.updateBrightnessPattern(
+                    {
+                      scope_low: event.detail.low,
+                      scope_high: event.detail.high,
+                    },
+                    event.detail.interaction,
+                  )}
+              >
+                ${renderAdvancedHelp("brightnessScope", "help")}
+              </govee-range-pair-control>
               <div class="parameter-grid">
                 ${renderRangeField(
                   "Changing Speed",
@@ -629,8 +636,14 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     this.applyContentChange(this.controller.updateLayer(update), interaction);
   }
 
-  private updateBrightnessPattern(update: Partial<BrightnessPattern>): void {
-    this.applyContentChange(this.controller.updateBrightnessPattern(update));
+  private updateBrightnessPattern(
+    update: Partial<BrightnessPattern>,
+    interaction?: LivePreviewInteraction,
+  ): void {
+    this.applyContentChange(
+      this.controller.updateBrightnessPattern(update),
+      interaction,
+    );
   }
 
   private updateMovement(key: MovementKey, update: Partial<Movement>, announcement?: string): void {

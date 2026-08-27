@@ -375,7 +375,7 @@ test("save and effect-family controls distinguish starters, New drafts, and save
   expect(model.canSaveCurrentDraft).toBe(false);
 });
 
-test("unchanged explicit New drafts open the Save naming flow", () => {
+test("unchanged explicit New drafts save directly with the header name", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.name = "Jumping";
@@ -392,12 +392,49 @@ test("unchanged explicit New drafts open the Save naming flow", () => {
   });
   const save = vi.fn();
 
-  modal.requestSave({} as HTMLElement, save);
+  modal.requestSave(save);
 
-  expect(save).not.toHaveBeenCalled();
+  expect(save).toHaveBeenCalledOnce();
+  expect(model.saveNameDialogOpen).toBe(false);
+});
+
+test("Save As retains the dedicated naming dialog", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const saveAs = vi.fn();
+
+  modal.requestSaveAs({} as HTMLElement, "Jumping copy");
   expect(model.saveNameDialogOpen).toBe(true);
-  expect(model.saveNameMode).toBe("save");
-  expect(model.saveNameValue).toBe("Jumping");
+  expect(model.saveNameValue).toBe("Jumping copy");
+
+  modal.confirmNamedSave(saveAs);
+  expect(saveAs).toHaveBeenCalledWith("Jumping copy");
+  expect(model.saveNameDialogOpen).toBe(false);
+});
+
+test("pending transitions save named new drafts directly", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.devices = [device("entry-a", "H617A")];
+  model.devices[0].custom_effects.advanced = "supported";
+  model.selectedDeviceId = "entry-a";
+  const { controller, editorController } = panelControllerHarness(model);
+
+  editorController.newEffect("advanced");
+  model.name = "Named Advanced effect";
+  await controller.requestTransition(() => undefined);
+
+  expect(model.pendingTransitionDialog).toMatchObject({
+    primaryLabel: "Save",
+    saveName: "Named Advanced effect",
+    requiresName: true,
+  });
 });
 
 test("auto-save restores only an explicit true preference", () => {
@@ -479,17 +516,18 @@ test("catalogue templates edit directly without creating a Cancel breadcrumb", (
   const templateEpoch = model.editorTransitionEpoch;
   expect(model.editorSource.kind).toBe("catalogue");
   expect(model.dirty).toBe(false);
-  expect(model.editorActions).toMatchObject({
-    cancel: false,
-    save: false,
-    saveAs: true,
+  expect(model.editorAction("cancel")?.visible).toBe(false);
+  expect(model.editorAction("save")?.visible).toBe(false);
+  expect(model.editorAction("saveAs")).toMatchObject({
+    visible: true,
+    enabled: true,
   });
 
   controller.updatePaintedContent({ speed: 75 }, "committed");
   expect(model.editorTransitionEpoch).toBe(templateEpoch);
   expect(model.name).toBe("Paint");
   expect(model.resetDirty).toBe(true);
-  expect(model.editorActions.cancel).toBe(false);
+  expect(model.editorAction("cancel")?.visible).toBe(false);
 
   controller.resetContent();
   expect(model.content).toEqual(painted());
@@ -581,7 +619,10 @@ test("Reactive Reset restores its baseline immediately and previews only once", 
     mode: "energetic",
   });
   expect(model.resetDirty).toBe(false);
-  expect(model.editorActions.reset).toBe(false);
+  expect(model.editorAction("reset")).toMatchObject({
+    visible: true,
+    enabled: false,
+  });
   expect(scheduleEdited).toHaveBeenCalledTimes(1);
   expect(scheduleEdited).toHaveBeenCalledWith("committed", undefined);
   expect(committed).toHaveBeenCalledTimes(1);
@@ -675,32 +716,63 @@ test("Reactive mode changes preserve common fields, identity, and generated name
   });
 });
 
-test("cancelling a new effect restores the prior editor state", () => {
+test("Reset restores a new effect name and blank content", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.devices = [device("entry-a", "H617A")];
   model.devices[0].custom_effects.advanced = "supported";
   model.selectedDeviceId = "entry-a";
-  model.name = "Prior";
-  model.content = painted();
   const controller = editor(model);
 
   controller.newEffect("advanced");
   expect(model.editorSource.kind).toBe("new");
-  expect(model.editorActions.cancel).toBe(true);
+  expect(model.editorAction("cancel")?.visible).toBe(false);
+  expect(model.editorAction("reset")).toMatchObject({
+    visible: true,
+    enabled: false,
+  });
   expect(model.name).toBe("New Advanced effect");
 
-  controller.cancelCreation();
-  expect(model.editorActions.cancel).toBe(false);
-  expect(model.name).toBe("Prior");
-  expect(model.content).toEqual(painted());
+  model.name = "My effect";
+  const edited = blankAdvancedContent();
+  edited.layers[0].priority = 4;
+  controller.advancedContentChanged(edited, "committed");
+  expect(model.editorAction("reset")?.enabled).toBe(true);
+
+  controller.resetContent();
+  expect(model.name).toBe("New Advanced effect");
+  expect(model.content).toEqual(blankAdvancedContent());
+  expect(model.editorAction("reset")?.enabled).toBe(false);
+});
+
+test("name-only Reset restores a new draft without scheduling preview", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [device("entry-a", "H617A")];
+  model.devices[0].custom_effects.advanced = "supported";
+  model.selectedDeviceId = "entry-a";
+  const preview = new PanelPreviewController(model);
+  const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const controller = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => undefined,
+    contentCommitted: () => undefined,
+  });
 
   controller.newEffect("advanced");
-  expect(model.editorActions.cancel).toBe(true);
-  controller.cancelCreation();
-  controller.cancelCreation();
-  expect(model.editorActions.cancel).toBe(false);
-  expect(model.name).toBe("Prior");
+  model.name = "Renamed";
+  expect(model.resetNameDirty).toBe(true);
+
+  controller.resetContent();
+  expect(model.name).toBe("New Advanced effect");
+  expect(model.resetDirty).toBe(false);
+  expect(scheduleEdited).not.toHaveBeenCalled();
 });
 
 test("Advanced waits for New or a saved effect instead of opening a redundant starter", () => {
@@ -716,10 +788,10 @@ test("Advanced waits for New or a saved effect instead of opening a redundant st
 
   expect(model.name).toBe("");
   expect(model.editorSource.kind).toBe("none");
-  expect(model.editorActions.cancel).toBe(false);
+  expect(model.editorAction("cancel")?.visible).toBe(false);
 });
 
-test("explicit New and layered scene Reset restore content without changing names", () => {
+test("explicit New Reset restores its name while layered scene Reset retains its name", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.devices = [device("entry-a", "H617A")];
@@ -729,6 +801,7 @@ test("explicit New and layered scene Reset restore content without changing name
 
   controller.newEffect("advanced");
   const newName = model.name;
+  model.name = "Renamed Advanced effect";
   const editedNew = blankAdvancedContent();
   editedNew.layers[0].priority = 4;
   controller.advancedContentChanged(editedNew, "committed");
@@ -822,9 +895,9 @@ test("category transitions stay blank without a matching active item", async () 
   expect(model.content.kind).not.toBe("palette_diy");
 
   editorController.openMusicTemplate("energetic", "Energetic");
-  expect(model.editorActions.cancel).toBe(false);
+  expect(model.editorAction("cancel")?.visible).toBe(false);
   editorController.openMusicTemplate("rhythm", "Rhythm");
-  expect(model.editorActions.cancel).toBe(false);
+  expect(model.editorAction("cancel")?.visible).toBe(false);
 
   await controller.selectSection("video");
   expect(model.name).toBe("");
@@ -2052,6 +2125,7 @@ test("Live-off catalogue edits use Save As while Live catalogue work is recovera
   expect(model.pendingTransitionDialog).toMatchObject({
     primaryLabel: "Save As",
     saveName: "Flow",
+    requiresName: true,
   });
   const created = {
     ...item(painted()),

@@ -11,6 +11,7 @@ import {
   isAdvancedEditableContent,
   isCustomEffectContent,
 } from "./effect-editor-model";
+import type { EditorActionDescriptor } from "./editor-state";
 import { customEffectCategories } from "./custom-effect-workflow";
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import type { MusicModeChange } from "./music-profile-editor";
@@ -924,7 +925,7 @@ export class GoveeLedEffectStudio extends LitElement {
               Cancel
             </button>
             <button
-              class="danger"
+              class="danger delete-action"
               type="button"
               @click=${() => void this.controller.confirmDelete()}
             >
@@ -950,18 +951,11 @@ export class GoveeLedEffectStudio extends LitElement {
           @submit=${(event: SubmitEvent) => {
             event.preventDefault();
             this.modal.confirmNamedSave(
-              (name, mode) =>
-                void (mode === "copy"
-                  ? this.controller.saveAs(name)
-                  : this.controller.save()),
+              (name) => void this.controller.saveAs(name),
             );
           }}
         >
-          <h2 id="save-effect-title">
-            ${this.model.saveNameMode === "copy"
-              ? "Save Effect As"
-              : "New Custom Effect"}
-          </h2>
+          <h2 id="save-effect-title">Save Effect As</h2>
           <label class="field">
             <span>Name</span>
             <input
@@ -994,9 +988,7 @@ export class GoveeLedEffectStudio extends LitElement {
             >
               Cancel
             </button>
-            <button class="primary" type="submit">
-              ${this.model.saveNameMode === "copy" ? "Save As" : "Save"}
-            </button>
+            <button class="primary" type="submit">Save As</button>
           </div>
         </form>
       </div>
@@ -1027,7 +1019,7 @@ export class GoveeLedEffectStudio extends LitElement {
             This effect has unsaved changes. Save them before leaving, or
             choose No to leave the device unchanged.
           </p>
-          ${dialog.primaryLabel === "Save As"
+          ${dialog.requiresName
             ? html`
                 <label class="field">
                   <span>Name</span>
@@ -1058,7 +1050,7 @@ export class GoveeLedEffectStudio extends LitElement {
               Cancel
             </button>
             <button
-              class="danger transition-discard"
+              class="secondary"
               type="button"
               ?disabled=${dialog.busy}
               @click=${() =>
@@ -1381,19 +1373,6 @@ export class GoveeLedEffectStudio extends LitElement {
         </div>
       `;
     }
-    if (
-      this.editorSource.kind === "new" ||
-      (this.editorSource.kind === "scene" &&
-        this.editorSource.itemId === undefined)
-    ) {
-      const title = this.model.name.trim() || "New effect";
-      return html`
-        <div class="editor-title mobile-redundant-heading">
-          <div class="editable-title"><h2>${title}</h2>${marker}</div>
-          ${origin ? html`<small class="origin-name">${origin}</small>` : nothing}
-        </div>
-      `;
-    }
     return html`
       <div class="editor-title mobile-editable-heading">
         <span class="mobile-name-label">Name</span>
@@ -1427,89 +1406,84 @@ export class GoveeLedEffectStudio extends LitElement {
           ${options.title ?? this.renderEffectName()}
         </div>
         <div class="actions">
-          ${this.model.editorActions.reset
-            ? html`
-                <button
-                  class="secondary"
-                  type="button"
-                  ?disabled=${this.model.saving}
-                  @click=${() => this.editor.resetContent()}
-                >
-                  Reset
-                </button>
-              `
-            : nothing}
-          ${this.model.editorActions.cancel
-            ? html`
-                <button
-                  class="secondary"
-                  type="button"
-                  ?disabled=${this.model.saving}
-                  @click=${this.model.sceneEditorOpen
-                    ? this.cancelSceneEdit
-                    : this.cancelCreation}
-                >
-                  Cancel
-                </button>
-              `
-            : nothing}
-          ${this.renderEditorDeleteButton()}
-          ${options.save === false ? nothing : this.renderSaveAction()}
-          ${options.save === false ? nothing : this.renderSaveAsAction()}
+          ${this.model.editorActions
+            .filter(
+              (action) =>
+                action.visible &&
+                (options.save !== false ||
+                  (action.id !== "save" && action.id !== "saveAs")),
+            )
+            .map((action) => this.renderEditorAction(action))}
         </div>
       </div>
     `;
   }
 
-  private renderSaveAction() {
-    if (!this.model.editorActions.save) {
-      return nothing;
+  private renderEditorAction(action: EditorActionDescriptor) {
+    switch (action.id) {
+      case "saveAs": {
+        const sourceName =
+          this.model.name.trim() || this.catalogueSourceLabel || "Effect";
+        return html`
+          <button
+            class=${this.editorActionClass(action)}
+            type="button"
+            ?disabled=${!action.enabled}
+            @click=${(event: Event) =>
+              this.modal.requestSaveAs(
+                event.currentTarget as HTMLElement,
+                `${sourceName} copy`,
+              )}
+          >
+            ${action.label}
+          </button>
+        `;
+      }
+      case "reset":
+        return html`
+          <button
+            class=${this.editorActionClass(action)}
+            type="button"
+            ?disabled=${!action.enabled}
+            @click=${() => this.editor.resetContent()}
+          >
+            ${action.label}
+          </button>
+        `;
+      case "cancel":
+        return html`
+          <button
+            class=${this.editorActionClass(action)}
+            type="button"
+            ?disabled=${!action.enabled}
+            @click=${this.cancelSceneEdit}
+          >
+            ${action.label}
+          </button>
+        `;
+      case "delete":
+        return this.renderEditorDeleteButton(action);
+      case "save":
+        return html`
+          <button
+            class=${this.editorActionClass(action)}
+            type="button"
+            ?disabled=${!action.enabled}
+            @click=${() =>
+              this.modal.requestSave(
+                () => void this.controller.save(),
+              )}
+          >
+            ${this.model.saving ? "Saving..." : action.label}
+          </button>
+        `;
     }
-    const saveLabel =
-      this.editorSource.kind === "scene" &&
-      this.editorSource.itemId === undefined
-        ? "Save As"
-        : "Save";
-    return html`
-      <button
-        class="primary"
-        type="button"
-        ?disabled=${!this.isAdmin ||
-        !this.model.canSaveCurrentDraft ||
-        this.model.saving ||
-        this.model.deletingCurrentItem}
-        @click=${(event: Event) =>
-          this.modal.requestSave(
-            event.currentTarget as HTMLElement,
-            () => void this.controller.save(),
-          )}
-      >
-        ${this.model.saving ? "Saving..." : saveLabel}
-      </button>
-    `;
   }
 
-  private renderSaveAsAction() {
-    if (!this.model.editorActions.saveAs) {
-      return nothing;
-    }
-    const sourceName = this.model.name.trim() || this.catalogueSourceLabel || "Effect";
-    return html`
-      <button
-        class="primary"
-        type="button"
-        ?disabled=${!this.isAdmin ||
-        this.model.saving ||
-        this.model.deletingCurrentItem}
-        @click=${(event: Event) =>
-          this.modal.requestSaveAs(
-            event.currentTarget as HTMLElement,
-            `${sourceName} copy`,
-          )}
-      >
-        Save As
-      </button>
-    `;
+  private editorActionClass(action: EditorActionDescriptor): string {
+    return action.style === "delete"
+      ? "danger delete-action"
+      : action.style;
   }
 
   private keyDown = (event: KeyboardEvent): void => {
@@ -1528,7 +1502,7 @@ export class GoveeLedEffectStudio extends LitElement {
         return;
       }
       if (
-        !this.model.editorActions.saveAs
+        !this.model.editorAction("saveAs")?.enabled
       ) {
         return;
       }
@@ -1549,7 +1523,7 @@ export class GoveeLedEffectStudio extends LitElement {
         }
         event.preventDefault();
         this.controller.cancelPendingAutoSave();
-        this.modal.requestSave(this, () => void this.controller.save());
+        this.modal.requestSave(() => void this.controller.save());
         return;
       }
       const sceneBrowser =
@@ -1562,16 +1536,13 @@ export class GoveeLedEffectStudio extends LitElement {
       return;
     }
     if (
-      !this.model.editorActions.save ||
-      !this.model.canSaveCurrentDraft ||
-      this.model.saving ||
-      this.model.deletingCurrentItem
+      !this.model.editorAction("save")?.enabled
     ) {
       return;
     }
     event.preventDefault();
     this.controller.cancelPendingAutoSave();
-    this.modal.requestSave(this, () => void this.controller.save());
+    this.modal.requestSave(() => void this.controller.save());
   };
 
   private get selectedSingleEffectFamily() {
@@ -1745,25 +1716,19 @@ export class GoveeLedEffectStudio extends LitElement {
     );
   }
 
-  private cancelCreation(): void {
-    this.editor.cancelCreation();
-  }
-
-  private renderEditorDeleteButton() {
+  private renderEditorDeleteButton(action: EditorActionDescriptor) {
     if (
       !this.isAdmin ||
       !this.currentItem ||
-      !this.model.editorActions.delete
+      !this.model.editorAction("delete")?.visible
     ) {
       return nothing;
     }
     return html`
       <button
-        class="danger"
-        style="margin-inline-end: var(--studio-action-gap)"
+        class=${this.editorActionClass(action)}
         type="button"
-        ?disabled=${this.model.deletingItemId !== undefined ||
-        this.model.saving}
+        ?disabled=${!action.enabled}
         @click=${(event: Event) =>
           this.requestDelete(
             {

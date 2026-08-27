@@ -214,8 +214,13 @@ export const effectStudioPanelStyles = [
     }
 
     .toolbar-mode-icon {
+      --mdc-icon-size: var(--studio-icon-size);
+      display: inline-flex;
       width: var(--studio-icon-size);
       height: var(--studio-icon-size);
+      align-items: center;
+      justify-content: center;
+      line-height: 0;
     }
 
     .toolbar-control:hover {
@@ -479,14 +484,6 @@ export const effectStudioPanelStyles = [
       justify-content: flex-end;
       gap: var(--studio-action-gap);
       margin-top: var(--studio-dialog-padding);
-    }
-
-    .transition-discard {
-      background: color-mix(
-        in srgb,
-        var(--studio-danger) 10%,
-        var(--studio-card)
-      );
     }
 
     .controls {

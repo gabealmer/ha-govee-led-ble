@@ -1,11 +1,12 @@
 import { customEffectCategoryAvailable, customEffectKindAvailable, libraryItemAvailable, type CustomEffectListContext } from "./custom-effect-list";
 import {
-  editorActionVisibility,
+  editorActionDescriptors,
   editorOwnerMatches,
   newEditorSourceSelected,
   reactiveEffectSelectorVisible,
   NO_EDITOR_SOURCE,
   serialiseEditableContent,
+  type EditorAction,
   type EditorSource,
 } from "./editor-state";
 import {
@@ -30,6 +31,7 @@ export type DeleteCandidate = Pick<LibrarySummary, "id" | "version" | "updated_a
 export interface PendingTransitionDialog {
   primaryLabel: "Save" | "Save As";
   saveName: string;
+  requiresName: boolean;
   busy: boolean;
   error?: string;
 }
@@ -56,7 +58,6 @@ export class PanelModel {
   public paintBrushOff = false;
   public saving = false;
   public saveNameDialogOpen = false;
-  public saveNameMode: "save" | "copy" = "save";
   public saveNameValue = "";
   public saveNameError?: string;
   public pendingTransitionDialog?: PendingTransitionDialog;
@@ -71,6 +72,7 @@ export class PanelModel {
   public previewProgressVisible = false;
   public savedBaseline?: string;
   public resetBaseline?: EditableEffectContent;
+  public resetNameBaseline?: string;
   public editorTransitionEpoch = 0;
   public isAdmin = false;
 
@@ -215,6 +217,10 @@ export class PanelModel {
   }
 
   public get resetDirty(): boolean {
+    return this.resetContentDirty || this.resetNameDirty;
+  }
+
+  public get resetContentDirty(): boolean {
     return (
       isEditableEffectContent(this.content) &&
       this.resetBaseline !== undefined &&
@@ -223,13 +229,31 @@ export class PanelModel {
     );
   }
 
-  public get editorActions() {
-    return editorActionVisibility(
-      this.editorSource,
-      this.resetDirty,
-      this.autoSaveEnabled,
-      this.autoSaveFailed,
+  public get resetNameDirty(): boolean {
+    return (
+      this.editorSource.kind === "new" &&
+      this.resetNameBaseline !== undefined &&
+      this.name.trim() !== this.resetNameBaseline.trim()
     );
+  }
+
+  public get editorActions() {
+    return editorActionDescriptors(
+      this.editorSource,
+      {
+        resetAvailable: this.resetBaseline !== undefined,
+        resetDirty: this.resetDirty,
+        autoSaveEnabled: this.autoSaveEnabled,
+        autoSaveFailed: this.autoSaveFailed,
+        canSave: this.canSaveCurrentDraft,
+        canMutate: this.isAdmin,
+        busy: this.saving || this.deletingCurrentItem,
+      },
+    );
+  }
+
+  public editorAction(id: EditorAction) {
+    return this.editorActions.find((action) => action.id === id);
   }
 
   public get showSingleEffectSelector(): boolean {

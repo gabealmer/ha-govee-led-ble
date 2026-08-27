@@ -1,11 +1,13 @@
 import { expect, test } from "vitest";
 
 import {
+  editorActionDescriptors,
   editorActionOrder,
-  editorActionVisibility,
   editorOwnerMatches,
+  editorTransitionSaveMode,
   newEditorSourceSelected,
   reactiveEffectSelectorVisible,
+  type EditorActionContext,
   type EditorSource,
 } from "../../src/editor-state";
 
@@ -21,39 +23,93 @@ const saved: EditorSource = {
   itemId: "saved-a",
 };
 
-test("editor actions follow the explicit source instead of inferred template flags", () => {
-  expect(editorActionVisibility(catalogue, false, false, false)).toEqual({
-    reset: false,
-    cancel: false,
-    save: false,
-    saveAs: true,
-    delete: false,
-  });
+function context(
+  update: Partial<EditorActionContext> = {},
+): EditorActionContext {
+  return {
+    resetAvailable: true,
+    resetDirty: false,
+    autoSaveEnabled: false,
+    autoSaveFailed: false,
+    canSave: true,
+    canMutate: true,
+    busy: false,
+    ...update,
+  };
+}
+
+test("editor action descriptors follow source, state, and exact order", () => {
   expect(
-    editorActionVisibility(
-      {
-        kind: "new",
-        owner: { section: "custom", category: "advanced" },
-      },
-      true,
-      false,
-      false,
+    editorActionOrder(
+      editorActionDescriptors(catalogue, context()),
     ),
-  ).toEqual({
-    reset: true,
-    cancel: true,
-    save: true,
-    saveAs: false,
-    delete: false,
+  ).toEqual(["saveAs"]);
+
+  const newActions = editorActionDescriptors(
+    {
+      kind: "new",
+      owner: { section: "custom", category: "advanced" },
+    },
+    context(),
+  );
+  expect(editorActionOrder(newActions)).toEqual(["reset", "save"]);
+  expect(newActions.find(({ id }) => id === "reset")).toMatchObject({
+    style: "secondary",
+    visible: true,
+    enabled: false,
   });
-  expect(editorActionVisibility(saved, true, true, false)).toEqual({
-    reset: true,
-    cancel: false,
-    save: false,
-    saveAs: true,
-    delete: true,
-  });
-  expect(editorActionVisibility(saved, true, true, true).save).toBe(true);
+
+  expect(
+    editorActionOrder(
+      editorActionDescriptors(
+        saved,
+        context({ resetDirty: true, autoSaveEnabled: true }),
+      ),
+    ),
+  ).toEqual(["saveAs", "reset", "delete"]);
+  expect(
+    editorActionDescriptors(
+      saved,
+      context({ autoSaveEnabled: true, autoSaveFailed: true }),
+    ).find(({ id }) => id === "save"),
+  ).toMatchObject({ visible: true, enabled: true, style: "primary" });
+
+  const sceneActions = editorActionDescriptors(
+    {
+      kind: "scene",
+      owner: { section: "scenes" },
+      itemId: "scene-a",
+    },
+    context({ resetDirty: true }),
+  );
+  expect(editorActionOrder(sceneActions)).toEqual([
+    "saveAs",
+    "reset",
+    "cancel",
+    "delete",
+    "save",
+  ]);
+});
+
+test("busy and read-only state disable visible mutations", () => {
+  const actions = editorActionDescriptors(
+    saved,
+    context({ resetDirty: true, canMutate: false, busy: true }),
+  );
+  expect(
+    actions.filter(({ visible }) => visible).every(({ enabled }) => !enabled),
+  ).toBe(true);
+});
+
+test("transition save mode follows source identity", () => {
+  expect(editorTransitionSaveMode(catalogue)).toBe("Save As");
+  expect(
+    editorTransitionSaveMode({
+      kind: "new",
+      owner: { section: "custom", category: "advanced" },
+    }),
+  ).toBe("Save");
+  expect(editorTransitionSaveMode(saved)).toBe("Save");
 });
 
 test("editor ownership rejects content from another category or section", () => {
@@ -94,18 +150,6 @@ test("New selection follows its explicit custom category owner", () => {
     ).toBe(false);
   }
   expect(newEditorSourceSelected(saved, "music")).toBe(false);
-});
-
-test("shared editor actions place destructive work before separated save actions", () => {
-  expect(
-    editorActionOrder({
-      reset: true,
-      cancel: true,
-      delete: true,
-      save: true,
-      saveAs: true,
-    }),
-  ).toEqual(["reset", "cancel", "delete", "save", "saveAs"]);
 });
 
 test("Reactive selector belongs to New and saved drafts, not catalogue templates", () => {

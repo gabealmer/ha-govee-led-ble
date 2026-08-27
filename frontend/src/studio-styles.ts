@@ -216,8 +216,14 @@ export const studioActionStyles = css`
     background: var(--studio-danger);
   }
 
-  .actions > .danger + .primary {
-    margin-inline-start: var(--studio-action-gap);
+  .danger.delete-action {
+    color: var(--text-primary-color, #fff);
+    background: var(--studio-danger);
+  }
+
+  .danger.delete-action:hover,
+  .danger.delete-action:focus-visible {
+    background: color-mix(in srgb, var(--studio-danger) 84%, #000);
   }
 
   .secondary.active {

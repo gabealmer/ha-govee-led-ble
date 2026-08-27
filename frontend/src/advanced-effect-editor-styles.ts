@@ -27,6 +27,11 @@ export const advancedEffectEditorStyles = [
       margin-bottom: var(--studio-section-gap);
     }
 
+    .selected-record-panel {
+      padding-top: var(--studio-section-gap);
+      border-top: var(--studio-border-width) solid var(--studio-border);
+    }
+
     .layer-strip,
     .pattern-strip {
       --strip-label-min-width: var(--studio-compact-action-size);
@@ -86,13 +91,17 @@ export const advancedEffectEditorStyles = [
     }
 
     .control-grid {
-      display: grid;
-      grid-template-columns: repeat(
-        auto-fit,
-        minmax(min(100%, 340px), 1fr)
-      );
-      align-items: start;
-      gap: var(--studio-section-gap);
+      column-width: 500px;
+      column-gap: var(--studio-section-gap);
+      column-fill: balance;
+    }
+
+    .control-grid > .card {
+      display: inline-block;
+      width: 100%;
+      margin: 0 0 var(--studio-section-gap);
+      break-inside: avoid;
+      break-inside: avoid-column;
     }
 
     .fill-pattern-controls {
@@ -117,6 +126,11 @@ export const advancedEffectEditorStyles = [
     .patterns-section {
       display: grid;
       gap: var(--studio-parameter-gap);
+    }
+
+    .brightness-fields {
+      padding-top: var(--studio-parameter-gap);
+      border-top: var(--studio-border-width) solid var(--studio-border);
     }
 
     .compact-action-icon {

@@ -1,6 +1,6 @@
 import { blankAdvancedContent, cloneLayeredSceneContent } from "./advanced-effect-model";
 import { newEffectKindForCategory, type CustomEffectListEntry } from "./custom-effect-list";
-import type { EditorOwner, EditorSource } from "./editor-state";
+import type { EditorOwner } from "./editor-state";
 import {
   blankCustomEffect,
   blankPainted,
@@ -53,18 +53,6 @@ interface InitialEffect {
   content: EditableEffectContent;
 }
 
-interface EditorReturnState {
-  currentItem?: LibraryItem;
-  savedSceneSelection?: LibraryItem;
-  editorSource: EditorSource;
-  name: string;
-  content: PanelModel["content"];
-  paintColour: RGB;
-  paintBrushOff: boolean;
-  savedBaseline?: string;
-  resetBaseline?: EditableEffectContent;
-}
-
 type ActiveWorkspaceContext = Extract<
   ActiveStudioContext,
   { kind: "workspace" }
@@ -77,8 +65,6 @@ interface WorkspaceTemplate {
 }
 
 export class PanelEditorController {
-  private returnState?: EditorReturnState;
-
   public constructor(
     private readonly model: PanelModel,
     private readonly preview: PanelPreviewController,
@@ -98,11 +84,10 @@ export class PanelEditorController {
 
   public reset(cancelPreview = true): void {
     this.beginTransition(cancelPreview);
-    this.clearReturnTarget();
     this.model.patch({
       sceneEditorOpen: false, sceneInitialSelection: undefined, currentItem: undefined, savedSceneSelection: undefined,
       editorSource: { kind: "none" }, name: "", content: blankPainted(),
-      savedBaseline: undefined, resetBaseline: undefined,
+      savedBaseline: undefined, resetBaseline: undefined, resetNameBaseline: undefined,
     });
   }
 
@@ -197,7 +182,6 @@ export class PanelEditorController {
       this.beginSelectionTransition();
     }
     const installed = cloneEditableEffect(content);
-    this.clearReturnTarget();
     this.model.patch({
       currentItem: undefined,
       editorSource: {
@@ -210,6 +194,7 @@ export class PanelEditorController {
       content: installed,
       savedBaseline: undefined,
       resetBaseline: cloneEditableEffect(content),
+      resetNameBaseline: undefined,
       notice: undefined,
     });
     if (explicit) {
@@ -242,7 +227,6 @@ export class PanelEditorController {
     if (!template && !recoverAsNew) {
       return false;
     }
-    this.clearReturnTarget();
     const label = template?.label ?? context.label;
     this.model.patch({
       currentItem: undefined,
@@ -265,6 +249,7 @@ export class PanelEditorController {
       resetBaseline: template
         ? cloneEditableEffect(template.resetContent)
         : undefined,
+      resetNameBaseline: undefined,
       notice: undefined,
     });
     return true;
@@ -369,9 +354,6 @@ export class PanelEditorController {
       !this.options.apiReady() || !this.model.isAdmin || !this.model.customEffectKindAvailable(kind) ||
       (kind !== "advanced" && !this.model.modelCatalogue)
     ) return;
-    if (existingTransitionEpoch === undefined) {
-      this.captureReturnTarget();
-    }
     const content = initial?.content ?? (
       kind === "advanced"
         ? blankAdvancedContent()
@@ -402,12 +384,12 @@ export class PanelEditorController {
       paintBrushOff: kind === "h617a_painted" ? false : this.model.paintBrushOff,
       savedBaseline: serialiseEditable(name, content),
       resetBaseline: cloneEditableEffect(content),
+      resetNameBaseline: name,
       notice: undefined,
     });
   }
 
   public applyLibraryItem(item: LibraryItem): boolean {
-    this.clearReturnTarget();
     const owner: EditorOwner =
       item.content.kind === "video_profile"
         ? { section: "video" }
@@ -428,7 +410,7 @@ export class PanelEditorController {
     if (item.content.kind === "opaque") {
       this.model.patch({
         ...selection, content: cloneOpaqueContent(item.content), savedBaseline: undefined,
-        resetBaseline: undefined, notice: undefined,
+        resetBaseline: undefined, resetNameBaseline: undefined, notice: undefined,
       });
       return true;
     }
@@ -440,6 +422,7 @@ export class PanelEditorController {
     this.model.patch({
       ...selection, content: cloneEditableEffect(content), savedBaseline: serialiseEditable(item.name, content),
       resetBaseline: cloneEditableEffect(content),
+      resetNameBaseline: undefined,
       paintBrushOff: content.kind === "h617a_painted" ? false : this.model.paintBrushOff,
       notice: undefined,
     });
@@ -448,12 +431,11 @@ export class PanelEditorController {
 
   public clearCurrentAfterDelete(): void {
     this.beginTransition();
-    this.clearReturnTarget();
     this.model.patch({
       currentItem: undefined, editorSource: { kind: "none" },
       sceneEditorOpen: false,
       name: "", content: blankPainted(), savedBaseline: undefined,
-      resetBaseline: undefined,
+      resetBaseline: undefined, resetNameBaseline: undefined,
     });
   }
 
@@ -475,6 +457,7 @@ export class PanelEditorController {
       name: detail.name.trim() || "Layered scene template", content: cloneLayeredSceneContent(detail.content),
       savedBaseline: detail.item?.content.kind === "scene_layered" ? serialiseEditable(detail.item.name, detail.item.content) : undefined,
       resetBaseline: cloneLayeredSceneContent(detail.content),
+      resetNameBaseline: undefined,
       sceneEditorOpen: true, notice: undefined,
     });
   }
@@ -482,24 +465,6 @@ export class PanelEditorController {
   public cancelSceneEdit(): void {
     this.beginTransition();
     this.model.patch({ sceneEditorOpen: false, notice: undefined });
-  }
-
-  public cancelCreation(): void {
-    const returnState = this.returnState;
-    if (!returnState) {
-      return;
-    }
-    this.beginTransition();
-    this.returnState = undefined;
-    this.model.patch({
-      ...returnState,
-      paintColour: [...returnState.paintColour],
-      notice: undefined,
-    });
-  }
-
-  public commitCreation(): void {
-    this.clearReturnTarget();
   }
 
   public advancedContentChanged(content: AdvancedContent, interaction?: LivePreviewInteraction, scene?: ScenePreviewRequest): void {
@@ -668,10 +633,20 @@ export class PanelEditorController {
     if (!baseline || !this.model.resetDirty) {
       return;
     }
+    const resetName =
+      this.model.editorSource.kind === "new"
+        ? this.model.resetNameBaseline
+        : undefined;
+    const contentDirty = this.model.resetContentDirty;
     if (baseline.kind === "h617a_painted") {
       this.model.patch({ paintBrushOff: false });
     }
-    this.installEditedContent(cloneEditableEffect(baseline), "committed");
+    if (resetName !== undefined) {
+      this.model.patch({ name: resetName });
+    }
+    if (contentDirty) {
+      this.installEditedContent(cloneEditableEffect(baseline), "committed");
+    }
   }
 
   public updatePaintedContent(update: Partial<PaintedContent>, interaction: LivePreviewInteraction = "changing"): void {
@@ -749,31 +724,6 @@ export class PanelEditorController {
     }
   }
 
-  private captureReturnTarget(): void {
-    if (this.returnState) {
-      return;
-    }
-    this.returnState = {
-      currentItem: this.model.currentItem,
-      savedSceneSelection: this.model.savedSceneSelection,
-      editorSource: this.model.editorSource,
-      name: this.model.name,
-      content: isEditableEffectContent(this.model.content)
-        ? cloneEditableEffect(this.model.content)
-        : this.model.content,
-      paintColour: [...this.model.paintColour],
-      paintBrushOff: this.model.paintBrushOff,
-      savedBaseline: this.model.savedBaseline,
-      resetBaseline: this.model.resetBaseline
-        ? cloneEditableEffect(this.model.resetBaseline)
-        : undefined,
-    };
-  }
-
-  private clearReturnTarget(): void {
-    this.returnState = undefined;
-  }
-
   public clearSelection(existingTransitionEpoch?: number): void {
     if (
       existingTransitionEpoch !== undefined &&
@@ -784,7 +734,6 @@ export class PanelEditorController {
     if (existingTransitionEpoch === undefined) {
       this.beginTransition();
     }
-    this.clearReturnTarget();
     this.model.patch({
       currentItem: undefined,
       editorSource: { kind: "none" },
@@ -792,6 +741,7 @@ export class PanelEditorController {
       content: blankPainted(),
       savedBaseline: undefined,
       resetBaseline: undefined,
+      resetNameBaseline: undefined,
       notice: undefined,
     });
   }

@@ -6,6 +6,7 @@ import "./palette-editor";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
 import {
+  studioActionStyles,
   studioBaseStyles,
   studioCardStyles,
   studioFormStyles,
@@ -365,7 +366,7 @@ export class GoveeCustomEffectEditor extends LitElement {
                 </summary>
                 <div class="row-menu-popover">
                   <button
-                    class="danger"
+                    class="danger delete-action"
                     type="button"
                     @click=${() => {
                       this.openRowMenuIndex = undefined;
@@ -702,6 +703,7 @@ export class GoveeCustomEffectEditor extends LitElement {
   static styles = [
     studioBaseStyles,
     studioCardStyles,
+    studioActionStyles,
     studioFormStyles,
     css`
     :host {
@@ -885,8 +887,15 @@ export class GoveeCustomEffectEditor extends LitElement {
       cursor: pointer;
     }
 
-    .danger {
-      color: var(--studio-danger) !important;
+    .row-menu-popover .danger.delete-action {
+      border: var(--studio-border-width) solid var(--studio-danger);
+      color: var(--text-primary-color, #fff);
+      background: var(--studio-danger);
+    }
+
+    .row-menu-popover .danger.delete-action:hover,
+    .row-menu-popover .danger.delete-action:focus-visible {
+      background: color-mix(in srgb, var(--studio-danger) 84%, #000);
     }
 
     .add-step {
