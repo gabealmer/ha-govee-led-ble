@@ -44,16 +44,15 @@ class ModelProfile:
     name: str
     state_readable: bool = False
     supports_color_mode_readback: bool = True
-    query_color_mode_for_diagnostics: bool = False
+    supports_rgb: bool = False
+    supports_color_temperature: bool = False
     supports_scenes: bool = False
-    supports_scene_editing: bool = False
     supports_custom_effects: bool = False
     supports_h617a_custom_effects: bool = False
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
-    supports_workshop_effects: bool = False
     supports_white_balance: bool = False
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
@@ -66,10 +65,6 @@ class ModelProfile:
     segment_count: int = 0
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
-    min_color_temp_kelvin: int = 2000
-    max_color_temp_kelvin: int = 9000
-    minimum_firmware: str | None = None
-    minimum_hardware: str | None = None
 
     @property
     def supports_segments(self) -> bool:
@@ -100,15 +95,15 @@ _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 _H617X_PROFILE = ModelProfile(
     "H617A/H617E LED Strip",
     state_readable=True,
+    supports_rgb=True,
+    supports_color_temperature=True,
     supports_scenes=True,
-    supports_scene_editing=True,
     supports_custom_effects=True,
     supports_h617a_custom_effects=True,
     music_modes=tuple(MUSIC_MODE_SLUGS),
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,
-    supports_workshop_effects=True,
     # H617A and H617E expose fifteen segments through five explicit aa a5 query groups of three.
     # Segment writes ACK normally but do not publish updated groups without those queries.
     segment_count=15,
@@ -126,23 +121,17 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6125 LED Strip",
         state_readable=True,
         supports_color_mode_readback=False,
-        query_color_mode_for_diagnostics=True,
-        supports_scenes=True,
         segment_count=15,
-        supports_segment_writes=True,
         connection_idle_timeout=3.0,
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
-        minimum_firmware="1.06.00",
-        minimum_hardware="1.00.03",
     ),
     "H617A": _H617X_PROFILE,
     "H617E": _H617X_PROFILE,
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
         supports_scenes=True,
-        supports_scene_editing=True,
         supports_custom_effects=True,
         supports_video_mode=True,
         supports_video_sound_effects=True,
@@ -155,7 +144,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_max=100,
         supports_music_color=True,
         supports_advanced_effects=True,
-        supports_workshop_effects=True,
         # Static readback identifies the mode but exposes rendered colour only through segment
         # queries. Kelvin remains last-known while its RGB companion matches.
         # Fifteen segment bits are independently writable. The aa 40 value 38 is not a segment count.
@@ -176,11 +164,6 @@ def resolve_model(model: str) -> str | None:
 def protocol_model(model: str) -> str | None:
     resolved = resolve_model(model)
     return "H617A" if resolved in {"H617A", "H617E"} else resolved
-
-
-def scene_protocol_model(model: str) -> str | None:
-    resolved = resolve_model(model)
-    return "H617A" if resolved in {"H6125", "H617A", "H617E"} else resolved
 
 
 def get_profile(model: str) -> ModelProfile:
@@ -262,20 +245,18 @@ def default_effect_families(model: str) -> frozenset[str]:
     return supported
 
 
-def version_at_least(current: str, minimum: str) -> bool:
-    current_parts = _version_parts(current)
-    minimum_parts = _version_parts(minimum)
-    if current_parts is None or minimum_parts is None:
-        return False
-    width = max(len(current_parts), len(minimum_parts))
-    return current_parts + (0,) * (width - len(current_parts)) >= minimum_parts + (0,) * (width - len(minimum_parts))
-
-
 def _version_parts(value: str) -> tuple[int, ...] | None:
     parts = value.strip().split(".")
     if not parts or any(not part.isdigit() for part in parts):
         return None
     return tuple(int(part) for part in parts)
+
+
+def h6125_hardware_family_supported(version: str) -> bool:
+    parts = _version_parts(version)
+    if parts is None:
+        return False
+    return parts[0] in {1, 3} or len(parts) >= 2 and parts[:2] == (2, 1)
 
 
 def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:

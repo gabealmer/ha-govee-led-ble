@@ -166,17 +166,6 @@ def _capability(
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
     _capability(
-        "H6125",
-        CapabilityWorkflow.NATIVE_SCENES,
-        "Scenes",
-        "scene_builtin",
-        ApplicationRoute.STUDIO_SCENE_APPLY,
-        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
-        VerificationConfidence.UNVERIFIED,
-        PhysicalValidationState.NOT_VALIDATED,
-        EvidenceClassification.STRUCTURAL,
-    ),
-    _capability(
         "H617A",
         CapabilityWorkflow.NATIVE_SCENES,
         "Scenes",
@@ -370,10 +359,7 @@ _CAPABILITY_MODEL_ALIASES: Final = {"H617E": "H617A"}
 
 def release_capabilities_for_model(model: str) -> tuple[ReleaseCapability, ...]:
     contract_model = _CAPABILITY_MODEL_ALIASES.get(model, model)
-    capabilities = tuple(capability for capability in RELEASE_CAPABILITY_CONTRACT if capability.model == contract_model)
-    if not capabilities:
-        raise ValueError(f"{model} has no release capability contract")
-    return capabilities
+    return tuple(capability for capability in RELEASE_CAPABILITY_CONTRACT if capability.model == contract_model)
 
 
 def release_capability(model: str, workflow: CapabilityWorkflow) -> ReleaseCapability | None:
@@ -517,7 +503,7 @@ def device_effect_capabilities(
         readback=(
             "diy_code_only"
             if model in {"H617A", "H617E"}
-            else "write_completed"
+            else "none"
             if model == "H6125"
             else "scene_selector_for_user_effects"
         ),

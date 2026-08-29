@@ -4,7 +4,6 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .const import get_profile
 from .generated_protocol_adapter import (
     build_colour_temperature,
     build_segment_colour,
@@ -19,48 +18,6 @@ ALL_SEGMENTS: tuple[int, ...] = tuple(range(1, SEGMENT_COUNT + 1))
 ALL_SEGMENTS_MASK = 0x7FFF
 
 type SegmentColorGroup = tuple[Iterable[int], tuple[int, int, int]]
-
-_H6125_COLOUR_TEMPERATURE_RGB = (
-    (255, 174, 84),
-    (255, 173, 94),
-    (255, 177, 101),
-    (255, 180, 107),
-    (255, 189, 111),
-    (255, 187, 120),
-    (255, 195, 124),
-    (255, 198, 130),
-    (255, 201, 135),
-    (255, 203, 141),
-    (255, 206, 146),
-    (255, 204, 153),
-    (255, 206, 159),
-    (255, 213, 161),
-    (255, 215, 166),
-    (255, 217, 171),
-    (255, 219, 175),
-    (255, 221, 180),
-    (255, 223, 184),
-    (255, 225, 188),
-    (255, 226, 192),
-    (255, 228, 196),
-    (255, 229, 200),
-    (255, 231, 204),
-    (255, 230, 210),
-    (255, 234, 211),
-    (255, 235, 215),
-    (255, 237, 218),
-    (255, 236, 224),
-    (255, 238, 226),
-    (255, 240, 228),
-    (255, 241, 231),
-    (255, 243, 234),
-    (255, 244, 237),
-    (255, 245, 240),
-    (255, 246, 243),
-    (255, 247, 247),
-    (255, 248, 251),
-    (255, 249, 253),
-)
 
 
 def _clamp(value: int, minimum: int, maximum: int) -> int:
@@ -122,17 +79,9 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
     return int(red), _clamp(int(green), 0, 255), _clamp(int(blue), 0, 255)
 
 
-def color_temp_rgb(kelvin: int, model: str = "H617A") -> tuple[int, int, int]:
-    if model != "H6125":
-        return kelvin_to_rgb(kelvin)
-    rounded = _clamp(((kelvin + 50) // 100) * 100, 2700, 6500)
-    return _H6125_COLOUR_TEMPERATURE_RGB[(rounded - 2700) // 100]
-
-
 def build_color_temp(kelvin: int, model: str = "H617A") -> bytes:
-    profile = get_profile(model)
-    value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
-    return build_colour_temperature(value, color_temp_rgb(value, model), ALL_SEGMENTS_MASK, model)
+    value = _clamp(kelvin, 2000, 9000)
+    return build_colour_temperature(value, kelvin_to_rgb(value), ALL_SEGMENTS_MASK, model)
 
 
 def build_white_brightness(percent: int, model: str = "H617A") -> bytes:
