@@ -9,11 +9,14 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 
 ## Supported Devices
 
-All models support on/off, brightness, RGB colour, colour temperature, and state readback.
+The stable models support on/off, brightness, RGB colour, colour temperature, and state readback.  H6125 support remains a prerelease validation target until its protocol branch completes the linked hardware matrix.
 
+- **H6125 (prerelease validation)**: LED Strip · 240 scenes · 15 segments · requires firmware 1.06.00 and hardware 1.00.03 or newer
 - **H617A**: LED Strip · 83 scenes · 11 music modes
 - **H617E**: LED Strip · H617A-compatible scenes, effects and music modes
 - **H6199**: DreamView T1 · 240 scenes · video and music modes · advanced controls
+
+H6125 currently exposes its model-specific native scenes.  Scene editing, speed controls, music and standalone custom-effect workflows remain disabled until the prerelease hardware validation is complete.
 
 ## Effect Studio
 
@@ -21,6 +24,7 @@ Govee Effect Studio is added to the Home Assistant sidebar when the integration 
 
 | Model | Studio surfaces |
 | --- | --- |
+| H6125 | Native scenes |
 | H617A | Scenes, painted segments, single-layer effects, multi-layered effects, reactive music effects and advanced layered effects |
 | H617E | H617A-compatible scenes, effects and reactive music effects |
 | H6199 | Scenes, palette effects, reactive music effects, Movie and Game video profiles, and advanced layered effects |
@@ -81,7 +85,7 @@ Use the integration's **Configure** action to choose which Effect Studio categor
 
 ## Scope, non-goals, and expert tools
 
-The supported product scope is local BLE control of H617A, H617E and H6199 through Home Assistant.  The persistent H617A [`0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) stores the app's gradual-colour-change switch, but the app explicitly classifies H617A as unsupported.  Paired physical comparisons found no visible effect, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
+The supported product scope is local BLE control of H617A, H617E and H6199 through Home Assistant, plus the bounded H6125 prerelease validation tracked in [#117](https://github.com/teh-hippo/ha-govee-led-ble/issues/117).  The persistent H617A [`0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) stores the app's gradual-colour-change switch, but the app explicitly classifies H617A as unsupported.  Paired physical comparisons found no visible effect, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
 
 Wi-Fi provisioning is not a maintained integration or contributor workflow.  The decoded H6199 [`a1 11` frame](tools/ble/kaitai/h6199_wifi_provision.ksy), [reassembled body](tools/ble/kaitai/h6199_wifi_body.ksy) and [`ee 11` result](tools/ble/kaitai/h6199_wifi_result.ksy) remain as tested protocol findings.
 

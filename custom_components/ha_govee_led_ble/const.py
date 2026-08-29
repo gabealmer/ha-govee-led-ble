@@ -6,6 +6,8 @@ from typing import Any
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
+CONF_PACT_TYPE = "pact_type"
+CONF_PACT_CODE = "pact_code"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
 CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
@@ -41,11 +43,17 @@ EFFECT_CATEGORY_CONTENT_KINDS = {
 class ModelProfile:
     name: str
     state_readable: bool = False
+    supports_color_mode_readback: bool = True
+    query_color_mode_for_diagnostics: bool = False
     supports_scenes: bool = False
+    supports_scene_editing: bool = False
+    supports_custom_effects: bool = False
+    supports_h617a_custom_effects: bool = False
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
+    supports_workshop_effects: bool = False
     supports_white_balance: bool = False
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
@@ -58,6 +66,10 @@ class ModelProfile:
     segment_count: int = 0
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
+    min_color_temp_kelvin: int = 2000
+    max_color_temp_kelvin: int = 9000
+    minimum_firmware: str | None = None
+    minimum_hardware: str | None = None
 
     @property
     def supports_segments(self) -> bool:
@@ -89,10 +101,14 @@ _H617X_PROFILE = ModelProfile(
     "H617A/H617E LED Strip",
     state_readable=True,
     supports_scenes=True,
+    supports_scene_editing=True,
+    supports_custom_effects=True,
+    supports_h617a_custom_effects=True,
     music_modes=tuple(MUSIC_MODE_SLUGS),
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,
+    supports_workshop_effects=True,
     # H617A and H617E expose fifteen segments through five explicit aa a5 query groups of three.
     # Segment writes ACK normally but do not publish updated groups without those queries.
     segment_count=15,
@@ -106,12 +122,28 @@ _H617X_PROFILE = ModelProfile(
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
+    "H6125": ModelProfile(
+        "H6125 LED Strip",
+        state_readable=True,
+        supports_color_mode_readback=False,
+        query_color_mode_for_diagnostics=True,
+        supports_scenes=True,
+        segment_count=15,
+        supports_segment_writes=True,
+        connection_idle_timeout=3.0,
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        minimum_firmware="1.06.00",
+        minimum_hardware="1.00.03",
+    ),
     "H617A": _H617X_PROFILE,
     "H617E": _H617X_PROFILE,
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
         supports_scenes=True,
+        supports_scene_editing=True,
+        supports_custom_effects=True,
         supports_video_mode=True,
         supports_video_sound_effects=True,
         # These independently captured video registers have byte-exact builders.
@@ -123,6 +155,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_max=100,
         supports_music_color=True,
         supports_advanced_effects=True,
+        supports_workshop_effects=True,
         # Static readback identifies the mode but exposes rendered colour only through segment
         # queries. Kelvin remains last-known while its RGB companion matches.
         # Fifteen segment bits are independently writable. The aa 40 value 38 is not a segment count.
@@ -145,6 +178,11 @@ def protocol_model(model: str) -> str | None:
     return "H617A" if resolved in {"H617A", "H617E"} else resolved
 
 
+def scene_protocol_model(model: str) -> str | None:
+    resolved = resolve_model(model)
+    return "H617A" if resolved in {"H6125", "H617A", "H617E"} else resolved
+
+
 def get_profile(model: str) -> ModelProfile:
     resolved = resolve_model(model)
     return MODEL_PROFILES[resolved] if resolved is not None else UNSUPPORTED_PROFILE
@@ -164,9 +202,9 @@ def supported_effect_families(model: str) -> frozenset[str]:
 
 def supported_effect_categories(model: str) -> tuple[str, ...]:
     profile = get_profile(model)
-    categories: set[str] = {
-        EFFECT_CATEGORY_EFFECTS,
-    }
+    categories: set[str] = set()
+    if profile.supports_custom_effects:
+        categories.add(EFFECT_CATEGORY_EFFECTS)
     if profile.supports_scenes:
         categories.add(EFFECT_CATEGORY_SCENES)
     if profile.supports_video_mode:
@@ -222,6 +260,22 @@ def default_effect_families(model: str) -> frozenset[str]:
     if model == "H6199":
         return frozenset({EFFECT_FAMILY_VIDEO}) & supported
     return supported
+
+
+def version_at_least(current: str, minimum: str) -> bool:
+    current_parts = _version_parts(current)
+    minimum_parts = _version_parts(minimum)
+    if current_parts is None or minimum_parts is None:
+        return False
+    width = max(len(current_parts), len(minimum_parts))
+    return current_parts + (0,) * (width - len(current_parts)) >= minimum_parts + (0,) * (width - len(minimum_parts))
+
+
+def _version_parts(value: str) -> tuple[int, ...] | None:
+    parts = value.strip().split(".")
+    if not parts or any(not part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
 
 
 def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:

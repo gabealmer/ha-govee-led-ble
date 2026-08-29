@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target_sha:
-        description: Exact commit SHA from the ux branch
+        description: Exact commit SHA from the selected branch
         required: true
         type: string
       version:
@@ -47,13 +47,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify immutable ux commit
+      - name: Verify immutable selected-branch commit
         env:
+          TARGET_REF: ${{ github.ref_name }}
           TARGET_SHA: ${{ inputs.target_sha }}
         run: |
-          git fetch --no-tags origin ux
-          git merge-base --is-ancestor "$TARGET_SHA" origin/ux || {
-            echo "target_sha is not reachable from the remote ux branch" >&2
+          git fetch --no-tags origin "$TARGET_REF"
+          git merge-base --is-ancestor "$TARGET_SHA" "origin/$TARGET_REF" || {
+            echo "target_sha is not reachable from origin/$TARGET_REF" >&2
             exit 1
           }
           git checkout --detach "$TARGET_SHA"

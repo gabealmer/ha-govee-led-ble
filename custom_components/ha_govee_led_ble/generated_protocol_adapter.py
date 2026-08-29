@@ -9,7 +9,7 @@ from typing import Any, cast
 
 from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
-from .const import protocol_model
+from .const import scene_protocol_model
 from .transport import A3_CHUNK_SIZE, xor_checksum
 
 CommandWrite = cast(
@@ -27,6 +27,14 @@ H6199EffectUpload = cast(
 StatusQuery = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.status_query").StatusQuery,
+)
+H6125BrightnessWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_brightness_write").H6125BrightnessWrite,
+)
+H6125ColourModeQuery = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_colour_mode_query").H6125ColourModeQuery,
 )
 H6199StatusQuery = cast(
     Any,
@@ -175,6 +183,17 @@ def parse_command(frame: bytes, model: str = "H617A") -> Any | None:
     return parsed
 
 
+def parse_h6125_brightness_write(frame: bytes) -> Any | None:
+    if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
+        return None
+    try:
+        parsed = H6125BrightnessWrite(KaitaiStream(io.BytesIO(frame)))
+        parsed._read()
+    except KaitaiStructError:
+        return None
+    return parsed
+
+
 def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
     """Parse one validated, padded A3 effect envelope through its generated root."""
     if not isinstance(envelope, bytes):
@@ -186,8 +205,11 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
     if envelope[1] != len(envelope) // A3_CHUNK_SIZE:
         raise ValueError("A3 effect envelope does not match its chunk count")
 
-    model = protocol_model(model) or model
+    requested_model = model
+    model = scene_protocol_model(model) or model
     if model == "H617A":
+        if requested_model == "H6125" and envelope[2] not in {0x01, 0x02}:
+            raise ValueError(f"H6125 A3 body type 0x{envelope[2]:02x} is not supported")
         root_type = {
             0x01: SceneType1Body,
             0x02: SceneBody,
@@ -272,6 +294,11 @@ def build_brightness_query(model: str = "H617A") -> bytes:
 
 
 def build_colour_mode_query(model: str = "H617A") -> bytes:
+    if model == "H6125":
+        root = H6125ColourModeQuery()
+        root.header = b"\xaa\x05\x01"
+        root.padding = b"\x00" * 16
+        return _serialize_xor(root)
     return _build_status_query("colour_mode", model)
 
 
@@ -574,6 +601,14 @@ def build_brightness(percent: int, model: str = "H617A") -> bytes:
     body = brightness_type(None, root, root._root)
     body.percent = max(0, min(100, percent))
     root.body = body
+    return _serialize_xor(root)
+
+
+def build_h6125_brightness_value(value: int) -> bytes:
+    root = H6125BrightnessWrite()
+    root.header = b"\x33\x04"
+    root.value = max(0, min(0xFF, value))
+    root.padding = b"\x00" * 16
     return _serialize_xor(root)
 
 

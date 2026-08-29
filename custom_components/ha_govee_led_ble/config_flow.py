@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -15,11 +16,14 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
 
 from .ble_connection import async_validate_ble_connection
+from .ble_protocol_identity import h6125_pact_from_manufacturer_data
 from .const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_MODEL,
+    CONF_PACT_CODE,
+    CONF_PACT_TYPE,
     CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
     MODEL_PROFILES,
@@ -35,7 +39,14 @@ _MANUAL_ADDRESS_PATTERN = re.compile(r"^[0-9A-F]{12}$")
 
 
 def _extract_model(name: str) -> str | None:
-    return resolve_model(m.group(1)) if (m := MODEL_PATTERN.search(name)) else None
+    return resolve_model(match.group(1)) if (match := MODEL_PATTERN.search(name)) else None
+
+
+def _model_data(model: str, manufacturer_data: Mapping[int, bytes]) -> dict[str, Any]:
+    data: dict[str, Any] = {CONF_MODEL: model}
+    if model == "H6125" and (pact := h6125_pact_from_manufacturer_data(manufacturer_data)) is not None:
+        data[CONF_PACT_TYPE], data[CONF_PACT_CODE] = pact
+    return data
 
 
 def _normalize_manual_address(address: str) -> str:
@@ -61,7 +72,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="not_supported")
         await self.async_set_unique_id(discovery_info.address.strip().upper())
         self._abort_if_unique_id_configured()
-        self._discovered = {CONF_MODEL: model}
+        self._discovered = _model_data(model, discovery_info.manufacturer_data)
         # Model only, never the BLE name/MAC (no PII).
         self.context["title_placeholders"] = {"name": model}
         return await self.async_step_bluetooth_confirm()
@@ -94,7 +105,11 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error validating a Govee BLE device")
                 return self._show_user_form(errors={"base": "unknown"})
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=f"Govee {selected_model}", data={CONF_MODEL: selected_model})
+            manufacturer_data = service_info.manufacturer_data if service_info is not None else {}
+            return self.async_create_entry(
+                title=f"Govee {selected_model}",
+                data=_model_data(selected_model, manufacturer_data),
+            )
         return self._show_user_form()
 
     def _show_user_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:

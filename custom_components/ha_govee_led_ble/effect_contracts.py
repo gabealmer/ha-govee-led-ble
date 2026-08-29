@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-from .const import default_effect_categories, protocol_model
+from .const import default_effect_categories
 from .effect_domain import EFFECT_SCHEMA_VERSION, JsonValue
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -165,6 +165,17 @@ def _capability(
 
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
+    _capability(
+        "H6125",
+        CapabilityWorkflow.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        ApplicationRoute.STUDIO_SCENE_APPLY,
+        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
     _capability(
         "H617A",
         CapabilityWorkflow.NATIVE_SCENES,
@@ -354,9 +365,11 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     ),
 )
 
+_CAPABILITY_MODEL_ALIASES: Final = {"H617E": "H617A"}
+
 
 def release_capabilities_for_model(model: str) -> tuple[ReleaseCapability, ...]:
-    contract_model = protocol_model(model)
+    contract_model = _CAPABILITY_MODEL_ALIASES.get(model, model)
     capabilities = tuple(capability for capability in RELEASE_CAPABILITY_CONTRACT if capability.model == contract_model)
     if not capabilities:
         raise ValueError(f"{model} has no release capability contract")
@@ -364,7 +377,7 @@ def release_capabilities_for_model(model: str) -> tuple[ReleaseCapability, ...]:
 
 
 def release_capability(model: str, workflow: CapabilityWorkflow) -> ReleaseCapability | None:
-    contract_model = protocol_model(model)
+    contract_model = _CAPABILITY_MODEL_ALIASES.get(model, model)
     return next(
         (
             capability
@@ -501,6 +514,12 @@ def device_effect_capabilities(
         music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC),
         video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO),
         workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP),
-        readback="diy_code_only" if protocol_model(model) == "H617A" else "scene_selector_for_user_effects",
+        readback=(
+            "diy_code_only"
+            if model in {"H617A", "H617E"}
+            else "write_completed"
+            if model == "H6125"
+            else "scene_selector_for_user_effects"
+        ),
         effect_categories=(default_effect_categories(model) if effect_categories is None else effect_categories),
     )
