@@ -125,6 +125,7 @@ def _load_catalogue(sku: str) -> tuple[SceneEntry, ...]:
 
 SCENE_ENTRIES: dict[str, tuple[SceneEntry, ...]] = {sku: _load_catalogue(sku) for sku in ("H617A", "H6199")}
 SCENE_ENTRIES["H617E"] = SCENE_ENTRIES["H617A"]
+SCENE_ENTRIES["H3001"] = ()
 
 
 def _legacy_h617a_key(entry: SceneEntry) -> str:
