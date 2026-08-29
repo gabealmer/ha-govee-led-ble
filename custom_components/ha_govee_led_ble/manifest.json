@@ -37,6 +37,18 @@
         },
         {
             "local_name": "GVH_H6199*"
+        },
+        {
+            "local_name": "ihoment_H3001*"
+        },
+        {
+            "local_name": "Govee_H3001*"
+        },
+        {
+            "local_name": "GBK_H3001*"
+        },
+        {
+            "local_name": "GVH_H3001*"
         }
     ],
     "codeowners": [

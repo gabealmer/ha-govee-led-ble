@@ -58,6 +58,7 @@ class ModelProfile:
     segment_count: int = 0
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
+    ble_encryption: str | None = None  # "v2" for AES-128-GCM (H3001 etc.)
 
     @property
     def supports_segments(self) -> bool:
@@ -104,10 +105,18 @@ _H617X_PROFILE = ModelProfile(
     # the aa a5 groups provide its per-segment readback.
 )
 
+_H3001_PROFILE = ModelProfile(
+    "H3001 Solar String Lights",
+    state_readable=True,
+    connection_idle_timeout=3.0,
+    ble_encryption="v2",
+)
+
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617A": _H617X_PROFILE,
     "H617E": _H617X_PROFILE,
+    "H3001": _H3001_PROFILE,
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
@@ -132,6 +141,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
 }
 
+
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
 
@@ -142,7 +152,9 @@ def resolve_model(model: str) -> str | None:
 
 def protocol_model(model: str) -> str | None:
     resolved = resolve_model(model)
-    return "H617A" if resolved in {"H617A", "H617E"} else resolved
+    if resolved in {"H617A", "H617E"}:
+        return "H617A"
+    return resolved
 
 
 def get_profile(model: str) -> ModelProfile:

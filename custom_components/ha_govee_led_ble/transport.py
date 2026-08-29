@@ -3,6 +3,8 @@
 import math
 from collections.abc import Sequence
 
+from .ble_crypto import V2Session, is_handshake_frame
+
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 
@@ -72,3 +74,17 @@ def reassemble_a3(frames: Sequence[bytes]) -> bytes:
     if envelope[1] != len(frames):
         raise ValueError(f"A3 envelope declares {envelope[1]} frames, received {len(frames)}")
     return envelope
+
+
+def seal_frame(frame: bytes, session: V2Session | None) -> bytes:
+    """Wrap frame with V2Session if present, else pass through unchanged."""
+    return session.seal(frame) if session else frame
+
+
+def unwrap_frame(data: bytes, session: V2Session | None) -> bytes | None:
+    """Unwrap encrypted notify frame. Returns None for handshake frames."""
+    if is_handshake_frame(data):
+        return None
+    if session:
+        return session.open(data)
+    return data

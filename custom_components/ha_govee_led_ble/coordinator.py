@@ -17,6 +17,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .ble_connection import RETRY_BACKOFF_SECONDS, async_establish_ble_connection
+from .ble_crypto import V2Session, build_handshake, is_handshake_frame, parse_handshake_response
 from .ble_device_resolver import BLEDeviceResolver
 from .const import (
     DOMAIN,
@@ -156,6 +157,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._keep_alive_task: asyncio.Task[None] | None = None
         self._keep_alive_ticks = 0
         self._identity_retries = 0
+        self._v2_session: V2Session | None = None
         self.is_on = False
         self.brightness_pct = 100
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
@@ -541,6 +543,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             disconnected_callback=self._disconnected_callback,
         )
         self._reset_disconnect_timer()
+        if self.profile.ble_encryption == "v2" and self._client:
+            try:
+                self._v2_session = await self._negotiate_v2_session()
+            except (BleakError, TimeoutError, ValueError) as err:
+                _LOGGER.warning("V2 handshake failed for %s: %s", self.address, err)
+                await self._disconnect_locked()
+                raise
         if self.profile.state_readable:
             try:
                 await self._start_notify()
@@ -550,6 +559,35 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 raise
         self._log_availability_transition()
         return self._client
+
+    async def _negotiate_v2_session(self) -> V2Session:
+        """Perform the e711 AES-128-GCM handshake required by encrypted models."""
+        assert self._client is not None
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bytes] = loop.create_future()
+
+        def on_data(_sender: Any, data: bytearray) -> None:
+            if not future.done() and is_handshake_frame(bytes(data)):
+                future.set_result(bytes(data))
+
+        await self._client.start_notify(READ_UUID, on_data)
+        try:
+            frame, tx_iv_key = build_handshake()
+            await self._client.write_gatt_char(WRITE_UUID, frame, response=False)
+            response = await asyncio.wait_for(future, timeout=5.0)
+            parsed = parse_handshake_response(response)
+            _LOGGER.debug("V2 handshake OK for %s: %s %s", self.address, parsed["sku"], parsed["mac"])
+            return V2Session(tx_iv_key=tx_iv_key, dev_info=parsed["dev_info"], rx_iv_key=parsed["rx_iv_key"])
+        finally:
+            try:
+                await self._client.stop_notify(READ_UUID)
+            except Exception:
+                pass
+
+    async def _write_gatt_char(self, client: BleakClient, packet: bytes) -> None:
+        """Write a packet, sealing with V2Session if the model requires it."""
+        sealed = self._v2_session.seal(packet) if self._v2_session else packet
+        await client.write_gatt_char(WRITE_UUID, sealed, response=False)
 
     def _renew_foreground_lease(self) -> None:
         if self._control_arbiter.current_task_intent is not ControlIntent.BACKGROUND:
@@ -596,6 +634,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if self._client is not client:
             return
         self._client = None
+        self._v2_session = None
         self._notify_started_monotonic = None
         self._last_rx_monotonic = None
         self._expected_state.clear()
@@ -843,7 +882,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         return tuple(observed)
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
-        frame = bytes(data)
+        raw = bytes(data)
+        if is_handshake_frame(raw):
+            return
+        try:
+            frame = self._v2_session.open(raw) if self._v2_session else raw
+        except Exception:
+            _LOGGER.debug("Failed to decrypt notify from %s", self.address)
+            return
         decoded = decode_status_frame(frame, self.model)
         if decoded is None:
             return
@@ -974,7 +1020,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 )
             for query in queries:
                 self._record_packet("tx", query)
-                await self._client.write_gatt_char(WRITE_UUID, query, response=False)
+                await self._write_gatt_char(self._client, query)
             return True
         except BleakError:
             return False
@@ -1002,7 +1048,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         try:
             for query in queries:
                 self._record_packet("tx", query)
-                await self._client.write_gatt_char(WRITE_UUID, query, response=False)
+                await self._write_gatt_char(self._client, query)
         except BleakError:
             _LOGGER.debug("Identity query failed for %s", self.address)
 
@@ -1275,7 +1321,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     raise BleakError(f"Device {self.address} disconnected during preview")
                 self._record_packet("tx", packet)
                 self._arm_expected(packet)
-                await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                await self._write_gatt_char(client, packet)
                 self._renew_foreground_lease()
 
     async def async_write_effect_sequence(
@@ -1305,11 +1351,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         for index, packet in enumerate(packets, start=1):
                             self._record_packet("tx", packet)
                             self._arm_expected(packet)
-                            await client.write_gatt_char(
-                                WRITE_UUID,
-                                packet,
-                                response=False,
-                            )
+                            await self._write_gatt_char(client, packet)
                             self._renew_foreground_lease()
                             if progress is not None:
                                 await progress(index)
@@ -1464,7 +1506,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         client = await self._ensure_connected()
                         self._record_packet("tx", packet)
                         self._arm_expected(packet)
-                        await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                        await self._write_gatt_char(client, packet)
                         self._renew_foreground_lease()
                         return
                     except BleakError as err:
