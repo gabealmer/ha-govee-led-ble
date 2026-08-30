@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 DOMAIN = "ha_govee_led_ble"
@@ -59,6 +60,7 @@ class ModelProfile:
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
     ble_encryption: str | None = None  # "v2" for AES-128-GCM (H3001 etc.)
+    poll_interval: timedelta | None = None  # sensor poll interval for BLE-only devices
 
     @property
     def supports_segments(self) -> bool:
@@ -110,6 +112,7 @@ _H3001_PROFILE = ModelProfile(
     state_readable=True,
     connection_idle_timeout=3.0,
     ble_encryption="v2",
+    poll_interval=timedelta(minutes=30),
 )
 
 

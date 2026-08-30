@@ -130,13 +130,17 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         device_resolver: BLEDeviceResolver | None = None,
     ) -> None:
         profile = get_profile(model)
+        if profile.poll_interval is not None:
+            update_interval = profile.poll_interval
+        elif profile.state_readable and profile.connection_idle_timeout is None:
+            update_interval = timedelta(seconds=30)
+        else:
+            update_interval = None
         super().__init__(
             hass,
             _LOGGER,
             name=f"Govee {model} ({address})",
-            update_interval=(
-                timedelta(seconds=30) if profile.state_readable and profile.connection_idle_timeout is None else None
-            ),
+            update_interval=update_interval,
         )
         self.address, self.model, self.profile = address, model, profile
         self.configuration_url = configuration_url
@@ -187,6 +191,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 100
         self.music_color: tuple[int, int, int] | None = None
+        # H3001 solar string light sensor data
+        self.battery_pct: int | None = None
         # H6199 display settings and edge brightness. None means the first read has not landed.
         self.white_balance_red: int | None = None
         self.white_balance_blue: int | None = None
@@ -890,6 +896,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         except Exception:
             _LOGGER.debug("Failed to decrypt notify from %s", self.address)
             return
+        # H3001 sensor frames: aa <cmd> <payload> <checksum>
+        if self.model == "H3001" and len(frame) == 20 and frame[0] == 0xAA and frame[1] == 0x12:
+            self.battery_pct = frame[3]
+            self._mark_received(StatusDomain.OTHER, "battery_pct")
+            self.async_set_updated_data(self.data or {})
+            return
         decoded = decode_status_frame(frame, self.model)
         if decoded is None:
             return
@@ -1021,6 +1033,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             for query in queries:
                 self._record_packet("tx", query)
                 await self._write_gatt_char(self._client, query)
+            # H3001: query battery sensor (cmd=0x12)
+            if self.model == "H3001" and self._v2_session is not None:
+                battery_query = self._build_h3001_query(0x12)
+                self._record_packet("tx", battery_query)
+                await self._write_gatt_char(self._client, battery_query)
             return True
         except BleakError:
             return False
@@ -1051,6 +1068,17 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 await self._write_gatt_char(self._client, query)
         except BleakError:
             _LOGGER.debug("Identity query failed for %s", self.address)
+
+    def _build_h3001_query(self, cmd: int) -> bytes:
+        """Build an H3001 read-query frame: aa <cmd> + 18 zero bytes + xor checksum."""
+        frame = bytearray(20)
+        frame[0] = 0xAA
+        frame[1] = cmd
+        chk = 0
+        for b in frame[:19]:
+            chk ^= b
+        frame[19] = chk
+        return bytes(frame)
 
     def _identity_incomplete(self) -> bool:
         return (
