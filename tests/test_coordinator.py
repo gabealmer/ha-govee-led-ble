@@ -2173,7 +2173,7 @@ async def test_async_setup_registers_presence_and_callbacks_flip(coord):
         bt.async_address_present.return_value = False
         await coord._async_setup()
         bt.async_address_present.assert_called_once()
-        bt.async_register_callback.assert_called_once()
+        assert bt.async_register_callback.call_count == 2
         bt.async_track_unavailable.assert_called_once()
     assert coord._present is False
     with patch.object(coord, "async_update_listeners") as notify:
@@ -2183,9 +2183,18 @@ async def test_async_setup_registers_presence_and_callbacks_flip(coord):
         notify.reset_mock()
         coord._async_on_advertisement(MagicMock(), MagicMock())
         notify.assert_not_called()
-        coord._async_on_unavailable(MagicMock())
+        svc = MagicMock()
+        svc.address = coord.address
+        coord._async_on_unavailable(svc)
         assert coord._present is False
         notify.assert_called_once()
+        notify.reset_mock()
+        coord._present = True
+        stale = MagicMock()
+        stale.address = "AA:BB:CC:DD:EE:FF"
+        coord._async_on_unavailable(stale)
+        assert coord._present is True
+        notify.assert_not_called()
 
 
 async def test_first_refresh_reports_update_failed_then_degrades_silently(coord):
