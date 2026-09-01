@@ -2177,16 +2177,34 @@ async def test_async_setup_registers_presence_and_callbacks_flip(coord):
         bt.async_register_callback.assert_called_once()
         bt.async_track_unavailable.assert_called_once()
     assert coord._present is False
-    with patch.object(coord, "async_update_listeners") as notify:
+    with (
+        patch.object(coord, "async_update_listeners") as notify,
+        patch.object(coord, "async_request_refresh", new_callable=AsyncMock) as refresh,
+    ):
+        # Before first refresh — no auto-refresh on presence change.
         coord._async_on_advertisement(MagicMock(), MagicMock())
         assert coord._present is True
         notify.assert_called_once()
+        refresh.assert_not_called()
         notify.reset_mock()
         coord._async_on_advertisement(MagicMock(), MagicMock())
         notify.assert_not_called()
+        refresh.assert_not_called()
         coord._async_on_unavailable(MagicMock())
         assert coord._present is False
         notify.assert_called_once()
+        refresh.assert_not_called()
+        # After first refresh — presence flip triggers auto-refresh.
+        coord._first_refresh_done = True
+        notify.reset_mock()
+        refresh.reset_mock()
+        coord._async_on_advertisement(MagicMock(), MagicMock())
+        assert coord._present is True
+        refresh.assert_called_once()
+        refresh.reset_mock()
+        coord._async_on_unavailable(MagicMock())
+        assert coord._present is False
+        refresh.assert_not_called()
 
 
 async def test_first_refresh_reports_update_failed_then_degrades_silently(coord):

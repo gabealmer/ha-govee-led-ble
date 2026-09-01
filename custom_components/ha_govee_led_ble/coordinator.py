@@ -470,10 +470,17 @@ class GoveeBLECoordinator(_ActiveModeMixin):
 
     @callback
     def _set_present(self, present: bool) -> None:
-        if self._present != present:
-            self._present = present
-            self._log_availability_transition()
-            self.async_update_listeners()
+        if self._present == present:
+            return
+        was_present = self._present
+        self._present = present
+        self._log_availability_transition()
+        self.async_update_listeners()
+        # Device just came back online — trigger immediate refresh so state
+        # updates without waiting for the next poll interval.
+        # Guard: only after first refresh completes to avoid conflicting with setup.
+        if present and not was_present and self.profile.state_readable and self._first_refresh_done:
+            self.hass.async_create_task(self.async_request_refresh())
 
     def _log_availability_transition(self) -> None:
         if self.hass.is_stopping:
