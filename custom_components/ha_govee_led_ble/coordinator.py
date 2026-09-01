@@ -454,14 +454,6 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             ),
             bluetooth.async_track_unavailable(self.hass, self._async_on_unavailable, self.address, connectable=True),
         )
-        # RPA rotation: also watch for advertisements from any address with our model name.
-        # When a new address appears for the same model, update the stored address.
-        unsubs = (*unsubs, bluetooth.async_register_callback(
-            self.hass,
-            self._async_on_any_advertisement,
-            bluetooth.BluetoothCallbackMatcher(connectable=True),
-            bluetooth.BluetoothScanningMode.PASSIVE,
-        ))
         for unsub in unsubs:
             if self.config_entry is not None:
                 self.config_entry.async_on_unload(unsub)
@@ -473,31 +465,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._set_present(True)
 
     @callback
-    def _async_on_any_advertisement(
-        self, service_info: bluetooth.BluetoothServiceInfoBleak, _change: bluetooth.BluetoothChange
-    ) -> None:
-        """Track RPA rotation: if our model appears at a new address, adopt it."""
-        name = service_info.name or ""
-        # Match by model prefix (ihoment_H3001, Govee_H3001, etc.)
-        if self.model not in name:
-            return
-        new_addr = service_info.address.upper()
-        if new_addr == self.address:
-            return
-        _LOGGER.info("RPA rotation detected for %s: %s → %s", self.model, self.address, new_addr)
-        self.address = new_addr
-        self._present = True
-        # Update the config entry so HA uses the new address going forward.
-        if self.config_entry is not None:
-            self.hass.config_entries.async_update_entry(self.config_entry, unique_id=new_addr)
-        # Re-register presence tracking for the new address.
-        self.async_update_listeners()
-
-    @callback
-    def _async_on_unavailable(self, service_info: bluetooth.BluetoothServiceInfoBleak) -> None:
-        # Ignore unavailability from a stale RPA address after rotation.
-        if service_info.address.upper() != self.address:
-            return
+    def _async_on_unavailable(self, _service_info: bluetooth.BluetoothServiceInfoBleak) -> None:
         self._set_present(False)
 
     @callback
@@ -572,14 +540,32 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 return self._client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
             await self._disconnect_locked()
-        self._client = await async_establish_ble_connection(
-            self.hass,
-            self.address,
-            resolver=self._device_resolver,
-            establish=establish_connection,
-            sleep=asyncio.sleep,
-            disconnected_callback=self._disconnected_callback,
-        )
+        try:
+            self._client = await async_establish_ble_connection(
+                self.hass,
+                self.address,
+                resolver=self._device_resolver,
+                establish=establish_connection,
+                sleep=asyncio.sleep,
+                disconnected_callback=self._disconnected_callback,
+            )
+        except BleakError:
+            # Device not found at stored address — may have rotated (RPA). Scan by name.
+            new_addr = await self._scan_by_model_name()
+            if new_addr is None:
+                raise
+            _LOGGER.info("RPA rotation: %s address changed %s → %s", self.model, self.address, new_addr)
+            self.address = new_addr
+            if self.config_entry is not None:
+                self.hass.config_entries.async_update_entry(self.config_entry, unique_id=new_addr)
+            self._client = await async_establish_ble_connection(
+                self.hass,
+                self.address,
+                resolver=self._device_resolver,
+                establish=establish_connection,
+                sleep=asyncio.sleep,
+                disconnected_callback=self._disconnected_callback,
+            )
         self._reset_disconnect_timer()
         if self.profile.ble_encryption == "v2" and self._client:
             try:
@@ -597,6 +583,19 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 raise
         self._log_availability_transition()
         return self._client
+
+    async def _scan_by_model_name(self) -> str | None:
+        """Scan for a device matching our model name. Returns new address or None."""
+        from bleak import BleakScanner  # noqa: PLC0415
+
+        try:
+            devices = await BleakScanner.discover(timeout=10)
+        except BleakError:
+            return None
+        for device in devices:
+            if device.name and self.model in device.name:
+                return device.address.upper()
+        return None
 
     async def _negotiate_v2_session(self) -> V2Session:
         """Perform the e711 AES-128-GCM handshake required by encrypted models."""
